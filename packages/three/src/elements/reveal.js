@@ -245,7 +245,7 @@ function toMountable(node) {
       // Read before anything is detached: once `last` is out of the tree it
       // no longer has a next sibling to stop at.
       const stop = last.nextSibling;
-      for (let current = first.nextSibling; current && current !== stop; ) {
+      for (let current = first.nextSibling; current && current !== stop;) {
         const next = current.nextSibling;
         parent.removeChild(current);
         current = next;

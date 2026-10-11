@@ -5,7 +5,12 @@ import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
-import { createKeyboardSlot, disposeKeyboardSlot, KeyboardSlotContext } from "./keyboardSlot.js";
+import {
+  createKeyboardSlot,
+  dismissKeyboardAtSessionEnd,
+  disposeKeyboardSlot,
+  KeyboardSlotContext,
+} from "./keyboardSlot.js";
 import { CameraContext, RendererContext, SceneContext } from "../render.js";
 import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
@@ -13,6 +18,7 @@ import { rectGeometry } from "./sdfRect.js";
 import { CARET_BLINK_MS } from "./textInput.js";
 import { recordingSource } from "../test/rumble.js";
 import { PREVIEW_ATTRIBUTE } from "./keyboardPreview.js";
+import { withStart } from "../test/rays.js";
 import { getCaretOffset } from "./typing.js";
 
 /**
@@ -209,7 +215,7 @@ function keyboardPanel(configure = ownKeyboard, slot, room) {
     for (const type of ["selectstart", "select", "selectend"]) {
       manager.dispatch(
         /** @type {any} */ (object),
-        /** @type {any} */ ({ type, controller, inputSource, originalTarget: object }),
+        /** @type {any} */ (withStart({ type, controller, inputSource, originalTarget: object })),
       );
     }
   };
@@ -357,6 +363,175 @@ describe("the portal's keyboard", () => {
     await settle();
     assert.equal(panels(), 1, "a read-only field takes nothing");
 
+    panel.cleanup();
+  });
+
+  test("a click on a field's `<label for>` brings it up for that field", async () => {
+    const panel = keyboardPanel();
+    panel.input.id = "name";
+    const label = document.createElement("label");
+    label.htmlFor = "name";
+    panel.root.appendChild(label);
+    await settle();
+
+    // A press on the label is a click on it, as on a page, where the
+    // label's activation then focuses the field.
+    label.click();
+    await settle();
+    assert.equal(panels(), 2, "the board is up");
+    assert.equal(panel.created.length, 1);
+    assert.equal(panel.created[0].element, panel.input, "for the labelled field");
+    assert.ok(panel.input.hasAttribute("data-xr-focus"));
+
+    panel.cleanup();
+  });
+
+  test("a ray's press on a plain `<label for>` brings it up for its field", async () => {
+    const panel = keyboardPanel();
+    panel.input.id = "name";
+    await settle();
+    const before = new Set(panel.targets);
+    // No `cursor: pointer`: a page's label focuses its field whatever its
+    // cursor, so the label is a ray target as the field is.
+    const label = document.createElement("label");
+    label.htmlFor = "name";
+    panel.root.appendChild(label);
+    await settle();
+    const labelObject = [...panel.targets].find((target) => !before.has(target));
+    assert.ok(labelObject, "the label is a ray target");
+
+    panel.press(labelObject);
+    await settle();
+    assert.equal(panels(), 2, "the board is up");
+    assert.equal(panel.created[0]?.element, panel.input, "for the labelled field");
+    assert.ok(panel.input.hasAttribute("data-xr-focus"));
+
+    panel.cleanup();
+  });
+
+  test("a label in another container becomes a ray target once its field takes the typing", async () => {
+    const panel = keyboardPanel();
+    // Labels in one column and fields in the next: the field's attributes
+    // reach nothing under the label's own parent.
+    const labels = document.createElement("div");
+    const fields = document.createElement("div");
+    const field = document.createElement("input");
+    field.type = "text";
+    field.id = "other";
+    field.readOnly = true;
+    fields.appendChild(field);
+    const label = document.createElement("label");
+    label.htmlFor = "other";
+    labels.appendChild(label);
+    panel.root.append(labels, fields);
+    await settle();
+    const before = new Set(panel.targets);
+
+    field.readOnly = false;
+    await settle();
+    const added = [...panel.targets].filter((target) => !before.has(target));
+    assert.equal(added.length, 1, "the label, and only the label, is a target now");
+
+    panel.press(added[0]);
+    await settle();
+    assert.equal(panels(), 2, "the board is up");
+    assert.ok(field.hasAttribute("data-xr-focus"));
+
+    panel.cleanup();
+  });
+
+  test("a label becomes a ray target once a field is put inside it", async () => {
+    const panel = keyboardPanel();
+    const label = document.createElement("label");
+    label.appendChild(document.createElement("span"));
+    panel.root.appendChild(label);
+    await settle();
+    const before = new Set(panel.targets);
+
+    const field = document.createElement("input");
+    field.type = "text";
+    label.appendChild(field);
+    await settle();
+    const added = [...panel.targets].filter((target) => !before.has(target));
+    assert.equal(added.length, 2, "the field and its label are targets");
+
+    panel.cleanup();
+  });
+
+  test("a button inside a field's label puts it away, as it blurs the field on a page", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+
+    const label = document.createElement("label");
+    const other = document.createElement("input");
+    other.type = "text";
+    const button = document.createElement("button");
+    label.append(other, button);
+    panel.root.appendChild(label);
+    await settle();
+
+    // The click is the button's, and the label does nothing with it.
+    button.click();
+    await settle();
+    assert.equal(panels(), 1, "the board is gone");
+    assert.equal(other.hasAttribute("data-xr-focus"), false);
+
+    panel.cleanup();
+  });
+
+  test("a click on another field's label moves the typing there", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+
+    // A label around its field, the other way a label names one, with the
+    // click on what is inside it.
+    const label = document.createElement("label");
+    const text = document.createElement("span");
+    const other = document.createElement("input");
+    other.type = "text";
+    label.append(text, other);
+    panel.root.appendChild(label);
+    await settle();
+
+    text.click();
+    await settle();
+    assert.equal(panels(), 2, "still one board");
+    assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
+    assert.ok(other.hasAttribute("data-xr-focus"), "the labelled field has the typing");
+
+    // A label of a field that cannot be typed into is anywhere else.
+    other.readOnly = true;
+    text.click();
+    await settle();
+    assert.equal(panels(), 1, "the board is gone");
+
+    panel.cleanup();
+  });
+
+  test("a label of a field outside the panel puts it away", async () => {
+    const panel = keyboardPanel();
+    await settle();
+    panel.press(panel.fieldObject());
+    await settle();
+
+    const outside = document.createElement("input");
+    outside.id = "outside";
+    document.body.appendChild(outside);
+    const label = document.createElement("label");
+    label.htmlFor = "outside";
+    panel.root.appendChild(label);
+    await settle();
+
+    label.click();
+    await settle();
+    assert.equal(panels(), 1, "the board is gone: the field is drawn on no panel here");
+    assert.equal(outside.hasAttribute("data-xr-focus"), false);
+
+    outside.remove();
     panel.cleanup();
   });
 
@@ -774,6 +949,39 @@ describe("one keyboard for every panel in a scene", () => {
   });
 });
 
+describe("the scene's keyboard at the end of a session", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  before(() => {
+    canvas = stubCanvas();
+  });
+  after(() => {
+    canvas.restore();
+  });
+
+  test("goes when the session ends, and takes the field's focus with it", async () => {
+    // A page drawn only while presenting runs nothing after its session
+    // ends: a board left up would type into the field in the next one,
+    // from where the player stood in the last, and the page would show the
+    // field focused in between.
+    const slot = createKeyboardSlot();
+    const xr = new THREE.EventDispatcher();
+    const stop = dismissKeyboardAtSessionEnd(slot, /** @type {never} */ (xr));
+    const a = keyboardPanel((create) => ({ options: { keyboard: { create } } }), slot);
+    await settle();
+    a.press(a.fieldObject());
+    await settle();
+    assert.equal(panels(), 2);
+    assert.ok(a.input.hasAttribute("data-xr-focus"));
+
+    xr.dispatchEvent(/** @type {never} */ ({ type: "sessionend" }));
+    assert.equal(panels(), 1, "the board is gone");
+    assert.equal(a.input.hasAttribute("data-xr-focus"), false);
+    stop();
+    a.cleanup();
+  });
+});
+
 describe("the keyboard in front of the player", () => {
   /** @type {ReturnType<typeof stubCanvas>} */
   let canvas;
@@ -1013,17 +1221,15 @@ describe("the keyboard's handles", () => {
      * @param {THREE.Object3D} object
      */
     const dispatch = (type, object) => {
-      panel.manager.dispatch(
-        /** @type {any} */ (object),
-        /** @type {any} */ ({
-          type,
-          target: object,
-          originalTarget: object,
-          controller,
-          inputSource: {},
-          intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
-        }),
-      );
+      const event = {
+        type,
+        target: object,
+        originalTarget: object,
+        controller,
+        inputSource: {},
+        intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
+      };
+      panel.manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (withStart(event)));
     };
     /**
      * The board's panel itself, beside the strips in the frame they carry
@@ -1228,17 +1434,15 @@ function wideInputs() {
 function ray(manager, type, object, controller, x) {
   object.updateWorldMatrix(true, false);
   const point = x === undefined ? undefined : object.localToWorld(new THREE.Vector3(x, 10, 0));
-  manager.dispatch(
-    /** @type {any} */ (object),
-    /** @type {any} */ ({
-      type,
-      target: object,
-      originalTarget: object,
-      controller,
-      inputSource: {},
-      ...(point ? { intersection: { object, point } } : {}),
-    }),
-  );
+  const event = {
+    type,
+    target: object,
+    originalTarget: object,
+    controller,
+    inputSource: {},
+    ...(point ? { intersection: { object, point } } : {}),
+  };
+  manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (withStart(event)));
 }
 
 describe("the caret, placed by a ray", () => {

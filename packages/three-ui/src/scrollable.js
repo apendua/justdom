@@ -58,12 +58,16 @@ const DEFAULT_MARKS = /** @type {const} */ (["▲", "▼"]);
  * scrolling is the ordinary `scrollTop` write it is on the flat web — client
  * rects move with it and the panel follows.
  *
- * What a portal does not have is the gesture. There is no wheel to turn and
- * no surface to flick, so the controls here are all presses: an arrow moves a
- * step and keeps moving while it is held, the free track jumps a window, and
- * the thumb says where you are. It is also why a bar in a panel is worth
- * making chunky — a ray is a blunter instrument than a mouse, and a scrollbar
- * the width of a real one is a hard thing to point at.
+ * What a portal does not have is the wheel: none scrolls it, not even the
+ * thumbstick a panel can take as one, which sends `wheel` and scrolls nothing
+ * of itself. A list in a panel is scrolled by taking hold of it with the
+ * trigger and pulling, and glides when let go, so this bar is for the
+ * scrollbar's kind of control, visible, precise and resting, and its controls
+ * are all presses: an arrow moves a step and keeps moving while it is held,
+ * the free track jumps a window, and the thumb says where you are. It is also
+ * why a bar in a panel is worth making chunky — a ray is a blunter instrument
+ * than a mouse, and a scrollbar the width of a real one is a hard thing to
+ * point at.
  *
  * @param {ScrollableProps} props
  * @returns {import("@apendua/signal").Source<Mountable>}
@@ -338,9 +342,7 @@ export function scrollable(props) {
         }),
         children(...content),
       ]),
-      // Mounted only while there is something to scroll — and mounted rather
-      // than shown, because a portal re-measures on a tree change and not on
-      // an attribute one.
+      // Mounted only while there is something to scroll.
       list(() => (scrollable.get() ? [BAR] : []), bar),
     ),
   ]);

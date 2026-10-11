@@ -223,8 +223,7 @@ const ZOOM_STEP = 1.25;
 
 /**
  * What only a session has, mounted while there is one and taken down when
- * it ends. Not hidden and shown: a panel measures the toolbar again when
- * its children change, and not when one of them is hidden.
+ * it ends.
  */
 const inSession = (render: () => Subscribable<Mountable>) =>
   list(() => (xrSession.get() ? [true] : []), render);

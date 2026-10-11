@@ -6,17 +6,18 @@
  * A gesture is a script of steps. A step aims the ray, closes or opens a
  * button, changes the page or loses the hand. For each step the golden
  * records every pointer, mouse and drag event the page heard, with its
- * target, `bubbles`, `cancelable`, `button` and point, and for a pointer
- * event which pointer it came from, its `pointerType` and whether it is
- * the primary one. It records every ray event that got past the panel to
+ * target, `bubbles`, `cancelable`, `button` and point, its `buttons` where
+ * any are held, the element it names as `relatedTarget` where it is one of
+ * the events that cross from element to element, and for a pointer event
+ * which pointer it came from, its `pointerType` and whether it is the
+ * primary one. It records every ray event that got past the panel to
  * the scene above it. After the step it records which elements carry
  * `data-xr-hover` and `data-xr-active` and where each scrolling list
  * stands. The recordings are in `pointerGoldens.json` beside this file.
  *
  * They pin today's behaviour, which is not always the behaviour anybody
- * wants. A hand lost mid-press releases nothing yet, and the plan means to
- * change that. They are there so that a change to how rays become events is
- * a change somebody sees. A golden that has to change is a behaviour change.
+ * wants. They are there so that a change to how rays become events is a
+ * change somebody sees. A golden that has to change is a behaviour change.
  * It goes in a commit of its own that says why the old sequence was wrong,
  * as section 10 of `docs/freedom-architecture-plan.md` asks.
  *
@@ -69,16 +70,27 @@ after(() => {
  * @property {Spec[]} [children]
  */
 
-/** The mouse and drag events a page can hear from a ray. */
+/** The pointer, mouse and drag events a page can hear from a ray. */
 const DOM_TYPES = [
   "pointerdown",
   "pointerup",
   "pointermove",
+  "pointercancel",
+  "pointerover",
+  "pointerenter",
+  "pointerout",
+  "pointerleave",
+  "gotpointercapture",
+  "lostpointercapture",
   "mousedown",
   "mouseup",
   "click",
   "contextmenu",
   "mousemove",
+  "mouseover",
+  "mouseenter",
+  "mouseout",
+  "mouseleave",
   "dragstart",
   "drag",
   "dragenter",
@@ -87,6 +99,18 @@ const DOM_TYPES = [
   "drop",
   "dragend",
 ];
+
+/** The events that cross from one element to another, which name the other. */
+const BOUNDARY_TYPES = new Set([
+  "pointerover",
+  "pointerenter",
+  "pointerout",
+  "pointerleave",
+  "mouseover",
+  "mouseenter",
+  "mouseout",
+  "mouseleave",
+]);
 
 /** The ray events a panel is meant to stop, all but the grip's start. */
 const RAY_TYPES = [
@@ -180,8 +204,14 @@ async function page(children, { accept = true, capture = false, cancel = false }
   const pointers = new Map();
   /** @param {Event} event */
   const hear = (event) => {
-    const { bubbles, cancelable, button, clientX, clientY } = /** @type {MouseEvent} */ (event);
+    const { bubbles, cancelable, button, buttons, clientX, clientY, relatedTarget } =
+      /** @type {MouseEvent} */ (event);
     const target = /** @type {Element} */ (event.target);
+    const held = buttons ? ` buttons ${buttons}` : "";
+    let related = "";
+    if (BOUNDARY_TYPES.has(event.type)) {
+      related = ` related ${relatedTarget ? `#${/** @type {Element} */ (relatedTarget).id}` : "none"}`;
+    }
     let pointer = "";
     if (event instanceof PointerEvent) {
       const { pointerId, pointerType, isPrimary } = event;
@@ -195,7 +225,8 @@ async function page(children, { accept = true, capture = false, cancel = false }
     lines.push(
       `${event.type} #${target.id}` +
         ` ${bubbles ? "bubbles" : "-"} ${cancelable ? "cancelable" : "-"}` +
-        ` button ${button} at ${Math.round(clientX)},${Math.round(clientY)}${pointer}`,
+        ` button ${button}${held} at ${Math.round(clientX)},${Math.round(clientY)}` +
+        `${related}${pointer}`,
     );
   };
   // On the way down, so that an event which does not bubble is heard too.
@@ -464,6 +495,22 @@ describe("event-sequence goldens", () => {
     await g.step("aim at #b", () => g.aim(g.on("b")));
     await g.step("ray stays", () => g.hands[0].frame());
     matches("a captured press that becomes a drag and drop", g.lines);
+    g.teardown();
+  });
+
+  test("a captured press dragged off the controls", async () => {
+    // The page captured the pointer, so its moves go on to the captor from
+    // where the ray crosses the panel's plane, on no control and off the
+    // panel too, as a browser sends a captured mouse's.
+    const g = await page(LEAF, { capture: true });
+    await g.step("aim at #leaf", () => g.aim(g.on("leaf")));
+    await g.step("trigger closes", () => g.hands[0].trigger("selectstart"));
+    await g.step("aim at nothing on the panel", () => g.aim([380, 10]));
+    await g.step("aim off the panel", () => g.aim([500, 400]));
+    await g.step("ray stays", () => g.hands[0].frame());
+    await g.step("trigger opens", () => g.hands[0].trigger("selectend"));
+    await g.step("aim at #leaf", () => g.aim(g.on("leaf")));
+    matches("a captured press dragged off the controls", g.lines);
     g.teardown();
   });
 

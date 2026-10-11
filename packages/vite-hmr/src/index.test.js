@@ -13,7 +13,6 @@ import {
   store,
   Stream,
   Subject,
-  volatileStore,
 } from "@apendua/signal";
 import { $hmr } from "./index.js";
 
@@ -416,10 +415,10 @@ describe("a derived export", () => {
   });
 });
 
-describe("a volatileStore export", () => {
+describe("a store export", () => {
   test("is kept, and takes the new definition key by key", () => {
     const hot = fakeHot();
-    const theme = reload(hot, "theme", volatileStore({ accent: "#f00", spacing: 8 }));
+    const theme = reload(hot, "theme", store({ accent: "#f00", spacing: 8 }));
     /** @type {string[]} */
     const accents = [];
     /** @type {number[]} */
@@ -432,7 +431,7 @@ describe("a volatileStore export", () => {
     });
 
     const next = $hmr(hot);
-    const again = next.reloadable("theme", volatileStore({ accent: "#0f0", spacing: 8 }));
+    const again = next.reloadable("theme", store({ accent: "#0f0", spacing: 8 }));
     assert.strictEqual(again, theme, "the instance is the one the module and its importers share");
     assert.deepStrictEqual(accents, ["#f00"], "nothing moves before the body has run");
     next.commit();
@@ -443,13 +442,64 @@ describe("a volatileStore export", () => {
     b.dispose();
   });
 
-  test("which constructor made it is what tells it from an ordinary store", () => {
+  test("follows an edit to a getter's body", () => {
+    const palette = store({ amber: "#fb0", ivory: "#eed" });
     const hot = fakeHot();
-    reload(hot, "thing", volatileStore({ a: 1 }));
+    const theme = reload(
+      hot,
+      "theme",
+      store({
+        get accent() {
+          return palette.amber;
+        },
+      }),
+    );
+    /** @type {string[]} */
+    const accents = [];
+    const a = new Effect(() => {
+      accents.push(theme.accent);
+    });
+
     const next = $hmr(hot);
-    // The same shape, but state now: not something the first one can stand in for.
-    next.reloadable("thing", store({ a: 1 }));
-    assert.match(String(next.invalidation({ thing: null })), /thing cannot be replaced/);
+    next.reloadable(
+      "theme",
+      store({
+        get accent() {
+          return palette.ivory;
+        },
+      }),
+    );
+    next.commit();
+    palette.ivory = "#fff";
+    palette.amber = "#f80";
+    assert.deepStrictEqual(accents, ["#fb0", "#eed", "#fff"], "the new getter, still computed");
+    a.dispose();
+  });
+
+  test("keeps the keys the program wrote and follows the rest", () => {
+    const hot = fakeHot();
+    const settings = reload(hot, "settings", store({ volume: 1, theme: "light" }));
+    settings.volume = 5;
+    const next = $hmr(hot);
+    const again = next.reloadable("settings", store({ volume: 2, theme: "dark" }));
+    next.commit();
+    assert.strictEqual(again.volume, 5, "the program's write stays");
+    assert.strictEqual(again.theme, "dark", "the edited initial value shows");
+  });
+
+  test("keeps a key the program added and one it deleted", () => {
+    const hot = fakeHot();
+    const scores = reload(
+      hot,
+      "scores",
+      store(/** @type {Record<string, number>} */ ({ a: 1, b: 2 })),
+    );
+    scores.c = 3;
+    delete scores.b;
+    const next = $hmr(hot);
+    next.reloadable("scores", store({ a: 1, b: 2 }));
+    next.commit();
+    assert.deepStrictEqual({ ...scores }, { a: 1, c: 3 });
   });
 });
 
@@ -464,6 +514,36 @@ describe("a state export", () => {
     assert.strictEqual(again, locale, "the first instance is the one exported");
     assert.strictEqual(again.get(), "pl", "and it still holds what was written");
     assert.strictEqual(next.invalidation({ locale: again }), null);
+  });
+
+  test("a store keeps what was written and takes a getter added in source", () => {
+    const hot = fakeHot();
+    const settings = reload(hot, "settings", store({ volume: 1 }));
+    settings.volume = 5;
+    /** @type {number[]} */
+    const volumes = [];
+    const a = new Effect(() => {
+      volumes.push(settings.volume);
+    });
+
+    const next = $hmr(hot);
+    const again = next.reloadable(
+      "settings",
+      store({
+        volume: 1,
+        get loud() {
+          return this.volume > 3;
+        },
+      }),
+    );
+    assert.strictEqual(again, settings, "the first instance is the one exported");
+    assert.strictEqual(again.loud, undefined, "nothing moves before the body has run");
+    next.commit();
+    assert.strictEqual(settings.volume, 5, "what was written stays");
+    assert.strictEqual(again.loud, true, "the getter added in source reads it");
+    assert.deepStrictEqual(volumes, [5], "the reader of the kept key did not run");
+    assert.strictEqual(next.invalidation({ settings: again }), null);
+    a.dispose();
   });
 
   test("a store, a reactive map, a subject and a context property are kept the same way", () => {
@@ -490,9 +570,41 @@ describe("a state export", () => {
       ),
       theme,
     );
-    assert.strictEqual(settings.volume, 5);
+    next.commit();
+    assert.strictEqual(settings.volume, 5, "reshaped with the same definition, the value stays");
     assert.strictEqual(scores.get("a"), 10);
     assert.strictEqual(next.invalidation({ settings, scores, clicks, theme }), null);
+  });
+
+  test("an array store is kept, and keeps its elements once the program writes to it", () => {
+    const hot = fakeHot();
+    const levels = reload(hot, "levels", store([{ name: "a" }, { name: "b" }]));
+    const first = levels[0];
+    /** @type {string[]} */
+    const seen = [];
+    const a = new Effect(() => {
+      seen.push(levels.map((level) => level.name).join(","));
+    });
+    assert.strictEqual(reload(hot, "levels", store([{ name: "a" }, { name: "c" }])), levels);
+    assert.strictEqual(levels[0], first, "an element store is reshaped in place");
+    levels.push({ name: "d" });
+    reload(hot, "levels", store([{ name: "x" }]));
+    assert.deepStrictEqual(
+      seen,
+      ["a,b", "a,c", "a,c,d", "x,c,d"],
+      "what the program pushed stays, and an element store still follows the source",
+    );
+    a.dispose();
+  });
+
+  test("a store that changed kind cannot be taken in place", () => {
+    const hot = fakeHot();
+    reload(hot, "thing", store({ a: 1 }));
+    const next = $hmr(hot);
+    const replaced = next.reloadable("thing", store([1]));
+    next.commit();
+    assert.ok(Array.isArray(replaced), "the new definition is what the new module gets");
+    assert.match(String(next.invalidation({ thing: replaced })), /thing cannot be replaced/);
   });
 
   test("state that changed shape cannot be taken in place", () => {

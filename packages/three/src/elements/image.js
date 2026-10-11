@@ -45,9 +45,6 @@ import { fitImage } from "./objectFit.js";
  * @typedef {object} ImageEntry
  * @property {Signal<ImageState>} state
  * @property {number} users How many elements are pointing at this URL.
- * @property {THREE.Texture | null} texture Kept beside the signal so that
- *   letting go of the last user can dispose it without a reactive read from
- *   inside a cleanup.
  */
 
 /**
@@ -78,13 +75,122 @@ import { fitImage } from "./objectFit.js";
 
 /**
  * Textures are shared by URL, so a list of a hundred rows wearing the same
- * icon decodes and uploads it once. Entries are refcounted rather than kept
- * forever: a panel that has finished with an image has finished with the
- * VRAM too, and an unbounded cache in a headset is a leak with a nicer name.
+ * icon decodes and uploads it once. Entries are refcounted, and an entry
+ * whose last user lets go is kept idle rather than disposed, so a picture
+ * that comes back (an icon swapped by a hover rule, a row remounted, a game
+ * dealt again) is drawn at once and not loaded again. An unbounded cache in
+ * a headset is a leak with a nicer name, so the idle entries are held to
+ * `IDLE_BUDGET` bytes.
+ *
+ * Each entry is in one of five states, and these are all the moves:
+ *
+ * - **loading**, with users: becomes loaded when its picture lands, failed
+ *   when the load fails, and idle when its last user lets go;
+ * - **loaded**, with users: becomes idle when its last user lets go;
+ * - **failed**, with users: becomes gone when its last user lets go, so
+ *   asking for the URL again tries again;
+ * - **idle**, with no users, its picture kept or still on its way: becomes
+ *   loaded or loading again when it is acquired. It becomes gone when its
+ *   load fails, when its picture alone is bigger than `IDLE_BUDGET`, when
+ *   the budget evicts it, or when `releaseIdleImages` is called. The budget
+ *   evicts the oldest idle pictures first, and never one still on its way,
+ *   which weighs nothing and would only throw its fetch away. A picture
+ *   that lands while idle moves to the back of the line as the newest, so
+ *   it is never evicted by its own arrival;
+ * - **gone**: its texture disposed, or disposed as it lands. Acquiring the
+ *   URL again starts a new entry, loading.
  *
  * @type {Map<string, ImageEntry>}
  */
 const entries = new Map();
+
+/**
+ * The entries nobody is using, oldest first: a `Map` keeps insertion order,
+ * and an entry is deleted and inserted again each time it goes idle, and
+ * when its picture lands while it is idle.
+ *
+ * @type {Map<string, ImageEntry>}
+ */
+const idle = new Map();
+
+/**
+ * What the idle entries weigh between them, kept current so that a release
+ * does not add up the whole idle list. It goes up when an entry goes idle
+ * and when an idle entry's picture lands, and down in `leaveIdle`.
+ */
+let idleBytes = 0;
+
+/**
+ * How many bytes of pictures the idle entries may hold between them: 16 MiB,
+ * a 2048 by 2048 picture or 1,024 icons of 64 by 64. It counts each
+ * picture's base level. Its mipmaps, which three generates by default, add
+ * about a third on the GPU.
+ */
+export const IDLE_BUDGET = 16 * 1024 * 1024;
+
+/**
+ * What an entry's picture weighs, at four bytes a pixel. Nothing for one
+ * still loading or failed. Read with `peek`, since a release runs inside a
+ * cleanup, where a tracked read would make the computation being torn down
+ * depend on the entry.
+ *
+ * @param {ImageEntry} entry
+ * @returns {number}
+ */
+function bytesOf(entry) {
+  const { texture, width, height } = entry.state.peek();
+  return texture ? width * height * 4 : 0;
+}
+
+/**
+ * Take an entry off the idle list, if it is on it.
+ *
+ * @param {string} url
+ * @param {ImageEntry} entry
+ */
+function leaveIdle(url, entry) {
+  if (idle.delete(url)) {
+    idleBytes -= bytesOf(entry);
+  }
+}
+
+/**
+ * Forget an entry and dispose its texture. One still loading has none yet,
+ * and the load callback disposes the texture when it lands, since the URL no
+ * longer maps to this entry.
+ *
+ * @param {string} url
+ * @param {ImageEntry} entry
+ */
+function forget(url, entry) {
+  leaveIdle(url, entry);
+  entries.delete(url);
+  entry.state.peek().texture?.dispose();
+}
+
+/**
+ * Fit the idle list in `IDLE_BUDGET` now that `entry` weighs what it does on
+ * it: forget `entry` alone if it is bigger than the whole budget, and
+ * otherwise the oldest idle pictures, skipping any still on its way, until
+ * the rest fit.
+ *
+ * @param {string} url
+ * @param {ImageEntry} entry
+ */
+function fitIdle(url, entry) {
+  if (bytesOf(entry) > IDLE_BUDGET) {
+    forget(url, entry);
+    return;
+  }
+  for (const [oldest, candidate] of idle) {
+    if (idleBytes <= IDLE_BUDGET) {
+      return;
+    }
+    if (bytesOf(candidate) > 0) {
+      forget(oldest, candidate);
+    }
+  }
+}
 
 /**
  * `TextureLoader` fetches the URL itself rather than reusing the `<img>` the
@@ -106,6 +212,58 @@ const PENDING = { status: "loading", texture: null, width: 0, height: 0 };
 const FAILED = { status: "error", texture: null, width: 0, height: 0 };
 
 /**
+ * A URL whose picture is an SVG: a path ending in `.svg` or `.svgz`, before
+ * any query or fragment, or an SVG data URL.
+ */
+const SVG_URL = /^data:image\/svg\+xml[;,]|\.svgz?(?:[?#]|$)/i;
+
+/**
+ * The size an SVG is drawn at when the browser reports none, the default
+ * size CSS gives a replaced element that has none of its own. Firefox has
+ * reported 0 by 0 for an SVG with only a `viewBox`, and the picture handed
+ * back as it came is the one Chrome refuses.
+ */
+const DEFAULT_SVG_SIZE = { width: 300, height: 150 };
+
+/**
+ * What to upload for a decoded picture: the picture itself, or for an SVG a
+ * canvas it is drawn on at its natural size.
+ *
+ * Chrome on a laptop refuses to upload an SVG that has no size of its own,
+ * one with a `viewBox` and no `width` or `height`, as a texture
+ * ("texSubImage2D: bad image data"), so the card that holds it shows no
+ * picture in a session while the page shows it. It draws the same SVG on a
+ * canvas at the size it gives it, and a canvas uploads.
+ *
+ * The draw happens once per URL, as the load lands, never per frame. It
+ * costs a few times what the upload costs, about 3 ms in place of 1 ms for a
+ * 256 by 208 picture and 34 ms in place of 8 ms at 1024 by 832, measured in
+ * Chromium on SwiftShader, and the canvas, 4 bytes a pixel, is kept as the
+ * texture's image in place of the decoded picture. Only an SVG pays it.
+ *
+ * @param {string} url
+ * @param {HTMLImageElement} image
+ * @returns {HTMLImageElement | HTMLCanvasElement}
+ */
+function uploadable(url, image) {
+  if (!SVG_URL.test(url)) {
+    return image;
+  }
+  const sized = image.naturalWidth > 0 && image.naturalHeight > 0;
+  const width = sized ? image.naturalWidth : DEFAULT_SVG_SIZE.width;
+  const height = sized ? image.naturalHeight : DEFAULT_SVG_SIZE.height;
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return image;
+  }
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(image, 0, 0, width, height);
+  return canvas;
+}
+
+/**
  * @param {string} url
  * @returns {ImageEntry}
  */
@@ -123,13 +281,13 @@ function entryFor(url) {
   // that no future reactive machinery in an entry can end up owned by a
   // panel that may be disposed while the load is still in flight.
   /** @type {ImageEntry} */
-  const entry = withChannel(null, () => ({ state: Signal.of(PENDING), users: 0, texture: null }));
+  const entry = withChannel(null, () => ({ state: Signal.of(PENDING), users: 0 }));
   entries.set(url, entry);
   loader.load(
     url,
     (texture) => {
       if (entries.get(url) !== entry) {
-        // Everyone who asked for this let go while it was in flight. The
+        // `releaseIdleImages` forgot the entry while it was in flight. The
         // texture was never uploaded and nothing is pointing at it.
         texture.dispose();
         return;
@@ -142,18 +300,34 @@ function entryFor(url) {
       // clamping is what lets the shader clamp UVs instead of branching.
       texture.wrapS = THREE.ClampToEdgeWrapping;
       texture.wrapT = THREE.ClampToEdgeWrapping;
+      // Three types the loader's texture as holding an `<img>`; from here
+      // on it holds whatever `uploadable` gives it.
+      /** @type {THREE.Texture<HTMLImageElement | HTMLCanvasElement>} */ (texture).image =
+        uploadable(url, texture.image);
       const image = /** @type {{ width?: number, height?: number } | null} */ (texture.image);
-      entry.texture = texture;
       entry.state.set({
         status: "loaded",
         texture,
         width: image?.width ?? 0,
         height: image?.height ?? 0,
       });
+      if (idle.has(url)) {
+        // Everyone let go while it was in flight. It lands idle, now weighs
+        // something, and moves to the back of the line as the newest.
+        idle.delete(url);
+        idle.set(url, entry);
+        idleBytes += bytesOf(entry);
+        fitIdle(url, entry);
+      }
     },
     undefined,
     () => {
       if (entries.get(url) !== entry) {
+        return;
+      }
+      if (idle.has(url)) {
+        // Nobody is waiting for it, and a failure is not worth keeping.
+        forget(url, entry);
         return;
       }
       // A broken image draws nothing at all — no alt text, no placeholder
@@ -167,39 +341,56 @@ function entryFor(url) {
 }
 
 /**
- * Take a share in the texture for a URL, loading it if this is the first
- * asker.
+ * Take a share in the texture for a URL, loading it if no entry has it,
+ * loaded or idle.
  *
  * @param {string} url
  * @returns {ImageEntry}
  */
 export function acquireImage(url) {
   const entry = entryFor(url);
+  leaveIdle(url, entry);
   entry.users += 1;
   return entry;
 }
 
 /**
- * Give it back. The last one out disposes the texture and forgets the URL, so
- * asking again reloads it — which is the right trade for a panel that has
- * been taken down, and a small cost for one that is churning through the same
- * few images.
+ * Give it back. The last one out leaves the entry idle, its texture kept for
+ * whoever asks next, unless its picture failed, which is forgotten so that
+ * asking again tries again.
  *
  * @param {string} url
  * @returns {void}
  */
 export function releaseImage(url) {
   const entry = entries.get(url);
-  if (!entry) {
+  if (!entry || entry.users === 0) {
     return;
   }
   entry.users -= 1;
   if (entry.users > 0) {
     return;
   }
-  entries.delete(url);
-  entry.texture?.dispose();
-  entry.texture = null;
+  if (entry.state.peek().status === "error") {
+    forget(url, entry);
+    return;
+  }
+  idle.set(url, entry);
+  idleBytes += bytesOf(entry);
+  fitIdle(url, entry);
+}
+
+/**
+ * Dispose every idle entry's texture, to free memory as a renderer goes.
+ * The cache is shared, so this also drops pictures another live `render()`
+ * could have reused, which would load them again.
+ *
+ * @returns {void}
+ */
+export function releaseIdleImages() {
+  for (const [url, entry] of idle) {
+    forget(url, entry);
+  }
 }
 
 /**
@@ -336,8 +527,9 @@ function contentImageEqual(a, b) {
  *    already said, and string equality stops there;
  *  - the share in the texture, so that a load — or a resize, or a restyle —
  *    is never a reason to let go of it. Ownership changes only when the URL
- *    does, because a release followed by an acquire of the same URL would
- *    dispose the texture and fetch it again;
+ *    does, because a release followed by an acquire of the same URL sends
+ *    the entry through the idle list, where a full budget could dispose it
+ *    and the acquire would fetch it again;
  *  - the placement, which reads the layout and the style and re-runs as often
  *    as either moves. Its equality is by value, so an animation that leaves
  *    the picture where it was writes no uniforms.

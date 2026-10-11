@@ -7,9 +7,13 @@ import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
+import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
-import { buildFillGeometry, group, shape } from "./shape.js";
+import { buildFillGeometry, buildShapePath, group, paintSlot, shape } from "./shape.js";
+import { parsePoints } from "./style.js";
+import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
+import { getContentRenderOrder } from "../elements/elevation.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -428,6 +432,68 @@ describe("svg shape", () => {
     s.teardown();
   });
 
+  test("a percentage length is a share of the viewport the shape is in", () => {
+    // A 10 by 5 viewBox: x and width are shares of 10, y and height of 5.
+    const rect = setup(
+      "rect",
+      { x: "10%", y: "20%", width: "100%", height: "50%", fill: "red" },
+      { viewBox: "0 0 10 5" },
+    );
+    assert.deepEqual(bounds(rect.meshes[0]), { left: 1, top: 1, right: 11, bottom: 3.5 });
+    // Without a viewBox, the root's content box, 100 by 50 px.
+    rect.root.removeAttribute("viewBox");
+    rect.flush();
+    assert.deepEqual(bounds(rect.meshes[0]), { left: 10, top: 10, right: 110, bottom: 35 });
+    rect.teardown();
+
+    // A radius is a share of the viewport's diagonal over root two: 50 for a
+    // 10 by 70 viewBox, so 10% is 5.
+    const circle = setup(
+      "circle",
+      { cx: "50%", cy: "50%", r: "10%", fill: "red" },
+      { viewBox: "0 0 10 70" },
+    );
+    assertBounds(bounds(circle.meshes[0]), { left: 0, top: 30, right: 10, bottom: 40 });
+    circle.teardown();
+
+    const line = setup(
+      "line",
+      { x1: "0", y1: "50%", x2: "100%", y2: "50%", stroke: "red", "stroke-width": "2" },
+      { viewBox: "0 0 30 40" },
+    );
+    const stroked = line.meshes.filter((mesh) => mesh.geometry.getAttribute("position").count > 0);
+    assert.equal(stroked.length, 1, "the line's stroke");
+    assertBounds(bounds(stroked[0]), { left: 0, top: 19, right: 30, bottom: 21 });
+    line.teardown();
+  });
+
+  test("a percentage stroke width and dash are shares of the viewport's diagonal", () => {
+    // A 100 by 100 viewBox: its diagonal over root two is 100, so 2% is 2
+    // units and 10% is 10.
+    const s = setup(
+      "line",
+      {
+        x1: "0",
+        y1: "50",
+        x2: "100",
+        y2: "50",
+        stroke: "black",
+        "stroke-width": "2%",
+        "stroke-dasharray": "10%",
+        "stroke-dashoffset": "5%",
+      },
+      { viewBox: "0 0 100 100" },
+    );
+    const stroke = s.meshes.find((mesh) => mesh.geometry.getAttribute("position").count > 0);
+    assert.ok(stroke);
+    assertBounds(bounds(stroke), { left: 0, top: 49, right: 100, bottom: 51 });
+    // Ten-unit dashes and gaps, shifted back by five: half a dash at 0 to
+    // 5, whole ones from 15, 35, 55 and 75, and half of one from 95. Each
+    // dash is a quad of two triangles.
+    assert.equal(stroke.geometry.getAttribute("position").count, 6 * 6);
+    s.teardown();
+  });
+
   test("the colour follows the style without rebuilding the geometry", () => {
     const s = setup("rect", { x: "0", y: "0", width: "10", height: "10", fill: "red" });
     const geometry = s.meshes[0].geometry;
@@ -574,8 +640,12 @@ describe("svg shape", () => {
     assert.ok(firstFill.id > secondFill.id, "the first rect's fill mesh was made later");
     assert.ok(firstFill.renderOrder < firstStroke.renderOrder, "fill under its own stroke");
     assert.ok(firstStroke.renderOrder < secondFill.renderOrder, "the first rect under the second");
-    const base = Math.floor(secondFill.renderOrder);
-    assert.ok(secondFill.renderOrder < base + 1, "all of it inside the root's own step");
+    // Inside the first half of the root's content level, the last element's
+    // markers included, so all of it draws before a box at that level.
+    const level = getContentRenderOrder(/** @type {HTMLElement} */ (/** @type {unknown} */ (root)));
+    assert.ok(firstFill.renderOrder > level, "after the root's own content order");
+    const end = paintSlot(second, root, null, 2).start;
+    assert.ok(end < level + BOX_BUCKET_BIAS, `the last layer at ${end}, not before the boxes`);
 
     // A shape inserted before both takes the bottom, and the others move up.
     const zeroth = document.createElementNS(SVG_NS, "rect");
@@ -773,6 +843,21 @@ describe("svg shape", () => {
       nestedSvgMatrix({ width: "50%", viewBox: "0 0 4 2" }, "0 0 10 5"),
       [1.25, 0, 0, 1.25, 0, 1.25],
     );
+  });
+
+  test("a nested svg's size attributes hold when the browser computes them as auto", () => {
+    // Chromium 152 does, and draws the attributes' size all the same.
+    const restore = leaveSizesUnmapped();
+    try {
+      assert.deepEqual(
+        nestedSvgMatrix({ x: "10", y: "20", width: "40", height: "20", viewBox: "0 0 4 2" }),
+        [10, 0, 0, 10, 10, 20],
+      );
+      // With no attribute, `auto` is still the whole viewport around it.
+      assert.deepEqual(nestedSvgMatrix({ viewBox: "0 0 4 2" }, "0 0 10 5"), [2.5, 0, 0, 2.5, 0, 0]);
+    } finally {
+      restore();
+    }
   });
 
   test("teardown disposes what it made", () => {
@@ -1178,10 +1263,31 @@ describe("svg shape as a ray target", () => {
     s.teardown();
   });
 
+  test("a ray is trimmed where a clip-path trims the drawing", () => {
+    const s = setup("rect", SQUARE);
+    // The left half of the square.
+    const edge = document.createElementNS(SVG_NS, "rect");
+    edge.setAttribute("x", "10");
+    edge.setAttribute("y", "10");
+    edge.setAttribute("width", "10");
+    edge.setAttribute("height", "20");
+    const clipPath = document.createElementNS(SVG_NS, "clipPath");
+    clipPath.id = "ray-clip-path";
+    clipPath.appendChild(edge);
+    s.root.appendChild(clipPath);
+    s.setAttribute("clip-path", "url(#ray-clip-path)");
+    const [fill] = s.meshes;
+
+    assert.deepEqual(hitsAt(s.object, 15, 20), [fill]);
+    assert.deepEqual(hitsAt(s.object, 25, 20), [], "right of the clip");
+    s.teardown();
+  });
+
   test("a hover that switches the fill on puts it under the stroke", () => {
     const { manager } = recordingManager();
     const s = setup("rect", { ...SQUARE, fill: "none", style: "cursor: pointer" }, { manager });
-    bubble(s.object, { type: "pointerenter" });
+    // From a hand, as every ray event is.
+    bubble(s.object, { type: "pointerenter", controller: new THREE.Object3D() });
     assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true");
 
     // What a `[data-xr-hover] { fill: … }` rule does to the computed style.
@@ -1191,6 +1297,96 @@ describe("svg shape as a ray target", () => {
     assert.ok(fill.renderOrder < stroke.renderOrder, "the new fill under the old stroke");
     assert.equal(Math.floor(fill.renderOrder), Math.floor(stroke.renderOrder));
     assert.equal(/** @type {SVGElement} */ (s.element).dataset.xrHover, "true", "still hovered");
+    s.teardown();
+  });
+});
+
+describe("a shape's outline", () => {
+  /**
+   * What a path's outline is made of: per subpath, its kinds of curve, its
+   * closing and the points it samples to, which is all the fill and the
+   * stroke read of it.
+   *
+   * @param {THREE.ShapePath | null} path
+   */
+  const outline = (path) =>
+    path?.subPaths.map((subPath) => ({
+      curves: subPath.curves.map((curve) => curve.type),
+      autoClose: subPath.autoClose,
+      points: subPath.getPoints(8).map(({ x, y }) => [x, y]),
+    }));
+
+  /** @param {string} markup */
+  const loaded = (markup) =>
+    new SVGLoader().parse(`<svg xmlns="${SVG_NS}">${markup}</svg>`).paths[0];
+
+  test("each kind of shape is built as three's loader builds it", () => {
+    /** @type {[import("./style.js").ShapeGeometry, string][]} */
+    const cases = [
+      [
+        { kind: "rect", x: 1, y: 2, width: 10, height: 5, rx: 0, ry: 0 },
+        '<rect x="1" y="2" width="10" height="5" rx="0" ry="0"/>',
+      ],
+      [
+        { kind: "rect", x: 1, y: 2, width: 10, height: 5, rx: 2, ry: 1.5 },
+        '<rect x="1" y="2" width="10" height="5" rx="2" ry="1.5"/>',
+      ],
+      [{ kind: "circle", cx: 5, cy: -3, r: 4.25 }, '<circle cx="5" cy="-3" r="4.25"/>'],
+      [{ kind: "ellipse", cx: 0, cy: 1, rx: 4, ry: 2 }, '<ellipse cx="0" cy="1" rx="4" ry="2"/>'],
+      [{ kind: "line", x1: 1, y1: 2, x2: 3.5, y2: -4 }, '<line x1="1" y1="2" x2="3.5" y2="-4"/>'],
+      [{ kind: "polyline", points: [0, 0, 10, 0, 5, 0.5] }, '<polyline points="0,0 10,0 5,5e-1"/>'],
+      [{ kind: "polygon", points: [0, 0, 10, 0, 5, 5] }, '<polygon points="0 0 10 0 5 5"/>'],
+      [{ kind: "path", d: "M0 0 A5 5 0 0 1 10 0 Z" }, '<path d="M0 0 A5 5 0 0 1 10 0 Z"/>'],
+      // A quote in a `d` is escaped on its way into the document the loader
+      // parses, and the loader reads the path up to it.
+      [{ kind: "path", d: 'M0 0 L10 0 L10 10 Z "' }, '<path d="M0 0 L10 0 L10 10 Z"/>'],
+    ];
+    for (const [geometry, markup] of cases) {
+      const built = buildShapePath(geometry);
+      assert.ok(built, markup);
+      assert.deepEqual(outline(built), outline(loaded(markup)), markup);
+    }
+  });
+
+  test("a points list is read as a browser reads it, where the loader shifts its pairs", () => {
+    // A comma and then a space between the numbers of a pair: the loader
+    // takes one separator only, and pairs `0, 0 10, 0 5, 5` as (0,10),(0,5).
+    const geometry = /** @type {const} */ ({
+      kind: "polygon",
+      points: parsePoints("0, 0 10, 0 5, 5") ?? [],
+    });
+    assert.deepEqual(
+      outline(buildShapePath(geometry)),
+      outline(loaded('<polygon points="0,0 10,0 5,5"/>')),
+    );
+  });
+
+  test("a shape that moves is rebuilt without the loader; a path is parsed once per d", (t) => {
+    const parse = t.mock.method(SVGLoader.prototype, "parse");
+    for (const [tag, attributes, name] of /** @type {const} */ ([
+      ["circle", { cx: "5", cy: "5", r: "4", fill: "red" }, "cx"],
+      ["ellipse", { cx: "5", cy: "5", rx: "4", ry: "2", fill: "red" }, "cy"],
+      ["rect", { x: "0", y: "0", width: "10", height: "10", fill: "red" }, "x"],
+      ["line", { x1: "0", y1: "0", x2: "10", y2: "10", stroke: "red" }, "x2"],
+      ["polygon", { points: "0,0 10,0 5,5", fill: "red" }, "points"],
+    ])) {
+      const s = setup(tag, attributes);
+      for (const value of ["1", "2", "3"]) {
+        s.setAttribute(name, name === "points" ? `${value},0 10,0 5,5` : value);
+      }
+      s.teardown();
+    }
+    assert.equal(parse.mock.callCount(), 0, "no simple shape was written out and parsed");
+
+    // The parsed paths are cached for the whole process, so these two `d`s
+    // are this test's own: no other test may draw them, or the count below
+    // would find one already parsed.
+    const first = "M0 0 H21.0625 V11.0625 Z";
+    const second = "M0 0 H41.0625 V11.0625 Z";
+    const s = setup("path", { d: first, fill: "red" });
+    s.setAttribute("d", second);
+    s.setAttribute("d", first);
+    assert.equal(parse.mock.callCount(), 2, "each d is parsed once, and found again after");
     s.teardown();
   });
 });

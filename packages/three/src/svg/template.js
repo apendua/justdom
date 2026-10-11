@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
 import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
-import { isSvgElement, PortalTemplatesContext } from "../elements/plugins.js";
+import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import {
   IDENTITY,
   intersectRects,
@@ -17,12 +17,10 @@ import {
 import { image } from "./image.js";
 import { drawText } from "./text.js";
 import {
-  findMarker,
   MARKABLE_TAGS,
   markerFrame,
   markerMatrix,
   markerVertices,
-  parseMarkerReference,
   readMarkerSpec,
 } from "./marker.js";
 import {
@@ -33,12 +31,20 @@ import {
   nearestViewBoxOrigin,
   paintSlot,
   readChain,
+  readClipRect,
   readDrawnProperty,
   viewportSize,
   shape,
   SHAPE_TAGS,
+  createInstance,
 } from "./shape.js";
-import { clipsViewport, parseLengthIn, parseNumber, readProperty } from "./style.js";
+import {
+  clipsViewport,
+  parseLengthIn,
+  parseUrlReference,
+  readProperty,
+  readSize,
+} from "./style.js";
 
 /**
  * Templates: SVG content defined in one place and drawn in others. A
@@ -57,6 +63,7 @@ import { clipsViewport, parseLengthIn, parseNumber, readProperty } from "./style
  * @import {EntityEffect, Source, Subscribable} from '@apendua/signal';
  * @import {Instance, ShapeHost} from './shape.js';
  * @import {MarkerVertex} from './marker.js';
+ * @import {Rect} from './geometry.js';
  */
 
 /** Elements that only group, inside a template as outside one. */
@@ -194,21 +201,15 @@ function placementsEqual(a, b) {
  * @returns {EntityEffect<THREE.Object3D>}
  */
 function markers(ctx, element, host, hostInstance) {
-  const adopt = PortalTemplatesContext.get(ctx);
   const expanding = hostInstance?.expanding ?? new Set();
   /** @param {string} name */
   const named = (name) => {
-    const marker = findMarker(element, parseMarkerReference(host.read(name)));
-    if (!marker || expanding.has(marker)) {
-      return null;
-    }
-    // Before anything reads it: a `<defs>` later in the panel than this
-    // path, or in another `<svg>` in it, is not in the mirror yet, and a
-    // read cached now would be read again only once the portal's walk got
-    // there (`readRecordOf` in `mirror.js`). One outside the panel is not
-    // this portal's to follow, and stays as read.
-    adopt(marker);
-    return marker;
+    const marker = findSvgElement(element, parseUrlReference(host.read(name)), "marker");
+    // A `<defs>` later in the panel than this path, or in another `<svg>`
+    // in it, is not in the mirror yet. What is read of it now is read again
+    // once the portal's walk adopts it (`readRecordOf` in `mirror.js`). One
+    // outside the panel is not this portal's to follow, and stays as read.
+    return !marker || expanding.has(marker) ? null : marker;
   };
 
   const referenced = new Derived(
@@ -253,47 +254,46 @@ function markers(ctx, element, host, hostInstance) {
         { isEqual: matrixEqual },
       );
       /**
-       * The marker's box in the path's user space, as the matrix from the
-       * box to there and its size, or null when the marker does not clip.
+       * What the marker clips its content to, in its box's frame, as the
+       * matrix from the box to the path's user space and the rect there:
+       * the box itself when its `overflow` clips, and what its own
+       * `clip-path` leaves, which is in that frame as a nested `<svg>`'s is
+       * in the space its `x` and `y` are in. Null when neither clips.
        */
       const box = new Derived(
         () => {
           const style = getComputedStyleCached(marker);
           const vertex = vertices.get()[index];
-          if (!vertex || !clipsViewport(style.overflow)) {
+          if (!vertex) {
             return null;
           }
           const spec = readMarkerSpec(marker);
-          return {
-            frame: markerFrame(spec, vertex, host.strokeWidth()),
-            rect: { left: 0, top: 0, right: spec.width, bottom: spec.height },
-          };
+          const rect = intersectRects(
+            clipsViewport(style.overflow)
+              ? { left: 0, top: 0, right: spec.width, bottom: spec.height }
+              : null,
+            readClipRect(marker, style, () => ({
+              x: 0,
+              y: 0,
+              width: spec.width,
+              height: spec.height,
+            })),
+          );
+          return rect ? { frame: markerFrame(spec, vertex, host.strokeWidth()), rect } : null;
         },
         {
           isEqual: (a, b) =>
             a === b || (!!a && !!b && matrixEqual(a.frame, b.frame) && rectEqual(a.rect, b.rect)),
         },
       );
-      /** @type {Instance} */
-      const instance = {
+      const instance = createInstance({
         template: marker,
-        chain: () => {
-          const at = host.chain();
-          const current = box.get();
-          return {
-            ctm: multiply(at.ctm, matrix.get()),
-            // The marker is a container its content is drawn in, so its own
-            // opacity fades the copy; the walk stops below it.
-            opacity: at.opacity * parseNumber(getComputedStyleCached(marker).opacity, 1),
-            root: at.root,
-            clip: current
-              ? intersectRects(
-                  at.clip,
-                  transformRect(multiply(at.ctm, current.frame), current.rect),
-                )
-              : at.clip,
-          };
-        },
+        outer: host.chain,
+        placement: () => matrix.get(),
+        // The marker is a container its content is drawn in, so its own
+        // opacity fades the copy.
+        container: marker,
+        clip: () => box.get(),
         slot: host.markerSlot,
         viewport: () => {
           const spec = readMarkerSpec(marker);
@@ -307,7 +307,7 @@ function markers(ctx, element, host, hostInstance) {
         // from the path it is drawn on.
         inherit: null,
         expanding: new Set([...expanding, marker]),
-      };
+      });
       mountInto(
         obj,
         just(new THREE.Object3D(), [
@@ -355,11 +355,8 @@ export function findReferenced(use) {
   if (!href.startsWith("#") || href.length < 2) {
     return null;
   }
-  const found = use.ownerDocument.getElementById(href.slice(1));
-  if (!found || !isSvgElement(found) || found.contains(use)) {
-    return null;
-  }
-  return found;
+  const found = findSvgElement(use, href.slice(1));
+  return found && !found.contains(use) ? found : null;
 }
 
 /**
@@ -381,7 +378,7 @@ function symbolViewport(use, symbol, instance) {
    * @param {"width" | "height"} name
    */
   const size = (name) => {
-    const own = parseLengthIn(readProperty(style, use, name), viewport?.[name], Number.NaN);
+    const own = parseLengthIn(readSize(style, use, name), viewport?.[name], Number.NaN);
     if (!Number.isNaN(own)) {
       return own;
     }
@@ -445,18 +442,12 @@ export function drawUse(ctx, element, instance = null) {
   const style = () => getComputedStyleCached(element);
   const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
   const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
-  const adopt = PortalTemplatesContext.get(ctx);
   const referenced = new Derived(() => {
     // Read for the invalidation: a `<use>` restyled is a reason to look
-    // again.
+    // again. A `<symbol>` in a `<defs>` the portal's walk has not reached
+    // yet is read again once it does, as a marker is.
     style();
-    const target = findReferenced(element);
-    // Before anything reads it, as `markers` does, for a `<symbol>` in a
-    // `<defs>` the portal's walk has not reached yet.
-    if (target) {
-      adopt(target);
-    }
-    return target;
+    return findReferenced(element);
   });
 
   return just(new THREE.Object3D(), [
@@ -501,43 +492,50 @@ export function drawUse(ctx, element, instance = null) {
         { isEqual: matrixEqual },
       );
       /**
-       * The target's viewport in the `<use>`'s user space, or null for no
-       * clip: an element other than a symbol or an `<svg>`, one with no
-       * size to clip to, or one whose `overflow` shows what spills out of
-       * it.
+       * What the target clips its content to, in the `<use>`'s user space,
+       * or null for no clip: its viewport, unless it has no size to clip to
+       * or its `overflow` shows what spills out of it, and what its own
+       * `clip-path` leaves. The target is drawn as an `<svg>` at the origin
+       * of the space the `<use>`'s `x` and `y` move to, so its `clip-path`
+       * is in that space, as a nested `<svg>`'s is in the space its own `x`
+       * and `y` are in, and is moved by them here. An element other than a
+       * symbol or an `<svg>` is drawn whole, and its chain reads its
+       * `clip-path`.
        */
       const viewport = new Derived(
         () => {
-          if (!isViewport || !clipsViewport(getComputedStyleCached(target).overflow)) {
+          if (!isViewport) {
             return null;
           }
+          const style = getComputedStyleCached(target);
           const size = frame.get()?.size;
-          if (!size) {
-            return null;
-          }
           const [x, y] = useOrigin(element, instance);
-          return { left: x, top: y, right: x + size.width, bottom: y + size.height };
+          /** @type {Rect | null} */
+          let own = null;
+          if (size && clipsViewport(style.overflow)) {
+            own = { left: x, top: y, right: x + size.width, bottom: y + size.height };
+          }
+          const clipped = readClipRect(target, style, () =>
+            size ? { x: 0, y: 0, width: size.width, height: size.height } : null,
+          );
+          return intersectRects(own, clipped && transformRect(translation(x, y), clipped));
         },
         { isEqual: rectEqual },
       );
-      /** @type {Instance} */
-      const copy = {
+      // Built once per change of the rect, not per read of the chain.
+      const framedViewport = new Derived(() => {
+        const rect = viewport.get();
+        return rect && { rect };
+      });
+      const copy = createInstance({
         template: isViewport ? target : /** @type {Element} */ (target.parentElement),
-        chain: () => {
-          const at = chain.get();
-          const rect = viewport.get();
-          return {
-            ctm: multiply(at.ctm, placement.get()),
-            // A `<symbol>` or `<svg>` is a container in the copy, so its own
-            // opacity fades it; the walk stops below it. The parent of an
-            // element drawn whole is not in the copy, and adds nothing.
-            opacity: isViewport
-              ? at.opacity * parseNumber(getComputedStyleCached(target).opacity, 1)
-              : at.opacity,
-            root: at.root,
-            clip: rect ? intersectRects(at.clip, transformRect(at.ctm, rect)) : at.clip,
-          };
-        },
+        outer: () => chain.get(),
+        placement: () => placement.get(),
+        // A `<symbol>` or `<svg>` is a container in the copy, so its own
+        // opacity fades it. The parent of an element drawn whole is not in
+        // the copy, and adds nothing.
+        container: isViewport ? target : null,
+        clip: () => framedViewport.get(),
         slot: () => paintSlot(element, chain.get().root, instance, 0),
         viewport: () => {
           const fit = frame.get();
@@ -556,7 +554,7 @@ export function drawUse(ctx, element, instance = null) {
           read: (name) => readDrawnProperty(element, name, instance),
         },
         expanding: new Set([...expanding, target]),
-      };
+      });
       /** @type {EntityEffect<THREE.Object3D>[]} */
       const content = [];
       if (isViewport) {

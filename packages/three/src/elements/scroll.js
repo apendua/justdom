@@ -9,10 +9,12 @@ import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
 /**
  * Dragging a scrolling list with the controller ray.
  *
- * There is no wheel in a headset and nothing worth aiming a scrollbar thumb
- * at, so the gesture to mirror is the one every touchscreen already teaches:
- * take hold of the content and pull. Hold the trigger over a list that has
- * more in it than fits, move your hand, and the list follows.
+ * A headset has no wheel that scrolls a list (a panel that asks for one
+ * hears the thumbstick as `wheel`, which scrolls nothing of itself) and
+ * nothing worth aiming a scrollbar thumb at, so the gesture to mirror is
+ * the one every touchscreen already teaches: take hold of the content and
+ * pull. Hold the trigger over a list that has more in it than fits, move
+ * your hand, and the list follows.
  *
  * Two things make it feel like holding something rather than nudging it.
  *
@@ -91,19 +93,53 @@ const planeOrigin = new THREE.Vector3();
 const planeNormal = new THREE.Vector3();
 
 /**
- * The plane a scroller's content lies in, in world space, taken from the
- * object's own orientation. Written into `target` and allocating nothing,
- * since a drag asks it of the panel under the ray every frame.
+ * The plane an object's content lies in, in world space, taken from the
+ * object's own orientation. Written into `target` and allocating nothing.
  *
  * @param {THREE.Object3D} space
  * @param {THREE.Plane} target
  * @returns {THREE.Plane}
  */
-export function planeOf(space, target) {
+function planeOf(space, target) {
   space.updateWorldMatrix(true, false);
   planeOrigin.setFromMatrixPosition(space.matrixWorld);
   planeNormal.set(0, 0, 1).transformDirection(space.matrixWorld);
   return target.setFromNormalAndCoplanarPoint(planeNormal, planeOrigin);
+}
+
+/** What `sampleRay` casts with and into, shared by every caller. */
+const sampler = new THREE.Raycaster();
+const sampledPlane = new THREE.Plane();
+const sampledLocal = new THREE.Vector3();
+
+/**
+ * Where a hand's ray crosses the plane an object lies in, as the object
+ * stands now: in world space, and in the object's own px. The one sampler
+ * for every gesture that follows the ray rather than what it hits, so that
+ * it keeps up with a hand that has left the panel: a list being scrolled,
+ * a press that may become a drag and drop and the ghost of one under way,
+ * and a captured pointer's moves (see `pointerForwarding.js`). An object
+ * that moves while it is held, a panel the scene lets a hand carry, is
+ * sampled where it is that frame. Allocates nothing, since each of those
+ * asks every frame.
+ *
+ * @param {THREE.XRTargetRaySpace} controller
+ * @param {THREE.Object3D} space
+ * @param {THREE.Vector3} world Written with the point in world space.
+ * @param {THREE.Vector2} [local] Written with the point in `space`'s px.
+ * @returns {boolean} False, with nothing written, where the ray is
+ *   parallel to the plane or points away from it.
+ */
+export function sampleRay(controller, space, world, local) {
+  sampler.setFromXRController(controller);
+  if (!sampler.ray.intersectPlane(planeOf(space, sampledPlane), world)) {
+    return false;
+  }
+  if (local) {
+    space.worldToLocal(sampledLocal.copy(world));
+    local.set(sampledLocal.x, sampledLocal.y);
+  }
+  return true;
 }
 
 /**
@@ -114,18 +150,25 @@ export function planeOf(space, target) {
  * @property {THREE.Object3D} space The scroller's object, whose local space
  *   is the scroller's px.
  * @property {THREE.XRTargetRaySpace} controller
- * @property {THREE.Plane} plane Where the list lies, in world space.
- * @property {THREE.Vector2 | null} last Where the ray last crossed it.
+ * @property {THREE.Vector2} last Where the ray last crossed the list's
+ *   plane, once `sampled`.
+ * @property {boolean} sampled Whether the ray has crossed it since the
+ *   press.
  * @property {number} travelled Distance since taking hold, which is what
  *   separates a drag from a press.
  * @property {THREE.Vector2} velocity Local px per frame, for the glide.
  * @property {boolean} released Whether this is now a glide rather than a hold.
  * @property {() => void} unlisten Stop hearing the controller (see `begin`).
+ * @property {((controller: THREE.XRTargetRaySpace) => void) | undefined} onTaken
+ *   See `ScrollDrags.begin`.
  */
 
 /**
  * @typedef {object} ScrollDrags
- * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D) => void} begin
+ * @property {(controller: THREE.XRTargetRaySpace, element: HTMLElement, object: THREE.Object3D, onTaken?: (controller: THREE.XRTargetRaySpace) => void) => void} begin
+ *   Take hold of the list under a press. `onTaken` is told once, on the
+ *   frame the press travels past `DRAG_THRESHOLD` and becomes a scroll,
+ *   which is when a browser cancels the pointer that pressed.
  * @property {(controller: THREE.XRTargetRaySpace) => void} end The hand
  *   let go: a glide, if the list was moving fast enough, or nothing. Called
  *   from the controller's own release, which every drag hears (see
@@ -173,24 +216,8 @@ export function createScrollDrags(requestFrames, scene) {
   /** @type {(() => void) | null} */
   let stopFrames = null;
 
-  const raycaster = new THREE.Raycaster();
   const hit = new THREE.Vector3();
-
-  /**
-   * Where this hand's ray crosses the list's plane, in the list's own px, or
-   * null when the ray is parallel to it or pointing away.
-   *
-   * @param {Drag} drag
-   * @returns {THREE.Vector2 | null}
-   */
-  function sample(drag) {
-    raycaster.setFromXRController(drag.controller);
-    if (!raycaster.ray.intersectPlane(drag.plane, hit)) {
-      return null;
-    }
-    drag.space.worldToLocal(hit);
-    return new THREE.Vector2(hit.x, hit.y);
-  }
+  const now = new THREE.Vector2();
 
   function tick() {
     // This loop is frame-driven, so it is in a position to notice whether the
@@ -215,24 +242,27 @@ export function createScrollDrags(requestFrames, scene) {
         scrollElementBy(drag.scroller, drag.velocity.x, drag.velocity.y);
         continue;
       }
-      const now = sample(drag);
-      if (!now) {
+      if (!sampleRay(controller, drag.space, hit, now)) {
         continue;
       }
-      if (!drag.last) {
-        drag.last = now;
+      if (!drag.sampled) {
+        drag.last.copy(now);
+        drag.sampled = true;
         continue;
       }
       const dx = now.x - drag.last.x;
       const dy = now.y - drag.last.y;
-      drag.last = now;
+      drag.last.copy(now);
       drag.travelled += Math.hypot(dx, dy);
       if (drag.travelled < DRAG_THRESHOLD) {
         // Still inside the wobble of holding a controller still, so the press
         // is allowed to become a click.
         continue;
       }
-      scrolled.add(controller);
+      if (!scrolled.has(controller)) {
+        scrolled.add(controller);
+        drag.onTaken?.(controller);
+      }
       // The content follows the hand, so the viewport goes the other way.
       drag.velocity.set(-dx, -dy);
       scrollElementBy(drag.scroller, -dx, -dy);
@@ -251,7 +281,7 @@ export function createScrollDrags(requestFrames, scene) {
 
   /** @type {ScrollDrags} */
   const gesture = {
-    begin(controller, element, object) {
+    begin(controller, element, object, onTaken) {
       drop(controller);
       scrolled.delete(controller);
       const scroller = findScroller(element);
@@ -290,17 +320,18 @@ export function createScrollDrags(requestFrames, scene) {
         scroller,
         space,
         controller,
-        plane: planeOf(space, new THREE.Plane()),
-        last: null,
+        last: new THREE.Vector2(),
+        sampled: false,
         travelled: 0,
         velocity: new THREE.Vector2(0, 0),
         released: false,
+        onTaken,
         unlisten: () => {
           controller.removeEventListener("selectend", onSelectEnd);
           controller.removeEventListener("disconnected", onDisconnected);
         },
       };
-      drag.last = sample(drag);
+      drag.sampled = sampleRay(controller, space, hit, drag.last);
       drags.set(controller, drag);
       ensureFrames();
     },

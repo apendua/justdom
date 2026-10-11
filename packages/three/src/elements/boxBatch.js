@@ -29,9 +29,10 @@ import { rampUniforms } from "./gradient.js";
  *     boxes of one `renderOrder`, and carrying that `renderOrder` itself,
  *     takes the place its boxes held. Depth is what makes the count small —
  *     a panel nests a handful deep, so a few hundred draws become a few.
- *     The exception is a translucent card stepped over a sibling, which
- *     draws after that sibling's subtree at a level of its own
- *     (`getDrawLevel`): a pile of them is a bucket per card.
+ *     The exception is a box that is not opaque stepped over a sibling,
+ *     which draws after that sibling's subtree at a level of its own
+ *     (`getDrawLevel`): a pile of cards that are not opaque is a bucket per
+ *     card.
  *
  *     Getting this wrong is not subtle in the one case that matters. An
  *     overlay drawn before the text it covers is hidden by the depth buffer
@@ -217,6 +218,8 @@ function batchMaterial() {
  * So the order is written down instead. Half a step keeps a bucket strictly
  * between its own integer and the next one, which is what makes this safe:
  * text at R, boxes at R + 0.5, text at R + 1 — the levels never interleave.
+ * An `<svg>`'s content counts as text here: `paintSlot` in `svg/shape.js`
+ * keeps all of it between R and R + 0.5.
  *
  * What this does not fix, and is not meant to: a mesh that draws itself among
  * batched ones — an `<img>`'s box, a run of text whose colours are baked in —
@@ -225,7 +228,7 @@ function batchMaterial() {
  * stable, being a property of where the mesh is rather than of when it was
  * made.
  */
-const BOX_BUCKET_BIAS = 0.5;
+export const BOX_BUCKET_BIAS = 0.5;
 
 /** How many instances a freshly grown bucket has room for. */
 const MINIMUM_CAPACITY = 16;

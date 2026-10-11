@@ -1,9 +1,8 @@
 /**
  * A notebook's tabs: each `[data-tab]` names a `<template data-page>`, and
  * choosing one mounts a copy of that page into `[data-tab-host]` in place of
- * the last. The page is mounted rather than shown and hidden because a
- * panel follows layout when the tree changes, and a hidden page would still
- * be measured.
+ * the last. The page is mounted rather than shown and hidden, so that the
+ * pages not on show are not in the panel to be measured.
  *
  * `onShow` hears about every page put up, for whatever fills it in.
  */

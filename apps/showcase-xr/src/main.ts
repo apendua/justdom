@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 import createScene from "./components/Scene";
 import "./index.css";
 
@@ -8,6 +9,8 @@ if (!root) {
 }
 
 const query = new URLSearchParams(location.search);
+followThemingQuery(query);
+followOutlinesQuery(query);
 
 /**
  * `?svg=off` leaves the vector panel out, and with it the plugin that draws

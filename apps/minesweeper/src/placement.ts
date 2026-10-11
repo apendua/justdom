@@ -14,9 +14,9 @@
 export const BOARD_SIZE = 0.6;
 
 /**
- * The board's scale, for a board element laid out `width` by `height` px,
- * as a session starts: a panel is a centimetre a px, and the board is
- * fitted to the shorter side.
+ * The board's scale, for a board element laid out `width` by `height` px:
+ * a panel is a centimetre a px, and the board is fitted to the shorter
+ * side.
  */
 export function boardScale(width: number, height: number): number {
   return BOARD_SIZE / (0.01 * Math.max(1, Math.min(width, height)));

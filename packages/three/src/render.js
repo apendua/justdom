@@ -19,10 +19,12 @@ import {
   createPortalScheduler,
   PortalSchedulerContext,
 } from "./elements/portalScheduler.js";
+import { releaseIdleImages } from "./elements/image.js";
 import { PortalPluginsContext } from "./elements/plugins.js";
 import { withPanelOptions } from "./elements/panelOptions.js";
 import {
   createKeyboardSlot,
+  dismissKeyboardAtSessionEnd,
   disposeKeyboardSlot,
   KeyboardSlotContext,
 } from "./elements/keyboardSlot.js";
@@ -608,6 +610,7 @@ export function render(fn, options = {}) {
     // that offers one and taken down with the scene.
     const keyboardSlot = createKeyboardSlot();
     ctx = KeyboardSlotContext.set(ctx, keyboardSlot);
+    subscriber.add(dismissKeyboardAtSessionEnd(keyboardSlot, renderer.xr));
     subscriber.add(() => {
       disposeKeyboardSlot(keyboardSlot);
     });
@@ -789,6 +792,10 @@ export function render(fn, options = {}) {
 
     return () => {
       renderer.setAnimationLoop(null);
+      // Free what the texture cache keeps idle as the renderer goes. The
+      // cache is shared, so this also drops pictures another live
+      // `render()` could have reused; it would load them again.
+      releaseIdleImages();
       renderer.dispose();
       interactionManager.cleanup();
     };

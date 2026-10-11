@@ -25,6 +25,24 @@ export function isSvgElement(node) {
 }
 
 /**
+ * The SVG element an id names in `element`'s document, or null for an id
+ * that is missing, names nothing, or names an element of another namespace
+ * or, with `localName`, of another kind.
+ *
+ * @param {Element} element
+ * @param {string | null} id
+ * @param {string | null} [localName] The kind it must be, `"marker"` or
+ *   `"clipPath"`, or null for any.
+ * @returns {Element | null}
+ */
+export function findSvgElement(element, id, localName = null) {
+  const found = id ? element.ownerDocument.getElementById(id) : null;
+  return found && isSvgElement(found) && (localName === null || found.localName === localName)
+    ? found
+    : null;
+}
+
+/**
  * Whether the node is an `<svg>` root: the one element in the namespace that
  * is also a CSS box in the HTML flow around it, with a background, a border
  * and a size the page laid out — and so the one the portal draws as a box
@@ -42,6 +60,29 @@ export function isSvgRoot(node) {
   }
   const parent = node.parentNode;
   return !parent || parent.nodeType !== Node.ELEMENT_NODE || !isSvgElement(parent);
+}
+
+/**
+ * An SVG element's bounds in its own user space, as `getBBox` reports them,
+ * or null where there is no `getBBox`, as under jsdom. A layout read, and
+ * not a dependency of its own: it is read again only when what reads it
+ * runs again.
+ *
+ * For a clip on a shape (`svg/shape.js`) that is when the shape's chain
+ * runs. For a `<g>`, whose box is its children's, that is when one of its
+ * children has an attribute changed, since the mirror restyles every child
+ * of the `<g>` then and each child's chain reads the box again. A restyle
+ * the mirror scopes to one element, such as `data-xr-hover`, reads it again
+ * for that child alone, and a change the mirror never sees reads nothing.
+ * Each shape's chain reads it for itself, so an `objectBoundingBox` clip on
+ * a `<g>` reads the `<g>`'s box once per shape below it.
+ *
+ * @param {Element} element
+ * @returns {DOMRect | null}
+ */
+export function readBBox(element) {
+  const graphics = /** @type {SVGGraphicsElement} */ (element);
+  return typeof graphics.getBBox === "function" ? graphics.getBBox() : null;
 }
 
 /**
@@ -89,25 +130,6 @@ export const PortalPluginsContext = createProperty(
    * @returns {readonly PortalPlugin[]}
    */
   () => [],
-);
-
-/**
- * How a plugin brings a template into the portal's mirror: a `<marker>` or a
- * `<symbol>` it is about to draw, with everything under it. The portal builds
- * nothing for a template, and adopts one when its walk reaches it, which for
- * a `<defs>` at the end of the document is after the shapes that use it. A
- * plugin that reads a template earlier adopts it first. A read cached from
- * a node with no record follows the node's adoption (`readRecordOf` in
- * `mirror.js`) and would come round when the walk got there; adopted here,
- * it has its record from the first read, and the walk finds the template
- * adopted. Idempotent. A scene with no portal, a unit test, gets a function
- * that does nothing.
- */
-export const PortalTemplatesContext = createProperty(
-  /**
-   * @returns {(node: Node) => void}
-   */
-  () => () => {},
 );
 
 /**

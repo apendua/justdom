@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createHaptics, HAPTIC_FLAVORS, isArrival, playHaptic } from "./haptics.js";
-import { recordingSource } from "../test/rumble.js";
+import { createHaptics, HAPTIC_FLAVORS, isArrival, playHaptic, playHapticAll } from "./haptics.js";
+import { pulsingSource, recordingSource } from "../test/rumble.js";
 
 /**
  * @import {HapticOptions} from './haptics.js';
@@ -59,6 +59,28 @@ describe("playHaptic", () => {
       })
     );
     playHaptic(source, { duration: 10, strongMagnitude: 0, weakMagnitude: 1 });
+  });
+});
+
+describe("playHapticAll", () => {
+  test("plays the effect on every hand in the session, whichever interface its motor has", () => {
+    // A runtime whose actuator has only the older `pulse`, beside one with
+    // `playEffect`. Calling `playEffect` on the first is the TypeError a
+    // game's rumble used to throw on a headset.
+    const { source: older, pulsed } = pulsingSource();
+    const { source: current, played } = recordingSource();
+    const session = /** @type {XRSession} */ (
+      /** @type {unknown} */ ({ inputSources: [older, current] })
+    );
+    playHapticAll(session, { duration: 40, strongMagnitude: 0.4, weakMagnitude: 0.2 });
+    assert.deepEqual(pulsed, [[0.4, 40]]);
+    assert.deepEqual(played, [
+      { type: "dual-rumble", duration: 40, strongMagnitude: 0.4, weakMagnitude: 0.2 },
+    ]);
+  });
+
+  test("does nothing outside a session", () => {
+    playHapticAll(null, { duration: 40, strongMagnitude: 0.4, weakMagnitude: 0.2 });
   });
 });
 
@@ -141,26 +163,7 @@ describe("createHaptics", () => {
   });
 
   test("drives an older runtime's `pulse` at the larger magnitude", () => {
-    /** @type {[number, number][]} */
-    const pulsed = [];
-    const source = /** @type {XRInputSource} */ (
-      /** @type {unknown} */ ({
-        gamepad: {
-          hapticActuators: [
-            {
-              /**
-               * @param {number} intensity
-               * @param {number} duration
-               */
-              pulse: (intensity, duration) => {
-                pulsed.push([intensity, duration]);
-                return Promise.resolve(true);
-              },
-            },
-          ],
-        },
-      })
-    );
+    const { source, pulsed } = pulsingSource();
     const haptics = createHaptics({ flavor: "knock" });
     assert.ok(haptics);
     haptics.press(source);

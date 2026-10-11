@@ -162,6 +162,19 @@ describe("carriedPose", () => {
     close(pose.yaw, board.yaw);
   });
 
+  test("writes into the pose it is given, which a carry asks with once a frame", () => {
+    const from = new THREE.Vector3(0.1, 0, -0.9);
+    const to = new THREE.Vector3(0.6, 0.3, -1.4);
+    const grip = grab(hand(from), 0.5);
+    const out = { position: new THREE.Vector3(), yaw: 0, turned: 0 };
+    const pose = carriedPose(grip, hand(to), out);
+    assert.strictEqual(pose, out);
+    const fresh = carriedPose(grip, hand(to));
+    assert.deepEqual(rounded(out.position), rounded(fresh.position));
+    close(out.yaw, fresh.yaw);
+    close(out.turned, fresh.turned);
+  });
+
   test("keeps the grab point pinned to the ray, however the wrist tips", () => {
     const place = new THREE.Vector3(0.1, 0.2, -0.9);
     const grabbed = hand(place, 0.3, { angle: -0.5 });
@@ -474,10 +487,22 @@ describe("carry", () => {
     allowed.set(false);
     // Nothing was reparented, so there is nothing to undo: it is simply down.
     assert.equal(board.held(), null);
-    // And the release that follows passes through, like any press while
-    // disabled.
+    // The release that follows ends a press the handle took, so the room,
+    // which never heard that press, does not hear its release either.
     press(left, "selectend");
-    assert.deepEqual(events, ["room:selectend"]);
+    assert.deepEqual(events, []);
+    dispose();
+  });
+
+  test("a press it refused is not followed by a release it takes", () => {
+    const allowed = Signal.of(false);
+    const { left, board, panel, events, dispose } = setup({ enabled: () => allowed.get() });
+    moveAside(panel);
+    press(left, "selectstart");
+    allowed.set(true);
+    press(left, "selectend");
+    assert.equal(board.held(), null);
+    assert.deepEqual(events, ["room:selectstart", "room:selectend"]);
     dispose();
   });
 
@@ -493,6 +518,31 @@ describe("carry", () => {
     assert.equal(board.held(), null);
     press(left, "selectend");
     assert.equal(board.held(), null);
+    dispose();
+  });
+
+  test("a handle taken out of the scene mid-carry, its release does not reach the room", () => {
+    // The press stopped at the handle, so the room never heard it, and the
+    // handle's listeners went with it: the release still stops where the
+    // press did.
+    const { left, panel, events, unmountHandle, dispose } = setup();
+    moveAside(panel);
+    press(left, "selectstart");
+    unmountHandle();
+    press(left, "selectend");
+    assert.deepEqual(events, []);
+    dispose();
+  });
+
+  test("a hand that disconnects mid-carry puts the object down", () => {
+    // Three sends no release for a hand it has lost, at the end of a
+    // session say; the board would otherwise follow a hidden controller.
+    const { left, board, panel, events, dispose } = setup();
+    moveAside(panel);
+    press(left, "selectstart");
+    left.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+    assert.equal(board.held(), null);
+    assert.deepEqual(events, [], "and the release it stands for stops at the handle");
     dispose();
   });
 

@@ -1,4 +1,4 @@
-import { volatileStore } from "@apendua/signal";
+import { store } from "@apendua/signal";
 
 /**
  * One palette for the whole game — the panels, the board and the bricks all
@@ -13,16 +13,15 @@ import { volatileStore } from "@apendua/signal";
  * *about* to do — the ghost of a brick, the pointer — so it never has to
  * compete with anything already built.
  *
- * A `volatileStore`, so that a colour edited in dev
- * reaches the things wearing that colour rather than reloading every module
- * that reads this one. Its contents come from source, so a hot reload is
- * exactly what should move them — see `docs/signal-user-guide.md`, section
- * 1.7. A colour has to be *read* inside a computation to follow an edit: a
- * `set({ get material() {…} })`, an `effects(…)`, or a `${() => palette.x}`
- * interpolation. Read at module scope it is captured, as any constant would
- * be.
+ * A `store`, so that a colour edited in dev reaches the things wearing that
+ * colour rather than reloading every module that reads this one. Nothing
+ * writes to it, so a hot reload moves all of it — see
+ * `docs/signal-user-guide.md`, section 1.7. A colour has to be *read* inside
+ * a computation to follow an edit: a `set({ get material() {…} })`, an
+ * `effects(…)`, or a `${() => palette.x}` interpolation. Read at module
+ * scope it is captured, as any constant would be.
  */
-export const palette = volatileStore({
+export const palette = store({
   // Panels: parchment in a bronze frame
   panel: "#f5ead0",
   panelEdge: "#9a7440",

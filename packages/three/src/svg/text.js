@@ -1,37 +1,29 @@
-import * as THREE from "three";
-import { Derived, effects, just, onCleanup, set } from "@apendua/signal";
+import { Derived, effects } from "@apendua/signal";
 import { keyedList } from "../core.js";
-import { $, children } from "../operators.js";
-import { applyClip, clipRaycast } from "../elements/clip.js";
+import { children } from "../operators.js";
 import {
+  counterpart,
+  createMeasurementClone,
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
   getReflowContext,
   getTextDataCached,
+  withMeasuringRange,
 } from "../elements/mirror.js";
-import { isSvgElement, PortalTemplatesContext, SVG_NAMESPACE } from "../elements/plugins.js";
-import { place } from "../elements/place.js";
-import { generateTextTexture, getTextRenderStyle } from "../elements/textHelpers.js";
+import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
+import {
+  generateTextTexture,
+  getTextRenderStyle,
+  readFontSize,
+  scaleTextRenderStyle,
+} from "../elements/textHelpers.js";
 import { preservesWhitespace } from "../elements/textLines.js";
 import { frameFor, measureClientRect } from "../elements/panelFrame.js";
 import { readTextScale, TextScaleContext } from "../elements/textScale.js";
-import { matrixEqual, matrixScale, samplingScale } from "./geometry.js";
+import { matrixScale, samplingScale } from "./geometry.js";
 import { buildImageGeometry } from "./image.js";
-import {
-  chainEqual,
-  clipUniforms,
-  commitMatrix,
-  drawnOpacity,
-  isDrawnHidden,
-  localMatrix,
-  paintSlot,
-  rayTarget,
-  readChain,
-  readDrawnProperty,
-  regionHits,
-  viewportSize,
-} from "./shape.js";
+import { isDrawnHidden, readDrawnProperty, regionHits, svgNode, viewportSize } from "./shape.js";
 import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./style.js";
 
 /**
@@ -43,20 +35,24 @@ import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./sty
  * per run. It is measured the way the mirror measures HTML text under a
  * transform: not in place, where the rects are screen-space bounds after
  * every matrix above, but in a detached copy with its own transform switched
- * off, laid out in an `<svg>` of its own that maps one user unit to one CSS
- * pixel. What that copy reports is already in the element's user space, so
- * the runs hang under the element's object like a shape's geometry does, and
- * a rotation on a `<g>` turns the text with it. A copy is measured off the
+ * off, laid out in an `<svg>` of its own that maps one user unit to a
+ * power of two of CSS pixels (`layoutScale`), and read back divided by it.
+ * What that comes to is already in the element's user space, so the runs
+ * hang under the element's object like a shape's geometry does, and a
+ * rotation on a `<g>` turns the text with it. A copy is measured off the
  * page, so text inside a `<symbol>` or a `<marker>` measures the same way.
  *
  * Each run is drawn by the same rasterizer as HTML text, as a coverage mask
- * tinted by `fill`, so a colour change is a uniform write. The texture is
- * drawn at as many device pixels per user unit as the root's viewport and
- * the matrices above give it, rounded to a step so a scale animation does
- * not redraw it every frame.
+ * tinted by `fill`, so a colour change is a uniform write. It is drawn at a
+ * power of two of its size too (`measuringScale`), so the canvas reads the
+ * font's metrics at a size where they are not snapped, as the layout did.
+ * The texture is drawn at as many device pixels per user unit as the root's
+ * viewport and the matrices above give it, rounded to a step so a scale
+ * animation does not redraw it every frame.
  *
+ * @import {MeshBasicMaterial, Object3D} from 'three';
  * @import {Source} from '@apendua/signal';
- * @import {Component, XREventMap} from '../core.js';
+ * @import {Component} from '../core.js';
  * @import {Instance} from './shape.js';
  */
 
@@ -116,6 +112,70 @@ const LAYOUT_PROPERTIES = [
 
 /** Where `white-space` is in `LAYOUT_PROPERTIES`. */
 const WHITE_SPACE = LAYOUT_PROPERTIES.indexOf("white-space");
+
+/**
+ * The smallest font, in CSS pixels, a `<text>` is measured and drawn at.
+ * A browser snaps a small font's ascent and descent to device pixels, and
+ * not the same way when it lays a line out as when a canvas measures the
+ * font. At a size of a pixel or two the two disagree by most of a line. In
+ * Chromium at two device pixels to one, the line box of a 0.62px font sits
+ * on its baseline, and the glyphs drawn on the canvas's baseline in it hang
+ * below where they belong. At this size the snapping is about one percent
+ * of the font.
+ */
+const MIN_MEASURED_FONT_SIZE = 64;
+
+/**
+ * The most CSS pixels a user unit is laid out or drawn at. A run not placed
+ * by a percentage can be anywhere in user space, and at this scale a run
+ * 32,000 units out is still inside the 33.5 million px Blink lays out in.
+ * A font under 1/16 of a unit stays a little snapped.
+ */
+const MAX_MEASURING_SCALE = 1024;
+
+/**
+ * The most CSS pixels the measuring `<svg>` is on a side. Where a percentage
+ * places a run, the `<svg>` is the viewport the text is in, `layoutScale`
+ * times over, and this keeps it inside what Blink lays out in.
+ */
+const MAX_HOST_SIZE = 2 ** 20;
+
+/**
+ * How many CSS pixels a user unit is drawn at for a font of `fontSize`
+ * units: one for a font of `MIN_MEASURED_FONT_SIZE` or more, or of zero,
+ * which draws nothing, and otherwise the power of two that brings it there,
+ * up to `MAX_MEASURING_SCALE`. A power of two, so dividing a measurement by
+ * it and multiplying it back loses nothing.
+ *
+ * @param {number} fontSize
+ * @returns {number}
+ */
+export function measuringScale(fontSize) {
+  if (!(fontSize > 0)) {
+    return 1;
+  }
+  const exponent = Math.ceil(Math.log2(MIN_MEASURED_FONT_SIZE / fontSize));
+  return Math.min(MAX_MEASURING_SCALE, 2 ** Math.max(0, exponent));
+}
+
+/**
+ * How many CSS pixels a user unit is laid out at: `measuringScale` for the
+ * smallest font a run is drawn in, since the copy lays every run out at
+ * once, and no more than keeps the measuring `<svg>` within
+ * `MAX_HOST_SIZE` a side. A larger font in the same `<text>` is laid out
+ * larger than 64px, which is no worse.
+ *
+ * @param {number} smallest The smallest `font-size`, in user units, of the
+ *   runs' parents.
+ * @param {{ width: number, height: number }} host The measuring `<svg>`'s
+ *   `viewBox`.
+ * @returns {number}
+ */
+export function layoutScale(smallest, host) {
+  const side = Math.max(host.width, host.height, 1);
+  const fits = 2 ** Math.floor(Math.log2(MAX_HOST_SIZE / side));
+  return Math.max(1, Math.min(measuringScale(smallest), fits));
+}
 
 /**
  * One run of a `<text>`: the characters of one text node, where the browser
@@ -194,22 +254,23 @@ function arraysEqual(a, b) {
 
 /**
  * The text nodes a `<text>` draws, in document order, each with its parent.
- * Each node is adopted as a template is before anything reads it, since the
- * portal adopts a `<text>`'s children only after the `<text>` is built, and
- * a read cached before that would be read again only once it did
- * (`readRecordOf` in `mirror.js`). Every element and text node on the way
- * is then read as a dependency, and so is every attribute that places
- * characters, so the runs are measured again when any of them changes.
+ * Every element and text node on the way is read as a dependency, and so is
+ * every attribute that places characters, so the runs are measured again
+ * when any of them changes. The portal adopts a `<text>`'s children only
+ * after the `<text>` is built, so the first reads of them come before their
+ * records, and are read again once the portal's walk adopts them
+ * (`readRecordOf` in `mirror.js`). A pumped portal therefore collects a
+ * `<text>`'s runs twice as it mounts it. The second finds the same runs,
+ * and the gate on `runs` stops it there, so what it costs is the walk.
  *
  * @param {Element} element
- * @param {(node: Node) => void} adopt The portal's `PortalTemplatesContext`.
  * @param {(element: Element) => readonly string[]} layoutStyle The element's
  *   `LAYOUT_PROPERTIES`, behind their gate.
  * @returns {{ runs: { node: Text, parent: Element }[], relative: boolean }}
  *   The runs, and whether any length placing them is a percentage, which is
  *   what the viewport around the text is read for.
  */
-function collectRuns(element, adopt, layoutStyle) {
+function collectRuns(element, layoutStyle) {
   /** @type {{ node: Text, parent: Element }[]} */
   const runs = [];
   let relative = false;
@@ -222,7 +283,6 @@ function collectRuns(element, adopt, layoutStyle) {
       relative = relative || (value?.includes("%") ?? false);
     }
     for (const child of getChildNodes(parent)) {
-      adopt(child);
       if (child.nodeType === Node.TEXT_NODE) {
         getTextDataCached(/** @type {Text} */ (child));
         runs.push({ node: /** @type {Text} */ (child), parent });
@@ -236,35 +296,19 @@ function collectRuns(element, adopt, layoutStyle) {
 }
 
 /**
- * The node at the same place under `to` as `node` is under `from`, which a
- * deep clone keeps.
- *
- * @param {Node} node
- * @param {Node} from
- * @param {Node} to
- * @returns {Node}
- */
-function counterpart(node, from, to) {
-  /** @type {number[]} */
-  const path = [];
-  for (let current = node; current !== from; current = /** @type {Node} */ (current.parentNode)) {
-    path.unshift(Array.prototype.indexOf.call(current.parentNode?.childNodes ?? [], current));
-  }
-  return path.reduce((current, index) => current.childNodes[index], to);
-}
-
-/**
  * Lay a `<text>` out in a detached copy and read back where each run went,
  * in its user space.
  *
- * The copy is the element cloned deep, with every computed style of the
- * `<text>` itself copied onto it and its transform switched off, in an
- * `<svg>` at one CSS pixel per unit. Where a length is a percentage, that
- * `<svg>`'s `viewBox` is the viewport the element is in, so the percentage
- * resolves as it does in place. The `<tspan>`s keep their classes, and the
- * document's stylesheets apply to them as usual; as with HTML text, a
- * selector that reaches above the `<text>` does not match the copy. In a copy
- * made by a `<use>`, the font is the drawn one.
+ * The copy is the mirror's measurement clone (`createMeasurementClone`): the
+ * element cloned deep, with every computed style of the `<text>` itself copied
+ * onto it and its transform switched off, here in an `<svg>` at `layoutScale`
+ * CSS pixels per unit. Its `viewBox` is the viewport the element is in where a
+ * length is a percentage, so the percentage resolves as it does in place, and a
+ * unit square where none is. The `<tspan>`s keep their classes, and the
+ * document's stylesheets apply to them as usual; as with HTML text, a selector
+ * that reaches above the `<text>` does not match the copy. In a copy made by a
+ * `<use>`, the font is the drawn one. The runs are read through the mirror's
+ * one range (`withMeasuringRange`).
  *
  * @param {Element} element
  * @param {{ node: Text, parent: Element }[]} found From `collectRuns`.
@@ -274,70 +318,64 @@ function counterpart(node, from, to) {
  *   drawn with.
  * @param {(element: Element) => readonly string[]} layoutStyle An element's
  *   `LAYOUT_PROPERTIES`, for its `white-space`.
+ * @param {number} smallest The smallest `font-size` of the runs' parents, or
+ *   `Infinity` where every one is zero.
  * @returns {TextRun[]}
  */
-function measureRuns(element, found, viewport, fonts, layoutStyle) {
+function measureRuns(element, found, viewport, fonts, layoutStyle, smallest) {
   const host = document.createElementNS(SVG_NAMESPACE, "svg");
-  if (viewport) {
-    host.setAttribute("width", String(viewport.width));
-    host.setAttribute("height", String(viewport.height));
-    host.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
-  }
-  for (const [name, value] of [
-    ["position", "absolute"],
-    ["left", "-99999px"],
-    ["top", "0"],
-    ["overflow", "visible"],
-    ["visibility", "hidden"],
-  ]) {
-    host.style.setProperty(name, value, "important");
-  }
-  const clone = /** @type {SVGElement} */ (element.cloneNode(true));
-  const computed = window.getComputedStyle(element);
-  for (let i = 0; i < computed.length; i++) {
-    const property = computed[i];
-    clone.style.setProperty(property, computed.getPropertyValue(property));
-  }
-  FONT_PROPERTIES.forEach((name, i) => {
-    if (fonts[i]) {
-      clone.style.setProperty(name, fonts[i]);
-    }
-  });
-  clone.style.setProperty("transform", "none", "important");
-  clone.style.setProperty("transition", "none", "important");
-  clone.style.setProperty("animation", "none", "important");
-  clone.style.setProperty("visibility", "hidden", "important");
-  host.appendChild(clone);
-  document.body.appendChild(host);
+  const box = viewport ?? { width: 1, height: 1 };
+  const scale = layoutScale(smallest, box);
+  const width = box.width * scale;
+  const height = box.height * scale;
+  host.setAttribute("width", String(width));
+  host.setAttribute("height", String(height));
+  host.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
+  host.style.setProperty("overflow", "visible", "important");
+  const clone = createMeasurementClone(/** @type {SVGElement} */ (element), host);
+  // Parked above and to the left of the page by its own size, where no part
+  // of it is scrollable overflow. Parked at `createMeasurementClone`'s
+  // `left: -99999px`, an `<svg>` wider than that would reach into the page
+  // and give it a scrollbar while it is measured.
+  host.style.setProperty("left", `${-(width + 99999)}px`, "important");
+  host.style.setProperty("top", `${-(height + 99999)}px`, "important");
   try {
+    FONT_PROPERTIES.forEach((name, i) => {
+      if (fonts[i]) {
+        clone.style.setProperty(name, fonts[i]);
+      }
+    });
     const frame = frameFor(host);
     const origin = measureClientRect(host, frame);
-    const range = document.createRange();
-    /** @type {TextRun[]} */
-    const runs = [];
-    for (const { node, parent } of found) {
-      const drawn = drawnRange(node.data, layoutStyle(parent)[WHITE_SPACE]);
-      if (!drawn) {
-        continue;
+    return withMeasuringRange((range) => {
+      /** @type {TextRun[]} */
+      const runs = [];
+      for (const { node, parent } of found) {
+        const drawn = drawnRange(node.data, layoutStyle(parent)[WHITE_SPACE]);
+        if (!drawn) {
+          continue;
+        }
+        // The clone was made from `element` just above, so it holds every
+        // node in it.
+        const copy = /** @type {Text} */ (counterpart(node, element, clone));
+        range.setStart(copy, drawn.start);
+        range.setEnd(copy, drawn.end);
+        const rect = measureClientRect(range, frame);
+        if (rect.width <= 0 && rect.height <= 0) {
+          continue;
+        }
+        runs.push({
+          node,
+          parent,
+          text: drawn.text,
+          left: (rect.left - origin.left) / scale,
+          top: (rect.top - origin.top) / scale,
+          width: rect.width / scale,
+          height: rect.height / scale,
+        });
       }
-      const copy = counterpart(node, element, clone);
-      range.setStart(copy, drawn.start);
-      range.setEnd(copy, drawn.end);
-      const rect = measureClientRect(range, frame);
-      if (rect.width <= 0 && rect.height <= 0) {
-        continue;
-      }
-      runs.push({
-        node,
-        parent,
-        text: drawn.text,
-        left: rect.left - origin.left,
-        top: rect.top - origin.top,
-        width: rect.width,
-        height: rect.height,
-      });
-    }
-    return runs;
+      return runs;
+    });
   } finally {
     host.remove();
   }
@@ -377,22 +415,18 @@ function shallowEqual(a, b) {
 
 /**
  * Whether a ray can hit a run under the rule its parent's `pointer-events`
- * gives the fill, which is the region text has. Template content is drawn
- * and never hit, as it is in `shape`.
+ * gives the fill, which is the region text has. Template content is never
+ * hit whatever this says, which `svgNode` sees to.
  *
  * @param {Element} parent The run's `<text>`, `<tspan>` or `<a>`.
  * @param {Instance | null} instance
  * @returns {boolean}
  */
 function runHits(parent, instance) {
-  return (
-    !instance &&
-    regionHits(
-      parsePointerEvents(readProperty(getComputedStyleCached(parent), parent, "pointer-events"))
-        .fill,
-      () => readDrawnProperty(parent, "fill", instance),
-      () => isDrawnHidden(parent, instance),
-    )
+  return regionHits(
+    parsePointerEvents(readProperty(getComputedStyleCached(parent), parent, "pointer-events")).fill,
+    () => readDrawnProperty(parent, "fill", instance),
+    () => isDrawnHidden(parent, instance),
   );
 }
 
@@ -401,25 +435,10 @@ function runHits(parent, instance) {
  * @param {Element} element
  * @param {Instance | null} [instance] The instance the text is part of, when
  *   it is template content drawn somewhere else.
- * @returns {Source<THREE.Object3D>}
+ * @returns {Source<Object3D>}
  */
 export function drawText(ctx, element, instance = null) {
-  /** @type {THREE.Object3D<XREventMap>} */
-  const object = new THREE.Object3D();
-  const style = () => getComputedStyleCached(element);
   const textScale = TextScaleContext.get(ctx);
-  const adopt = PortalTemplatesContext.get(ctx);
-
-  const own = new Derived(() => localMatrix(element, instance), { isEqual: matrixEqual });
-  const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
-  const root = new Derived(() => chain.get().root);
-  const opacity = new Derived(() => drawnOpacity(chain.get()));
-  /**
-   * CSS pixels per user unit, in steps. Apart from the panel's own scale,
-   * which `generateTextTexture` caps for HTML text; this part is not capped,
-   * or text in a small `viewBox` would be drawn soft.
-   */
-  const unitScale = new Derived(() => samplingScale(matrixScale(chain.get().ctm)));
 
   /** @type {WeakMap<Element, Derived<readonly string[]>>} */
   const layoutStyles = new WeakMap();
@@ -442,174 +461,174 @@ export function drawText(ctx, element, instance = null) {
     () => FONT_PROPERTIES.map((name) => readDrawnProperty(element, name, instance)),
     { isEqual: arraysEqual },
   );
+  /** @type {WeakMap<Element, Derived<number>>} */
+  const fontSizes = new WeakMap();
+  /**
+   * The size of the font a run in `target` is drawn in, which in a copy made
+   * by a `<use>` is the one the copy is laid out in. Behind a gate of its
+   * own, like `layoutStyle`, so a restyle that keeps it measures nothing.
+   *
+   * @param {Element} target
+   */
+  const fontSize = (target) => {
+    let signal = fontSizes.get(target);
+    if (!signal) {
+      signal = new Derived(() => readFontSize(readDrawnProperty(target, "font-size", instance)));
+      fontSizes.set(target, signal);
+    }
+    return signal.get();
+  };
 
   const runs = new Derived(
     () => {
       // What moves text from outside its own subtree: a font arriving, or a
       // layout change the portal cannot name.
       getReflowContext(element);
-      const { runs: found, relative } = collectRuns(element, adopt, layoutStyle);
+      const { runs: found, relative } = collectRuns(element, layoutStyle);
       if (!found.length) {
         return [];
       }
       // Read only when a percentage needs it, so a root that resizes does
       // not measure text it does not move.
       const viewport = relative ? viewportSize(element, instance) : null;
-      return measureRuns(element, found, viewport, fonts.get(), layoutStyle);
+      // A font of zero draws nothing, and does not count. Where every run's
+      // font is zero, `smallest` is `Infinity`, which lays the copy out at
+      // one px per unit.
+      const sizes = found.map(({ parent }) => fontSize(parent)).filter((size) => size > 0);
+      const smallest = Math.min(...sizes);
+      return measureRuns(element, found, viewport, fonts.get(), layoutStyle, smallest);
     },
     { isEqual: runsEqual },
   );
 
-  /** Whether a ray can hit any run, which is what makes the text a target. */
-  const hittable = new Derived(() => runs.get().some((run) => runHits(run.parent, instance)));
+  return svgNode(ctx, element, instance, (node) => {
+    /**
+     * CSS pixels per user unit, in steps. Apart from the panel's own scale,
+     * which `generateTextTexture` caps for HTML text; this part is not
+     * capped, or text in a small `viewBox` would be drawn soft.
+     */
+    const unitScale = new Derived(() => samplingScale(matrixScale(node.chain().ctm)));
 
-  const { clip, clipMatrix, clipBox, followClip } = clipUniforms(() => chain.get());
-
-  /**
-   * The mesh of the run for one text node. Mounted once per node by
-   * `keyedList`, and following the node's run from then on, so a run that
-   * moves or changes its characters is redrawn alone, and a node added or
-   * taken away mounts or unmounts its own run and no other.
-   *
-   * @param {Text} node
-   * @returns {Source<Component>}
-   */
-  const drawRun = (node) => {
-    /** @type {TextRun | undefined} */
-    let last;
-    // The node's run, or the one it had last, for the moment between the
-    // node being taken away and its mesh with it.
-    const run = new Derived(() => {
-      last = runs.get().find((each) => each.node === node) ?? last;
-      return /** @type {TextRun} */ (last);
-    });
-    const parent = new Derived(() => run.get().parent);
-    const characters = new Derived(
-      () => {
-        const { text, width, height } = run.get();
-        return { text, width, height };
-      },
-      { isEqual: (a, b) => a.text === b.text && a.width === b.width && a.height === b.height },
-    );
-    const position = new Derived(
-      () => {
-        const { left, top } = run.get();
-        return { left, top };
-      },
-      { isEqual: (a, b) => a.left === b.left && a.top === b.top },
-    );
-    /** @param {string} name */
-    const read = (name) => readDrawnProperty(parent.get(), name, instance);
-    const renderStyle = new Derived(() => getTextRenderStyle(runStyle(read)), {
-      isEqual: (a, b) =>
-        shallowEqual(
-          /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (a)),
-          /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b)),
-        ),
-    });
-    const textureData = new Derived(() => {
-      const { text, width, height } = characters.get();
-      return generateTextTexture(
-        [{ text, left: 0, top: 0, width, height }],
-        renderStyle.get(),
-        { width, height },
-        readTextScale(textScale),
-        true,
-        unitScale.get(),
+    /**
+     * The mesh of the run for one text node. Mounted once per node by
+     * `keyedList`, and following the node's run from then on, so a run that
+     * moves or changes its characters is redrawn alone, and a node added or
+     * taken away mounts or unmounts its own run and no other.
+     *
+     * @param {Text} textNode
+     * @returns {Source<Component>}
+     */
+    const drawRun = (textNode) => {
+      /** @type {TextRun | undefined} */
+      let last;
+      // The node's run, or the one it had last, for the moment between the
+      // node being taken away and its mesh with it.
+      const run = new Derived(() => {
+        last = runs.get().find((each) => each.node === textNode) ?? last;
+        return /** @type {TextRun} */ (last);
+      });
+      const parent = new Derived(() => run.get().parent);
+      const characters = new Derived(
+        () => {
+          const { text, width, height } = run.get();
+          return { text, width, height };
+        },
+        { isEqual: (a, b) => a.text === b.text && a.width === b.width && a.height === b.height },
       );
-    });
-    const paint = new Derived(() => parsePaint(read("fill")));
-    const hidden = new Derived(() => isDrawnHidden(parent.get(), instance));
-    const hits = new Derived(() => runHits(parent.get(), instance));
+      const position = new Derived(
+        () => {
+          const { left, top } = run.get();
+          return { left, top };
+        },
+        { isEqual: (a, b) => a.left === b.left && a.top === b.top },
+      );
+      /** @param {string} name */
+      const read = (name) => readDrawnProperty(parent.get(), name, instance);
+      const renderStyle = new Derived(() => getTextRenderStyle(runStyle(read)), {
+        isEqual: (a, b) =>
+          shallowEqual(
+            /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (a)),
+            /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (b)),
+          ),
+      });
+      // Drawn `factor` times its user space, for its own font, and brought
+      // back to it by the quad.
+      const textureData = new Derived(() => {
+        const factor = measuringScale(renderStyle.get().fontSize);
+        const { text, width, height } = characters.get();
+        const scaled = { width: width * factor, height: height * factor };
+        const drawn = generateTextTexture(
+          [{ text, left: 0, top: 0, ...scaled }],
+          scaleTextRenderStyle(renderStyle.get(), factor),
+          scaled,
+          readTextScale(textScale),
+          true,
+          unitScale.get() / factor,
+        );
+        return { ...drawn, width: drawn.width / factor, height: drawn.height / factor };
+      });
+      const paint = new Derived(() => parsePaint(read("fill")));
+      const hidden = new Derived(() => isDrawnHidden(parent.get(), instance));
+      const hits = new Derived(() => runHits(parent.get(), instance));
 
-    const mesh = new THREE.Mesh();
-    clipRaycast(mesh, clipBox, mesh, clipMatrix);
-    const clipped = mesh.raycast;
-    let rayHits = false;
-    mesh.raycast = (raycaster, intersects) => {
-      if (rayHits) {
-        clipped(raycaster, intersects);
-      }
+      return node.mesh({
+        geometry: () => {
+          const { width, height } = textureData.get();
+          const { left, top } = position.get();
+          return buildImageGeometry({
+            left,
+            top,
+            right: left + width,
+            bottom: top + height,
+            u0: 0,
+            v0: 0,
+            u1: 1,
+            v1: 1,
+          });
+        },
+        paints: () => paint.get() !== null,
+        paint: [
+          effects((obj) => {
+            const material = /** @type {MeshBasicMaterial} */ (obj.material);
+            // A coverage mask, white on black, read through the alpha map;
+            // the colour comes from the material. Three compiles a program
+            // with an alpha map or without one, so only the first texture
+            // recompiles.
+            if (!material.alphaMap) {
+              material.needsUpdate = true;
+            }
+            material.alphaMap = textureData.get().texture;
+          }),
+          effects((obj) => {
+            const material = /** @type {MeshBasicMaterial} */ (obj.material);
+            const current = paint.get();
+            if (current) {
+              material.color.copy(current.color);
+            }
+            material.opacity =
+              (current?.alpha ?? 0) * parseNumber(read("fill-opacity"), 1) * node.opacity();
+          }),
+        ],
+        hidden: () => hidden.get(),
+        hit: () => hits.get(),
+        layer: 0,
+      });
     };
 
-    return $(mesh, [
-      set("material", () => {
-        const material = new THREE.MeshBasicMaterial({
-          side: THREE.DoubleSide,
-          forceSinglePass: true,
-          transparent: true,
-          depthWrite: false,
-        });
-        applyClip(material, clip, clipMatrix);
-        onCleanup(() => {
-          material.dispose();
-        });
-        return material;
-      }),
-      effects((obj) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-        // A coverage mask, white on black, read through the alpha map; the
-        // colour comes from the material. Three compiles a program with an
-        // alpha map or without one, so only the first texture recompiles.
-        if (!material.alphaMap) {
-          material.needsUpdate = true;
-        }
-        material.alphaMap = textureData.get().texture;
-      }),
-      set("geometry", () => {
-        const { width, height } = textureData.get();
-        const { left, top } = position.get();
-        const geometry = buildImageGeometry({
-          left,
-          top,
-          right: left + width,
-          bottom: top + height,
-          u0: 0,
-          v0: 0,
-          u1: 1,
-          v1: 1,
-        });
-        onCleanup(() => {
-          geometry.dispose();
-        });
-        return geometry;
-      }),
-      effects((obj) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-        const current = paint.get();
-        if (current) {
-          material.color.copy(current.color);
-        }
-        material.opacity =
-          (current?.alpha ?? 0) * parseNumber(read("fill-opacity"), 1) * opacity.get();
-      }),
-      effects((obj) => {
-        const drawn = paint.get() !== null && !hidden.get();
-        rayHits = hits.get();
-        /** @type {THREE.MeshBasicMaterial} */ (obj.material).visible = drawn;
-        obj.visible = drawn || rayHits;
-      }),
-      effects((obj) => {
-        place(obj, 0, 0, 0);
-        obj.renderOrder = paintSlot(element, root.get(), instance, 0).start;
-      }),
-    ]);
-  };
-
-  return just(object, [
-    effects((obj) => {
-      commitMatrix(obj, own.get());
-    }),
-    rayTarget(ctx, element, () => hittable.get()),
-    effects((obj) => {
-      obj.visible = style().display !== "none";
-    }),
-    ...followClip,
-    children(
-      keyedList(
-        () => runs.get().map((run) => /** @type {[Text, TextRun]} */ ([run.node, run])),
-        (_run, node) => drawRun(node),
-      ),
-    ),
-  ]);
+    return {
+      /**
+       * Whether a ray can hit any run, which is what makes the text a
+       * target.
+       */
+      hittable: () => runs.get().some((run) => runHits(run.parent, instance)),
+      content: [
+        children(
+          keyedList(
+            () => runs.get().map((run) => /** @type {[Text, TextRun]} */ ([run.node, run])),
+            (_run, textNode) => drawRun(textNode),
+          ),
+        ),
+      ],
+    };
+  });
 }

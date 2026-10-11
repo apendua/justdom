@@ -2,7 +2,7 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import "./index.css";
 import EuclidApp from "./components/EuclidApp";
-import { offerHeadset } from "./offer";
+import { offerHeadset } from "@apendua.dev/headset/offer";
 import AppStore from "./store/App";
 
 const toolbar = document.querySelector<HTMLDivElement>("#toolbar");
@@ -30,8 +30,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 // The app, mounted into the page exactly as a flat app is, in three places
-// the page lays out as one editor.
-const app = EuclidApp(store);
+// the page lays out as one editor. `?dashes=off` draws the construction
+// lines and the rubber band of a line or circle in progress solid.
+const query = new URLSearchParams(location.search);
+const app = EuclidApp(store, { dashes: query.get("dashes") !== "off" });
 for (const [element, tree] of [
   [toolbar, app.toolbar],
   [editor, app.editor],
@@ -53,6 +55,8 @@ requestAnimationFrame(() => {
 // the very elements the app was just mounted into. It is loaded only once a
 // session is known to be possible, so a page that is only ever a page does
 // not fetch three.js.
-offerHeadset({ toolbar, editor, canvas }).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});
+offerHeadset(() => import("./xr"))
+  .then((xr) => xr?.offerXR({ toolbar, editor, canvas }))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });

@@ -6,12 +6,12 @@ import {
   flatMap,
   isProperty,
   isStore,
-  isVolatile,
   observable,
   ReactiveMap,
   ReactiveSet,
-  replace,
+  reshape,
   Signal,
+  trackWrites,
   Stream,
   Subject,
   UpdateChannel,
@@ -55,21 +55,30 @@ import {
  * - **A `Stream`** — a `stylesheet`, a `className`, an `observable(...)` —
  *   is wrapped in a source that switches to the current one, dropping the
  *   previous module's subscription before taking the new one.
- * - **A `volatileStore`** — a theme, a palette, layout metrics: a store
- *   whose contents are written in source rather than by the running program
- *   — is the one thing both kept and followed. The object is
- *   kept, so the module's own code and its importers go on sharing it, and
- *   its contents are `replace`d with the re-evaluated definition, so the
- *   readers of the keys that changed re-run and nobody else does. Which is
- *   what a theme wants: an edit to one colour reaches the things wearing
- *   that colour, and nothing else moves.
- * - **State** — a `Signal`, a `store`, a `ReactiveMap` or `ReactiveSet`, a
- *   `Subject` or `Emitter`, an `UpdateChannel`, a context property — is
- *   *kept*. What such an export holds is what the running application has
- *   put there, and a fresh instance would throw that away; so the one the
- *   first evaluation built is what every later evaluation exports, and the
- *   instance the re-evaluated module built is dropped unused. The price is
- *   that an edit to the initial value does not show until a full reload.
+ * - **A `store`** is kept and followed. The object is kept, so the module's own
+ *   code and its importers go on sharing it, and once the export's initialiser
+ *   has evaluated it records which keys the program writes, through
+ *   `trackWrites`. On a reload it is `reshape`d with the re-evaluated
+ *   definition: a key the program wrote keeps what the program did, and every
+ *   other key takes the definition's side, getter, setter, value and presence
+ *   alike. So a getter edited in source takes effect, an edited initial value
+ *   shows unless the program has written that key, and what the program wrote,
+ *   added or deleted stays. A write made while the initialiser runs, by a
+ *   factory that fills the store it returns or by an operator writing at
+ *   construction, comes before the recording and follows the source on the
+ *   first reload. A store made of an array is followed the same way: once the
+ *   program has written to it, it keeps which element is at each index, and its
+ *   length, while the element stores it made are still reshaped in place. A
+ *   theme or a palette is a store nobody writes to, so an edit to one colour
+ *   reaches the things wearing it and nothing else moves.
+ * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or
+ *   `Emitter`, an `UpdateChannel`, a context property — is *kept*. What such
+ *   an export holds is what the running application has put there, and a
+ *   fresh instance would throw that away; so the one the first evaluation
+ *   built is what every later evaluation exports, and the instance the
+ *   re-evaluated module built is dropped unused. It has no shape to follow,
+ *   so the price is that an edit to the initial value does not show until a
+ *   full reload.
  * - **Anything else** cannot be followed. It is handed back untouched and
  *   remembered; a re-evaluation that registers the identical value (a
  *   primitive constant, an already-wrapped export re-exported under another
@@ -110,7 +119,7 @@ import {
  */
 
 /**
- * @typedef {"function" | "derived" | "stream" | "constants" | "state" | "value"} Kind
+ * @typedef {"function" | "derived" | "stream" | "state" | "value"} Kind
  */
 
 /**
@@ -122,8 +131,8 @@ import {
  *   `Signal` cannot stand in for a `ReactiveMap`. Empty for the others.
  * @property {Signal<any> | null} held the current definition, for the kinds
  *   that follow it through a holder. `null` for a plain value, which cannot
- *   be followed; for state, which is kept rather than followed; and for
- *   constants, which follow by having their contents replaced in place.
+ *   be followed, and for state, which is kept; a store among it is followed
+ *   by being reshaped in place.
  * @property {unknown} exported what the module exports under the name: the
  *   wrapper, or the value itself.
  */
@@ -210,7 +219,10 @@ const STATE_SHAPES = [
   ["Subject", (value) => value instanceof Subject],
   ["Emitter", (value) => value instanceof Emitter],
   ["UpdateChannel", (value) => value instanceof UpdateChannel],
-  ["store", isStore],
+  // A store keeps the kind it was made with, so one made of an array cannot
+  // be reshaped with an object or the other way round.
+  ["store", (value) => isStore(value) && !Array.isArray(value)],
+  ["array store", (value) => isStore(value) && Array.isArray(value)],
   ["property", isProperty],
 ];
 
@@ -250,11 +262,6 @@ function kindOf(value) {
   }
   if (value instanceof Stream) {
     return "stream";
-  }
-  if (isVolatile(value)) {
-    // A `volatileStore`: its contents come from source, so a reload is
-    // exactly what should move them.
-    return "constants";
   }
   if (stateShapeOf(value) !== null) {
     return "state";
@@ -405,13 +412,14 @@ function createEntry(kind, value) {
     return { kind, shape: "", held: null, exported: value };
   }
   if (kind === "state") {
-    // Kept, not followed: the instance is the state.
-    return { kind, shape: stateShapeOf(value) ?? "", held: null, exported: value };
-  }
-  if (kind === "constants") {
-    // Kept as an object, and followed by having its contents replaced: see
-    // `commit`.
-    return { kind, shape: "", held: null, exported: value };
+    // Kept: the instance is the state. A store is also followed, by being
+    // reshaped with the new definition at `commit`, which keeps the keys the
+    // program writes from here on.
+    const shape = stateShapeOf(value) ?? "";
+    if (isStore(value)) {
+      trackWrites(/** @type {any} */ (value));
+    }
+    return { kind, shape, held: null, exported: value };
   }
   const held = Signal.of(/** @type {any} */ (value));
   /** @type {unknown} */
@@ -458,14 +466,18 @@ export function $hmr(hot) {
     const kind = kindOf(value);
     const entry = registry.entries.get(name);
     if (entry) {
-      if (entry.kind === kind && (entry.held || kind === "constants")) {
+      if (entry.kind === kind && entry.held) {
         // Queued rather than written: see `commit`.
         session.pending.set(entry, value);
         return /** @type {T} */ (entry.exported);
       }
       if (entry.kind === kind && kind === "state" && entry.shape === stateShapeOf(value)) {
         // The state the application has been writing to, kept; the instance
-        // this evaluation just built goes unused.
+        // this evaluation just built goes unused, apart from a store's
+        // definition, which the kept one takes at `commit`.
+        if (isStore(entry.exported)) {
+          session.pending.set(entry, value);
+        }
         return /** @type {T} */ (entry.exported);
       }
       if (entry.kind === kind && Object.is(entry.exported, value)) {
@@ -496,9 +508,10 @@ export function $hmr(hot) {
         if (entry.held) {
           entry.held.set(value);
         } else {
-          // A `volatileStore`: the kept object takes the new definition, and
-          // only the readers of what changed hear.
-          replace(/** @type {any} */ (entry.exported), /** @type {any} */ (value));
+          // A `store`: the kept object takes the new definition, except for
+          // the keys the program wrote, and only the readers of what changed
+          // hear.
+          reshape(/** @type {any} */ (entry.exported), /** @type {object} */ (value));
         }
       }
     });

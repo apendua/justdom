@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Effect, Signal, withChannel, withComputation } from "@apendua/signal";
 import { getBorderBoxSize } from "./mirror.js";
+import { FOCUS_ATTRIBUTE } from "./portalRoot.js";
 import { place } from "./place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
 import { InputFocusContext, touchValue } from "./textInput.js";
@@ -44,11 +45,6 @@ import { CameraContext, RendererContext, SceneContext } from "../render.js";
  * a press wants the board in the same turn; an effect would do both a
  * flush later.
  */
-
-/**
- * The attribute a field carries while the keyboard is typing into it.
- */
-export const FOCUS_ATTRIBUTE = "data-xr-focus";
 
 const DEFAULT_GAP = 12;
 const DEFAULT_TILT = (24 * Math.PI) / 180;

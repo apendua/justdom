@@ -1,4 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 import { canPresent } from "@apendua.dev/headset/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
@@ -18,6 +19,8 @@ import type { Readable } from "./session.js";
  */
 export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
+  followThemingQuery(query);
+  followOutlinesQuery(query);
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");

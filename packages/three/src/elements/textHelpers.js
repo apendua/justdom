@@ -13,7 +13,21 @@ import { onCleanup } from "@apendua/signal";
  * @property {number} height
  */
 
+/** The font size, in px, a style whose own cannot be read is drawn at. */
 const DEFAULT_FONT_SIZE = 16;
+
+/**
+ * A computed `font-size` as a number of px, or `DEFAULT_FONT_SIZE` where it
+ * is not a number. Zero is a size, and draws nothing.
+ *
+ * @param {string} value
+ * @returns {number}
+ */
+export function readFontSize(value) {
+  const size = Number.parseFloat(value);
+  return Number.isNaN(size) ? DEFAULT_FONT_SIZE : size;
+}
+
 /**
  * The most device pixels a run is ever rasterized for each of its CSS pixels.
  *
@@ -182,12 +196,33 @@ function normalizeColor(color) {
 }
 
 /**
+ * The properties of a `TextRenderStyle` that pick its face. Two typedefs,
+ * since `tsc` copies a type split across comment lines into the declaration
+ * file with the lines' asterisks in it.
+ *
+ * @typedef {"fontFamily" | "fontStyle" | "fontVariant" | "fontWeight"} FaceKey
+ * @typedef {Pick<TextRenderStyle, FaceKey>} FontFace
+ */
+
+/**
+ * The canvas `font` shorthand for a face at a size.
+ *
+ * @param {FontFace} face
+ * @param {number} fontSize In px.
+ * @returns {string}
+ */
+function fontShorthand(face, fontSize) {
+  return [face.fontStyle, face.fontVariant, face.fontWeight, `${fontSize}px`, face.fontFamily].join(
+    " ",
+  );
+}
+
+/**
  * @param {CSSStyleDeclaration} style
  * @returns {TextRenderStyle}
  */
 export function getTextRenderStyle(style) {
-  const fontSize = Number.parseFloat(style.fontSize || "");
-  const resolvedFontSize = Number.isNaN(fontSize) ? DEFAULT_FONT_SIZE : fontSize;
+  const resolvedFontSize = readFontSize(style.fontSize || "");
 
   // The `font-variant` slot of the canvas `font` shorthand is the CSS2 one:
   // `normal | small-caps`, and nothing else. `style.fontVariant` is the
@@ -201,21 +236,18 @@ export function getTextRenderStyle(style) {
   // one keyword the shorthand admits.
   const variant = style.fontVariantCaps === "small-caps" ? "small-caps" : "normal";
 
-  const font = [
-    style.fontStyle || "normal",
-    variant,
-    style.fontWeight || "400",
-    `${resolvedFontSize}px`,
-    style.fontFamily || "sans-serif",
-  ].join(" ");
-
-  return {
-    color: normalizeColor(style.color || "black"),
-    font,
+  /** @type {FontFace} */
+  const face = {
     fontFamily: style.fontFamily || "sans-serif",
     fontStyle: style.fontStyle || "normal",
     fontVariant: variant,
     fontWeight: style.fontWeight || "400",
+  };
+
+  return {
+    color: normalizeColor(style.color || "black"),
+    font: fontShorthand(face, resolvedFontSize),
+    ...face,
     fontSize: resolvedFontSize,
     letterSpacing: parsePixelValue(style.letterSpacing, resolvedFontSize),
     wordSpacing: parsePixelValue(style.wordSpacing, resolvedFontSize),
@@ -227,6 +259,31 @@ export function getTextRenderStyle(style) {
         ? normalizeColor(style.textDecorationColor)
         : normalizeColor(style.color || "black"),
     textDecorationThickness: parsePixelValue(style.textDecorationThickness, resolvedFontSize),
+  };
+}
+
+/**
+ * The same style with the font's size, its spacing and the thickness of its
+ * decorations multiplied by `factor`. A run drawn in it at `factor` times its
+ * layout, through a `unitScale` divided by `factor`, comes out the same size
+ * on the same number of texels, but every metric the canvas reads is read off
+ * a font `factor` times larger. The shadow is not scaled, and would come out
+ * `1 / factor` the size of the glyphs. SVG text, the one caller, draws its
+ * runs with no shadow.
+ *
+ * @param {TextRenderStyle} style
+ * @param {number} factor
+ * @returns {TextRenderStyle}
+ */
+export function scaleTextRenderStyle(style, factor) {
+  const fontSize = style.fontSize * factor;
+  return {
+    ...style,
+    font: fontShorthand(style, fontSize),
+    fontSize,
+    letterSpacing: style.letterSpacing * factor,
+    wordSpacing: style.wordSpacing * factor,
+    textDecorationThickness: style.textDecorationThickness * factor,
   };
 }
 
@@ -797,10 +854,12 @@ export function buildTextMipmaps(canvas) {
  *   so a coverage read from a color channel comes out aliased. Painted onto
  *   black, the color channels *are* the coverage, gradient and all.
  * @param {number} [unitScale] How many CSS pixels one unit of `lines` and
- *   `bounds` is drawn at: 1 for HTML text, whose layout is in CSS pixels, and
- *   the scale of the matrices above an SVG `<text>`, whose layout is in user
- *   units. Multiplied in after `renderScale` is capped, since the cap is on
- *   how finely a panel is painted, and a user unit may be many CSS pixels.
+ *   `bounds` is drawn at: 1 for HTML text, whose layout is in CSS pixels.
+ *   SVG text hands its layout over `measuringScale` times larger than its
+ *   user units, with a style scaled to match, so it passes the scale of the
+ *   matrices above the `<text>` divided by that factor. Multiplied in after
+ *   `renderScale` is capped, since the cap is on how finely a panel is
+ *   painted, and a user unit may be many CSS pixels.
  * @returns {TextTexture}
  */
 export const generateTextTexture = (

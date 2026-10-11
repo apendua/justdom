@@ -6,11 +6,10 @@ import { isPhosphor, type Terminal } from "./terminal.js";
  * The PHOSPHOR control under the screen: a button that opens a menu of the
  * three phosphors.
  *
- * The menu is mounted when it opens and taken out when it closes, rather
- * than shown and hidden, because a panel follows layout only when the tree
- * changes. It is positioned and stacked (`.menu` in the stylesheet), which
- * makes it a layer of its own in a session, floating clear of the monitor
- * and opaque to the ray.
+ * The menu is mounted when it opens and taken out when it closes. It is
+ * positioned and stacked (`.menu` in the stylesheet), which makes it a
+ * layer of its own in a session, floating clear of the monitor and opaque
+ * to the ray.
  */
 export function mountPhosphorMenu(
   knob: HTMLElement,

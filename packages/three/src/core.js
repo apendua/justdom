@@ -59,16 +59,27 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @property {Intersection<Object3D<XREventMap>>} [intersection] On an
  *   `…end`, where the ray is as the button opens, which need not be on the
  *   target. Absent when the ray is on nothing, and on a `…missed`.
+ * @property {boolean} [lost] True on the `…end` and the `…missed` that end a
+ *   press because its hand went: three disconnected it, as it disconnects
+ *   every hand when a session ends, and no release is coming. The manager
+ *   ends the press on the `disconnected` event itself, as a miss. A handler
+ *   that sends a release on from here, as a panel sends `pointerup`, sends
+ *   a cancel instead.
  */
 
 /**
  * What the events that end a press carry besides, the `…end`, the
  * completion and the `…missed` alike: the `…start` the press began with,
  * so that a handler can ask the manager whether something took it
- * (`isStopped`). That is a question for the grip. A panel takes every
+ * (`isStopped`). The manager decides how far each of them goes: no further
+ * along the press's path than the start went, up to and including the
+ * object whose handler stopped it (`Press` in `interactions.js`), so a
+ * release never reaches what did not hear its press. Whether something
+ * took the start is then a question for the grip: a panel takes every
  * trigger press on what it can click, so on a panel a `select`'s start has
  * always been taken; it leaves a grip's start alone, so that a scene can
- * pick up with the grip what the panel hangs from.
+ * pick up with the grip what the panel hangs from, and the grip's end
+ * reaches the panel on its way there.
  *
  * @typedef {object} PressEnd
  * @property {InputEvent} start
@@ -114,6 +125,8 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  * @property {Object3D<XREventMap>} target
  * @property {Object3D<XREventMap>} originalTarget
  * @property {XRTargetRaySpace} controller
+ * @property {boolean} [lost] True on the leave a hand gets as three
+ *   disconnects it, after the `…end`s that say the same of its presses.
  */
 
 /**

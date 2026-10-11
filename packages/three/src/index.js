@@ -35,12 +35,14 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal } from "./elements/portal.js";
-export { getPortalRoot } from "./elements/portalRoot.js";
+export { enableThemingMode } from "./elements/documentStyles.js";
+export { enableOutlinesMode, outlinesReport } from "./elements/outlines.js";
+export { FOCUS_ATTRIBUTE, getPortalRoot } from "./elements/portalRoot.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
 export { PortalPluginsContext } from "./elements/plugins.js";
 export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
-export { HAPTIC_FLAVORS, playHaptic } from "./elements/haptics.js";
+export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js";
 export { box } from "./elements/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";

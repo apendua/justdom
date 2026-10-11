@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "@apendua/signal";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { RendererContext } from "./render.js";
+import { RendererContext, runFrame } from "./render.js";
 import { $ } from "./operators.js";
 import { drag } from "./drag.js";
 
@@ -49,7 +49,8 @@ function setup(options) {
     manager.addController(right, () => () => {}).subscribe(),
   ];
   // Frames are asked for while the box is held; nobody has to emit them.
-  const ctx = RendererContext.set(InteractionContext.set({}, manager), /** @type {any} */ ({}));
+  const renderer = /** @type {any} */ ({});
+  const ctx = RendererContext.set(InteractionContext.set({}, manager), renderer);
   const { draggable, held } = drag(ctx, options);
 
   const board = /** @type {THREE.Object3D<XREventMap>} */ (
@@ -77,14 +78,15 @@ function setup(options) {
     board.addEventListener(type, () => events.push(`board:${type}`));
   }
 
-  subscriptions.push(
-    $(box, [draggable()]).subscribe((component) => {
-      component.addTo(board);
-      board.updateMatrixWorld(true);
-    }),
-  );
+  // Mounted on its own, so a test can take it out of the scene while the
+  // board and the hands stay.
+  const boxSubscription = $(box, [draggable()]).subscribe((component) => {
+    component.addTo(board);
+    board.updateMatrixWorld(true);
+  });
 
   return {
+    manager,
     left,
     right,
     board,
@@ -92,7 +94,11 @@ function setup(options) {
     events,
     details,
     held,
+    /** One frame of the loop, which is when a held object says where it is. */
+    frame: () => runFrame(renderer, 0, /** @type {any} */ ({})),
+    unmount: () => boxSubscription.unsubscribe(),
     dispose: () => {
+      boxSubscription.unsubscribe();
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
@@ -238,6 +244,48 @@ describe("drag", () => {
     dispose();
   });
 
+  test("a press it refused is not followed by a release it takes", () => {
+    let enabled = false;
+    const { left, board, box, events, dispose } = setup({ enabled: () => enabled });
+    press(left, "selectstart");
+    // Enabled again while the trigger is down: the release belongs to the
+    // press that went through to the board, and goes there too.
+    enabled = true;
+    press(left, "selectend");
+    assert.strictEqual(box.parent, board);
+    assert.deepEqual(events, ["board:selectstart", "board:selectend"]);
+    dispose();
+  });
+
+  test("a press it refused mid-drag goes through with its release", () => {
+    let enabled = true;
+    const { manager, left, right, board, box, events, held, dispose } = setup({
+      enabled: () => enabled,
+    });
+    press(left, "selectstart");
+    // Held, the box hangs from the hand, and nothing is behind it to hear
+    // what goes through; the manager says whether anything stopped it.
+    /** @type {Record<string, any>} */
+    const heard = {};
+    for (const type of /** @type {const} */ (["selectstart", "selectend"])) {
+      box.addEventListener(type, (event) => {
+        heard[type] = event;
+      });
+    }
+    enabled = false;
+    // The other hand cannot take it over now, so its press goes on, and so
+    // does the release that ends that press.
+    press(right, "selectstart");
+    press(right, "selectend");
+    assert.strictEqual(held()?.controller, left);
+    assert.equal(manager.isStopped(heard.selectstart), false, "the press went on");
+    assert.equal(manager.isStopped(heard.selectend), false, "and so did its release");
+    press(left, "selectend");
+    assert.strictEqual(box.parent, board);
+    assert.deepEqual(events, ["dragstart", "dragend"]);
+    dispose();
+  });
+
   test("held() is reactive", () => {
     const { left, held, dispose } = setup();
     const holder = new Derived(() => held()?.controller ?? null);
@@ -246,6 +294,54 @@ describe("drag", () => {
     assert.strictEqual(holder.get(), left);
     press(left, "selectend");
     assert.equal(holder.get(), null);
+    dispose();
+  });
+
+  test("a hand that disconnects while holding it lets it go where it is", () => {
+    // At the end of a session three disconnects every hand and sends no
+    // release; an object still on the hand would stay on a hidden
+    // controller into the next session.
+    const { left, board, box, events, held, dispose } = setup();
+    press(left, "selectstart");
+    left.position.set(1, 2, 3);
+    left.updateMatrixWorld(true);
+
+    left.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+    assert.strictEqual(box.parent, board);
+    assert.deepEqual(box.position, new THREE.Vector3(1, 2, -2));
+    assert.deepEqual(events, ["dragstart", "dragend"]);
+    assert.equal(held(), null);
+    dispose();
+  });
+
+  test("says where it is once a frame while held, with one event for the hold", () => {
+    const { left, box, frame, dispose } = setup();
+    /** @type {DragEvent[]} */
+    const moves = [];
+    box.addEventListener("dragmove", (event) => moves.push(event));
+    press(left, "selectstart");
+    frame();
+    frame();
+    assert.equal(moves.length, 2);
+    assert.strictEqual(moves[0], moves[1], "nothing made per frame");
+    assert.strictEqual(moves[0].matrixWorld, box.matrixWorld, "and the matrix is the live one");
+    assert.strictEqual(moves[0].controller, left);
+    press(left, "selectend");
+    frame();
+    assert.equal(moves.length, 2);
+    dispose();
+  });
+
+  test("taken out of the scene while held, its release does not reach the board", () => {
+    // The press stopped at the box, so the board never heard it, and the
+    // box's listeners went with it: the release still stops where the
+    // press did.
+    const { left, box, events, unmount, dispose } = setup();
+    press(left, "selectstart");
+    unmount();
+    assert.equal(box.parent, null);
+    press(left, "selectend");
+    assert.deepEqual(events, ["dragstart"]);
     dispose();
   });
 

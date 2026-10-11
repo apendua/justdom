@@ -9,9 +9,8 @@ import { Derived, flatMap, observable, Signal } from "@apendua/signal";
 /**
  * The base class alone, or the base plus a modifier, following a signal — the
  * same trick `dropdown` uses on its selected row, and for the same reason: a
- * state change has to come out as a class attribute rather than a rebuilt
- * subtree, because a portal re-measures on a tree change and only restyles on
- * an attribute one.
+ * state change comes out as a class attribute rather than a rebuilt subtree,
+ * so a portal restyles the key in place rather than building it again.
  *
  * @param {import("@apendua/signal").Subscribable<string>} base
  * @param {import("@apendua/signal").Subscribable<string>} modifier
@@ -229,8 +228,8 @@ const spacer = (code, width) => ({ code, label: "", spacer: true, width });
  * faces, so the full character set is never more than two clicks away.
  *
  * The two views are the same keys wearing different faces, not two boards:
- * switching moves labels and nothing else, which on a panel is a restyle
- * rather than the re-measure a swapped subtree would cost.
+ * switching moves labels and nothing else, which a panel follows on the keys
+ * it already has rather than building a swapped subtree again.
  *
  * Every row adds up to 10 units — the middle row's nine letters are centred
  * by half-unit spacers, the way a phone centres them.
@@ -365,8 +364,8 @@ export function isNumericField(field) {
  *
  * The tree is built once and never changes shape: a state change moves a class
  * name and the text inside a key, and nothing is mounted or unmounted. That is
- * deliberate for the 3D side, where a changed tree costs a re-measure of every
- * box in the panel, and a changed class or label costs a restyle. It holds for
+ * deliberate for the 3D side, where a changed tree builds its objects again,
+ * and a changed class or label is followed on the objects it has. It holds for
  * the symbols view exactly as it holds for shift: flipping the whole board to
  * digits is the same keys wearing different faces, not a different board.
  *

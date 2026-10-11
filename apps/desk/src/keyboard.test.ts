@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { typeIntoInput } from "@apendua/freedom";
 import { mountKeyboard } from "./keyboard.js";
 
 function board() {
@@ -74,9 +75,11 @@ describe("mountKeyboard", () => {
     keys.querySelector<HTMLElement>('[data-key="Backspace"]')!.click();
     expect(field.value).toBe("a ");
     expect(inputs).toHaveBeenCalledTimes(4);
-    // A real key in a field is the browser's to type.
+    // A real key in a field is the browser's to type, and the cap goes down
+    // with it.
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "x" }));
     expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector('[data-key="x"]')!.hasAttribute("data-down")).toBe(true);
   });
 
   it("types on the monitor when a checkbox has focus, and leaves the box alone", () => {
@@ -133,6 +136,50 @@ describe("mountKeyboard", () => {
     const event = new KeyboardEvent("keydown", { key: "p", cancelable: true });
     window.dispatchEvent(event);
     expect(onKey).toHaveBeenCalledWith("p");
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("leaves a field a session's keyboard types into to that keyboard", () => {
+    // In a session the note field has no focus: freedom's own board types
+    // into it, dispatching each key's keydown on the field, and the keydown
+    // bubbles up to the window this keyboard listens on.
+    const keys = board();
+    keys.parentElement!.append(document.createElement("select"));
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    // Something else has focus, as the Look menu may.
+    document.querySelector("select")!.focus();
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    for (const key of ["h", "i", " ", "x", "Backspace"]) {
+      typeIntoInput(field, { key });
+    }
+    expect(field.value).toBe("hi ");
+    expect(onKey).not.toHaveBeenCalled();
+    expect(keys.querySelector("[data-down]")).toBeNull();
+  });
+
+  it("leaves a number field a session's keyboard types into to that keyboard", () => {
+    const keys = board();
+    const field = document.querySelector<HTMLInputElement>("#field")!;
+    field.type = "number";
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    for (const key of ["1", "2", "Backspace"]) {
+      typeIntoInput(field, { key });
+    }
+    expect(field.value).toBe("1");
+    expect(onKey).not.toHaveBeenCalled();
+  });
+
+  it("leaves a key a script aims at any element without focus to that element", () => {
+    const keys = board();
+    const button = document.createElement("button");
+    keys.parentElement!.append(button);
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const event = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    expect(onKey).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(false);
   });
 });

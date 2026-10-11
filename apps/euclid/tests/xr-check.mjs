@@ -15,9 +15,13 @@
  * chunk and every chunk it imports statically. And the page alone, with no
  * emulator, must not fetch the headset scene. Then, in a session, in order:
  *
+ * - no ray reaches the drawing before a step aims one, since the emulator
+ *   starts both controllers turned away from the scene;
  * - Point, in the toolbar panel, picks the point tool, and the trigger on
  *   empty paper writes a `point(…)` statement through the drawing's own
  *   pointer handlers, at the place the ray met;
+ * - the snap ring shows on `A` with the ray on it, and clears when the ray
+ *   leaves the drawing, on the drawing's own `pointerleave`;
  * - Line, then the trigger on `A` and on `B`, writes a `line(A, B)`;
  * - Select, then the trigger held on `B` while the ray moves, drags `B`
  *   and rewrites its coordinates, without the program taking the keyboard;
@@ -154,6 +158,14 @@ async function main() {
     if (SHOTS) {
       await page.screenshot({ path: join(SHOTS, "page.png") });
     }
+    // Every pointer the drawing hears, from the moment the session starts.
+    await page.evaluate(() => {
+      /** @type {any} */ const w = window;
+      w.__pointers = new Set();
+      document.querySelector("#canvas")?.addEventListener("pointermove", (event) => {
+        w.__pointers.add(/** @type {PointerEvent} */ (event).pointerId);
+      });
+    });
     await page.click("#ARButton, #VRButton");
     await page.waitForFunction(
       () =>
@@ -162,6 +174,15 @@ async function main() {
         ) && !document.querySelector("[data-xr-loading]"),
     );
     await frames(page, 30);
+
+    console.log("\n== the hands at rest");
+    // The emulator starts both controllers turned away from the scene, so
+    // that the drawing hears only the hand a step aims, and a check of what
+    // that hand did is not undone by the other one's moves.
+    check(
+      (await page.evaluate(() => /** @type {any} */ (window).__pointers.size)) === 0,
+      "no ray reaches the drawing before one is aimed",
+    );
 
     const head = await headPosition(page);
 
@@ -226,6 +247,16 @@ async function main() {
         if (!found) throw new Error(`no ${text} in the toolbar`);
         return found;
       }, label);
+      // The panel brings a change into the scene a budget's worth per
+      // frame, so a control that has just appeared, like one of the
+      // picker's options, may not be there yet for the ray to meet. How
+      // many frames that takes depends on the machine; the toolbar's
+      // container carries `data-xr-busy` until it has drawn the last of it.
+      await page.waitForFunction(
+        () => !document.querySelector("#toolbar[data-xr-busy]"),
+        undefined,
+        { timeout: 30_000 },
+      );
       const box = await handle.evaluate((e) => e.getBoundingClientRect().toJSON());
       await aimAt(await onPanel("toolbar", box.left + box.width / 2, box.top + box.height / 2));
       check(
@@ -291,6 +322,27 @@ async function main() {
           "at the place on the page the ray was aimed at",
         );
       }
+    }
+
+    console.log("\n== the snap ring");
+    {
+      // The ring round the point a click of the point tool would snap to:
+      // the one circle on the drawing 7 px across, hidden while the pointer
+      // is near no point.
+      const ringShown = () =>
+        page.$eval("#canvas svg", (svg) =>
+          [...svg.querySelectorAll("circle")].some(
+            (c) => c.getAttribute("r") === "7" && c.getAttribute("visibility") === "visible",
+          ),
+        );
+      const { x, y } = await pointOnPage("A");
+      await aimAt(await onPanel("canvas", x, y));
+      await frames(page, 6);
+      check(await ringShown(), "the snap ring shows on A with the ray on it");
+      // As far above the drawing as it is tall: off its panel.
+      await aimAt(await onPanel("canvas", x, canvasRect.top - canvasRect.height));
+      await frames(page, 6);
+      check(!(await ringShown()), "and clears when the ray leaves the drawing");
     }
 
     console.log("\n== a line");

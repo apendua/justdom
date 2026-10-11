@@ -8,7 +8,7 @@
  * test of one needs a canvas to measure and draw with. This is that
  * canvas: every character is seven px wide and every font ten tall, which
  * is all a test asserting *what* was drawn needs to know, and what was
- * drawn is recorded.
+ * drawn is recorded: the text, and the arguments of every `drawImage`.
  */
 
 const GLYPH_WIDTH = 7;
@@ -21,12 +21,15 @@ const DESCENT = 2;
  *
  * @returns {{
  *   drawn: string[],
+ *   images: unknown[][],
  *   restore: () => void,
  * }}
  */
 export function stubCanvas() {
   /** @type {string[]} */
   const drawn = [];
+  /** @type {unknown[][]} */
+  const images = [];
   const real = document.createElement;
   /**
    * @param {number} width
@@ -52,7 +55,10 @@ export function stubCanvas() {
     lineTo() {},
     stroke() {},
     clearRect() {},
-    drawImage() {},
+    /** @param {unknown[]} args */
+    drawImage(...args) {
+      images.push(args);
+    },
     /** @param {string} text */
     fillText(text) {
       drawn.push(text);
@@ -99,6 +105,7 @@ export function stubCanvas() {
   };
   return {
     drawn,
+    images,
     restore: () => {
       document.createElement = real;
     },

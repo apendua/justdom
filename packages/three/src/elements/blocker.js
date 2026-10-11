@@ -42,6 +42,16 @@ export function createBlocker() {
 }
 
 /**
+ * Whether an object is a blocker, a panel's background or an overlay's.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {boolean}
+ */
+export function isBlocker(object) {
+  return object instanceof THREE.Mesh && object.material === material;
+}
+
+/**
  * Stretch a blocker over a box given in the CSS convention its parent object
  * uses: origin at the top left corner, y running down, sizes in local px.
  *

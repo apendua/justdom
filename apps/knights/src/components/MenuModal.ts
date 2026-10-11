@@ -31,6 +31,11 @@ const menuList = stylesheet`
     --menu-item-size: 5vw;
     --menu-item-border: 1px solid white;
     flex-grow: 0;
+    /* One item under another, each the width of the list. An item is an
+       inline block, which is right in the toolbar and lined the three up
+       here as far as they fitted. */
+    display: flex;
+    flex-direction: column;
     list-style: none;
     width: 50vw;
     margin: auto;

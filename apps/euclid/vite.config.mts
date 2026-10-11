@@ -1,9 +1,16 @@
 import { defineConfig } from "vite";
 import PluginHMR from "@apendua/vite-hmr/plugin";
+import XRProfilesPlugin from "@apendua.dev/media/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [PluginHMR()],
+  plugins: [
+    PluginHMR(),
+    // The controller and hand models, from this repository rather than a
+    // CDN: they are served at `<base>profiles/`, where `inputModels` from
+    // `@apendua.dev/headset/scene` points three's factories.
+    XRProfilesPlugin(),
+  ],
   build: {
     target: "esnext",
     sourcemap: true,

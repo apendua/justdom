@@ -102,8 +102,7 @@ interface HapticActuator {
 
 function pulse(handle: ControllerHandle | undefined, intensity: number, duration: number) {
   const actuators = handle?.inputSource.get()?.gamepad?.hapticActuators as
-    | HapticActuator[]
-    | undefined;
+    HapticActuator[] | undefined;
   void actuators?.[0]?.pulse?.(intensity, duration);
 }
 

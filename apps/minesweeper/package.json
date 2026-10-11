@@ -15,6 +15,7 @@
   "dependencies": {
     "@apendua.dev/geometry": "workspace:*",
     "@apendua.dev/headset": "workspace:*",
+    "@apendua.dev/media": "workspace:*",
     "@apendua/freedom": "workspace:*",
     "@apendua/justdom": "workspace:*",
     "@apendua/justui": "workspace:*",

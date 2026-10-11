@@ -274,6 +274,11 @@ export function createSessionButton(
     phase = "presenting";
     presented = true;
     relabel();
+    // The click that asked for the session left the button focused, and a
+    // focused button is clicked by Enter: the first Enter typed in the
+    // session, on a keyboard paired with the headset or the emulator's,
+    // would end it.
+    button.blur();
 
     // On the session itself rather than only on the renderer, and before
     // anything is awaited. `XRSession` is a real `EventTarget`, so a listener
@@ -383,9 +388,10 @@ export function createSessionButton(
    * @returns {void}
    */
   function offer() {
-    const xr = /** @type {(XRSystem & {
-     *   offerSession?: (mode: XRSessionMode, init?: XRSessionInit) => Promise<XRSession>;
-     * }) | undefined} */ (navigator.xr);
+    const xr =
+      /** @type {(XRSystem & {
+       *   offerSession?: (mode: XRSessionMode, init?: XRSessionInit) => Promise<XRSession>;
+       * }) | undefined} */ (navigator.xr);
     if (!offerSession || !xr || typeof xr.offerSession !== "function" || phase !== "idle") {
       return;
     }

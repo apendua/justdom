@@ -1,4 +1,12 @@
-import { addDependency, batch, Derived, fromEvent, NoValueError, Signal } from "@apendua/signal";
+import {
+  addDependency,
+  batch,
+  Derived,
+  fromEvent,
+  NoValueError,
+  onCleanup,
+  Signal,
+} from "@apendua/signal";
 import { Subject } from "@apendua/signal";
 import {
   buildCharacterEdges,
@@ -9,9 +17,18 @@ import {
   preservesWhitespace,
   trimLineRange,
 } from "./textLines.js";
-import { isSvgElement } from "./plugins.js";
+import { isSvgElement, isSvgRoot } from "./plugins.js";
+import { classify } from "./animationClock.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import {
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
+  HOVER_ATTRIBUTE,
+  PORTAL_ATTRIBUTE,
+} from "./portalRoot.js";
+import { probeChange, probedDerived, probeNoopWrite, probeRipple } from "./outlineProbe.js";
+import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 import {
   frameFor,
   getGeometryGeneration,
@@ -27,6 +44,7 @@ import {
  * @import {TextBounds} from './textHelpers.js';
  * @import {ClipBox} from './clip.js';
  * @import {FramedRect, PanelFrame} from './panelFrame.js';
+ * @import {Subscribable} from '@apendua/signal';
  */
 
 /**
@@ -163,8 +181,8 @@ export function isBookkeepingMutation(mutation) {
 
 /**
  * The attributes the portal writes onto elements itself, to say what the ray
- * is doing to them: hovering, pressing, and — for a checkbox, whose state no
- * mutation would otherwise report — ticked.
+ * and the keyboard are doing to them: hovering, pressing, typing into, and —
+ * for a checkbox, whose state no mutation would otherwise report — ticked.
  *
  * **A rule that follows one of these may restyle, but may not re-lay-out.**
  * Colour, background, border colour, opacity and `transform` are all fair
@@ -172,8 +190,8 @@ export function isBookkeepingMutation(mutation) {
  * mirrored, and the mirror will go on drawing the boxes at the size they had.
  *
  * A second, narrower contract applies to some of them but not all — see
- * `SELF_SCOPED_ATTRIBUTES` below, which is where the sibling combinators are
- * decided.
+ * `SELF_SCOPED_ATTRIBUTES` below, and `isSelfScoped`, which is where the
+ * sibling combinators are decided.
  *
  * The contract is worth the narrowness because of what it buys. These are by
  * far the most frequent mutations a panel sees — the ray writes one on every
@@ -197,10 +215,10 @@ export function isBookkeepingMutation(mutation) {
  * move its layout on purpose.
  */
 const PRESENTATIONAL_ATTRIBUTES = new Set([
-  "data-xr-hover",
-  "data-xr-active",
-  "data-xr-checked",
-  "data-xr-focus",
+  HOVER_ATTRIBUTE,
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
 ]);
 
 /**
@@ -238,7 +256,217 @@ const PRESENTATIONAL_ATTRIBUTES = new Set([
  * field: `:focus` on a page reaches no sibling either, and `:focus-within`,
  * which does, reaches upward, where no mutation here is followed anyway.
  */
-const SELF_SCOPED_ATTRIBUTES = new Set(["data-xr-hover", "data-xr-active", "data-xr-focus"]);
+const SELF_SCOPED_ATTRIBUTES = new Set([HOVER_ATTRIBUTE, ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE]);
+
+/**
+ * The attributes that place and size what SVG draws, self-scoped on any
+ * element inside an `<svg>` root by contract, as hover is. An attribute
+ * selector on the value itself, `[cx="3"] ~ circle`, would carry one to a
+ * sibling, and the mirror does not follow it. A drawing that moves writes
+ * these on every frame, on many shapes at once, and under the ordinary
+ * scope each write restyled every shape and label under the same parent.
+ * `dx`, `dy` and `rotate` place the characters of a `<text>`, and
+ * `transform` is how a group or a shape usually moves.
+ *
+ * Not on the root: its `width` and `height` size a CSS box in the page's
+ * flow, as they do an `<img>`'s, and on HTML they are an author's
+ * attributes like any other. An `<svg>` directly inside a `<foreignObject>`
+ * is laid out the same way, but the portal draws nothing under a
+ * `<foreignObject>`, so what its siblings would restyle is never drawn.
+ */
+const SVG_GEOMETRY_ATTRIBUTES = new Set([
+  "x",
+  "y",
+  "width",
+  "height",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "d",
+  "points",
+  "dx",
+  "dy",
+  "rotate",
+  "transform",
+]);
+
+/**
+ * Whether a change of `name` on `element` is declared, by contract, unable
+ * to restyle a sibling. See `SELF_SCOPED_ATTRIBUTES` and
+ * `SVG_GEOMETRY_ATTRIBUTES`.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isSelfScoped(element, name) {
+  if (SELF_SCOPED_ATTRIBUTES.has(name)) {
+    return true;
+  }
+  return SVG_GEOMETRY_ATTRIBUTES.has(name) && isSvgElement(element) && !isSvgRoot(element);
+}
+
+/**
+ * An inline style's declarations, by property name. A declaration with no
+ * colon keeps its text as its name, which `classify` reads as layout. So a
+ * value the split cuts in two, a `data:` URL with a `;` in it say, reads as
+ * a change that moves boxes when the cut part changed, and as no change when
+ * it is the same before and after.
+ *
+ * @param {string | null} text
+ * @returns {Map<string, string>}
+ */
+function readDeclarations(text) {
+  /** @type {Map<string, string>} */
+  const declarations = new Map();
+  for (const declaration of (text ?? "").split(";")) {
+    const colon = declaration.indexOf(":");
+    if (colon < 0) {
+      if (declaration.trim()) {
+        declarations.set(declaration.trim(), "");
+      }
+      continue;
+    }
+    declarations.set(
+      declaration.slice(0, colon).trim().toLowerCase(),
+      declaration.slice(colon + 1).trim(),
+    );
+  }
+  return declarations;
+}
+
+/**
+ * The properties that place and size a box, and so move nothing but that box
+ * when the box is out of the flow: an absolutely positioned box adds nothing
+ * to its parent's flow, so its siblings and its parent's size do not depend
+ * on them. The set holds the physical and logical offsets, sizes and margins
+ * an author writes, and the longhands a browser serializes a logical write
+ * as.
+ *
+ * One case escapes it. An out-of-flow box still counts towards its
+ * containing block's scrollable overflow, so where scrollbars take room, a
+ * desktop browser's classic ones, a box grown past the bottom of a scroller
+ * brings a scrollbar in and narrows what the boxes in the flow lay out in.
+ * A headset draws overlay scrollbars and a panel hides its overflow, so the
+ * rule holds where a session runs; a box left stale beside a positioned one
+ * on a desktop page is that case.
+ */
+const OUT_OF_FLOW_GEOMETRY = new Set([
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "inset",
+  "inset-block",
+  "inset-inline",
+  "inset-block-start",
+  "inset-block-end",
+  "inset-inline-start",
+  "inset-inline-end",
+  "width",
+  "height",
+  "min-width",
+  "max-width",
+  "min-height",
+  "max-height",
+  "block-size",
+  "inline-size",
+  "min-block-size",
+  "max-block-size",
+  "min-inline-size",
+  "max-inline-size",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "margin-block",
+  "margin-inline",
+  "margin-block-start",
+  "margin-block-end",
+  "margin-inline-start",
+  "margin-inline-end",
+]);
+
+/**
+ * Whether a computed `position` takes the box out of its parent's flow.
+ *
+ * @param {string} position
+ * @returns {boolean}
+ */
+function isOutOfFlowPosition(position) {
+  return position === "absolute" || position === "fixed";
+}
+
+/**
+ * Whether an inline style that went from `before` to `after` moved no box but
+ * the element's own, across every declaration added, removed or rewritten.
+ * Each one either moves no box at all, as `movesLayout` decides, or places or
+ * sizes an element that is positioned absolutely or fixed, which moves that
+ * element alone. This is what keeps a gauge that writes `style.transform`
+ * every frame, and a scrollbar thumb that writes `top` and `height` on every
+ * scroll, at the cost of their own subtrees, where a width written on a box
+ * in the flow settles the panel. A custom property moves layout, since a
+ * `var()` may feed a width, and so does `position`, which is how a box joins
+ * or leaves the flow.
+ *
+ * A `relative` or `sticky` box is left out although its offsets move it
+ * alone, because its `width` and `height` do move the flow and the gate reads
+ * the position, not the property: its offsets climb, which costs work and
+ * nothing else.
+ *
+ * The position is read from the browser rather than from the mirror's cache,
+ * because an ancestor's class changed in the same flush may not have reached
+ * the cache yet. It is read only when a geometry declaration changed, so a
+ * write of paint alone costs no style read.
+ *
+ * @param {Element} element
+ * @param {string | null} before
+ * @param {string | null} after
+ * @returns {boolean}
+ */
+function keepsToOwnBox(element, before, after) {
+  const was = readDeclarations(before);
+  const now = readDeclarations(after);
+  let placesItself = false;
+  for (const name of new Set([...was.keys(), ...now.keys()])) {
+    const old = was.get(name);
+    const value = now.get(name);
+    if (old === value || (!movesLayout(name, old) && !movesLayout(name, value))) {
+      continue;
+    }
+    if (!OUT_OF_FLOW_GEOMETRY.has(name)) {
+      return false;
+    }
+    placesItself = true;
+  }
+  return !placesItself || isOutOfFlowPosition(window.getComputedStyle(element).position);
+}
+
+/**
+ * Whether one declaration can move a box. The name decides, through the
+ * animation clock's `classify`, with its default: an unknown property moves
+ * layout. The exception is `visibility: collapse`, which takes a table row or a
+ * flex item out of the layout where every other `visibility` only paints. The
+ * value is read as CSS reads a keyword, in any case and with an `!important`
+ * after it, which is how `setProperty` with a priority writes it.
+ *
+ * @param {string} name
+ * @param {string | undefined} value
+ * @returns {boolean}
+ */
+function movesLayout(name, value) {
+  return (
+    classify(name) === "layout" ||
+    (name === "visibility" && /^collapse\s*(!\s*important)?$/i.test(value ?? ""))
+  );
+}
 
 /**
  * Whether a computed `transform` value is one the mirror treats as a
@@ -292,6 +520,12 @@ const nodeCaches = [];
  * cached reads that live beside the elements they serve, such as a list
  * item's number in `listMarker.js`; anything kept per node has to be one of
  * these, or a re-claimed node keeps the first mirror's signals under it.
+ * The exceptions hold nothing of a mirror's, only what the element itself
+ * announces, and are kept for the element's life in a plain `WeakMap` that
+ * says so where it is declared: `assignmentSources` below and
+ * `valueVersions` in `textInput.js`. `hiddenCache` below is not one of
+ * them: it holds a read of the computed style in a plain `WeakMap`, a gap
+ * the architecture plan records under "Found along the way".
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
@@ -303,14 +537,16 @@ export function nodeCache() {
 }
 
 /**
- * Drop everything this module remembers about a node: its record and every
- * cached read. The next `adopt` starts it over under whichever mirror asks.
+ * Drop everything this module remembers about a node: its record, whether
+ * held or let go of, and every cached read. The next `adopt` starts it over
+ * under whichever mirror asks.
  *
  * @param {Node} node
  * @returns {void}
  */
 export function forgetNode(node) {
   records.delete(node);
+  takeDeparted(node);
   for (const cache of nodeCaches) {
     cache.delete(node);
   }
@@ -421,7 +657,18 @@ const ATOMIC_INLINE_TAGS = new Set([
  * @returns {boolean}
  */
 function splitsAcrossLines(element) {
-  const display = getComputedStyleCached(element).display;
+  return displaySplitsAcrossLines(element, getComputedStyleCached(element).display);
+}
+
+/**
+ * `splitsAcrossLines` for a `display` the caller has read itself, as the
+ * line box copy does without subscribing to it (`dressLaidOut`).
+ *
+ * @param {Element} element
+ * @param {string} display
+ * @returns {boolean}
+ */
+function displaySplitsAcrossLines(element, display) {
   if (display === "contents") {
     return true;
   }
@@ -581,13 +828,54 @@ class NodeRecord {
  * One registry for every portal: which mirror a node belongs to, and its
  * record. Module-level so the cached reads below can be called with a node
  * alone — the way `div`/`text` and the tests want to call them. A node
- * that no portal adopted reads as the DOM has it, and a cache of that read
- * follows the node's adoption (`readRecordOf`), so it is read again once
- * a portal does adopt it.
+ * that no portal adopted, or one its portal let go of (`release`), reads as
+ * the DOM has it, and a cache of that read follows the node's adoption
+ * (`readRecordOf`), so it is read again once a portal does adopt it.
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
 const records = new WeakMap();
+
+/**
+ * The records of nodes that left a panel and whose objects are still drawn,
+ * waiting for the commit that takes them out (see `DomMirror.release`). Out
+ * of `records`, so that nothing reaches them, and kept, so that a node put
+ * back before the commit picks up the record its cached reads still hang
+ * from.
+ *
+ * @type {WeakMap<Node, NodeRecord>}
+ */
+const departed = new WeakMap();
+
+/**
+ * How many of `departed`'s records each mirror has, so that the ingest of an
+ * ordinary arrival, with none to take back, walks nothing (`reclaim`).
+ *
+ * It can stay above zero. A node let go of that the portal built no object
+ * for, a comment or a template's child, and that the page then took out of
+ * the departed subtree before the commit, is on neither of the walks the
+ * commit forgets by. Its record stays here, and from then on `reclaim` walks
+ * every added subtree and finds nothing in it: the cost this count saves,
+ * and nothing worse.
+ *
+ * @type {WeakMap<DomMirror, number>}
+ */
+const departures = new WeakMap();
+
+/**
+ * Take a node's record out of `departed`, keeping its mirror's count.
+ *
+ * @param {Node} node
+ * @returns {NodeRecord | undefined}
+ */
+function takeDeparted(node) {
+  const record = departed.get(node);
+  if (record) {
+    departed.delete(node);
+    departures.set(record.mirror, (departures.get(record.mirror) ?? 1) - 1);
+  }
+  return record;
+}
 
 /**
  * The nodes read before any portal adopted them, each with a signal the
@@ -609,14 +897,13 @@ let adopted = null;
  * Tell whatever read the node before it had a record to read it again (see
  * `readRecordOf`): from a microtask, and all the nodes adopted since the
  * last one together. `adopt` is called from readers' computations, by the
- * SVG plugin for a `<text>`'s runs and for a template, and by the list
- * marker for an item's first line, and a signal written with no batch open
- * drains the queue then and there, which would run the effects that depend
- * on the adoption in the middle of the computation that adopted, with the
- * `Derived` it is evaluating still empty: a reader of it would meet a
- * cycle. A microtask runs once the stack is empty, so nothing is computing,
- * and the one batch lets a template's subtree, adopted node by node, come
- * round as one update.
+ * list marker for an item's first line, and a signal written with no batch
+ * open drains the queue then and there, which would run the effects that
+ * depend on the adoption in the middle of the computation that adopted,
+ * with the `Derived` it is evaluating still empty: a reader of it would
+ * meet a cycle. A microtask runs once the stack is empty, so nothing is
+ * computing, and the one batch lets a template's subtree, adopted node by
+ * node, come round as one update.
  *
  * @param {Signal<boolean>} signal
  * @returns {void}
@@ -744,26 +1031,116 @@ export class DomMirror {
    * @returns {void}
    */
   adopt(node) {
-    if (!records.has(node)) {
-      records.set(node, new NodeRecord(this, node));
-      const adoption = adoptions.get(node);
-      if (adoption) {
-        adoptions.delete(node);
-        announceAdoption(adoption);
+    if (records.has(node)) {
+      return;
+    }
+    let record = takeDeparted(node);
+    if (record) {
+      if (record.mirror !== this) {
+        // Another panel's, on its way out of it, and everything cached for
+        // it hangs off that panel's signals.
+        forgetNode(node);
+        record = undefined;
       }
+    }
+    records.set(node, record ?? new NodeRecord(this, node));
+    const adoption = adoptions.get(node);
+    if (adoption) {
+      adoptions.delete(node);
+      announceAdoption(adoption);
     }
   }
 
   /**
-   * Let go of a node this mirror adopted: its record and every read cached
-   * for it, so that a portal claiming it later — a second session over an
-   * element the page owns — is not left with this mirror's signals under
-   * it. See `forgetNode`.
+   * Let go of a node that left the panel, and of everything under it, while
+   * the portal keeps drawing their objects until its commit. From here on
+   * the mirror bumps nothing for them, and a read cached for one of them
+   * that runs again reads it as a node no portal adopted (`readRecordOf`),
+   * which depends on nothing the panel changes. The last thing they hear is
+   * a bump of the node's `reparented`, given here before its record is put
+   * aside, so that it does not depend on the ingest of the removal having
+   * come first. It cuts the subtree off its parent chain, so each read that
+   * depended on the panel runs once more, finds no record, and keeps
+   * nothing of the panel's. A font arriving, or a stylesheet changing,
+   * before the commit then reaches none of them.
+   *
+   * Their records are kept to one side rather than dropped. A node put back
+   * before the commit was moved, not removed, keeps its objects, and takes
+   * its record back (`reclaim`), so the reads its objects hold, which still
+   * hang from that record, hear it again. What the page did to the subtree
+   * while it was out is not heard, since the observer stops reporting a
+   * node once it has reported the node's removal.
    *
    * @param {Node} node
    * @returns {void}
    */
   release(node) {
+    batch(() => {
+      const record = records.get(node);
+      if (record?.mirror === this) {
+        bump(record.reparented);
+      }
+      this.#putAside(node);
+    });
+  }
+
+  /**
+   * @param {Node} node
+   * @returns {void}
+   */
+  #putAside(node) {
+    const record = records.get(node);
+    if (record?.mirror === this) {
+      records.delete(node);
+      departed.set(node, record);
+      departures.set(this, (departures.get(this) ?? 0) + 1);
+    }
+    node.childNodes.forEach((child) => {
+      this.#putAside(child);
+    });
+  }
+
+  /**
+   * Take back every node under `node`, itself included, that this mirror
+   * let go of (`release`), now that the panel has them again. The whole
+   * subtree is walked, not only from a node that was let go of: while out
+   * of the document the page may have put one inside an element the panel
+   * has never seen, and the flush then names that element. A mirror with
+   * nothing let go of walks nothing.
+   *
+   * @param {Node} node
+   * @returns {void}
+   */
+  reclaim(node) {
+    if (!departures.get(this)) {
+      return;
+    }
+    if (departed.get(node)?.mirror === this) {
+      this.adopt(node);
+    }
+    node.childNodes.forEach((child) => {
+      this.reclaim(child);
+    });
+  }
+
+  /**
+   * Drop everything remembered about a node this mirror let go of, its
+   * record and every read cached for it, once its objects are gone, so that
+   * a portal claiming it later, such as a second session over an element
+   * the page owns, is not left with this mirror's signals under it. See
+   * `forgetNode`. A node another panel has adopted since is that panel's,
+   * and is left to it.
+   *
+   * @param {Node} node
+   * @returns {void}
+   */
+  forget(node) {
+    // Held or let go of: one another panel has let go of since is still
+    // that panel's, waiting for its own commit or to be taken back.
+    const owner = (records.get(node) ?? departed.get(node))?.mirror;
+    if (owner && owner !== this) {
+      return;
+    }
     forgetNode(node);
   }
 
@@ -830,12 +1207,16 @@ export class DomMirror {
     for (const mutation of mutationList) {
       switch (mutation.type) {
         case "childList": {
+          probeChange(mutation.target);
           this.childListChanged(
             /** @type {Element} */ (mutation.target),
             firstDisturbedChild(mutation),
             childListHint(mutation, kept(mutation.target)),
           );
           mutation.addedNodes.forEach((node) => {
+            // Back before the commit took it out: before the bump, so that
+            // the bump lands on the record its reads hang from.
+            this.reclaim(node);
             const record = recordOf(node);
             if (record) {
               bump(record.reparented);
@@ -879,25 +1260,38 @@ export class DomMirror {
       // input's siblings, which is where a checkbox's label lives.
       let presentational = true;
       let selfScoped = true;
+      let contained = true;
       for (const [name, oldValue] of names) {
-        if (element.getAttribute(name) === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+        if (PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+          continue;
+        }
+        const value = element.getAttribute(name);
+        if (value === oldValue) {
+          probeNoopWrite(element);
           continue;
         }
         changed = true;
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
           presentational = false;
+          if (name !== "style" || !keepsToOwnBox(element, oldValue, value)) {
+            contained = false;
+          }
         }
-        if (!SELF_SCOPED_ATTRIBUTES.has(name)) {
+        if (!isSelfScoped(element, name)) {
           selfScoped = false;
         }
       }
       if (changed) {
-        this.attributeChanged(element, { presentational, selfScoped });
+        probeChange(element);
+        this.attributeChanged(element, { presentational, selfScoped, contained });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
       if (node.nodeValue !== oldValue) {
+        probeChange(node);
         this.characterDataChanged(node);
+      } else {
+        probeNoopWrite(node);
       }
     }
   }
@@ -906,7 +1300,32 @@ export class DomMirror {
    * An attribute on `element` actually changed value. Restyles the
    * parent-of-target subtree (descendants through the element's own
    * signal, siblings through the parent's member signal — `:has()` alone
-   * is not modelled), and re-measures the element's own subtree.
+   * is not modelled), re-measures the element's own subtree, and settles
+   * the layout around it as a child arriving at its place would.
+   *
+   * The climb is what lets a class swap or a `hidden` resize the panel. It
+   * starts at the parent, telling the element and the children after it
+   * that they moved, and goes on past a parent that changed size or whose
+   * size says nothing, an inline box (see `#settleLayout`). Each child told
+   * re-measures its own box and stops there when the box came out where it
+   * was. So a swap that moved nothing costs a rect for the element and for
+   * each element after it, a text measurement for each text node after it,
+   * a rect for the parent's size, and a rect for each positioned box in the
+   * panel (`outOfFlowLayout`). That is the scope the restyle above already
+   * has, since an author's attribute can restyle its siblings.
+   *
+   * In a flex row every child is told, the ones before the element too:
+   * the items share the row, so an item that grows shrinks the items
+   * before it as well as moving the ones after it.
+   *
+   * Three changes start no climb. An inline `style` that moved no box but
+   * the element's own (`contained`, see `keepsToOwnBox`) is the motion a
+   * page writes every frame: a transform, a fade, a positioned thumb sliding
+   * along its track. The panel's root has nothing above it in the panel,
+   * and its own size is in the subtree re-measured above. An SVG element
+   * under an `<svg>` root is placed in user space, so an attribute on it
+   * moves none of its siblings; the root's own attributes, its `width` say,
+   * are a box's and climb.
    *
    * @param {Node} element
    * @param {object} [options]
@@ -918,10 +1337,17 @@ export class DomMirror {
    *   unable to restyle a sibling, so the restyle can stop at this element's
    *   own subtree. False by default. Independent of `presentational` because
    *   the two claims are: `data-xr-checked` moves no layout but may still
-   *   style the label beside it. See `SELF_SCOPED_ATTRIBUTES`.
+   *   style the label beside it. See `isSelfScoped`.
+   * @param {boolean} [options.contained] Whether the change is an inline
+   *   style that moved no box but the element's own, so the element's subtree
+   *   re-measures and the layout around it is not settled. False by default.
+   *   See `keepsToOwnBox`.
    * @returns {void}
    */
-  attributeChanged(element, { presentational = false, selfScoped = false } = {}) {
+  attributeChanged(
+    element,
+    { presentational = false, selfScoped = false, contained = false } = {},
+  ) {
     batch(() => {
       this.#restyleScope(element, { reachesSiblings: !selfScoped });
       if (presentational) {
@@ -930,6 +1356,15 @@ export class DomMirror {
       const record = recordOf(element);
       if (record) {
         bumpReflow(element, record);
+      }
+      const parent = element.parentElement;
+      if (
+        parent &&
+        !contained &&
+        !isPortalRoot(element) &&
+        (!isSvgElement(element) || isSvgRoot(element))
+      ) {
+        this.#layoutChangedAt(parent, getFlowMode(parent) === "flex" ? null : element);
       }
     });
   }
@@ -1206,10 +1641,11 @@ export class DomMirror {
    * ever hears about the change. See `documentStyles.js`.
    *
    * **It costs a whole-panel restyle and re-measure**, which is the honest
-   * price of an event that names nothing. Fine for a theme swap or a
-   * state-driven rule; expensive for a value animated at frame rate. Animate
-   * through an inline `style` instead — that is a mutation on the element
-   * that moved, and it is scoped to it.
+   * price of an event that names nothing. A change whose rules all start
+   * from classes names what it styles, and goes to `classRulesChanged`
+   * instead. Fine for a theme swap or a state-driven rule; expensive for a
+   * value animated at frame rate. Animate through an inline `style` instead
+   * — that is a mutation on the element that moved, and it is scoped to it.
    *
    * A rule may also transform something above the panel's root, which is
    * the one place the portal hears about that, so every frame reads its
@@ -1220,6 +1656,58 @@ export class DomMirror {
   documentStylesChanged() {
     invalidatePanelFrames();
     this.#everythingChanged();
+  }
+
+  /**
+   * The document's stylesheets changed, and every rule that changed starts
+   * from one of `classes` (see `scopeOfSheet` in `documentStyles.js`). Such
+   * a rule matches only an element wearing the class, its subtree, and what
+   * comes after it among its siblings. So a panel the classes cannot reach
+   * restyles nothing, and one they can reach restyles and re-measures
+   * everything, as `documentStylesChanged` does. That is the usual case for
+   * a sheet a styling library writes as the elements it dresses arrive, such
+   * as a keyboard's when the keyboard opens: the keyboard's panel pays, and
+   * the others do not.
+   *
+   * The classes reach the panel from an element wearing one inside it, the
+   * root included; from above the root, passing what the rule says down to
+   * all of it; and from before the root or one of its ancestors among their
+   * siblings, through a rule's `~` or `+`.
+   *
+   * A panel that is reached restyles as a whole rather than only its
+   * wearers, because the wearers are usually being adopted as their sheet
+   * arrives, and restyling only them, as a change to their `class` would,
+   * left a panel's construction picker with options the ray passed through.
+   *
+   * @param {Element} root The panel's root.
+   * @param {ReadonlySet<string>} classes Names `leadingClass` read, which
+   *   need no escaping in a selector.
+   * @returns {void}
+   */
+  classRulesChanged(root, classes) {
+    if (classes.size === 0) {
+      return;
+    }
+    const wears = (/** @type {Element} */ element) =>
+      [...classes].some((name) => element.classList.contains(name));
+    let reaches = root.querySelector([...classes].map((name) => `.${name}`).join(", ")) !== null;
+    for (
+      let current = /** @type {Element | null} */ (root);
+      current && !reaches;
+      current = current.parentElement
+    ) {
+      reaches = wears(current);
+      for (
+        let before = current.previousElementSibling;
+        before && !reaches;
+        before = before.previousElementSibling
+      ) {
+        reaches = wears(before);
+      }
+    }
+    if (reaches) {
+      this.documentStylesChanged();
+    }
   }
 
   /**
@@ -1267,7 +1755,8 @@ export class DomMirror {
 
   /**
    * The layout inside `container` changed: a child arrived or left, a text
-   * node was rewritten, a picture turned out to have a size.
+   * node was rewritten, a picture turned out to have a size, an attribute
+   * changed a child.
    *
    * @param {Element} container
    * @param {Node | null} from The earliest child the change could have
@@ -1337,7 +1826,10 @@ export class DomMirror {
    * what makes appending to a list cost the same whether the list has ten
    * rows or a thousand: the arriving row is the last child, and there is
    * nothing after it to tell. Prepending still costs the whole list, which is
-   * right — everything in it moved.
+   * right — everything in it moved. A flex row does not keep the claim: an
+   * item that grows can shrink and move the items before it. So an attribute
+   * change there names no child and the whole row hears it; a child-list or
+   * text change in one does not yet (see `FlowMode`).
    *
    * @param {Map<Element, Node | null>} containers
    * @returns {void}
@@ -1413,7 +1905,9 @@ export class DomMirror {
    * edge, and a `from` that is no longer a child of the element — the node
    * that named it having been removed by a later record in the same flush —
    * is no hint at all. Either way the fallback is the whole list, which is
-   * what this always did.
+   * what this always did. A flex row obeys the hint although an item that
+   * grows can shrink and move the items before it, which leaves them stale
+   * after a child-list or text change (see `FlowMode`).
    *
    * @param {Element} element
    * @param {Node | null} from
@@ -1427,6 +1921,7 @@ export class DomMirror {
     for (let child = start; child; child = child.nextSibling) {
       const record = recordOf(child);
       if (record) {
+        probeRipple(child);
         bump(record.moved);
       }
     }
@@ -1439,10 +1934,12 @@ export class DomMirror {
    *   restyle `node`'s siblings as well as its own subtree. True by
    *   default: an author's mutation can change which rules match across
    *   `~`, `+` and the structural pseudo-classes, and those reach exactly
-   *   that far. False for the changes that provably cannot move a
-   *   selector's verdict on a sibling — see `SELF_SCOPED_ATTRIBUTES` and
-   *   `animatedStyles` — which is what keeps hovering one row in a long
-   *   list off every other row in it.
+   *   that far. False for the changes that cannot move a selector's
+   *   verdict on a sibling, an animation (`animatedStyles`), and for the
+   *   ones declared not to by contract (`isSelfScoped`), whose sibling
+   *   rules are not followed. That is what keeps hovering one row in a
+   *   long list off every other row in it, and moving one shape of a
+   *   drawing off every other shape in it.
    * @returns {void}
    */
   #restyleScope(node, { reachesSiblings = true } = {}) {
@@ -1643,7 +2140,11 @@ function earlierOf(a, b) {
  * - `"flex"` — children are placed one after another in document order from a
  *   fixed start edge, but the cross axis is the container's to hand out:
  *   `stretch` and `align-items` mean a container that changed height changed
- *   its children with it.
+ *   its children with it. The order promises nothing about the items before
+ *   a change: they share the main axis, so one that grows can shrink every
+ *   item before it and move all but the first. `attributeChanged` tells the
+ *   whole row for that reason; a child arriving or text rewritten does not
+ *   yet (the plan's "Found along the way").
  * - `"block"` — the same order, and the block axis is nobody's business but
  *   each child's own. A block container that got taller got taller *because*
  *   of its children, and stacking them from the top is all it ever does.
@@ -1659,14 +2160,15 @@ const flowModeCache = nodeCache();
  *
  * Two claims rest on this, and the distinction between them is what the three
  * answers are for. The first is that a change at one child cannot move the
- * children *before* it — a narrower claim than it sounds, since plenty of
- * ordinary containers place their children from the far end, or from the
- * middle, or in an order of their own: adding a row to a `justify-content:
- * center` list moves every row already in it, and adding one to a
- * `column-reverse` list moves all of them and puts the new one first. The
- * second is that a container growing along the block axis leaves its children
- * where they are, which is true of block flow and emphatically not of flex,
- * where the cross axis is handed out by the container.
+ * children *before* it, which a flex row does not keep (see `FlowMode`) — a
+ * narrower claim than it sounds, since plenty of ordinary containers place
+ * their children from the far end, or from the middle, or in an order of their
+ * own: adding a row to a `justify-content: center` list moves every row already
+ * in it, and adding one to a `column-reverse` list moves all of them and puts
+ * the new one first. The second is that a container growing along the block
+ * axis leaves its children where they are, which is true of block flow and
+ * emphatically not of flex, where the cross axis is handed out by the
+ * container.
  *
  * So the whitelist is written as a whitelist, and everything not on it falls
  * back to telling every child — which costs what this did before the
@@ -1686,7 +2188,7 @@ const flowModeCache = nodeCache();
 function getFlowMode(element) {
   let signal = flowModeCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       const style = getComputedStyleCached(element);
       // A different writing mode or direction moves the start edge, and
       // "before in the document" stops meaning "before on screen". Read
@@ -1897,8 +2399,7 @@ export function isPortalRoot(node) {
  * @returns {boolean}
  */
 function isPositioned(element) {
-  const position = getPositionStyle(element);
-  return position === "absolute" || position === "fixed";
+  return isOutOfFlowPosition(getPositionStyle(element));
 }
 
 /** @type {WeakMap<Node, Derived<number>>} */
@@ -1986,7 +2487,7 @@ const textDataCache = nodeCache();
 export function getTextDataCached(text) {
   let signal = textDataCache.get(text);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(text, () => {
       readRecordOf(text)?.character.get();
       return text.data;
     });
@@ -2009,7 +2510,7 @@ const inlineSizeCache = nodeCache();
 function getBorderBoxInlineSize(element) {
   let signal = inlineSizeCache.get(element);
   if (!signal) {
-    signal = new Derived(() => getBorderBoxSize(element).width);
+    signal = probedDerived(element, () => getBorderBoxSize(element).width);
     inlineSizeCache.set(element, signal);
   }
   return signal.get();
@@ -2135,7 +2636,7 @@ export function getAttributeCached(element, name) {
   }
   let signal = signalMap.get(name);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       readRecordOf(element)?.self.get();
       return element.getAttribute(name);
     });
@@ -2165,7 +2666,7 @@ const transformedCache = nodeCache();
 export function isTransformed(element) {
   let signal = transformedCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       if (isPortalRoot(element)) {
         return false;
       }
@@ -2194,7 +2695,7 @@ const positionCache = nodeCache();
 function getPositionStyle(element) {
   let signal = positionCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       return getComputedStyleCached(element).position || "static";
     });
     positionCache.set(element, signal);
@@ -2238,7 +2739,7 @@ const hiddenCache = new WeakMap();
 export function isVisibilityHidden(node) {
   let signal = hiddenCache.get(node);
   if (!signal) {
-    signal = new Derived(() => hidesVisibility(getComputedStyleCached(node).visibility));
+    signal = probedDerived(node, () => hidesVisibility(getComputedStyleCached(node).visibility));
     hiddenCache.set(node, signal);
   }
   return signal.get();
@@ -2282,7 +2783,7 @@ const opacityCache = nodeCache();
 export function getOpacity(element) {
   let signal = opacityCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       const own = parseFloat(getComputedStyleCached(element).opacity);
       const opacity = Number.isNaN(own) ? 1 : own;
       if (isPortalRoot(element)) {
@@ -2355,7 +2856,8 @@ const borderBoxSizeCache = nodeCache();
 export function getBorderBoxSize(element) {
   let signal = borderBoxSizeCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         getReflowContext(element);
         readParentBox(element);
@@ -2365,7 +2867,7 @@ export function getBorderBoxSize(element) {
         const rect = readClientRect(element);
         return { width: rect.width, height: rect.height };
       },
-      { isEqual: sizeEqual },
+      sizeEqual,
     );
     borderBoxSizeCache.set(element, signal);
   }
@@ -2428,7 +2930,8 @@ const contentPositionCache = nodeCache();
 export function getContentPosition(element) {
   let signal = contentPositionCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         getReflowContext(element);
         readParentBox(element);
@@ -2438,7 +2941,7 @@ export function getContentPosition(element) {
         }
         return measureOffsetWithin(element, parent);
       },
-      { isEqual: positionEqual },
+      positionEqual,
     );
     contentPositionCache.set(element, signal);
   }
@@ -2483,7 +2986,7 @@ const anchorCache = nodeCache();
 function getAnchorElement(element) {
   let signal = anchorCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       let holder = getParentElement(element);
       while (holder && !isPortalRoot(holder)) {
         if (getPositionStyle(holder) !== "static") {
@@ -2549,7 +3052,8 @@ const anchoredOffsetCache = nodeCache();
 function getAnchoredOffset(element) {
   let signal = anchoredOffsetCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const position = getPositionStyle(element);
         const anchor =
@@ -2565,7 +3069,7 @@ function getAnchoredOffset(element) {
         const measured = measureOffsetWithin(element, anchor);
         return { anchor, x: measured.x, y: measured.y };
       },
-      { isEqual: anchoredOffsetEqual },
+      anchoredOffsetEqual,
     );
     anchoredOffsetCache.set(element, signal);
   }
@@ -2593,7 +3097,8 @@ const objectPositionCache = nodeCache();
 export function getObjectPosition(element) {
   let signal = objectPositionCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const parent = getParentElement(element);
         if (!parent) {
@@ -2635,7 +3140,7 @@ export function getObjectPosition(element) {
         const parentScroll = getScrollOffset(parent);
         return { x: x + parentScroll.left, y: y + parentScroll.top };
       },
-      { isEqual: positionEqual },
+      positionEqual,
     );
     objectPositionCache.set(element, signal);
   }
@@ -2831,7 +3336,8 @@ const ownClipWindowCache = nodeCache();
 function getOwnClipWindow(element) {
   let signal = ownClipWindowCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const style = getComputedStyleCached(element);
         const clipsX = hidesOverflow(style, "overflowX");
@@ -2869,7 +3375,7 @@ function getOwnClipWindow(element) {
             clipsX && clipsY ? inset(style.borderBottomLeftRadius, borderLeft, borderBottom) : 0,
         };
       },
-      { isEqual: clipBoxEqual },
+      clipBoxEqual,
     );
     ownClipWindowCache.set(element, signal);
   }
@@ -2931,7 +3437,8 @@ const clipPairCache = nodeCache();
 function getClipPair(element) {
   let signal = clipPairCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const local = evaluateLocalClip(element);
         const own = getOwnClipWindow(element);
@@ -2941,7 +3448,7 @@ function getClipPair(element) {
         const interior = local === UNCLIPPED ? own : intersectClipBoxes(local, own);
         return { local, interior };
       },
-      { isEqual: clipPairEqual },
+      clipPairEqual,
     );
     clipPairCache.set(element, signal);
   }
@@ -3036,6 +3543,71 @@ export function getLocalClipBox(element) {
 const checkedCache = nodeCache();
 
 /**
+ * The assignments to each checkbox's `checked`, one source per element
+ * however many readers follow it. Not a `nodeCache()`, and on purpose: it
+ * holds no signal of any mirror's, only what the element's own accessor
+ * announces, so a release has nothing in it to forget. Kept for the
+ * element's life, which is what lets a reader built before a release and
+ * one built after it share the one accessor (see `checkedAssignments`).
+ *
+ * @type {WeakMap<HTMLInputElement, Subscribable<void>>}
+ */
+const assignmentSources = new WeakMap();
+
+/**
+ * Every assignment to the element's `checked` that moved it, for as long as
+ * something listens. The first listener installs an own accessor that calls
+ * through to the browser's and then says so (`shadowAccessor`), the last
+ * one to leave takes it off again, and every listener between shares it
+ * (`holdShared`), as `trackValue` holds a field's `value`: a reader that
+ * installed its own accessor over another's would leave the first deaf, and
+ * one that took the accessor away would leave the rest deaf. An element
+ * that already carries an own `checked`, an app's or a library's, is left
+ * with it and followed through `change` alone.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {Subscribable<void>}
+ */
+function checkedAssignments(element) {
+  let source = assignmentSources.get(element);
+  if (!source) {
+    /** @type {Subject<void>} */
+    const assigned = new Subject();
+    const install = () =>
+      shadowAccessor(
+        element,
+        "checked",
+        /**
+         * @param {boolean} value
+         * @param {(value: boolean) => void} write
+         * @param {() => boolean} read
+         */
+        (value, write, read) => {
+          const before = read();
+          write(value);
+          if (read() !== before) {
+            assigned.next();
+          }
+        },
+      ) ?? (() => {});
+    source = {
+      subscribe(observer) {
+        const release = holdShared(element, "checked", install);
+        const subscription = assigned.subscribe(observer);
+        return {
+          unsubscribe() {
+            subscription.unsubscribe();
+            release();
+          },
+        };
+      },
+    };
+    assignmentSources.set(element, source);
+  }
+  return source;
+}
+
+/**
  * Whether a checkbox is ticked, as something the scene can be drawn from.
  *
  * This is the one piece of state here that a MutationObserver cannot report.
@@ -3044,13 +3616,14 @@ const checkedCache = nodeCache();
  * `input.checked = …` moves a property, which mutates nothing whatsoever. So
  * the two ways it can move are watched one each: `change`, which the browser
  * fires for the user's own toggles and for the synthetic click a ray sends,
- * and the property itself, instrumented below so that an assignment announces
- * itself the way an attribute mutation would.
+ * and the property itself, instrumented so that an assignment announces
+ * itself the way an attribute mutation would (`checkedAssignments`).
  *
  * The instrumentation is an own accessor that delegates to the one it shadows,
  * so the element goes on behaving exactly as it did — including for anything
- * else holding a reference to it — and is installed once per element, on the
- * first read.
+ * else holding a reference to it. It is on the element while something reads
+ * this, and taken off once nothing does, so a page that mirrored a box and
+ * ended its session is left with the box as it was.
  *
  * @param {HTMLInputElement} element
  * @returns {boolean}
@@ -3058,35 +3631,14 @@ const checkedCache = nodeCache();
 export function getCheckedCached(element) {
   let signal = checkedCache.get(element);
   if (!signal) {
-    /** @type {Subject<void>} */
-    const assigned = new Subject();
-    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "checked");
-    const read = descriptor?.get;
-    const write = descriptor?.set;
-    if (read && write) {
-      Object.defineProperty(element, "checked", {
-        configurable: true,
-        enumerable: false,
-        get() {
-          return read.call(this);
-        },
-        /** @param {boolean} value */
-        set(value) {
-          const before = read.call(this);
-          write.call(this, value);
-          if (read.call(this) !== before) {
-            assigned.next();
-          }
-        },
-      });
-    }
     // Two edges rather than one `merge` of them: a dependency is anything with
     // a `subscribe`, and a node reading both is told by either. Both are built
     // outside the derivation so that each evaluation reads the *same*
     // dependency and keeps the edge it already has, rather than making a fresh
     // one to attach and dropping the old.
     const changed = fromEvent(element, "change");
-    signal = new Derived(() => {
+    const assigned = checkedAssignments(element);
+    signal = probedDerived(element, () => {
       addDependency(changed);
       addDependency(assigned);
       return element.checked;
@@ -3115,24 +3667,99 @@ export function getCheckedCached(element) {
  * (`.card[data-state] p`) has no ancestors to match against and falls back
  * to base styling.
  *
- * @param {HTMLElement} element
- * @returns {HTMLElement}
+ * The clone is appended to the body, or, given a `host`, to the host, which
+ * is appended to the body in its place and parked instead: an SVG `<text>`
+ * is laid out only inside an `<svg>` (`measureRuns` in `svg/text.js`). The
+ * clone's own `visibility` hides it either way, since the style copied onto
+ * it says `visible`; what is parked is only moved off-screen, and marked
+ * `inert` and `aria-hidden`, which keep it out of focus and the
+ * accessibility tree. A clone of a panel's root drops `PORTAL_ATTRIBUTE`, so
+ * that it is measured in the body's frame rather than taken for a panel of
+ * its own. The caller removes what was appended, the host if it gave one.
+ *
+ * @template {HTMLElement | SVGElement} T
+ * @param {T} element
+ * @param {HTMLElement | SVGElement | null} [host] What the clone is laid out
+ *   in, if not the body.
+ * @returns {T}
  */
-function createMeasurementClone(element) {
-  const clone = /** @type {HTMLElement} */ (element.cloneNode(true));
-  const computed = window.getComputedStyle(element);
+export function createMeasurementClone(element, host = null) {
+  return parkMeasurementClone(element, /** @type {T} */ (element.cloneNode(true)), host);
+}
+
+/**
+ * The second half of `createMeasurementClone`, for a copy of `element` the
+ * caller has made itself: dress it in the element's resolved style, with
+ * its transform, transitions and animations switched off (`copyStillStyle`),
+ * and park it.
+ *
+ * @template {HTMLElement | SVGElement} T
+ * @param {T} element
+ * @param {T} clone
+ * @param {HTMLElement | SVGElement | null} host
+ * @returns {T}
+ */
+function parkMeasurementClone(element, clone, host) {
+  copyStillStyle(element, clone);
+  clone.removeAttribute(PORTAL_ATTRIBUTE);
+  clone.style.setProperty("visibility", "hidden", "important");
+  const parked = host ?? clone;
+  parked.style.setProperty("position", "absolute", "important");
+  parked.style.setProperty("top", "0", "important");
+  parked.style.setProperty("left", "-99999px", "important");
+  parked.setAttribute("inert", "");
+  parked.setAttribute("aria-hidden", "true");
+  if (host) {
+    host.appendChild(clone);
+  }
+  document.body.appendChild(parked);
+  return clone;
+}
+
+/**
+ * Write every resolved style of `element` onto `clone` inline, so that the
+ * clone is laid out as the element is wherever it is put, and switch its
+ * transform, transitions and animations off. An animation would start
+ * again on the clone at its first keyframe, and an animated value beats an
+ * inline one that is not `!important`.
+ *
+ * @param {HTMLElement | SVGElement} element
+ * @param {HTMLElement | SVGElement} clone
+ * @param {CSSStyleDeclaration} [computed] The element's computed style, if
+ *   the caller has it already.
+ * @returns {void}
+ */
+function copyStillStyle(element, clone, computed = window.getComputedStyle(element)) {
+  // Written as one declaration list, which the browser parses once, rather
+  // than a `setProperty` per property: a computed style has some 350.
+  /** @type {string[]} */
+  const declarations = [];
   for (let i = 0; i < computed.length; i++) {
     const property = computed[i];
-    clone.style.setProperty(property, computed.getPropertyValue(property));
+    declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
   }
-  clone.style.setProperty("transform", "none", "important");
-  clone.style.setProperty("transition", "none", "important");
-  clone.style.setProperty("animation", "none", "important");
-  clone.style.setProperty("position", "absolute", "important");
-  clone.style.setProperty("top", "0", "important");
-  clone.style.setProperty("left", "-99999px", "important");
-  clone.style.setProperty("visibility", "hidden", "important");
-  return clone;
+  // The custom properties the clone's own inline style sets go after them,
+  // since Chromium enumerates none in a computed style, and a child styled
+  // with `var(--gap)` would lose the `--gap` the element sets. Those alone:
+  // the rest of the inline style is in the computed values already, and an
+  // `!important` on it would outrank them. A custom property keeps its
+  // priority, since nothing in the computed list can be outranked by it, and
+  // an inline `!important` is what beats a stylesheet's.
+  for (let i = 0; i < clone.style.length; i++) {
+    const property = clone.style[i];
+    if (property.startsWith("--")) {
+      const priority = clone.style.getPropertyPriority(property);
+      declarations.push(
+        `${property}: ${clone.style.getPropertyValue(property)}${priority ? ` !${priority}` : ""}`,
+      );
+    }
+  }
+  declarations.push(
+    "transform: none !important",
+    "transition: none !important",
+    "animation: none !important",
+  );
+  clone.style.cssText = declarations.join("; ");
 }
 
 /**
@@ -3208,7 +3835,7 @@ const whiteSpaceCache = nodeCache();
 function getWhiteSpace(element) {
   let signal = whiteSpaceCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       return getComputedStyleCached(element).whiteSpace || "normal";
     });
     whiteSpaceCache.set(element, signal);
@@ -3264,6 +3891,28 @@ export function resetMeasuringRangeForTests() {
 }
 
 /**
+ * Measure with the shared range (`getMeasuringRange`), and let go of what it
+ * measured afterwards. Every text measurement goes through this, an SVG
+ * `<text>`'s included (`measureRuns` in `svg/text.js`).
+ *
+ * @template R
+ * @param {(range: Range) => R} measure Synchronous, and making no
+ *   measurement of its own through this.
+ * @returns {R}
+ */
+export function withMeasuringRange(measure) {
+  const range = getMeasuringRange();
+  try {
+    return measure(range);
+  } finally {
+    // Let go of the node. The document has children, so offset 0 is a valid
+    // point in it, and it is one that nothing inside a panel can disturb.
+    range.setStart(document, 0);
+    range.setEnd(document, 0);
+  }
+}
+
+/**
  * @param {Text} text
  * @param {HTMLElement} parentElement
  * @param {string} whiteSpace
@@ -3272,15 +3921,9 @@ export function resetMeasuringRangeForTests() {
  * @returns {TextLayout}
  */
 function measureTextRects(text, parentElement, whiteSpace, scrolled, revealed) {
-  const range = getMeasuringRange();
-  try {
-    return measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed);
-  } finally {
-    // Let go of the node. The document has children, so offset 0 is a valid
-    // point in it, and it is one that nothing inside a panel can disturb.
-    range.setStart(document, 0);
-    range.setEnd(document, 0);
-  }
+  return withMeasuringRange((range) =>
+    measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, revealed),
+  );
 }
 
 /**
@@ -3310,9 +3953,9 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
   // The live tree's frame is its panel's; a clone's is the body it is
   // appended to.
   const frame = frameFor(parentElement);
-  // Against the live tree the parent's rect is shareable; a measurement
-  // clone is created and thrown away inside one measurement, so its rect is
-  // read directly.
+  // Against the live tree the parent's rect is shareable. A copy is none of
+  // the panel's nodes, so its rect is read directly, once for each text
+  // measured in it, even though a line box copy stands for many of them.
   const parentRect = scrolled
     ? readClientRect(parentElement)
     : measureClientRect(parentElement, frame);
@@ -3485,10 +4128,15 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
  * Under a transform anywhere on the chain, the real tree's client rects are
  * screen-space bounds — a rotation would group lines by screen rows, which
  * is not where the browser broke them — so the measurement runs against a
- * detached untransformed clone of the parent instead. The text node is
- * always a direct child of its parent element, so finding it again in the
- * clone is an index lookup. The clone is never scrolled, so what it reports
- * is already the content-space position the live path computes.
+ * detached untransformed copy instead.
+ *
+ * The copy is of the box the text's lines are laid out in: the parent, or
+ * the nearest ancestor that does not split across lines
+ * (`splitsAcrossLines`), since a box that does has no width of its own for
+ * the lines to break against. The climb stops at the panel's root, whatever
+ * its `display`. One copy of a box serves every text measured in it, for as
+ * long as `getLineBoxCopy` keeps it. The copy is never scrolled, so what it
+ * reports is already the content-space position the live path computes.
  *
  * @param {Text} text
  * @returns {TextLayout}
@@ -3505,17 +4153,282 @@ function measureTextLayout(text) {
   if (!isTransformed(parentElement)) {
     return measureTextRects(text, parentElement, whiteSpace, true, revealed);
   }
-  const clone = createMeasurementClone(parentElement);
-  document.body.appendChild(clone);
-  try {
-    const index = Array.prototype.indexOf.call(parentElement.childNodes, text);
-    const cloneText = clone.childNodes[index];
-    if (!(cloneText instanceof Text)) {
-      throw new NoValueError("Text node not found in measurement clone");
+  let lineBox = parentElement;
+  while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
+    lineBox = lineBox.parentElement;
+  }
+  const cloneText = findInCopy(getLineBoxCopy(lineBox), lineBox, text);
+  const cloneParent = /** @type {HTMLElement} */ (cloneText.parentElement);
+  return measureTextRects(cloneText, cloneParent, whiteSpace, false, revealed);
+}
+
+/**
+ * The node at the same place under `to` as `node` is under `from`, which a
+ * deep clone keeps, or nothing when `to` has no node there: a copy made
+ * before the change that put `node` where it is.
+ *
+ * @param {Node} node
+ * @param {Node} from An ancestor of `node`.
+ * @param {Node} to
+ * @returns {Node | undefined}
+ */
+export function counterpart(node, from, to) {
+  /** @type {number[]} */
+  const path = [];
+  for (let current = node; current !== from; current = /** @type {Node} */ (current.parentNode)) {
+    path.unshift(Array.prototype.indexOf.call(current.parentNode?.childNodes ?? [], current));
+  }
+  return path.reduce(
+    (/** @type {Node | undefined} */ current, index) => current?.childNodes[index],
+    to,
+  );
+}
+
+/**
+ * The copy of `text` in `copy`, a copy of `lineBox`: the node at the same
+ * place under it (`counterpart`).
+ *
+ * Found by place rather than kept by identity, because the copy follows the
+ * box's shape, not its nodes: a text replaced by one with the same
+ * characters, as setting `textContent` to what it was does, leaves the shape
+ * and the copy as they were, and the new node is still the node at that
+ * place.
+ *
+ * The copy can also lack the text for a moment. A text inserted into an
+ * element the portal has not adopted yet reaches the shape only once the
+ * adoption is announced, a microtask after the portal builds the text and
+ * may measure it (see `announceAdoption`). Until then the place holds
+ * something else or nothing, and the measurement waits, as a read that has
+ * no value yet does.
+ *
+ * @param {HTMLElement} copy
+ * @param {HTMLElement} lineBox An ancestor of `text`.
+ * @param {Text} text
+ * @returns {Text}
+ */
+function findInCopy(copy, lineBox, text) {
+  const found = counterpart(text, lineBox, copy);
+  if (!(found instanceof Text) || found.data !== text.data) {
+    throw new NoValueError("The line box copy does not hold this text yet");
+  }
+  return found;
+}
+
+/** @type {WeakMap<HTMLElement, Derived<HTMLElement>>} */
+const lineBoxCopyCache = nodeCache();
+
+/**
+ * The copy of `lineBox` the texts laid out in its lines are measured in under
+ * a transform. One copy serves them all, because measuring each of the `n`
+ * texts of a paragraph in a copy of its own copies the paragraph `n` times,
+ * and a browser lays out each copy (`bench/lineBoxCopy.bench.mjs`). Its
+ * rules are the rules of a cached read:
+ *
+ * - **Made** when the first text in the box is measured, and parked in the
+ *   body as `createMeasurementClone` parks one.
+ * - **Shared** by every text measured in the box while it lasts, whichever
+ *   task or frame measures it: a portal measures a panel a frame budget at a
+ *   time.
+ * - **Rebuilt** when what it was copied from changes: the box's shape
+ *   (`getLineBoxShape`), what can restyle it from above
+ *   (`readRestyledFromAbove`), or its size. Between them they cover a
+ *   stylesheet, a font, the viewport and an ancestor's attributes, and
+ *   nothing a text in the box would not be re-measured for: a box moved by
+ *   its siblings, or out of flow and so told of every layout in the panel,
+ *   keeps its copy.
+ *   The portal's presentational flags, hover and press, change none of them
+ *   (`PRESENTATIONAL_ATTRIBUTES`), just as they re-measure no text. Nor does
+ *   a text replaced by one with the same characters: `findInCopy` finds it
+ *   by its place. A font that finished loading does rebuild it, through the
+ *   layout epochs `readRestyledFromAbove` reads, as it re-measures every
+ *   text.
+ * - **Removed** when it is rebuilt, and when the last text reading it lets
+ *   go of it.
+ *
+ * While it stands it is in the page, a child of the body, with the box's
+ * attributes, its `id` and `name` among them, so a query the page makes
+ * finds it beside the box. It is marked `inert` and `aria-hidden`, as every
+ * measurement clone is (`parkMeasurementClone`), which keeps it out of focus
+ * and the accessibility tree, not out of the page's own queries. They are
+ * the marks the portal's container carries, so a stylesheet rule keyed on
+ * an `[inert]` or `[aria-hidden]` ancestor matches inside the copy as it
+ * matches inside the box. Without them the copy would differ from the box
+ * there. Where they do differ is a rule that needs the mark on the box
+ * itself, which nothing in the box carries. `p[inert]` matches the copy's
+ * root, whose resolved style is inline and wins over any rule that is not
+ * `!important`. `p[inert] .chip` also matches inside it, and restyles an
+ * element laid out in a box of its own, which keeps only its classes.
+ *
+ * A reader that is not itself read by anything, as a test may be, builds the
+ * copy afresh on every read, and the build it leaves stays parked until the
+ * next read of the same box removes it: after the last one, for good. Every
+ * reader in the mirror is read by an effect.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {HTMLElement} The copy, parked.
+ */
+function getLineBoxCopy(lineBox) {
+  let signal = lineBoxCopyCache.get(lineBox);
+  if (!signal) {
+    signal = new Derived(() => {
+      getLineBoxShape(lineBox);
+      readRestyledFromAbove(lineBox);
+      getBorderBoxSize(lineBox);
+      const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
+      dressLaidOut(lineBox, copy);
+      const root = parkMeasurementClone(lineBox, copy, null);
+      onCleanup(() => root.remove());
+      return root;
+    });
+    lineBoxCopyCache.set(lineBox, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Depend on what can restyle `lineBox`, or what is in it, from above: its
+ * own `reflow` signal and its ancestors' up to the panel's root, which an
+ * attribute change bumps unless it is presentational, and the portal-wide
+ * epochs a stylesheet, a font and the viewport bump.
+ *
+ * A narrower read than `getReflowContext(lineBox)`, which also follows the
+ * box's `moved` signal and, for a box out of flow, every settling in the
+ * panel. Both say where the box is, not what is in it, and its texts are
+ * measured relative to it.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {void}
+ */
+function readRestyledFromAbove(lineBox) {
+  const record = readRecordOf(lineBox);
+  if (record) {
+    record.mirror.layout.get();
+    record.mirror.globalLayout.get();
+  }
+  for (
+    let current = /** @type {Node | null} */ (lineBox);
+    current;
+    current = getParentElement(current)
+  ) {
+    readRecordOf(current)?.reflow.get();
+    if (isPortalRoot(current)) {
+      break;
     }
-    return measureTextRects(cloneText, clone, whiteSpace, false, revealed);
-  } finally {
-    clone.remove();
+  }
+}
+
+/** @type {WeakMap<HTMLElement, Derived<string>>} */
+const lineBoxShapeCache = nodeCache();
+
+/**
+ * What a copy of `lineBox` is made of, as one string: the elements and texts
+ * in it, in order, with the characters of every text and the attributes of
+ * every element, the portal's presentational and bookkeeping ones aside.
+ *
+ * The string is the copy's equality gate. Reading the box node by node
+ * depends on each node's adoption as well as on its content, and a portal
+ * adopts a panel a node at a time, frame after frame: built straight from
+ * those reads, the copy was rebuilt for every node adopted while it was
+ * mounting. Compared as a string, an adoption reads the box again for the
+ * same answer and stops there. The presentational attributes are left out
+ * so that the answer is the same when a hover flag happens to be set on
+ * something in the box at the time; a hover alone reads nothing here.
+ *
+ * @param {HTMLElement} lineBox
+ * @returns {string}
+ */
+function getLineBoxShape(lineBox) {
+  let signal = lineBoxShapeCache.get(lineBox);
+  if (!signal) {
+    signal = probedDerived(lineBox, () => {
+      /** @type {string[]} */
+      const parts = [];
+      describeShape(lineBox, parts);
+      return parts.join("");
+    });
+    lineBoxShapeCache.set(lineBox, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Append `node`'s children to the description `getLineBoxShape` builds,
+ * depending on each: on the child list, on a text's characters, and on an
+ * element's own reflow signal, which a change to one of its attributes bumps
+ * unless the portal declares the attribute presentational, and which waits
+ * for the element's adoption when it has no record yet. The box's own, its
+ * ancestors' and the portal-wide ones reach the copy through
+ * `readRestyledFromAbove`. Every length is written before what it measures,
+ * so that no text can pass for markup. Any other node, a comment a
+ * framework anchors to most of all, is written as a marker: `counterpart`
+ * counts it on the way to a text, so the description has to count it too.
+ *
+ * @param {Node} node
+ * @param {string[]} parts
+ * @returns {void}
+ */
+function describeShape(node, parts) {
+  for (const child of getChildNodes(node)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const data = getTextDataCached(/** @type {Text} */ (child));
+      parts.push(`#${data.length}:${data}`);
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const element = /** @type {Element} */ (child);
+      readRecordOf(element)?.reflow.get();
+      parts.push(`<${element.localName}`);
+      for (const { name, value } of element.attributes) {
+        if (!PRESENTATIONAL_ATTRIBUTES.has(name) && !PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+          parts.push(` ${name}=${value.length}:${value}`);
+        }
+      }
+      parts.push(">");
+      describeShape(element, parts);
+      parts.push("</>");
+    } else {
+      parts.push("<!>");
+    }
+  }
+}
+
+/**
+ * Walk `live` and its copy side by side, and dress each element whose
+ * content is laid out in the line box's lines.
+ *
+ * The box and every element whose content is laid out in its lines (one that
+ * splits across lines, inside others that do) keep their resolved style,
+ * with their transforms, transitions and animations off, so a selector that
+ * reaches above the box still sizes them, and which text was measured first
+ * does not change what the others are measured against. Everything else is
+ * copied as `createMeasurementClone` copies descendants, with its classes
+ * only: a selector that reaches above the box does not style it, and its
+ * animations start again, either of which can move a text in a centred or
+ * flex line box.
+ *
+ * Nothing here is a dependency. The copy depends on what `getLineBoxCopy`
+ * reads, and `display` is read straight from the computed style: through
+ * `splitsAcrossLines` every element's style would be one, and a hover flag
+ * restyles the element it lands on.
+ *
+ * @param {Node} live The line box, or an element whose content is laid out
+ *   in its lines.
+ * @param {Node} copy `live.cloneNode(true)`, or a part of one.
+ * @returns {void}
+ */
+function dressLaidOut(live, copy) {
+  for (
+    let child = live.firstChild, childCopy = copy.firstChild;
+    child && childCopy;
+    child = child.nextSibling, childCopy = childCopy.nextSibling
+  ) {
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+    const element = /** @type {HTMLElement} */ (child);
+    const computed = window.getComputedStyle(element);
+    if (displaySplitsAcrossLines(element, computed.display)) {
+      copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
+      dressLaidOut(element, childCopy);
+    }
   }
 }
 
@@ -3529,7 +4442,7 @@ const textLayoutCache = nodeCache();
 export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(text, () => {
       const record = readRecordOf(text);
       if (record) {
         record.character.get();

@@ -255,6 +255,24 @@ export function playHaptic(source, effect) {
 }
 
 /**
+ * Play an effect on every hand in a session at once, for a scene that
+ * rumbles the player rather than the hand that did something: a piece
+ * landing, a game ending. Nothing outside a session.
+ *
+ * @param {XRSession | null} session
+ * @param {HapticEffect} effect
+ * @returns {void}
+ */
+export function playHapticAll(session, effect) {
+  if (!session) {
+    return;
+  }
+  for (const source of session.inputSources) {
+    playHaptic(source, effect);
+  }
+}
+
+/**
  * A panel's haptics from its options, or null when there is nothing to
  * feel: `false`, both events off, or a strength of 0.
  *

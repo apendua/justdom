@@ -34,10 +34,11 @@ import { installCrashPanel } from "./crash.js";
  */
 export function requestFrameRate(renderer, preference = "high") {
   const onSessionStart = () => {
-    const session = /** @type {XRSession & {
-     *   supportedFrameRates?: Float32Array;
-     *   updateTargetFrameRate?: (rate: number) => Promise<void>;
-     * }} */ (/** @type {unknown} */ (renderer.xr.getSession()));
+    const session =
+      /** @type {XRSession & {
+       *   supportedFrameRates?: Float32Array;
+       *   updateTargetFrameRate?: (rate: number) => Promise<void>;
+       * }} */ (/** @type {unknown} */ (renderer.xr.getSession()));
     const offered = session?.supportedFrameRates;
     if (!session || typeof session.updateTargetFrameRate !== "function" || !offered?.length) {
       return;

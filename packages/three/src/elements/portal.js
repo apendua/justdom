@@ -40,19 +40,14 @@ import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
-import {
-  isSvgElement,
-  isSvgRoot,
-  PortalPluginsContext,
-  PortalTemplatesContext,
-  projectWithPlugins,
-} from "./plugins.js";
+import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { createPanelHandles } from "./panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
 import { InteractionContext } from "../interactions.js";
+import { registerOutlineHost } from "./outlines.js";
 
 /**
  * @import {Mountable} from '../core.js';
@@ -322,6 +317,19 @@ function claimRoot(root) {
  *   for the reason `loadingFrame` has none: pass `{}` for the defaults
  *   outright. A tracked hand has no motors and feels nothing either way.
  *   See `HapticOptions` in `haptics.js`.
+ * @property {boolean} [thumbstickWheel] Whether a hand's thumbstick is a
+ *   mouse wheel on this panel: while the hand's ray is on the panel and it
+ *   holds no button, pushing the stick forward or pulling it back sends
+ *   `wheel` to the element under the ray, once a frame (see `wheelTarget`
+ *   in `pointerForwarding.js` for which one), with a `deltaY` that follows
+ *   how far the stick is pushed, forward as negative, as a wheel turned up
+ *   says it. For a page that zooms or pans on the wheel. A panel with
+ *   `opaqueToRays: false` turns it only while the ray is on a control or a
+ *   list, since it has no background for the ray to be on. It scrolls
+ *   nothing of itself, since a list is scrolled by pulling it. Off by
+ *   default, because a scene may read the stick for something else, to
+ *   turn a carried object or to move the player; one that does not can
+ *   turn it on for every panel through the scene's `PanelOptions`.
  * @property {boolean | PanelDragOptions} [draggable] Whether the player can
  *   move the panel. Four strips along its edges are invisible until a ray
  *   is on the panel, faint while one is, and full on the strip a ray is on.
@@ -379,6 +387,7 @@ function buildPortal(ctx, ownOptions = {}) {
     onLoadingChanged,
     loadingFrame = {},
     haptics = {},
+    thumbstickWheel = false,
     draggable = false,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
@@ -458,7 +467,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * nothing else listens (see `createPanelForwarder`). After the scroll
    * gesture and the haptics, which it reads from the context.
    */
-  const forwarder = createPanelForwarder(ctx, containerObject);
+  const forwarder = createPanelForwarder(ctx, containerObject, { thumbstickWheel });
   ctx = PointerForwarderContext.set(ctx, forwarder);
 
   /**
@@ -623,6 +632,20 @@ function buildPortal(ctx, ownOptions = {}) {
     // not to carry by, which follows the hand in the renderer's frames.
   }
   const hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
+
+  /**
+   * Where this panel draws its outlines while outlines mode is on (see
+   * `outlines.js`). Told of each commit taken and each one forced. Null
+   * where there are no frames, which is where there is no commit either.
+   */
+  const outlines = hasFrames
+    ? registerOutlineHost({
+        containerElement,
+        containerObject,
+        objectOf: (node) => nodeToObject.get(node),
+        requestFrames,
+      })
+    : null;
 
   /**
    * The two kinds of work a coming frame does for this panel: the animation
@@ -918,7 +941,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // portal, and a node kept in them keeps this mirror's signals under it.
     // The element the page owns is the one that comes back — see
     // `forgetNode` in mirror.js.
-    mirror.release(node);
+    mirror.forget(node);
   }
 
   /**
@@ -941,18 +964,6 @@ function buildPortal(ctx, ownOptions = {}) {
     templateNodes.add(node);
     node.childNodes.forEach(adoptTemplate);
   }
-  // Only what is inside this panel: a marker another panel or the page
-  // owns is not this mirror's to follow, and its own portal adopts it. And
-  // only what the portal has not built: a `<use>` may name a `<g>` drawn
-  // where it stands, and a node taken for a template has children the
-  // portal does not build. A template adopted already stays adopted, its
-  // later children with it, so a plugin that asks again on every restyle
-  // walks nothing.
-  ctx = PortalTemplatesContext.set(ctx, (node) => {
-    if (!templateNodes.has(node) && containerElement.contains(node) && !nodeToObject.has(node)) {
-      adoptTemplate(node);
-    }
-  });
 
   /**
    * Build the object for this one node and nothing below it. The recursion
@@ -1183,14 +1194,18 @@ function buildPortal(ctx, ownOptions = {}) {
    * commit to close over the gap. So a removed row keeps its subscription,
    * and with it its effects, until the commit.
    *
-   * What that costs is bounded, and worth knowing. The mutation that
-   * removes a node bumps its `reparented` signal, which invalidates its
-   * subtree's styles and layouts, so its effects are queued and warmed once
-   * against DOM that is no longer in the document — reads that come back
-   * empty, and cost little for it. The same bump is what cuts the subtree
-   * loose: its parent chain now ends at a node with no parent, so nothing
-   * that happens in the live tree afterwards reaches it. One wave, and then
-   * quiet until the commit disposes it.
+   * What that costs is bounded, and worth knowing. The mirror lets go of
+   * the subtree here and now (`DomMirror.release`), and keeps nothing but
+   * what the objects already hold. The mutation that removes a node bumps
+   * its `reparented` signal, which invalidates its subtree's styles and
+   * layouts, so its effects are queued and warmed once against DOM that is
+   * no longer in the document — reads that come back empty, and cost little
+   * for it. That is the last of it: those reads find the subtree let go of,
+   * cut off from its parent chain and from the panel's own signals, so
+   * nothing that happens in the panel afterwards reaches it, a font arriving
+   * included. One wave, and then quiet until the commit disposes it. A node
+   * put back before the commit is taken back by the mirror as the flush
+   * that reports it arrives (`DomMirror.reclaim`).
    *
    * A child that *moved* out of the removed subtree — appended elsewhere
    * before the commit — is still in the tree, and its object is still under
@@ -1207,6 +1222,7 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   const detach = (node) => {
     if (pump && nodeToObject.has(node)) {
+      mirror.release(node);
       pendingRemovals.add(node);
       return;
     }
@@ -1268,6 +1284,7 @@ function buildPortal(ctx, ownOptions = {}) {
         textBatch.invalidate();
       }
     });
+    outlines?.commit();
     return true;
   };
 
@@ -1402,6 +1419,7 @@ function buildPortal(ctx, ownOptions = {}) {
           commitsEarly: () => !atomic && !loading.get(),
           commitDue,
           hasPendingCommit,
+          onForced: () => outlines?.forced(),
           onSettled: markLoaded,
           onQueued: (queued) => {
             pumpQueued = queued;
@@ -1539,6 +1557,12 @@ function buildPortal(ctx, ownOptions = {}) {
       }
     });
     contentChanged();
+    if (!pumpQueued) {
+      // A flush that left the panel nothing to do, such as a write of what
+      // was already there, has no commit coming. The panel already shows
+      // all of it, so what the flush counted goes up in outlines mode now.
+      outlines?.commit();
+    }
     return true;
   };
 
@@ -1770,10 +1794,16 @@ function buildPortal(ctx, ownOptions = {}) {
   // The other event with no node to blame: the rules themselves changing. A
   // stylesheet lives in the head, which is nowhere near the subtree the
   // observer above watches, so a library that rewrites a rule while keeping
-  // the class name it is behind mutates nothing this panel can see.
-  const stopWatchingStyles = watchDocumentStyles(() => {
+  // the class name it is behind mutates nothing this panel can see. When the
+  // watcher can name the classes the changed rules start from, this panel
+  // restyles only if they can reach it; otherwise it restyles regardless.
+  const stopWatchingStyles = watchDocumentStyles((classes) => {
     projectChanges(() => {
-      mirror.documentStylesChanged();
+      if (classes) {
+        mirror.classRulesChanged(containerElement, classes);
+      } else {
+        mirror.documentStylesChanged();
+      }
     });
   });
 
@@ -1897,6 +1927,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // A frame asked for by an image that landed just as the portal came down.
     loadFrame?.();
     resizeEffect.dispose();
+    outlines?.dispose();
     mutationObserver.disconnect();
     animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.

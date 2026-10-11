@@ -57,6 +57,10 @@ import { batch, Effect, withChannel } from "@apendua/signal";
  *   asking for: a removal that happens to queue nothing in the channel
  *   still has an object to take out of the scene, and a pump that only
  *   counted queued nodes and queued effects would never come round for it.
+ * @property {() => void} [onForced] Told when a tick spends past its budget
+ *   because a bound ran out, `MAX_COMMIT_WAIT` or `MAX_BUILD_WAIT`: the
+ *   portal's cue to show, in outlines mode, a panel that never settles on
+ *   its own.
  * @property {() => void} onSettled Told whenever a tick ends with the queue
  *   and the channel both empty — the portal's cue to declare its initial
  *   mount done.
@@ -153,6 +157,7 @@ export function createPortalPump({
   commitsEarly = () => false,
   commitDue = () => true,
   hasPendingCommit = () => false,
+  onForced = () => {},
   onSettled,
   onQueued = () => {},
   afterTick,
@@ -286,6 +291,9 @@ export function createPortalPump({
         commitWaitingSince !== null &&
         arrivedAt !== null &&
         arrivedAt - commitWaitingSince >= MAX_BUILD_WAIT;
+      if (overdue) {
+        onForced();
+      }
       if (pendingNodes.length > 0) {
         batch(() => {
           withChannel(channel, () => {
@@ -318,10 +326,13 @@ export function createPortalPump({
         const budget = Math.max(deadline - now(), 0);
         if (pendingNodes.length > 0) {
           channel.warm({ budget });
+        } else if (overdue) {
+          channel.flush({ budget: Infinity });
         } else if (
-          overdue ||
-          (due && waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT)
+          due &&
+          waited + (waitingSince === null ? 0 : now() - waitingSince) >= MAX_COMMIT_WAIT
         ) {
+          onForced();
           channel.flush({ budget: Infinity });
         } else {
           channel.flush({ budget });

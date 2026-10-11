@@ -1,7 +1,8 @@
 import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import TodoApp from "./components/TodoApp";
-import { offerXR } from "./xr";
+import { offerHeadset } from "@apendua.dev/headset/offer";
+import { mountFocusDiagnostics } from "./focusDiagnostics";
 import "./index.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -17,7 +18,21 @@ just(root, [children(TodoApp({}))]).subscribe({
 });
 
 // And the headset, offered to a page that can open one: the scene mirrors
-// the very element the app was just mounted into.
-offerXR(root).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});
+// the very element the app was just mounted into. It is loaded only once a
+// session is known to be possible, so a page that is only ever a page does
+// not fetch three.js.
+offerHeadset(() => import("./xr"))
+  .then((xr) => xr?.offerXR(root))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });
+
+// A log in the card of the keys and focus the page hears, only when the
+// address asks for it, to read in a headset.
+if (new URLSearchParams(location.search).has("keylog")) {
+  // After the app, which `just` above has already rendered into `#root`:
+  // its `children` owns the span from the first child to the last and
+  // replaces it on every emission, and it emits once, synchronously, so a
+  // node appended now is left alone.
+  mountFocusDiagnostics(root);
+}

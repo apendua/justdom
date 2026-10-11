@@ -87,9 +87,7 @@ describe("dropdown", () => {
       dropdown({ options: OPTIONS, classes, selected: () => "a", onSelect: () => {} }),
     );
 
-    // Not merely hidden: a portal re-measures when the tree changes and not
-    // when an attribute does, so a menu that toggled `display` would never
-    // reach the scene.
+    // Not merely hidden: the menu is mounted only while it is open.
     assert.equal(menu(root), null, "shut to begin with");
 
     click(trigger(root));

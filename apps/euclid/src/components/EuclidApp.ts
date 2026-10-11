@@ -1,6 +1,6 @@
 import { $, children, className, set } from "@apendua/justdom";
 import type AppStore from "../store/App";
-import Canvas from "./Canvas";
+import Canvas, { type CanvasOptions } from "./Canvas";
 import Editor from "./Editor";
 import StatusBar from "./StatusBar";
 import Toolbar from "./Toolbar";
@@ -23,9 +23,9 @@ const editorBodyStyle = className`
  * status line, and the drawing. They are mounted in three places on the
  * page, which lays them out as one editor, because a headset session
  * mirrors each into a panel of its own, and a panel is the element it is
- * mounted in.
+ * mounted in. `canvas` says how the drawing is drawn.
  */
-const EuclidApp = (store: AppStore) => ({
+const EuclidApp = (store: AppStore, canvas: CanvasOptions) => ({
   toolbar: Toolbar(store),
   editor: $("div", [
     set("className", editorPaneStyle),
@@ -34,7 +34,7 @@ const EuclidApp = (store: AppStore) => ({
       StatusBar(store),
     ),
   ]),
-  canvas: Canvas(store),
+  canvas: Canvas(store, canvas),
 });
 
 export default EuclidApp;

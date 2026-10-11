@@ -1,44 +1,23 @@
 import { render, createXRButton } from "@apendua/freedom";
-import { canPresent } from "@apendua.dev/headset/session";
-import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
-import { OculusHandModel } from "three/examples/jsm/webxr/OculusHandModel.js";
-import type { XRHandSpace } from "three";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import { inputModels } from "@apendua.dev/headset/scene";
 import Scene from "./components/Scene.js";
 import TodoKeyboard from "./components/TodoKeyboard.js";
 
 /**
  * Offer the page a headset: a scene that mirrors `panel` — the element the
  * app is mounted in — and freedom's Enter button, which starts a session
- * and is the way back in after one ends. Nothing happens on a platform that
- * cannot present, so on a laptop the page is the page and nothing else.
- *
- * `?emulator` installs a headset in the browser first, which is what makes
- * the session drivable by hand without one; `?emulator=bare` installs the
- * runtime without the panels that drive it, for a harness photographing the
- * scene.
+ * and is the way back in after one ends. Loaded by `offerHeadset` from
+ * `@apendua.dev/headset/offer` only on a platform that can present.
  */
-export async function offerXR(panel: HTMLElement): Promise<void> {
+export function offerXR(panel: HTMLElement): void {
   const query = new URLSearchParams(location.search);
-  if (query.has("emulator")) {
-    try {
-      const { install } = await import("@apendua.dev/headset/emulator");
-      install({ devUI: query.get("emulator") !== "bare" });
-    } catch (err) {
-      console.error("Could not install the XR emulator:", err);
-    }
-  }
-  if (!(await canPresent())) {
-    return;
-  }
-
-  const controllerModelFactory = new XRControllerModelFactory();
-  const createControllerModel =
-    controllerModelFactory.createControllerModel.bind(controllerModelFactory);
-  const createHandModel = (hand: XRHandSpace) => new OculusHandModel(hand);
+  followThemingQuery(query);
+  followOutlinesQuery(query);
 
   render(Scene(panel), {
-    createControllerModel,
-    createHandModel,
+    // From this app's own origin, where `vite.config.mts` serves them.
+    ...inputModels(import.meta.env.BASE_URL),
     presentingOnly: true,
     // The keyboard for every panel in the scene: what it looks like is
     // `TodoKeyboard`'s, and where it opens, when it goes and how it is

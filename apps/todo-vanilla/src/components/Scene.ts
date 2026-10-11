@@ -3,6 +3,7 @@ import { children, cursors, $, dom, getScene, getXRSession } from "@apendua/free
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
 import { xrSession } from "@apendua.dev/headset/session";
+import { Backdrop } from "@apendua.dev/headset/scene";
 
 /**
  * What the session is set against: one colour, all the way round, rather
@@ -17,26 +18,6 @@ const BACKDROP = "#1e2430";
  * while there is nothing to mount.
  */
 const NOTHING = new Stream<never>(() => {});
-
-/**
- * An opaque sky in `BACKDROP`, for the case `scene.background` cannot cover.
- *
- * In an AR session three clears the frame to transparent whatever the
- * scene's background says, so that the passthrough shows — which is the
- * point of AR and the opposite of a single colour. A sphere around the
- * viewer, drawn first and writing no depth, is a background three has no
- * rule about: everything else in the scene draws over it, and nothing of
- * the room shows through. Inside the camera's far plane, which is 20 m.
- */
-function backdrop(): THREE.Mesh {
-  const sphere = new THREE.Mesh(
-    new THREE.SphereGeometry(10, 32, 16),
-    new THREE.MeshBasicMaterial({ color: BACKDROP, side: THREE.BackSide, depthWrite: false }),
-  );
-  sphere.renderOrder = -1;
-  sphere.frustumCulled = false;
-  return sphere;
-}
 
 /**
  * The scene: the page's own todo element, mirrored into a panel in front of
@@ -74,7 +55,7 @@ export const Scene = (panel: HTMLElement) =>
 
     useEffects(getScene(ctx), [
       effects((scene) => {
-        // For a VR session, where three honours it; the sphere below is
+        // For a VR session, where three honours it; the backdrop below is
         // for AR, where it does not.
         scene.background = new THREE.Color(BACKDROP);
       }),
@@ -87,7 +68,7 @@ export const Scene = (panel: HTMLElement) =>
         }
       }),
       children(
-        $(backdrop()),
+        Backdrop(BACKDROP),
         $(new THREE.PointLight(0xffffff, 100, 5), [
           effects((o) => {
             o.position.set(0, 1, 3);

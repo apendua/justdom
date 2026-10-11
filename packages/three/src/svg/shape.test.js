@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { clientRect } from "../test/clientRect.js";
 import * as THREE from "three";
+import { UpdateChannel, withChannel } from "@apendua/signal";
 import { InteractionContext, InteractionManager, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
@@ -166,14 +167,12 @@ function round(value) {
 }
 
 /**
- * The clip patch's `clipMatrix`, read the way three reads it: by letting the
- * material patch a shader. It is the matrix from the mesh's vertices to the
- * root's frame — where the clip box is, and where the browser draws.
+ * The clip patch's uniforms, read the way three reads them: by letting the
+ * material patch a shader.
  *
  * @param {Mesh} mesh
- * @returns {THREE.Matrix3}
  */
-function clipMatrixOf(mesh) {
+function clipUniformsOf(mesh) {
   const shader = {
     uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
     vertexShader: "void main() {\n#include <begin_vertex>\n}",
@@ -183,7 +182,38 @@ function clipMatrixOf(mesh) {
     /** @type {never} */ (shader),
     /** @type {never} */ (null),
   );
-  return /** @type {THREE.Matrix3} */ (shader.uniforms.clipMatrix.value);
+  return shader.uniforms;
+}
+
+/**
+ * The clip patch's `clipMatrix`: the matrix from the mesh's vertices to the
+ * root's frame — where the clip box is, and where the browser draws.
+ *
+ * @param {Mesh} mesh
+ * @returns {THREE.Matrix3}
+ */
+function clipMatrixOf(mesh) {
+  return /** @type {THREE.Matrix3} */ (clipUniformsOf(mesh).clipMatrix.value);
+}
+
+/**
+ * The clip patch's box, taken back through the clip matrix into the mesh's
+ * own user space, where a `clip-path` of the shape's own stands still
+ * however the shape moves.
+ *
+ * @param {Mesh} mesh
+ */
+function localClipOf(mesh) {
+  const box = /** @type {THREE.Vector4} */ (clipUniformsOf(mesh).clipBox.value);
+  const back = clipMatrixOf(mesh).clone().invert();
+  const from = new THREE.Vector3(box.x, box.y, 1).applyMatrix3(back);
+  const to = new THREE.Vector3(box.z, box.w, 1).applyMatrix3(back);
+  return {
+    left: round(Math.min(from.x, to.x)),
+    top: round(Math.min(from.y, to.y)),
+    right: round(Math.max(from.x, to.x)),
+    bottom: round(Math.max(from.y, to.y)),
+  };
 }
 
 /**
@@ -292,6 +322,56 @@ describe("svg shape", () => {
     assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 30, 5]);
     assert.equal(s.meshes[0].geometry, geometry, "a translation re-samples nothing");
     assert.deepEqual(rootBounds(s.meshes[0]), { left: 30, top: 5, right: 50, bottom: 25 });
+    s.teardown();
+  });
+
+  test("a move reaches the matrix and the clip together, under a budget of one effect", () => {
+    // A clip-path of the shape's own moves with it, so a move changes all
+    // three: the object's matrix, the clip matrix and the clip box. A panel
+    // that is not atomic runs its effects under a budget, and a clock that
+    // moves a whole budget per effect stops every pass after one of them.
+    let time = 0;
+    const channel = new UpdateChannel({ manual: true, now: () => time++ });
+    const s = withChannel(channel, () =>
+      setup("rect", {
+        width: "40",
+        height: "10",
+        fill: "red",
+        "clip-path": "url(#one-frame)",
+        style: "transform: matrix(1, 0, 0, 1, 0, 0)",
+      }),
+    );
+    const frame = document.createElementNS(SVG_NS, "rect");
+    frame.setAttribute("width", "10");
+    frame.setAttribute("height", "10");
+    const clipPath = document.createElementNS(SVG_NS, "clipPath");
+    clipPath.id = "one-frame";
+    clipPath.appendChild(frame);
+    s.root.appendChild(clipPath);
+    s.flush();
+    channel.flush({ budget: Infinity });
+    const [fill] = s.meshes;
+    assert.deepEqual(localClipOf(fill), { left: 0, top: 0, right: 10, bottom: 10 });
+
+    s.setAttribute("style", "transform: matrix(1, 0, 0, 1, -10, 0)");
+    let passes = 0;
+    while (channel.hasPendingUpdates) {
+      channel.flush({ budget: 1 });
+      passes += 1;
+      const [a, b, c, d, e, f] = matrix2d(s.object);
+      const m = clipMatrixOf(fill).elements;
+      assert.deepEqual(
+        [a, b, c, d, e, f],
+        [m[0], m[1], m[3], m[4], m[6], m[7]].map(round),
+        `after pass ${passes}, the clip matrix is the matrix the mesh is drawn with`,
+      );
+      assert.deepEqual(
+        localClipOf(fill),
+        { left: 0, top: 0, right: 10, bottom: 10 },
+        `after pass ${passes}, the clip is where the clip-path is`,
+      );
+    }
+    assert.deepEqual(matrix2d(s.object), [1, 0, 0, 1, -10, 0]);
     s.teardown();
   });
 

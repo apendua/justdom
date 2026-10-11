@@ -1493,53 +1493,61 @@ function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, unif
 }
 
 /**
- * The clip patch's two uniforms for what one element draws, and the effects
- * that keep them current. Both are shared by every mesh the element has.
+ * The clip patch's two uniforms for what one element draws, and the write
+ * that keeps them current. Both are shared by every mesh the element has.
  *
  * `clip` is what the root's overflow, the scrollers above it and the
- * viewports in the chain leave, in the root's frame, written in an effect of
- * its own so a scroll writes four numbers and nothing else. `clipMatrix`
- * goes from the element's user space, where its vertices are, to that
- * frame: the composition of every matrix above the meshes, written when the
- * chain moves.
+ * viewports in the chain leave, in the root's frame. `clipMatrix` goes from
+ * the element's user space, where its vertices are, to that frame: the
+ * composition of every matrix above the meshes, the element's own included.
+ *
+ * `follow` writes both, and is called from the effect that writes the
+ * element's own matrix (see `svgNode`), not from effects of its own. The
+ * three describe one picture: a transform on the element moves its object,
+ * its `clipMatrix` and, when the `clip-path` is its own, its clip, and a
+ * channel that runs effects under a budget can stop between any two
+ * effects. Split, a frame could draw the new matrix through the old clip,
+ * which for a sprite sheet shifted under a frame-sized clip is a sliver of
+ * the next frame. The box itself is a `Derived`, so a transform that leaves
+ * it where it was copies it again and computes nothing, and a scroll costs
+ * the two matrix copies besides the four numbers.
  *
  * @param {() => Chain} chain
  * @param {Derived<Element | null>} root The chain's root, apart from the
- *   matrix, so a transform animated above the element is a matrix write and
- *   not a clip box read too. The element's own, which its paint slot reads
- *   as well.
+ *   matrix, so a transform animated above the element leaves the box alone.
+ *   The element's own, which its paint slot reads as well.
  */
 function clipUniforms(chain, root) {
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
   const clipMatrix = { value: new THREE.Matrix3() };
   const viewports = new Derived(() => chain().clip, { isEqual: rectEqual });
+  const interior = new Derived(() => {
+    const at = root.get();
+    const box = at ? getInteriorClipBox(asHtml(at)) : UNCLIPPED;
+    const rect = viewports.get();
+    if (!rect) {
+      return box;
+    }
+    return intersectClipBoxes(box, {
+      ...rect,
+      topLeft: 0,
+      topRight: 0,
+      bottomRight: 0,
+      bottomLeft: 0,
+    });
+  });
   /** What `clip` holds, for the raycast, which reads it untracked. */
   let current = UNCLIPPED;
   return {
     clip,
     clipMatrix,
     clipBox: () => current,
-    followClip: [
-      effects(() => {
-        const at = root.get();
-        let box = at ? getInteriorClipBox(asHtml(at)) : UNCLIPPED;
-        const rect = viewports.get();
-        if (rect) {
-          box = intersectClipBoxes(box, {
-            ...rect,
-            topLeft: 0,
-            topRight: 0,
-            bottomRight: 0,
-            bottomLeft: 0,
-          });
-        }
-        clip.value.set(box.left, box.top, box.right, box.bottom);
-        current = box;
-      }),
-      effects(() => {
-        toMatrix3(chain().ctm, clipMatrix.value);
-      }),
-    ],
+    follow() {
+      const box = interior.get();
+      clip.value.set(box.left, box.top, box.right, box.bottom);
+      current = box;
+      toMatrix3(chain().ctm, clipMatrix.value);
+    },
   };
 }
 
@@ -1607,13 +1615,12 @@ function rayTarget(ctx, element, hittable) {
  * template, a ray target while it is clickable.
  *
  * An element that draws passes `draw`, and is given its chain, its opacity
- * and its paint slot, and the meshes it asks for share the element's clip.
- * The chain is read
- * apart from what it decides, so a transform animated above the element
- * stops at the clip matrix and reaches neither the draw order nor the
- * alpha. A `<g>` passes null: it draws nothing, reads no chain, and is a
- * ray target on `cursor` alone, since a hit on it is a hit on one of the
- * shapes under it.
+ * and its paint slot, and the meshes it asks for share the element's clip,
+ * written in the effect that writes its matrix. The chain is read apart
+ * from what it decides, so a transform animated above the element stops at
+ * the clip matrix and reaches neither the draw order nor the alpha. A `<g>`
+ * passes null: it draws nothing, reads no chain, and is a ray target on
+ * `cursor` alone, since a hit on it is a hit on one of the shapes under it.
  *
  * Template content is drawn and never hit. The element a press on it would
  * be forwarded to is the one in the template, which is nowhere on the page,
@@ -1637,11 +1644,14 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
   let hittable = () => true;
   /** @type {EntityEffect<THREE.Object3D>[]} */
   let drawing = [];
+  /** Writes the clip uniforms; nothing for a `<g>`, which has none. */
+  let followClip = () => {};
   if (draw) {
     const chain = new Derived(() => readChain(element, instance), { isEqual: chainEqual });
     const root = new Derived(() => chain.get().root);
     const opacity = new Derived(() => drawnOpacity(chain.get()));
     const uniforms = clipUniforms(() => chain.get(), root);
+    followClip = uniforms.follow;
     /** @param {0 | 1 | 2} layer */
     const slot = (layer) => paintSlot(element, root.get(), instance, layer);
     const drawn = draw({
@@ -1656,11 +1666,14 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
     // remount them, which would drop the flags they wrote.
     const hit = new Derived(drawn.hittable);
     hittable = () => hit.get();
-    drawing = [...uniforms.followClip, ...drawn.content];
+    drawing = drawn.content;
   }
   return just(object, [
     effects((obj) => {
       commitMatrix(obj, own.get());
+      // In the same effect, so the clip can never lag the matrix it is
+      // drawn through (see `clipUniforms`).
+      followClip();
     }),
     ...(instance === null ? [rayTarget(ctx, element, hittable)] : []),
     effects((obj) => {

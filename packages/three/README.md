@@ -53,18 +53,18 @@ rather than producing one. `getCamera(ctx)`, `getScene(ctx)`, `getXRSession(ctx)
 `controllers(ctx)` and `useFrame(ctx, fn)` read from the context it hands the tree, through the
 `createProperty` context mechanism the rest of this monorepo's stack shares.
 
-| Option                  | Default                 | What it does                                                                                                                                                                             |
-| ----------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `antialias`             | `true`                  | The renderer's antialiasing.                                                                                                                                                             |
-| `foveation`             | `0`                     | Fixed foveation for the headset's layer, 0 to 1.                                                                                                                                         |
-| `presentingOnly`        | `false`                 | Draw, run `useFrame` and pump portals only while a session is presenting. For a page with a flat interface of its own.                                                                   |
-| `portalBudget`          | three tenths of a frame | Milliseconds of each frame every portal in the scene shares for mounting and settling content; a number or a getter read at the top of every frame. See **Loading, budget and updates**. |
-| `portalPlugins`         | none                    | Element plugins for every portal; `svgElements()` from `@apendua/freedom/svg` is the one so far. See **Element plugins**.                                                                |
-| `panelOptions`          | none                    | What every panel starts from. See **Panel defaults**.                                                                                                                                    |
-| `createControllerModel` | none                    | Something to draw on a controller's grip space.                                                                                                                                          |
-| `createHandModel`       | none                    | Something to draw on a tracked hand's space. See **Hands**.                                                                                                                              |
-| `onBeforeRender`        | none                    | Called with the renderer before each draw.                                                                                                                                               |
-| `onAfterRender`         | none                    | Called with the renderer after each draw.                                                                                                                                                |
+| Option                  | Default                                         | What it does                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `antialias`             | `true`                                          | The renderer's antialiasing.                                                                                                                                                             |
+| `foveation`             | `0`                                             | Fixed foveation for the headset's layer, 0 to 1.                                                                                                                                         |
+| `presentingOnly`        | `false`                                         | Draw, run `useFrame` and pump portals only while a session is presenting. For a page with a flat interface of its own.                                                                   |
+| `portalBudget`          | three tenths of a frame, clamped to 1.5 to 8 ms | Milliseconds of each frame every portal in the scene shares for mounting and settling content; a number or a getter read at the top of every frame. See **Loading, budget and updates**. |
+| `portalPlugins`         | none                                            | Element plugins for every portal; `svgElements()` from `@apendua/freedom/svg` is the one so far. See **Element plugins**.                                                                |
+| `panelOptions`          | none                                            | What every panel starts from. See **Panel defaults**.                                                                                                                                    |
+| `createControllerModel` | none                                            | Something to draw on a controller's grip space.                                                                                                                                          |
+| `createHandModel`       | none                                            | Something to draw on a tracked hand's space. See **Hands**.                                                                                                                              |
+| `onBeforeRender`        | none                                            | Called with the renderer before each draw.                                                                                                                                               |
+| `onAfterRender`         | none                                            | Called with the renderer after each draw.                                                                                                                                                |
 
 `useFrame(ctx, fn)` runs `fn` once a frame, on the session's frame loop while one is presenting. Use
 it rather than `requestAnimationFrame`: once a session has the display the page stops being rendered
@@ -108,9 +108,10 @@ getXRSession(ctx)?.end();
 ```
 
 `getXRSession(ctx)` is reactive and null between sessions. A page mounted before there is a renderer
-to ask reads the session from `xrSession` in `@apendua.dev/headset/session` instead, which the apps
-here write through `enterSession(getXRSession(ctx))`; `apps/desk`'s power button and
-`apps/minesweeper`'s × both call `end()` on the session the page holds.
+to ask reads the session from `xrSession` in `@apendua.dev/headset/session` instead, which the scene
+writes: minesweeper, Euclid and turntable through `enterSession(getXRSession(ctx))`, the desk with
+`xrSession.set` in its own `session.ts`. `apps/minesweeper`'s × and `apps/desk`'s power button both
+call `end()` on the session that signal holds.
 
 The parts of `createXRButton` are exported for an app that builds its own button:
 `requestFrameRate(renderer, preference)`, `anchorToViewer(renderer)`, `installCrashPanel(renderer)`
@@ -739,14 +740,14 @@ Building a mirrored element costs real work — an object, its measurements, its
 — so the portal queues what the observer reports and spends a budget of each frame on it, and the
 frame keeps its rate however large the mount.
 
-| Option             | Default                            | What it does                                                                                                                                                                    |
-| ------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `portalBudget`     | three tenths of the frame          | On `render()`: milliseconds of each frame every portal in the scene shares, a number or a getter read at the top of every frame.                                                |
-| `priority`         | `0`                                | Pumps of higher priority are offered each frame's pool before lower ones; within a priority the offer rotates frame by frame.                                                   |
-| `budget`           | `5`                                | Milliseconds per frame for a portal built outside a rendering context, which paces itself; ignored under `render()`.                                                            |
-| `atomic`           | `true`                             | An update lands whole, in the frame that finds nothing left to read; `false` runs the writes under the budget and lets the panel change in instalments.                         |
-| `loadingFrame`     | `{ delay: 250, minimumTime: 500 }` | The frame shown where the panel will be while a long mount runs; `false` for none. Also `color` (black), `fill` (white), `fillOpacity` (0.2), `borderWidth` (2), `radius` (12). |
-| `onLoadingChanged` | none                               | Called once, with `false`, when everything the initial content brought has been built and settled.                                                                              |
+| Option             | Default                                           | What it does                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `portalBudget`     | three tenths of the frame, clamped to 1.5 to 8 ms | On `render()`: milliseconds of each frame every portal in the scene shares, a number or a getter read at the top of every frame; the default is 5 ms at 60 Hz and 8 ms at 30 (`createFrameShareBudget`). |
+| `priority`         | `0`                                               | Pumps of higher priority are offered each frame's pool before lower ones; within a priority the offer rotates frame by frame.                                                                            |
+| `budget`           | `5`                                               | Milliseconds per frame for a portal built outside a rendering context, which paces itself; ignored under `render()`.                                                                                     |
+| `atomic`           | `true`                                            | An update lands whole, in the frame that finds nothing left to read; `false` runs the writes under the budget and lets the panel change in instalments.                                                  |
+| `loadingFrame`     | `{ delay: 250, minimumTime: 500 }`                | The frame shown where the panel will be while a long mount runs; `false` for none. Also `color` (black), `fill` (white), `fillOpacity` (0.2), `borderWidth` (2), `radius` (12).                          |
+| `onLoadingChanged` | none                                              | Called once, with `false`, when everything the initial content brought has been built and settled.                                                                                                       |
 
 ```js
 render(Scene, {
@@ -1054,10 +1055,12 @@ wants.
   `field()` says which. The board is only built again if that panel's keyboard has a different
   `create`.
 - **It opens in front of the player**, turned toward them and reclined by `tilt`, and stays where it
-  is in the room until it goes. The `placement`, `scale`, `gap` and `tilt` the board opens with are
-  the opening panel's and hold until the board goes: a field pressed in a panel that asks for
-  another placement types into the board where it already is. On a plain page, or under a test
-  runner, it hangs below the panel.
+  is in the room until it goes. The `placement` the board opens with is the opening panel's and
+  holds until the board goes: a field pressed in a panel that asks for another placement types into
+  the board where it already is. A board in the room keeps the opening panel's `scale` and `tilt`
+  too. A board below a panel moves to the panel of the field being typed into, and takes `gap`,
+  `tilt` and its scale from whichever panel it hangs below. On a plain page, or under a test runner,
+  it hangs below the panel.
 - **It can be moved.** A board in the room has the strips a draggable panel has (see **Letting the
   player move a panel**), and always has them. The carry takes the anchor the board hangs from, so
   the next board opens where the player put the last one down, unless they have since walked more

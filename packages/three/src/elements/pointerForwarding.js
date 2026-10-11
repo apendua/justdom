@@ -20,8 +20,8 @@ import {
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
-import { getComputedStyleCached, isPortalRoot } from "./mirror.js";
-import { ACTIVE_ATTRIBUTE, HOVER_ATTRIBUTE } from "./portalRoot.js";
+import { getChildNodes, getComputedStyleCached, isPortalRoot } from "./mirror.js";
+import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
 import { labelledField } from "./typing.js";
@@ -39,11 +39,10 @@ import { labelledField } from "./typing.js";
  * is the same signal the ordinary web uses to mark an element clickable, so
  * buttons opt in through their stylesheet with no extra attribute. Everything
  * else — cards, layout wrappers, any label but a field's (see `isRayTarget`)
- * — stays out of the raycast set; the
- * portal's blocker plane keeps the panel as a whole opaque to rays. SVG
- * shapes, and the `<g>`, `<a>` and nested `<svg>` that group them, follow
- * the same rule, and `cursor` is inherited into them from the page around
- * the `<svg>`.
+ * — stays out of the raycast set; the portal's blocker plane keeps the panel
+ * as a whole opaque to rays. SVG shapes, and the `<g>`, `<a>` and nested
+ * `<svg>` that group them, follow the same rule, and `cursor` is inherited
+ * into them from the page around the `<svg>`.
  *
  * `pointer-events: none` says the opposite, as it does on a page, and wins.
  * `cursor` is inherited, so an icon's `<svg>` inside a button computes
@@ -74,6 +73,15 @@ export function isRayTarget(element) {
 }
 
 /**
+ * Whether the element is a `<label>` of a field in its own panel that the
+ * keyboard can type into. Asked again when the label is restyled, when a
+ * child is put into it or taken out, and when the field it names is
+ * restyled, which a `disabled` or `readOnly` written on the field does
+ * wherever the field is. Not asked again for a field that arrives deeper
+ * inside the label than its own children, nor for one that comes to carry
+ * the `id` the label's `for` names after the label mounted: nothing the
+ * label reads changes then.
+ *
  * @param {HTMLElement} element
  * @returns {boolean}
  */
@@ -81,10 +89,17 @@ function isFieldLabel(element) {
   if (element.localName !== "label") {
     return false;
   }
-  // Read for the invalidation too: a `for` written or a field disabled
-  // after mounting restyles the label, which asks again.
   const style = getComputedStyleCached(element);
-  return style.getPropertyValue("pointer-events") !== "none" && labelledField(element) !== null;
+  if (style.getPropertyValue("pointer-events") === "none") {
+    return false;
+  }
+  getChildNodes(element);
+  const field = /** @type {HTMLLabelElement} */ (element).control;
+  if (!field || getPortalRoot(field) !== getPortalRoot(element)) {
+    return false;
+  }
+  getComputedStyleCached(field);
+  return labelledField(element) !== null;
 }
 
 /**

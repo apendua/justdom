@@ -329,10 +329,22 @@ export function replace(oldValue, newValue) {
   batch(() => {
     // Set and restored inside the batch, before it drains, as `mutator` is:
     // an effect the replace queued assigns as any assignment does.
-    const previous = placing;
+    // One set for the whole replace, nested replaces included: each adds
+    // only the stores the set does not hold yet, and removes them again, so
+    // each store is added and removed once.
     const found = storesIn(newValue);
-    if (found) {
-      placing = previous ? new Set([...previous, ...found]) : found;
+    const made = found !== null && placing === null;
+    /** @type {unknown[]} */
+    const added = [];
+    if (made) {
+      placing = found;
+    } else if (found && placing) {
+      for (const held of found) {
+        if (!placing.has(held)) {
+          placing.add(held);
+          added.push(held);
+        }
+      }
     }
     try {
       Object.assign(oldValue, newValue);
@@ -345,7 +357,13 @@ export function replace(oldValue, newValue) {
         }
       }
     } finally {
-      placing = previous;
+      if (made) {
+        placing = null;
+      } else {
+        for (const held of added) {
+          placing?.delete(held);
+        }
+      }
     }
   });
 }
@@ -672,8 +690,8 @@ function store(data, operators = []) {
     defineProperty() {
       // A key of a store changes through its traps alone, which tell its
       // readers, mark it for `reshape` and keep `Internals.held`. A define
-      // would bypass all three, so it is refused, and in strict code it
-      // throws, as on a non-extensible object.
+      // would bypass all three, so it is refused, and `Object.defineProperty`
+      // throws, in sloppy code too.
       return false;
     },
     preventExtensions() {
@@ -822,17 +840,20 @@ function nestedStore(internals, value, owned) {
  * What a reload puts at a key of `internals`' store for the definition's
  * `value`, a plain object, an array or a store, where the key holds no
  * store of its own of that kind. A plain object or an array is made a store
- * the key owns. A store the definition `from` owns is the key's from now
- * on, since nothing else holds it once the reload is done. Any other store,
- * one made by a call to `store()` or one another store owns, is held as
- * itself and stays its owner's.
+ * the key owns. A store the definition `from` owns becomes this store's
+ * once the reload is done, since the definition is dropped then. Until
+ * then it is the definition's at every key of the pass, so a key where the
+ * program already holds it is a store from elsewhere there and is left
+ * alone, whichever key the definition lists first. Any other store, one
+ * made by a call to `store()` or one another store owns, is held as itself
+ * and stays its owner's.
  *
  * @param {Internals} internals
  * @param {object} value
  * @param {Internals | undefined} from The definition's record, when the
  *   definition is a store.
- * @param {Set<Internals>} adopted The stores the reload has re-owned, which
- *   `countAdopted` counts when it is done.
+ * @param {Set<Internals>} adopted The stores the reload is taking over,
+ *   which `countAdopted` re-owns and counts when it is done.
  * @returns {object}
  */
 function adopt(internals, value, from, adopted) {
@@ -841,9 +862,9 @@ function adopt(internals, value, from, adopted) {
     return nestedStore(internals, value, false);
   }
   if (from && nested.owner === from) {
-    // Counted by `countAdopted` once the reload has written every key, since
-    // a key a program assignment made may hold it already.
-    nested.owner = internals;
+    // Re-owned and counted by `countAdopted` once the reload has written
+    // every key, so that the store is the definition's at every key of the
+    // pass, whatever their order.
     adopted.add(nested);
     if (internals.touched) {
       track(nested, false);
@@ -1127,10 +1148,11 @@ function reshapeWith(internals, descriptors, from) {
 }
 
 /**
- * Set `held` for the stores a reload re-owned, in one pass over the keys of
- * `internals`' state once the reload has written every key: a key a program
- * assignment made may hold one already, and a count kept per adoption would
- * walk the state once per store.
+ * Make the stores a reload adopted this store's, and set their `held` in
+ * one pass over the keys of `internals`' state, once the reload has written
+ * and dropped every key: a key a program assignment made may hold one
+ * already, and a count kept per adoption would walk the state once per
+ * store.
  *
  * @param {Internals} internals
  * @param {Set<Internals>} adopted
@@ -1140,6 +1162,7 @@ function countAdopted(internals, adopted) {
     return;
   }
   for (const nested of adopted) {
+    nested.owner = internals;
     nested.held = 0;
   }
   const { state } = internals;

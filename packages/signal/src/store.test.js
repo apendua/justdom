@@ -1547,3 +1547,37 @@ test("Object.preventExtensions() on a store throws and leaves it writable", () =
   list.push({ n: 2 });
   assert.strictEqual(list.length, 2);
 });
+
+test("a reload leaves the program's alias of an adopted store alone in either key order", () => {
+  for (const order of [
+    ["y", "x"],
+    ["x", "y"],
+  ]) {
+    /** @type {Record<string, { v: number }>} */
+    const plain = {};
+    for (const key of order) {
+      plain[key] = key === "y" ? { v: 1 } : { v: 10 };
+    }
+    const def = store(plain);
+    const S = def.y;
+    const t = /** @type {any} */ (store({ x: 0, y: 5 }));
+    trackWrites(t);
+    t.x = S;
+    reshape(t, def);
+    assert.strictEqual(t.y, S, `adopted at y (${order})`);
+    assert.strictEqual(t.x, S, `kept at x, which the program wrote (${order})`);
+    assert.strictEqual(S.v, 1, `reshaped through no alias (${order})`);
+  }
+});
+
+test("a reload counts an adopted store after it drops the keys the definition lacks", () => {
+  const def = store({ y: { v: 1 } });
+  const S = def.y;
+  const u = /** @type {any} */ (store({ y: 5 }));
+  u.z = S;
+  reshape(u, def);
+  assert.strictEqual("z" in u, false);
+  u.y = { v: 9 };
+  assert.strictEqual(u.y, S, "held at y alone, so written into");
+  assert.strictEqual(S.v, 9);
+});

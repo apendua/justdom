@@ -55,20 +55,22 @@ import {
  * - **A `Stream`** — a `stylesheet`, a `className`, an `observable(...)` —
  *   is wrapped in a source that switches to the current one, dropping the
  *   previous module's subscription before taking the new one.
- * - **A `store`** is kept and followed. The object is kept, so the module's
- *   own code and its importers go on sharing it, and once the export's
- *   initialiser has evaluated it records which keys the program writes,
- *   through `trackWrites`. On a reload it is `reshape`d with the
- *   re-evaluated definition: a key the program wrote keeps what the program
- *   did, and every other key takes the definition's side, getter, setter,
- *   value and presence alike. So a getter edited in source takes effect, an
- *   edited initial value shows unless the program has written that key, and
- *   what the program wrote, added or deleted stays. A write made while the
- *   initialiser runs, by a factory that fills the store it returns or by an
- *   operator writing at construction, comes before the recording and
- *   follows the source on the first reload. A theme or a palette is a store
- *   nobody writes to, so an edit to one colour reaches the things wearing
- *   it and nothing else moves.
+ * - **A `store`** is kept and followed. The object is kept, so the module's own
+ *   code and its importers go on sharing it, and once the export's initialiser
+ *   has evaluated it records which keys the program writes, through
+ *   `trackWrites`. On a reload it is `reshape`d with the re-evaluated
+ *   definition: a key the program wrote keeps what the program did, and every
+ *   other key takes the definition's side, getter, setter, value and presence
+ *   alike. So a getter edited in source takes effect, an edited initial value
+ *   shows unless the program has written that key, and what the program wrote,
+ *   added or deleted stays. A write made while the initialiser runs, by a
+ *   factory that fills the store it returns or by an operator writing at
+ *   construction, comes before the recording and follows the source on the
+ *   first reload. A store made of an array is followed the same way: once the
+ *   program has written to it, it keeps which element is at each index, and its
+ *   length, while the element stores it made are still reshaped in place. A
+ *   theme or a palette is a store nobody writes to, so an edit to one colour
+ *   reaches the things wearing it and nothing else moves.
  * - **State** — a `Signal`, a `ReactiveMap` or `ReactiveSet`, a `Subject` or
  *   `Emitter`, an `UpdateChannel`, a context property — is *kept*. What such
  *   an export holds is what the running application has put there, and a
@@ -217,7 +219,10 @@ const STATE_SHAPES = [
   ["Subject", (value) => value instanceof Subject],
   ["Emitter", (value) => value instanceof Emitter],
   ["UpdateChannel", (value) => value instanceof UpdateChannel],
-  ["store", isStore],
+  // A store keeps the kind it was made with, so one made of an array cannot
+  // be reshaped with an object or the other way round.
+  ["store", (value) => isStore(value) && !Array.isArray(value)],
+  ["array store", (value) => isStore(value) && Array.isArray(value)],
   ["property", isProperty],
 ];
 
@@ -411,7 +416,7 @@ function createEntry(kind, value) {
     // reshaped with the new definition at `commit`, which keeps the keys the
     // program writes from here on.
     const shape = stateShapeOf(value) ?? "";
-    if (shape === "store") {
+    if (isStore(value)) {
       trackWrites(/** @type {any} */ (value));
     }
     return { kind, shape, held: null, exported: value };
@@ -470,7 +475,7 @@ export function $hmr(hot) {
         // The state the application has been writing to, kept; the instance
         // this evaluation just built goes unused, apart from a store's
         // definition, which the kept one takes at `commit`.
-        if (entry.shape === "store") {
+        if (isStore(entry.exported)) {
           session.pending.set(entry, value);
         }
         return /** @type {T} */ (entry.exported);

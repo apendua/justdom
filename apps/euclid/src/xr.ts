@@ -1,5 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
-import { followThemingQuery } from "@apendua.dev/headset/theming";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 import { inputModels } from "@apendua.dev/headset/scene";
 import { svgElements } from "@apendua/freedom/svg";
 import Scene, { type Mounts } from "./components/Scene";
@@ -13,6 +13,7 @@ import Scene, { type Mounts } from "./components/Scene";
  */
 export function offerXR(mounts: Mounts): void {
   followThemingQuery(new URLSearchParams(location.search));
+  followOutlinesQuery(new URLSearchParams(location.search));
 
   render(Scene(mounts), {
     // From this app's own origin, where `vite.config.mts` serves them.

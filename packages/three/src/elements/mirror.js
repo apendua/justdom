@@ -27,6 +27,7 @@ import {
   HOVER_ATTRIBUTE,
   PORTAL_ATTRIBUTE,
 } from "./portalRoot.js";
+import { probeChange, probedDerived, probeNoopWrite, probeRipple } from "./outlineProbe.js";
 import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 import {
   frameFor,
@@ -1205,6 +1206,7 @@ export class DomMirror {
     for (const mutation of mutationList) {
       switch (mutation.type) {
         case "childList": {
+          probeChange(mutation.target);
           this.childListChanged(
             /** @type {Element} */ (mutation.target),
             firstDisturbedChild(mutation),
@@ -1259,8 +1261,12 @@ export class DomMirror {
       let selfScoped = true;
       let contained = true;
       for (const [name, oldValue] of names) {
+        if (PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+          continue;
+        }
         const value = element.getAttribute(name);
-        if (value === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+        if (value === oldValue) {
+          probeNoopWrite(element);
           continue;
         }
         changed = true;
@@ -1275,12 +1281,16 @@ export class DomMirror {
         }
       }
       if (changed) {
+        probeChange(element);
         this.attributeChanged(element, { presentational, selfScoped, contained });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
       if (node.nodeValue !== oldValue) {
+        probeChange(node);
         this.characterDataChanged(node);
+      } else {
+        probeNoopWrite(node);
       }
     }
   }
@@ -1843,6 +1853,7 @@ export class DomMirror {
     for (let child = start; child; child = child.nextSibling) {
       const record = recordOf(child);
       if (record) {
+        probeRipple(child);
         bump(record.moved);
       }
     }
@@ -2038,7 +2049,7 @@ const flowModeCache = nodeCache();
 function getFlowMode(element) {
   let signal = flowModeCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       const style = getComputedStyleCached(element);
       // A different writing mode or direction moves the start edge, and
       // "before in the document" stops meaning "before on screen". Read
@@ -2337,7 +2348,7 @@ const textDataCache = nodeCache();
 export function getTextDataCached(text) {
   let signal = textDataCache.get(text);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(text, () => {
       readRecordOf(text)?.character.get();
       return text.data;
     });
@@ -2360,7 +2371,7 @@ const inlineSizeCache = nodeCache();
 function getBorderBoxInlineSize(element) {
   let signal = inlineSizeCache.get(element);
   if (!signal) {
-    signal = new Derived(() => getBorderBoxSize(element).width);
+    signal = probedDerived(element, () => getBorderBoxSize(element).width);
     inlineSizeCache.set(element, signal);
   }
   return signal.get();
@@ -2486,7 +2497,7 @@ export function getAttributeCached(element, name) {
   }
   let signal = signalMap.get(name);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       readRecordOf(element)?.self.get();
       return element.getAttribute(name);
     });
@@ -2516,7 +2527,7 @@ const transformedCache = nodeCache();
 export function isTransformed(element) {
   let signal = transformedCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       if (isPortalRoot(element)) {
         return false;
       }
@@ -2545,7 +2556,7 @@ const positionCache = nodeCache();
 function getPositionStyle(element) {
   let signal = positionCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       return getComputedStyleCached(element).position || "static";
     });
     positionCache.set(element, signal);
@@ -2589,7 +2600,7 @@ const hiddenCache = new WeakMap();
 export function isVisibilityHidden(node) {
   let signal = hiddenCache.get(node);
   if (!signal) {
-    signal = new Derived(() => hidesVisibility(getComputedStyleCached(node).visibility));
+    signal = probedDerived(node, () => hidesVisibility(getComputedStyleCached(node).visibility));
     hiddenCache.set(node, signal);
   }
   return signal.get();
@@ -2633,7 +2644,7 @@ const opacityCache = nodeCache();
 export function getOpacity(element) {
   let signal = opacityCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       const own = parseFloat(getComputedStyleCached(element).opacity);
       const opacity = Number.isNaN(own) ? 1 : own;
       if (isPortalRoot(element)) {
@@ -2706,7 +2717,8 @@ const borderBoxSizeCache = nodeCache();
 export function getBorderBoxSize(element) {
   let signal = borderBoxSizeCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         getReflowContext(element);
         readParentBox(element);
@@ -2716,7 +2728,7 @@ export function getBorderBoxSize(element) {
         const rect = readClientRect(element);
         return { width: rect.width, height: rect.height };
       },
-      { isEqual: sizeEqual },
+      sizeEqual,
     );
     borderBoxSizeCache.set(element, signal);
   }
@@ -2779,7 +2791,8 @@ const contentPositionCache = nodeCache();
 export function getContentPosition(element) {
   let signal = contentPositionCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         getReflowContext(element);
         readParentBox(element);
@@ -2789,7 +2802,7 @@ export function getContentPosition(element) {
         }
         return measureOffsetWithin(element, parent);
       },
-      { isEqual: positionEqual },
+      positionEqual,
     );
     contentPositionCache.set(element, signal);
   }
@@ -2834,7 +2847,7 @@ const anchorCache = nodeCache();
 function getAnchorElement(element) {
   let signal = anchorCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       let holder = getParentElement(element);
       while (holder && !isPortalRoot(holder)) {
         if (getPositionStyle(holder) !== "static") {
@@ -2900,7 +2913,8 @@ const anchoredOffsetCache = nodeCache();
 function getAnchoredOffset(element) {
   let signal = anchoredOffsetCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const position = getPositionStyle(element);
         const anchor =
@@ -2916,7 +2930,7 @@ function getAnchoredOffset(element) {
         const measured = measureOffsetWithin(element, anchor);
         return { anchor, x: measured.x, y: measured.y };
       },
-      { isEqual: anchoredOffsetEqual },
+      anchoredOffsetEqual,
     );
     anchoredOffsetCache.set(element, signal);
   }
@@ -2944,7 +2958,8 @@ const objectPositionCache = nodeCache();
 export function getObjectPosition(element) {
   let signal = objectPositionCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const parent = getParentElement(element);
         if (!parent) {
@@ -2986,7 +3001,7 @@ export function getObjectPosition(element) {
         const parentScroll = getScrollOffset(parent);
         return { x: x + parentScroll.left, y: y + parentScroll.top };
       },
-      { isEqual: positionEqual },
+      positionEqual,
     );
     objectPositionCache.set(element, signal);
   }
@@ -3182,7 +3197,8 @@ const ownClipWindowCache = nodeCache();
 function getOwnClipWindow(element) {
   let signal = ownClipWindowCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const style = getComputedStyleCached(element);
         const clipsX = hidesOverflow(style, "overflowX");
@@ -3220,7 +3236,7 @@ function getOwnClipWindow(element) {
             clipsX && clipsY ? inset(style.borderBottomLeftRadius, borderLeft, borderBottom) : 0,
         };
       },
-      { isEqual: clipBoxEqual },
+      clipBoxEqual,
     );
     ownClipWindowCache.set(element, signal);
   }
@@ -3282,7 +3298,8 @@ const clipPairCache = nodeCache();
 function getClipPair(element) {
   let signal = clipPairCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = probedDerived(
+      element,
       () => {
         const local = evaluateLocalClip(element);
         const own = getOwnClipWindow(element);
@@ -3292,7 +3309,7 @@ function getClipPair(element) {
         const interior = local === UNCLIPPED ? own : intersectClipBoxes(local, own);
         return { local, interior };
       },
-      { isEqual: clipPairEqual },
+      clipPairEqual,
     );
     clipPairCache.set(element, signal);
   }
@@ -3482,7 +3499,7 @@ export function getCheckedCached(element) {
     // one to attach and dropping the old.
     const changed = fromEvent(element, "change");
     const assigned = checkedAssignments(element);
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       addDependency(changed);
       addDependency(assigned);
       return element.checked;
@@ -3679,7 +3696,7 @@ const whiteSpaceCache = nodeCache();
 function getWhiteSpace(element) {
   let signal = whiteSpaceCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(element, () => {
       return getComputedStyleCached(element).whiteSpace || "normal";
     });
     whiteSpaceCache.set(element, signal);
@@ -4184,7 +4201,7 @@ const lineBoxShapeCache = nodeCache();
 function getLineBoxShape(lineBox) {
   let signal = lineBoxShapeCache.get(lineBox);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(lineBox, () => {
       /** @type {string[]} */
       const parts = [];
       describeShape(lineBox, parts);
@@ -4286,7 +4303,7 @@ const textLayoutCache = nodeCache();
 export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = probedDerived(text, () => {
       const record = readRecordOf(text);
       if (record) {
         record.character.get();

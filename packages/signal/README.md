@@ -177,9 +177,17 @@ and throws rather than spinning.
   effect whose death should stay its own. This is what every `use(() => ...)` in this repo turned
   out to want, and `use()` no longer takes a callback at all.
 - `store()` — a reactive `Proxy` over plain objects/arrays, with per-key dependency tracking. A
-  getter with no setter is readonly. `replace()` assigns values through the store; `reshape()` swaps
-  in a new definition and keeps the keys the program wrote since `trackWrites()`, which is what a
-  hot reload does.
+  plain object or an array nested in a store is a store too, and a store assigned to one is held as
+  itself. An array's methods that change it, `push`, `splice`, `sort` and the rest, each run as one
+  update. An effect calling one does not depend on the array's own keys the method read, and does
+  depend on what else it read, such as the element stores a `sort` comparator reads. A getter with
+  no setter is readonly. `replace()` assigns values through the store; `reshape()` swaps in a new
+  definition and keeps the keys the program wrote since `trackWrites()`, which is what a hot reload
+  does. An array keeps which element is at each index, and its length, once the program has written
+  to it, and takes the definition's elements otherwise. Either way, the element stores it made are
+  reshaped in place with the definition's element at the same index. A store the program assigned
+  from elsewhere is never reshaped through the key or index that holds it, only through the store it
+  was made in.
 - `selector()` / `arraySelector()` — structural, read-only reactive views.
 - `ReactiveMap` / `ReactiveSet` — reactive wrappers around the native collections.
 - `createProperty()` — a `WeakKey`-chained context mechanism (dependency injection without a

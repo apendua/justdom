@@ -63,6 +63,29 @@ export function isSvgRoot(node) {
 }
 
 /**
+ * An SVG element's bounds in its own user space, as `getBBox` reports them,
+ * or null where there is no `getBBox`, as under jsdom. A layout read, and
+ * not a dependency of its own: it is read again only when what reads it
+ * runs again.
+ *
+ * For a clip on a shape (`svg/shape.js`) that is when the shape's chain
+ * runs. For a `<g>`, whose box is its children's, that is when one of its
+ * children has an attribute changed, since the mirror restyles every child
+ * of the `<g>` then and each child's chain reads the box again. A restyle
+ * the mirror scopes to one element, such as `data-xr-hover`, reads it again
+ * for that child alone, and a change the mirror never sees reads nothing.
+ * Each shape's chain reads it for itself, so an `objectBoundingBox` clip on
+ * a `<g>` reads the `<g>`'s box once per shape below it.
+ *
+ * @param {Element} element
+ * @returns {DOMRect | null}
+ */
+export function readBBox(element) {
+  const graphics = /** @type {SVGGraphicsElement} */ (element);
+  return typeof graphics.getBBox === "function" ? graphics.getBBox() : null;
+}
+
+/**
  * Something that knows how to project a kind of element the portal does not.
  *
  * The portal draws boxes, text, checkboxes, text fields and list items with

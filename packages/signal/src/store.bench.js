@@ -23,7 +23,7 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
 import { Derived, effects } from "./index.js";
-import store from "./store.js";
+import store, { replace } from "./store.js";
 import { bench } from "./testUtils/benchmark.js";
 
 /**
@@ -115,6 +115,24 @@ bench(
     });
     dispose();
     return value.y;
+  },
+  options,
+);
+
+/**
+ * `replace` over an owned array whose every element places one store a level
+ * down: the shape a multiplayer restore or a `set` of fetched data makes, and
+ * the one where `replace` went quadratic twice in review. Built once; each
+ * run replaces with the same shape, so every element's in-place write runs.
+ */
+const replaced = store({ items: Array.from({ length: 2000 }, (_, i) => ({ e: { i } })) });
+const nestedStores = replaced.items.map((item) => item.e);
+
+bench(
+  "replace() — 2000 elements, each placing a store one level down",
+  () => {
+    replace(replaced, { items: nestedStores.map((e) => ({ e })) });
+    return replaced.items.length;
   },
   options,
 );

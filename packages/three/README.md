@@ -219,12 +219,13 @@ other hand while the object is carried is a handover — the object moves to tha
 carries on, one `dragstart` and one `dragend` for the whole of it — and only the holding hand's
 release, of the button it is holding with, ends the drag. **It swallows the presses it takes:** the
 press that picks the object up and the release that lets it go never reach whatever is behind, so
-picking up a brick never also picks up the board it sits on. While the object is in the scene, a
-release is swallowed if and only if its press was, whatever `enabled` says in between, so whatever
-is behind hears a press and its release or neither. An object taken out of the scene mid-drag leaves
-the hand too, and no longer hears the release, which goes on to whatever was behind it. A hand that
-disconnects, as every hand does when a session ends, lets go of what it holds, with a `dragend`, as
-though it had been released where it was.
+picking up a brick never also picks up the board it sits on. A release is swallowed if and only if
+its press was, whatever `enabled` says in between, so whatever is behind hears a press and its
+release or neither. The interaction manager keeps that rule for every press: it sends the release no
+further along the press's path than the press went. So an object taken out of the scene mid-drag
+leaves the hand too, and its release, which nothing is listening for any more, still stops where the
+press did, short of the board behind it. A hand that disconnects, as every hand does when a session
+ends, lets go of what it holds, with a `dragend`, as though it had been released where it was.
 
 `RendererContext` is the property behind the once-a-frame `dragmove`, and `useFrame`; it is exported
 so a test can mount a draggable object without a renderer — `RendererContext.set(ctx, {})` is enough
@@ -279,13 +280,14 @@ inverted times the object's, and each frame puts it at the hand's matrix times t
 panel with `level: false` is carried this way.
 
 The bookkeeping is `drag()`'s, in one place (`createHold` in `hold.js`): a press from the other hand
-mid-carry is a handover, taking the grip afresh from wherever its own ray lands, only the carrying
-hand's release puts the object down, and, while the handle is in the scene, a release is swallowed
-if and only if its press was; `held()` says which hand has it. One difference: a carry that is
-disabled while under way is put down where it is, since nothing was reparented and there is nothing
-to undo, and its release is still swallowed when it comes. So is one whose handle leaves the scene,
-since the release it is waiting for goes to a handle no longer listening, and on to whatever is
-behind. A carrying hand that disconnects puts the object down where it is, as a drag's does.
+mid-carry is a handover, taking the grip afresh from wherever its own ray lands, and only the
+carrying hand's release puts the object down; `held()` says which hand has it. A release is
+swallowed if and only if its press was, which the manager keeps, as for a drag. One difference: a
+carry that is disabled while under way is put down where it is, since nothing was reparented and
+there is nothing to undo, and its release is still swallowed when it comes. So is one whose handle
+leaves the scene, since the release it is waiting for goes to a handle no longer listening; the
+manager still stops it there, short of whatever is behind. A carrying hand that disconnects puts the
+object down where it is, as a drag's does.
 
 ## Hands
 
@@ -1369,6 +1371,70 @@ timer outside the frame loop, which is fine at a desk and not worth paying in a 
 on only when it is asked for. Sheets brought in by `@import` are read along with the sheet that
 imports them. A sheet from another origin served without CORS hides its rules from script, and edits
 to it are not followed; serve the sheet you are theming from the page's own origin.
+
+## Outlines
+
+Outlines mode draws a rectangle round each element of a panel that changed, so a developer can see
+which parts of a panel change more often than they should, and which the mirror measures again for
+nothing:
+
+```js
+import { enableOutlinesMode, outlinesReport } from "@apendua/freedom";
+
+const off = enableOutlinesMode(); // returns a function that turns it off again
+console.table(outlinesReport()); // the busiest elements so far, for a headset
+```
+
+The apps in this repository turn it on with `?outlines` in the address, through
+`followOutlinesQuery()` in `@apendua.dev/headset`.
+
+Each outline is decided at a commit of its panel, from what happened to the element since the commit
+before. The line says why the element is outlined, and the colour how often:
+
+| Line                                | Kind          | What it means                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Solid, coloured by rate             | changed       | The page changed the element: one of its attributes, its text or its children.                                                                                                                                                                                                                                                       |
+| Dashed (6 px on, 4 off), by rate    | ripple        | The page did not touch the element, and something the panel reads for it came out different all the same: a row moved down by the row above it growing, or a label that inherits a colour its card changed.                                                                                                                          |
+| Dotted (1.5 px on, 3 off), by rate  | wasted        | The page did not touch the element, the panel read it again, and everything came out as it was. Something told the mirror the element may have changed and it had not. That is where a gap in the mirror's filtering shows: a restyle that reached further than it had to, or a layout walk that told more rows they moved than did. |
+| Grey, solid                         | no-op write   | The page wrote to the element what was already there. The mirror drops such a write, so it costs the panel nothing past the observer, but the page is still doing work for nothing, often on every frame.                                                                                                                            |
+| Magenta, round the whole panel edge | forced commit | The panel's commit had to be forced (see below). Something in it changes on every frame.                                                                                                                                                                                                                                             |
+
+A commit sees an element by the strongest thing that happened to it, in the order of the table: a
+change the page made wins over a ripple, a ripple over a wasted read, and a wasted read over a write
+of what was there. An element the layout walk told it may have moved, and that nothing read again,
+cost nothing and is not drawn, though the report counts it.
+
+The rate counts the commits that outlined the element over about the last second: blue under two a
+second, green from two, yellow from five and red from ten. Each outline fades over a second after
+the commit that drew it. An HTML element, and an `<svg>` root, is outlined round its border box. An
+SVG element inside the root is outlined round its `getBBox`, in its own user space, so the outline
+turns and scales with the element.
+
+An outline goes up in the frame its commit is drawn in, never before. An atomic panel shows the page
+as it was at its last commit, so an outline taken when the page changed would stand round something
+the panel does not show yet. A write of what was already there leaves the panel nothing to do and no
+commit coming, so its grey line goes up as the observer reports it. A panel whose commit had to be
+forced, because the reading before it never finished within `MAX_COMMIT_WAIT` or the page kept
+adding rows past `MAX_BUILD_WAIT`, flashes a magenta line round its whole edge. Something in it
+changes on every frame, and the panel lands once a second instead of following it, which outlines of
+its elements alone would not show.
+
+`outlinesReport(limit)` lists what the mode has counted since it was turned on, one row per element
+still in the document, the most often outlined first: a short path to the element, how many commits
+outlined it, and its totals of changes, writes of what was there, layout ripples (the walk telling
+it it may have moved), reads run again, and reads that came out unchanged. A headset has no pointer
+to hover an outline with, so read it over remote developer tools.
+
+What is counted is what the mirror does for each element: the records it lets through and drops, the
+rows the layout walk tells, and the cached reads it keeps per element (sizes, positions, clips, text
+layouts and the like), plus the style each box is drawn from. An effect that writes to a mesh on
+every frame from `useFrame` changes no DOM and reads no mirror, and draws no outline. Three outlines
+are expected and not a bug: a hovered element flashes blue, since the portal writes `data-xr-hover`
+on it; the children of an element whose class changed often go dotted, since the mirror restyles
+them to learn that nothing they inherit changed; and an animated element stays lit while it runs,
+since the animation clock restyles it on every frame. Off, the mode costs the mirror one check per
+thing it would count. On, a panel is slower than it would be, and its outlines are redrawn on every
+frame until they fade, so measure frame times with it off.
 
 ## Animation
 

@@ -1,5 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
-import { followThemingQuery } from "@apendua.dev/headset/theming";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 import { inputModels } from "@apendua.dev/headset/scene";
 import Scene from "./components/Scene.js";
 import TodoKeyboard from "./components/TodoKeyboard.js";
@@ -11,7 +11,9 @@ import TodoKeyboard from "./components/TodoKeyboard.js";
  * `@apendua.dev/headset/offer` only on a platform that can present.
  */
 export function offerXR(panel: HTMLElement): void {
-  followThemingQuery(new URLSearchParams(location.search));
+  const query = new URLSearchParams(location.search);
+  followThemingQuery(query);
+  followOutlinesQuery(query);
 
   render(Scene(panel), {
     // From this app's own origin, where `vite.config.mts` serves them.

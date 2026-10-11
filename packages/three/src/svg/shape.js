@@ -28,7 +28,13 @@ import {
   hidesVisibility,
   isVisibilityHidden,
 } from "../elements/mirror.js";
-import { findSvgElement, isSvgElement, isSvgRoot, SVG_NAMESPACE } from "../elements/plugins.js";
+import {
+  findSvgElement,
+  isSvgElement,
+  isSvgRoot,
+  readBBox,
+  SVG_NAMESPACE,
+} from "../elements/plugins.js";
 import {
   aboutOrigin,
   apply,
@@ -321,26 +327,6 @@ function ownTransform(element, style, viewBoxOrigin) {
     oy += viewBoxOrigin.y;
   }
   return aboutOrigin(matrix, ox, oy);
-}
-
-/**
- * The element's bounds in its own user space, as `getBBox` reports them, or
- * null where there is no `getBBox`, as under jsdom. The read is not a
- * dependency of its own, so it is read again only when what reads it runs
- * again. For a `<g>`, whose box is its children's, that is when one of its
- * children has an attribute changed, since the mirror restyles every child
- * of the `<g>` then and each child's chain reads the box again. A restyle
- * the mirror scopes to one element, such as `data-xr-hover`, reads it again
- * for that child alone, and a change the mirror never sees reads nothing.
- * Each shape's chain reads it for itself, so an `objectBoundingBox` clip on
- * a `<g>` reads the `<g>`'s box once per shape below it.
- *
- * @param {Element} element
- * @returns {DOMRect | null}
- */
-function readBBox(element) {
-  const graphics = /** @type {SVGGraphicsElement} */ (element);
-  return typeof graphics.getBBox === "function" ? graphics.getBBox() : null;
 }
 
 /**

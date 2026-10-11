@@ -2,7 +2,7 @@
   "name": "@apendua.dev/headset",
   "version": "1.0.0",
   "private": true,
-  "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, the session a page reads, and the backdrop and hand models a scene draws",
+  "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
   "author": "apendua",
   "type": "module",
   "exports": {

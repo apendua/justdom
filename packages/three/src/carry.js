@@ -299,7 +299,7 @@ export function applyLevelPose(object, pose) {
  *   decision — `makeInteractive()` goes in the same list, or the presses
  *   bubble up from parts that already are. A handle taken out of the scene
  *   mid-carry puts the carried thing down, since the release that would have
- *   is not coming to it any more.
+ *   is not coming to it any more; it goes on to whatever is behind.
  * @property {() => CarryHold | null} held The hand carrying the object, or
  *   null while nobody is. Reactive: read it inside an effect and the effect
  *   re-runs as the object is taken, handed over, and put down.
@@ -328,9 +328,9 @@ export function applyLevelPose(object, pose) {
  * which hand, so a press from the other hand while the object is carried is
  * a handover — the new hand takes the grip from wherever its own ray lands —
  * and only the carrying hand's release puts the object down, a `lost` one
- * included, which the manager sends for a hand that disconnects; and the
- * presses a handle takes never reach whatever is behind it, nor do their
- * releases.
+ * included, which the manager sends for a hand that disconnects; and, while
+ * the handle is in the scene, the presses it takes never reach whatever is
+ * behind it, nor do their releases.
  *
  * ```js
  * const board = carry(ctx, { enabled: () => phase.get() === "build" });

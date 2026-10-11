@@ -1,7 +1,8 @@
 /**
  * Ray events for a test that builds elements without a portal, sent as the
- * interaction manager sends them, to a panel set up as a portal sets one.
- * Importing this module installs nothing.
+ * interaction manager sends them, to a panel set up as a portal sets one;
+ * and `withStart`, the start every release carries, for any test that sends
+ * a release by hand. Importing this module installs nothing.
  */
 import * as THREE from "three";
 import { createPanelForwarder, PointerForwarderContext } from "../elements/pointerForwarding.js";

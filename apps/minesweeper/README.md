@@ -14,7 +14,8 @@ npm run build      # what `rush build` runs
 
 On a laptop the page is the page and nothing else: no session can be opened, so no button is shown,
 no renderer is made and three.js is never fetched, not even by the service worker, which leaves the
-headset's chunks out of its precache. `?emulator` installs a headset in the browser (IWER, with its
+headset's chunks out of its precache. It leaves the controller and hand models under `profiles/` out
+too, so a session needs the network. `?emulator` installs a headset in the browser (IWER, with its
 dev panels) and the **Enter** button appears at the bottom; press it and the emulated session is
 drawn over the page. `?emulator=bare` installs the runtime without the panels.
 

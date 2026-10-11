@@ -59,8 +59,7 @@ export const Backdrop = component(
  * origin is asked for them. Spread into `render()`'s options. A headset
  * with no network draws them only if the app's service worker precaches
  * them, which takes `globPatterns` covering the `.glb` and `.json` files
- * under `profiles/`; minesweeper and the todo app precache neither
- * these nor the scene's own chunk, so their sessions need the network.
+ * under `profiles/`; each app's README says whether it does.
  *
  * The files are `@apendua.dev/media`'s WebXR input profiles, which its Vite
  * plugin serves at `<base>profiles/`, so the app's `vite.config.mts` has to

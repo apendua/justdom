@@ -88,9 +88,8 @@ module that makes the scene, never from the page's entry.
 - `inputModels(base)` returns `createControllerModel` and `createHandModel` for `render()`'s
   options, reading the models from the app's own origin rather than three's default CDN, so no other
   origin is asked for them. A headset with no network draws them only if the app's service worker
-  precaches them (`@apendua.dev/media`'s README says how); minesweeper and the todo app precache
-  neither these nor the scene's chunk, so their sessions need the network. `base` is the app's
-  `import.meta.env.BASE_URL`, and the app's `vite.config.mts` has to list
+  precaches them (`@apendua.dev/media`'s README says how); each app's README says whether it does.
+  `base` is the app's `import.meta.env.BASE_URL`, and the app's `vite.config.mts` has to list
   `@apendua.dev/media/vite`'s plugin, which serves the vendored WebXR input profiles at
   `<base>profiles/`; `@apendua.dev/media`'s README says what is in them.
 - `clientRect(element)` is the element's client rect, read again whenever the element is resized:
@@ -153,8 +152,11 @@ scene by the panel's angles, `press(page, "trigger" | "squeeze")`, `hold(page, b
 close or open a button for a drag, and `check`, `finish` and `closeAll` for the tally, the exit code
 and the teardown. It is in `driver/` rather than `src/`, since it runs in Node and never in a page.
 It borrows Playwright from `apps/showcase-xr` and launches the Chromium at
-`/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names. Minesweeper's, the desk's and
-Euclid's checks use it, and `.github/workflows/driven.yml` runs all three on pull requests.
+`/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names. `precache(build, root)` builds an app
+with its own Vite and says which chunks its service worker precaches and which the page loads, for a
+check that holds the two equal; minesweeper's check and the todo app's drag check use it.
+Minesweeper's, the desk's and Euclid's checks use the rest, and `.github/workflows/driven.yml` runs
+all three on pull requests.
 
 ## Tests
 

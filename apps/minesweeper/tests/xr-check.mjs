@@ -32,8 +32,7 @@
  * the controller are driven through `@apendua.dev/headset/driver`.
  */
 import { join, resolve, dirname } from "node:path";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build, createServer } from "vite";
 import {
@@ -44,6 +43,7 @@ import {
   frames,
   headPosition,
   launch,
+  precache,
   press,
   rotate,
 } from "@apendua.dev/headset/driver";
@@ -55,61 +55,10 @@ if (SHOTS) {
   mkdirSync(SHOTS, { recursive: true });
 }
 
-/**
- * Build the app for production into a scratch directory, and say which JS
- * its service worker precaches, and which JS the page loads before it
- * offers anything: the entry chunk and every chunk it imports statically.
- * The worker is installed on every visit, so whatever it lists is
- * downloaded by every visitor.
- *
- * @returns {Promise<{ precached: string[], loaded: string[] }>}
- */
-async function precache() {
-  const outDir = mkdtempSync(join(tmpdir(), "minesweeper-"));
-  try {
-    const built = await build({
-      root: HERE,
-      configFile: join(HERE, "vite.config.mts"),
-      logLevel: "warn",
-      build: { outDir, emptyOutDir: true, sourcemap: false },
-    });
-    const outputs = (Array.isArray(built) ? built : [built]).flatMap((result) =>
-      "output" in result ? result.output : [],
-    );
-    /** @type {Map<string, string[]>} */
-    const imports = new Map();
-    /** @type {string[]} */
-    const entries = [];
-    for (const item of outputs) {
-      if (item.type === "chunk") {
-        imports.set(item.fileName, item.imports);
-        if (item.isEntry) {
-          entries.push(item.fileName);
-        }
-      }
-    }
-    const loaded = new Set();
-    const visit = (/** @type {string} */ name) => {
-      if (!loaded.has(name)) {
-        loaded.add(name);
-        (imports.get(name) ?? []).forEach(visit);
-      }
-    };
-    entries.forEach(visit);
-    const worker = readFileSync(join(outDir, "sw.js"), "utf8");
-    const precached = [...worker.matchAll(/url:"([^"]+)"/g)]
-      .map((match) => match[1])
-      .filter((url) => url.startsWith("assets/") && url.endsWith(".js"));
-    return { precached: precached.sort(), loaded: [...loaded].sort() };
-  } finally {
-    rmSync(outDir, { recursive: true, force: true });
-  }
-}
-
 async function main() {
   console.log("\n== the precache");
   {
-    const { precached, loaded } = await precache();
+    const { precached, loaded } = await precache(build, HERE);
     console.log(`  precached: ${precached.join(", ")}`);
     check(
       loaded.length > 0 && loaded.every((name) => precached.includes(name)),

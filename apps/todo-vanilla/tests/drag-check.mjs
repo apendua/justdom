@@ -1,6 +1,8 @@
 /**
  * Reorders the todo list by dragging a row's handle twice, with the real
- * browser stack: vite-served todo-vanilla in headless Chromium.
+ * browser stack: vite-served todo-vanilla in headless Chromium. Before
+ * that, a production build must not precache the headset's chunks: its
+ * service worker lists the chunks the page loads, and no other.
  *
  *   node tests/drag-check.mjs
  *   SHOT=drag.png node tests/drag-check.mjs   # and photograph it mid-drag
@@ -19,7 +21,8 @@
  */
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { build, createServer } from "vite";
+import { precache } from "@apendua.dev/headset/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(
@@ -84,6 +87,21 @@ function report(label, before, after, drags) {
 }
 
 async function main() {
+  // A production build must not precache the headset's chunks, which
+  // `offerHeadset` loads only where a session can be opened: the worker
+  // lists every chunk the page loads, and no other.
+  const { precached, loaded } = await precache(build, HERE);
+  console.log(`precached: ${precached.join(", ")}`);
+  let ok =
+    loaded.length > 0 &&
+    loaded.every((name) => precached.includes(name)) &&
+    precached.every((name) => loaded.includes(name));
+  console.log(
+    ok
+      ? "  OK: the service worker precaches the chunks the page loads, and no other"
+      : "  FAIL: the service worker's precache is not the chunks the page loads",
+  );
+
   const server = await createServer({
     root: HERE,
     configFile: join(HERE, "vite.config.mts"),
@@ -98,7 +116,6 @@ async function main() {
     executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
     args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
   });
-  let ok = true;
   try {
     // On the page, with the mouse.
     {

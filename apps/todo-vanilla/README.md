@@ -21,10 +21,13 @@ the emulator) work there. Serving it to a headset over the local network would n
 set up.
 
 On a laptop the page is the page and nothing else: no session can be opened, so no button is shown,
-no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
-(IWER, with its dev panels) and the **Enter VR** button appears at the bottom; press it and the
-emulated session is drawn over the page, driven from the panels. `?emulator=bare` installs the
-runtime without the panels, for a harness photographing the scene.
+no renderer is made and three.js is never fetched, not even by the service worker, which leaves the
+headset's chunks out of its precache. It leaves the controller and hand models under `profiles/` out
+too, so a session needs the network. `node tests/drag-check.mjs` builds the app for production first
+and fails unless its service worker precaches exactly the JS the page loads. `?emulator` installs a
+headset in the browser (IWER, with its dev panels) and the **Enter VR** button appears at the
+bottom; press it and the emulated session is drawn over the page, driven from the panels.
+`?emulator=bare` installs the runtime without the panels, for a harness photographing the scene.
 
 ## How it is put together
 

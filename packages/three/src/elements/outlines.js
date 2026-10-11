@@ -3,6 +3,7 @@ import { withComputation } from "@apendua/signal";
 import { getBorderBoxSize } from "./mirror.js";
 import { emptyTally, setProbing, takeTallies, unprobed } from "./outlineProbe.js";
 import { describeElement } from "./panelFrame.js";
+import { isSvgElement, isSvgRoot, readBBox } from "./plugins.js";
 
 /**
  * @import {Tally} from './outlineProbe.js';
@@ -71,7 +72,10 @@ const FORCED_MARGIN = 2;
  * @property {number} rate Commits it was part of, decayed over `RATE_WINDOW`:
  *   about how many it was part of in the last second.
  * @property {number} at When that commit was, by `performance.now()`.
- * @property {number} width Its border box at that commit, in the panel's px.
+ * @property {number} x Its outline at that commit, in its object's own
+ *   space (`outlineBox`).
+ * @property {number} y
+ * @property {number} width
  * @property {number} height
  * @property {Tally} total Everything counted for it since outlines mode was
  *   turned on.
@@ -244,6 +248,32 @@ function overlayMaterial() {
 }
 
 /**
+ * Where an element's outline goes, in the space of the object the panel
+ * built for it, or null when there is no telling.
+ *
+ * A box, the `<svg>` root among them, has its object at its border-box
+ * corner, in px, so its outline is its border box from there. Below the
+ * root, an SVG element's object is in the element's own user space: the
+ * root's content group carries the `viewBox`, and each element its own
+ * transform (`svgNode` in `svg/shape.js`). Its outline is its `getBBox`,
+ * which is in that same space, and which nothing else measured where its
+ * object is. Both reads may force a layout: an SVG element's box is not
+ * cached, and nor is the size of a box nothing in the panel reads. That is
+ * one read per outline per commit, paid only while the mode is on.
+ *
+ * @param {Element} element
+ * @returns {{ x: number, y: number, width: number, height: number } | null}
+ */
+function outlineBox(element) {
+  if (isSvgElement(element) && !isSvgRoot(element)) {
+    const bbox = readBBox(element);
+    return bbox && { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height };
+  }
+  const size = getBorderBoxSize(/** @type {HTMLElement} */ (element));
+  return { x: 0, y: 0, width: size.width, height: size.height };
+}
+
+/**
  * The matrix from `object`'s own space to `container`'s, into `out`, or
  * null when the object is not shown under the container: detached, or
  * under something hidden.
@@ -341,7 +371,15 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
         continue;
       }
       const color = entry.kind === "noop" ? NOOP_COLOR : rampColor(entry.rate);
-      styles[entry.kind].push(matrix, 0, 0, entry.width, entry.height, color, 1 - age / FADE);
+      styles[entry.kind].push(
+        matrix,
+        entry.x,
+        entry.y,
+        entry.width,
+        entry.height,
+        color,
+        1 - age / FADE,
+      );
     }
     if (forcedAt !== null) {
       const age = now - forcedAt;
@@ -399,6 +437,8 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
             kind: "changed",
             rate: 0,
             at: now,
+            x: 0,
+            y: 0,
             width: 0,
             height: 0,
             total: emptyTally(),
@@ -420,12 +460,14 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
         entry.kind = kind;
         entry.at = now;
         entry.commits += 1;
-        // A size nothing in the panel reads, as an SVG shape's, is not
-        // cached, and this asks the browser for it: a forced layout per such
-        // outline per commit, paid only while the mode is on.
-        const size = quietly(() => getBorderBoxSize(/** @type {HTMLElement} */ (element)));
-        entry.width = size.width;
-        entry.height = size.height;
+        const box = quietly(() => outlineBox(element));
+        if (!box) {
+          return;
+        }
+        entry.x = box.x;
+        entry.y = box.y;
+        entry.width = box.width;
+        entry.height = box.height;
         entries.set(element, entry);
       });
       if (entries.size > 0) {

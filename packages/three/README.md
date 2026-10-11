@@ -1403,7 +1403,9 @@ before. The line says why the element is outlined:
 
 The colour of the first three says how often the element was outlined, counted in commits over about
 the last second: blue for once or less, green from two, yellow from five and red from ten. Each
-outline fades over a second after the commit that drew it.
+outline fades over a second after the commit that drew it. An HTML element, and an `<svg>` root, is
+outlined round its border box. An SVG element inside the root is outlined round its `getBBox`, in
+its own user space, so the outline turns and scales with the element.
 
 An outline goes up in the frame its commit is drawn in, never before. An atomic panel shows the page
 as it was at its last commit, so an outline taken when the page changed would stand round something

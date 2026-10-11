@@ -8,6 +8,8 @@ import { emptyTally } from "./outlineProbe.js";
 import { MAX_COMMIT_WAIT } from "./portalPump.js";
 import { drain, flushFrame, nextMacrotask, settle } from "../test/portalHarness.js";
 import { fakeClock } from "../test/clock.js";
+import { svgElements } from "../svg/index.js";
+import { SVG_NAMESPACE } from "./plugins.js";
 
 /**
  * A panel the page already has: a list of four rows, each a plain box with
@@ -203,6 +205,60 @@ describe("outlines mode", () => {
     } finally {
       off();
       await panel.dispose();
+    }
+  });
+
+  test("an SVG shape is outlined round its own box, where the panel draws it", async () => {
+    // A shape's object is in the shape's own user space, below the root's
+    // content group and every transform above it, and not at a border-box
+    // corner in px as a box's is. Its outline is its `getBBox` in that space.
+    const root = document.createElement("div");
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+    const group = document.createElementNS(SVG_NAMESPACE, "g");
+    group.setAttribute("style", "transform: matrix(1, 0, 0, 1, 30, 0)");
+    const rect = document.createElementNS(SVG_NAMESPACE, "rect");
+    for (const [name, value] of Object.entries({ x: 10, y: 20, width: 5, height: 5 })) {
+      rect.setAttribute(name, String(value));
+    }
+    rect.setAttribute("fill", "red");
+    // jsdom has no geometry to measure; a browser's `getBBox` reports this.
+    /** @type {SVGGraphicsElement} */ (/** @type {unknown} */ (rect)).getBBox = () =>
+      /** @type {DOMRect} */ ({ x: 10, y: 20, width: 5, height: 5 });
+    group.append(rect);
+    svg.append(group);
+    root.append(svg);
+    document.body.append(root);
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const portal = createPortal(ctx, {
+      root,
+      plugins: [svgElements()],
+      loadingFrame: { delay: 0, minimumTime: 0 },
+    });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    await settle(portal);
+    const off = enableOutlinesMode();
+    try {
+      rect.setAttribute("fill", "blue");
+      await drain();
+      const overlay = /** @type {THREE.Object3D} */ (
+        parent.children[0].children.find((child) =>
+          child.children.some((line) => line instanceof THREE.LineSegments),
+        )
+      );
+      const solid = /** @type {THREE.LineSegments} */ (overlay.children[0]);
+      assert.equal(solid.geometry.drawRange.count, 8, "one outline, round the rect");
+      const positions = solid.geometry.getAttribute("position");
+      // Corners A and C of the rectangle, through the group's translation.
+      assert.deepEqual(
+        [positions.getX(0), positions.getY(0), positions.getX(4), positions.getY(4)],
+        [40, 20, 45, 25],
+      );
+    } finally {
+      off();
+      await drain();
+      portal.disconnect();
+      root.remove();
     }
   });
 

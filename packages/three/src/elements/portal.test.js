@@ -3019,31 +3019,33 @@ describe("createPortal", () => {
     }
   });
 
-  test("a sheet for one class restyles what wears it and nothing else", async () => {
+  test("a sheet for one class restyles the panel that wears it and no other", async () => {
     // A keyboard that opens brings its styling library's sheets with it,
     // each a rule for a class only the keyboard wears. They restyled and
     // re-measured every panel on the page, which in outlines mode is every
     // element going dotted and in a headset a frame missed. Read here
-    // through the outlines' counts: the rows that do not wear the class are
-    // not read again at all.
-    const root = document.createElement("div");
-    const list = document.createElement("div");
+    // through the outlines' counts: the panel that does not wear the class
+    // is not read again at all, and the one that does is.
+    const manager = new InteractionManager();
+    const plainRoot = document.createElement("div");
     const rows = Array.from({ length: 4 }, (_, i) => {
       const row = document.createElement("div");
       row.id = `plain${i}`;
       return row;
     });
-    list.append(...rows);
-    const aside = document.createElement("div");
+    plainRoot.append(...rows);
+    const boardRoot = document.createElement("div");
     const dressed = document.createElement("div");
     dressed.id = "dressed";
     dressed.className = "kb_dressed";
-    aside.append(dressed);
-    root.append(list, aside);
-    document.body.append(root);
-    const portal = createPortal(InteractionContext.set({}, new InteractionManager()), { root });
-    portal.addTo(new THREE.Group());
-    await settle(portal);
+    boardRoot.append(dressed);
+    document.body.append(plainRoot, boardRoot);
+    const plain = createPortal(InteractionContext.set({}, manager), { root: plainRoot });
+    const board = createPortal(InteractionContext.set({}, manager), { root: boardRoot });
+    plain.addTo(new THREE.Group());
+    board.addTo(new THREE.Group());
+    await settle(plain);
+    await settle(board);
     const off = enableOutlinesMode();
     const style = document.createElement("style");
     try {
@@ -3060,8 +3062,10 @@ describe("createPortal", () => {
       off();
       style.remove();
       await drain();
-      portal.disconnect();
-      root.remove();
+      plain.disconnect();
+      board.disconnect();
+      plainRoot.remove();
+      boardRoot.remove();
     }
   });
 
@@ -3152,11 +3156,7 @@ describe("createPortal", () => {
       "the class attribute is not what changed",
     );
     assert.equal(dependent.get(), "rgb(4, 5, 6)", "the panel wears the colour the rule now says");
-    // The rule starts from the card's class, so the card restyles as though
-    // its `class` had changed: its own signal and its parent's member signal,
-    // each heard once by this reader, which reads on every invalidation
-    // rather than at the end of the batch. Not once per element in the head.
-    assert.equal(reads, 3, "and read it once per signal the restyle bumps");
+    assert.equal(reads, 2, "and read it once more, not once per element in the head");
 
     dependentSubscription.unsubscribe();
     subscription.unsubscribe();

@@ -435,9 +435,9 @@ describe("watchDocumentStyles", () => {
 
   test("a sheet whose rules all start from classes is announced with them", async () => {
     // What a styling library writes as the elements it dresses arrive, a
-    // keyboard's when the keyboard opens. A panel restyles only what wears
-    // one of the classes, so the announcement has to name them, for a sheet
-    // arriving, rewritten, and leaving.
+    // keyboard's when the keyboard opens. Only a panel the classes reach
+    // restyles, so the announcement has to name them, for a sheet arriving,
+    // rewritten, and leaving.
     /** @type {(ReadonlySet<string> | null)[]} */
     const heard = [];
     const stop = watchDocumentStyles((scope) => heard.push(scope));

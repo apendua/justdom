@@ -1795,8 +1795,8 @@ function buildPortal(ctx, ownOptions = {}) {
   // stylesheet lives in the head, which is nowhere near the subtree the
   // observer above watches, so a library that rewrites a rule while keeping
   // the class name it is behind mutates nothing this panel can see. When the
-  // watcher can name the classes the changed rules start from, only the
-  // elements wearing them restyle; otherwise everything does.
+  // watcher can name the classes the changed rules start from, this panel
+  // restyles only if they can reach it; otherwise it restyles regardless.
   const stopWatchingStyles = watchDocumentStyles((classes) => {
     projectChanges(() => {
       if (classes) {

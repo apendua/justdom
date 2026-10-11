@@ -23,10 +23,9 @@
  * subtree of an element with that class, or after it among its siblings,
  * and a `className` tag whose body nests no rule writes nothing else. So
  * each announcement carries the classes every rule of the changed sheets
- * starts from (`scopeOfSheet`), and a panel restyles only the elements that
- * wear one, as though their `class` had changed
- * (`mirror.classRulesChanged()`). A panel with none of them restyles
- * nothing. A sheet with a rule that starts anywhere else or cannot be read,
+ * starts from (`scopeOfSheet`), and only a panel the classes can reach
+ * restyles (`mirror.classRulesChanged()`). A panel with no element wearing
+ * one, and none above or before it, restyles nothing. A sheet with a rule that starts anywhere else or cannot be read,
  * a nested rule, a `<link>`, and a change theming mode finds are announced
  * with no classes, and cost a whole-panel restyle.
  *

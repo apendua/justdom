@@ -1647,18 +1647,22 @@ export class DomMirror {
    * The document's stylesheets changed, and every rule that changed starts
    * from one of `classes` (see `scopeOfSheet` in `documentStyles.js`). Such
    * a rule matches only an element wearing the class, its subtree, and what
-   * comes after it among its siblings, which is what changing the element's
-   * `class` restyles and re-measures. So each element of the panel wearing
-   * one restyles as though its `class` had changed, and a panel with none of
-   * them restyles nothing. That is the usual case for a sheet a styling
-   * library writes as the elements it dresses arrive, such as a keyboard's
-   * when the keyboard opens.
+   * comes after it among its siblings. So a panel the classes cannot reach
+   * restyles nothing, and one they can reach restyles and re-measures
+   * everything, as `documentStylesChanged` does. That is the usual case for
+   * a sheet a styling library writes as the elements it dresses arrive, such
+   * as a keyboard's when the keyboard opens: the keyboard's panel pays, and
+   * the others do not.
    *
-   * An element outside the panel wearing one can still reach into it: above
-   * the root, it passes what the rule says down to all of the panel, and
-   * before the root or one of the root's ancestors among their siblings, a
-   * rule's `~` or `+` reaches the panel from there and inheritance carries
-   * it on. Either way everything changes.
+   * The classes reach the panel from an element wearing one inside it, the
+   * root included; from above the root, passing what the rule says down to
+   * all of it; and from before the root or one of its ancestors among their
+   * siblings, through a rule's `~` or `+`.
+   *
+   * A panel that is reached restyles as a whole rather than only its
+   * wearers, because the wearers are usually being adopted as their sheet
+   * arrives, and restyling only them, as a change to their `class` would,
+   * left a panel's construction picker with options the ray passed through.
    *
    * @param {Element} root The panel's root.
    * @param {ReadonlySet<string>} classes Names `leadingClass` read, which
@@ -1671,12 +1675,13 @@ export class DomMirror {
     }
     const wears = (/** @type {Element} */ element) =>
       [...classes].some((name) => element.classList.contains(name));
+    let reaches = root.querySelector([...classes].map((name) => `.${name}`).join(", ")) !== null;
     for (
       let current = /** @type {Element | null} */ (root);
-      current;
+      current && !reaches;
       current = current.parentElement
     ) {
-      let reaches = current !== root && wears(current);
+      reaches = wears(current);
       for (
         let before = current.previousElementSibling;
         before && !reaches;
@@ -1684,20 +1689,10 @@ export class DomMirror {
       ) {
         reaches = wears(before);
       }
-      if (reaches) {
-        this.documentStylesChanged();
-        return;
-      }
     }
-    const selector = [...classes].map((name) => `.${name}`).join(", ");
-    batch(() => {
-      if (wears(root)) {
-        this.attributeChanged(root);
-      }
-      for (const element of root.querySelectorAll(selector)) {
-        this.attributeChanged(element);
-      }
-    });
+    if (reaches) {
+      this.documentStylesChanged();
+    }
   }
 
   /**

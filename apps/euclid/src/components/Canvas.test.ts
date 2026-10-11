@@ -58,7 +58,7 @@ describe("the drawing's dashes", () => {
       subscription.unsubscribe();
     });
 
-    it(`draws them and the ${tool}'s rubber band solid when dashes are off`, () => {
+    it(`draws construction lines and the ${tool}'s rubber band solid with dashes off`, () => {
       const { constructionLine, constructionCircle, band, subscription } = mount(tool, {
         dashes: false,
       });

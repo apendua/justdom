@@ -35,8 +35,7 @@ const svgStyle = className`
 export interface CanvasOptions {
   /**
    * Whether construction lines and the rubber band of a line or circle in
-   * progress are dashed. On by default; `?dashes=off` on the page's address
-   * turns it off.
+   * progress are dashed. On by default.
    */
   dashes?: boolean;
 }

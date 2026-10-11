@@ -1727,6 +1727,68 @@ describe("which siblings a change restyles", () => {
     }
   });
 
+  test("the first row after a comment anchor restyles the list's neighbours, since `:empty` flipped", () => {
+    // Lit, Svelte and Solid mark an empty list's slot with a comment, which
+    // `:empty` ignores. The row arrives after the comment, not at the start.
+    const { container, mirror, list, rows, removeRow, insertRow } = setupRowList();
+    rows.forEach((row) => removeRow(row));
+    const anchor = document.createComment("");
+    list.append(anchor);
+    batch(() => mirror.ingest([childListRecord(list, null, [anchor], [])]));
+    const beside = watchNeighbour(mirror, list);
+    try {
+      insertRow(null);
+
+      assert.equal(beside.restylesOf(beside.neighbour), 2);
+    } finally {
+      beside.dispose();
+      container.remove();
+    }
+  });
+
+  test("a row appended after a trailing comment anchor leaves the list's neighbours alone", () => {
+    // justdom ends a list's rows with its anchor, so every append lands after
+    // a comment. The comment says nothing about `:empty`; the rows before it
+    // do. The last row restyles for `:last-of-type`, which the new row takes.
+    const { container, mirror, list, rows, insertRow } = setupRowList();
+    const anchor = document.createComment("");
+    list.append(anchor);
+    batch(() => mirror.ingest([childListRecord(list, rows[3], [anchor], [])]));
+    const { restylesOf, dispose } = watchStyles(rows);
+    const beside = watchNeighbour(mirror, list);
+    try {
+      insertRow(null);
+
+      assert.deepEqual(rows.map(restylesOf), [1, 1, 1, 2]);
+      assert.equal(beside.restylesOf(beside.neighbour), 1);
+    } finally {
+      dispose();
+      beside.dispose();
+      container.remove();
+    }
+  });
+
+  test("a row put in before the list's leading text leaves the list's neighbours alone", () => {
+    // Text counts toward `:empty` as an element does, so text next to the
+    // change says the list was never empty.
+    const { container, mirror, list, rows, insertRow } = setupRowList();
+    const text = document.createTextNode("\n  ");
+    list.insertBefore(text, rows[0]);
+    batch(() => mirror.ingest([childListRecord(list, null, [text], [], rows[0])]));
+    const { restylesOf, dispose } = watchStyles(rows);
+    const beside = watchNeighbour(mirror, list);
+    try {
+      insertRow(text);
+
+      assert.deepEqual(rows.map(restylesOf), [2, 2, 2, 2]);
+      assert.equal(beside.restylesOf(beside.neighbour), 1);
+    } finally {
+      dispose();
+      beside.dispose();
+      container.remove();
+    }
+  });
+
   test("with no record to narrow from, the whole list restyles as it always did", () => {
     const { container, mirror, list, rows } = setupRowList();
     const { restylesOf, dispose } = watchStyles(rows);

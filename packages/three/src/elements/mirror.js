@@ -826,13 +826,14 @@ export class DomMirror {
     const attributeBaselines = new Map();
     /** @type {Map<Node, string | null>} */
     const characterBaselines = new Map();
+    const kept = keptThrough(mutationList);
     for (const mutation of mutationList) {
       switch (mutation.type) {
         case "childList": {
           this.childListChanged(
             /** @type {Element} */ (mutation.target),
             firstDisturbedChild(mutation),
-            childListHint(mutation),
+            childListHint(mutation, kept(mutation.target)),
           );
           mutation.addedNodes.forEach((node) => {
             const record = recordOf(node);
@@ -947,7 +948,7 @@ export class DomMirror {
    *   the answer for a caller holding no mutation record.
    * @param {ChildListHint} [hint] What else the mutation record says about
    *   where the change happened; see `ChildListHint`. Omitted, the restyle
-   *   falls back to the whole list, exactly as the layout does.
+   *   falls back to the list, its subtree and its siblings.
    * @returns {void}
    */
   childListChanged(
@@ -991,12 +992,14 @@ export class DomMirror {
    *     costs nothing reactive.
    *
    *   - `:empty`, on the list itself, and through it on the list's own
-   *     siblings via the combinators above. It can only flip when the
-   *     change was at the very start, and not even then when an element
-   *     stood next to the change (`kept`). That element was in the list
-   *     before the change and after it, so the list was empty at neither.
-   *     A log that drops its oldest row as each new one arrives is that
-   *     case, and it restyles its rows and nothing around the list.
+   *     siblings via the combinators above. It held when the list kept,
+   *     through the whole observer flush, a node that counts toward it
+   *     (`kept`; see `keptThrough`). Otherwise the list, its subtree and
+   *     its siblings restyle. A comment does not count, so an empty list
+   *     that is one comment anchor, as Lit, Svelte and Solid leave, flips
+   *     when its first row arrives, wherever the row lands. A log that
+   *     drops its oldest row as each new one arrives keeps its other rows,
+   *     and restyles them and nothing around the list.
    *
    * What is knowingly not modelled is the `:nth-last-child` and
    * `:nth-last-of-type` family: a row appended at the end shifts the
@@ -1018,34 +1021,34 @@ export class DomMirror {
    * @param {Node | null} previous The surviving child before the change,
    *   if known.
    * @param {Iterable<string> | null} kinds The element names that arrived
-   *   or left, or null when there is no telling. Nothing in the package
-   *   passes null — `ingest` always knows — but a caller of
-   *   `childListChanged` that supplies `from` and no hint lands here, and
-   *   what it gets is the narrowed tail with the whole list before the
-   *   change restyled behind it: better than the old scope, and O(N)
-   *   where the full hint is O(kinds).
-   * @param {boolean} kept Whether an element stood next to the change, in
-   *   the list before it and after it, so that `:empty` did not flip.
+   *   or left, or null when there is no telling. `ingest` always knows.
+   *   A caller that passes a hint with `kept` and no `kinds` gets the
+   *   whole list before the change restyled behind the tail, which is
+   *   O(N) where the full hint is O(kinds).
+   * @param {boolean} kept Whether the list kept a node that counts toward
+   *   `:empty` through the flush, so that `:empty` did not flip.
    * @returns {void}
    */
   #restyleAround(element, from, previous, kinds, kept) {
-    if (!previous || previous.parentNode !== element) {
-      // A change at the start of the list, or one whose place is lost:
-      // every child's position from the start may have moved, so every
-      // child restyles. Where `:empty` may have flipped too, the list and
-      // its siblings restyle with them, which is the old answer.
-      if (!kept) {
-        this.#restyleScope(element);
-        return;
-      }
-      for (let child = element.firstChild; child; child = child.nextSibling) {
-        this.#restyleScope(child, { reachesSiblings: false });
-      }
+    // `:empty` may have flipped: the list, its subtree and its siblings.
+    if (!kept) {
+      this.#restyleScope(element);
       return;
     }
+    // A change at the start of the list, or one whose place is lost:
+    // every child's position from the start may have moved, so the tail
+    // is the whole list and there is nothing before it.
+    const atStart = !previous || previous.parentNode !== element;
     // Forward: the tail, from the change to the end.
-    for (let child = from; child && child.parentNode === element; child = child.nextSibling) {
+    for (
+      let child = atStart ? element.firstChild : from;
+      child && child.parentNode === element;
+      child = child.nextSibling
+    ) {
       this.#restyleScope(child, { reachesSiblings: false });
+    }
+    if (atStart) {
+      return;
     }
     // Backward: the element that was last, and the last of each kind.
     this.#restyleScope(previous, { reachesSiblings: false });
@@ -1496,17 +1499,83 @@ function firstDisturbedChild(mutation) {
  *   when there is no telling.
  * @property {Iterable<string> | null} [kinds] The `nodeName`s of the
  *   elements added and removed, or null when unknown.
- * @property {boolean} [kept] Whether the record's `previousSibling` or
- *   `nextSibling` is an element. Either was in the list on both sides of
- *   the change, so the list was not empty before it or after it. False
- *   when unknown, which leaves `:empty` free to have flipped.
+ * @property {boolean} [kept] Whether the list kept a node that counts
+ *   toward `:empty` through the whole flush; see `keptThrough`. False when
+ *   unknown, which leaves `:empty` free to have flipped.
  */
 
 /**
+ * For each list a flush's child-list records name, whether the list holds,
+ * once the flush is over, a node that counts toward `:empty` and that no
+ * record of the flush added to it. Such a node was in the list before the
+ * flush too: it could not have left and come back without a record adding
+ * it. So the list was empty neither before the flush nor after it, and
+ * `:empty` held, whatever happened in between.
+ *
+ * Asked per record, of the record's own neighbours, the question would be
+ * blind to a comment: a list whose rows end in a framework's comment anchor
+ * takes every append after the comment, and the comment says nothing about
+ * the rows before it. Asked of the whole list, the first node that counts
+ * usually answers it, and a list whose every node is new this flush is one
+ * being built, where the wide restyle is right anyway.
+ *
+ * A text node's data changing is not followed: a text node emptied or
+ * filled in the same flush is judged by the data it has now.
+ *
+ * @param {MutationRecord[]} mutationList
+ * @returns {(list: Node) => boolean}
+ */
+function keptThrough(mutationList) {
+  /** @type {Map<Node, Set<Node>>} */
+  const arrivals = new Map();
+  for (const mutation of mutationList) {
+    if (mutation.type !== "childList") {
+      continue;
+    }
+    let arrived = arrivals.get(mutation.target);
+    if (!arrived) {
+      arrived = new Set();
+      arrivals.set(mutation.target, arrived);
+    }
+    mutation.addedNodes.forEach((node) => arrived.add(node));
+  }
+  /** @type {Map<Node, boolean>} */
+  const answers = new Map();
+  return (list) => {
+    let answer = answers.get(list);
+    if (answer === undefined) {
+      const arrived = arrivals.get(list);
+      answer = false;
+      for (let child = list.firstChild; child && !answer; child = child.nextSibling) {
+        answer = countsForEmpty(child) && !arrived?.has(child);
+      }
+      answers.set(list, answer);
+    }
+    return answer;
+  };
+}
+
+/**
+ * Whether `node` makes its parent fail `:empty`: an element, or a text node
+ * with any data, whitespace included. Comments and processing instructions
+ * do not count.
+ *
+ * @param {Node} node
+ * @returns {boolean}
+ */
+function countsForEmpty(node) {
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    return true;
+  }
+  return node.nodeType === Node.TEXT_NODE && /** @type {Text} */ (node).length > 0;
+}
+
+/**
  * @param {MutationRecord} mutation
+ * @param {boolean} kept See `ChildListHint`.
  * @returns {ChildListHint}
  */
-function childListHint(mutation) {
+function childListHint(mutation, kept) {
   const previous = mutation.previousSibling;
   /** @type {Set<string>} */
   const kinds = new Set();
@@ -1520,7 +1589,7 @@ function childListHint(mutation) {
   return {
     previous: previous && previous.parentNode === mutation.target ? previous : null,
     kinds,
-    kept: [previous, mutation.nextSibling].some((node) => node?.nodeType === Node.ELEMENT_NODE),
+    kept,
   };
 }
 

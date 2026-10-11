@@ -1,4 +1,4 @@
-import { isTextInput } from "./typing.js";
+import { labelledField, takesTheTyping } from "./typing.js";
 
 /**
  * @import {Subscribable} from '@apendua/signal';
@@ -29,14 +29,13 @@ import { isTextInput } from "./typing.js";
  *
  * It appears when a field is pressed, in front of the player and reclined
  * toward the hands like a phone on a stand (or below the panel, with
- * `placement: "panel"`), types into the field through
- * `typeIntoInput`, and goes on `Escape`, on a press anywhere in a panel
- * but on a field or its label, when the field leaves the document, and with
- * the panel.
- * `Enter` submits and leaves the field being typed into, as it does on a
- * page, so a list can be filled one entry after another. While it is up the field carries `data-xr-focus`, which a
- * stylesheet may use the way it uses `:focus` — presentationally, exactly
- * as `data-xr-hover`.
+ * `placement: "panel"`), types into the field through `typeIntoInput`, and
+ * goes on `Escape`, on a press anywhere in a panel but on a field or its
+ * label, when the field leaves the document, and with the panel. `Enter`
+ * submits and leaves the field being typed into, as it does on a page, so a
+ * list can be filled one entry after another. While it is up the field
+ * carries `data-xr-focus`, which a stylesheet may use the way it uses
+ * `:focus` — presentationally, exactly as `data-xr-hover`.
  */
 
 /**
@@ -109,45 +108,6 @@ import { isTextInput } from "./typing.js";
  *   pressed.
  * @property {HTMLInputElement} field
  */
-
-/**
- * Whether a click on this element is a press that will give it the typing:
- * a field the keyboard can type into. Its own press moves the typing there
- * right after the click, so the click is not focus leaving.
- *
- * @param {EventTarget | null} target
- * @returns {boolean}
- */
-function takesTheTyping(target) {
-  // By shape rather than `instanceof`: the element may be from another
-  // window than the one this module was loaded in.
-  const node = /** @type {Node | null} */ (target);
-  if (!node || typeof node.nodeType !== "number" || !isTextInput(node)) {
-    return false;
-  }
-  const field = /** @type {HTMLInputElement} */ (node);
-  return !field.disabled && !field.readOnly;
-}
-
-/**
- * The field a click on this element gives the typing to through a label: a
- * `<label>` around it names a field, by `for` or by holding it, and the field
- * is one the keyboard can type into. A page's label focuses its field when it
- * is clicked, and its activation then clicks the field, which
- * `takesTheTyping` lets be.
- *
- * @param {EventTarget | null} target
- * @returns {HTMLInputElement | null}
- */
-function labelledField(target) {
-  const node = /** @type {Node | null} */ (target);
-  if (!node || node.nodeType !== Node.ELEMENT_NODE) {
-    return null;
-  }
-  const label = /** @type {Element} */ (node).closest("label");
-  const field = label?.control ?? null;
-  return takesTheTyping(field) ? /** @type {HTMLInputElement} */ (field) : null;
-}
 
 /**
  * A panel's side of the scene's keyboard: the `InputFocus` its fields are

@@ -418,3 +418,57 @@ export function typeIntoInput(input, press) {
   }
   input.dispatchEvent(new view.KeyboardEvent("keyup", { ...init, cancelable: false }));
 }
+
+/**
+ * Whether a click on this element is a press that will give it the typing:
+ * a field the keyboard can type into. Its own press moves the typing there
+ * right after the click, so the click is not focus leaving.
+ *
+ * @param {EventTarget | null} target
+ * @returns {boolean}
+ */
+export function takesTheTyping(target) {
+  // By shape rather than `instanceof`: the element may be from another
+  // window than the one this module was loaded in.
+  const node = /** @type {Node | null} */ (target);
+  if (!node || typeof node.nodeType !== "number" || !isTextInput(node)) {
+    return false;
+  }
+  const field = /** @type {HTMLInputElement} */ (node);
+  return !field.disabled && !field.readOnly;
+}
+
+/**
+ * What a label's activation leaves alone: a click on interactive content
+ * inside the label, other than the field it names, is that content's, and
+ * the label does nothing with it.
+ */
+const INTERACTIVE = "a[href], button, select, textarea, input";
+
+/**
+ * The field a click on this element gives the typing to through a label, as
+ * a page's label focuses its field: a `<label>` at or around the element
+ * names a field, by `for` or by holding it, and the field is one the
+ * keyboard can type into. Null for a click on a button, a link or another
+ * control inside the label, which the HTML standard leaves to that control.
+ *
+ * @param {EventTarget | null} target
+ * @returns {HTMLInputElement | null}
+ */
+export function labelledField(target) {
+  const node = /** @type {Node | null} */ (target);
+  if (!node || node.nodeType !== 1) {
+    return null;
+  }
+  const element = /** @type {Element} */ (node);
+  const label = element.closest("label");
+  if (!label) {
+    return null;
+  }
+  const field = /** @type {HTMLLabelElement} */ (label).control;
+  const interactive = element.closest(INTERACTIVE);
+  if (interactive && interactive !== field && label.contains(interactive)) {
+    return null;
+  }
+  return takesTheTyping(field) ? /** @type {HTMLInputElement} */ (field) : null;
+}

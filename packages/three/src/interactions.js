@@ -243,8 +243,7 @@ export class InteractionManager {
        * `…missed`, the `lost` ones included, and it holds whatever became
        * of the object since: one taken out of the scene mid-press no longer
        * listens, and its release still stops where its press did. Each of
-       * them may still stop earlier, where a handler stops it, as `drag()`
-       * and `carry()` stop the release of a press they took. A start that
+       * them may still stop earlier, where a handler stops it. A start that
        * nothing stops, as a panel leaves the grip's, goes on to whatever
        * takes it, and its end reaches the panel and that object both.
        *

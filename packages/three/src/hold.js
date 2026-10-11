@@ -22,11 +22,11 @@ import { Signal } from "@apendua/signal";
  *   either.
  * @property {(event: InputCancelEvent & PressEnd, button: DragButton) => H | null} release
  *   Hear a release. If it is the holding hand's release of the button it
- *   holds with, it is the one that ends the hold: it is stopped, and the
- *   hold is handed back for the caller to end. Otherwise null, and the
- *   release is left to go as far as its press did. `held` is the caller's to
- *   clear, so a `drag()` can send its `dragend` while `held()` still says
- *   the hand.
+ *   holds with, it is the one that ends the hold, and the hold is handed
+ *   back for the caller to end; otherwise null. It stops nothing: that
+ *   release is always of a press `take` took, which the manager already
+ *   sends no further. `held` is the caller's to clear, so a `drag()` can
+ *   send its `dragend` while `held()` still says the hand.
  */
 
 /**
@@ -61,11 +61,9 @@ export function createHold(manager) {
     },
     release(event, button) {
       const current = held.get();
-      if (!current || current.controller !== event.controller || current.button !== button) {
-        return null;
-      }
-      manager.stopPropagation(event);
-      return current;
+      return current && current.controller === event.controller && current.button === button
+        ? current
+        : null;
     },
   };
 }

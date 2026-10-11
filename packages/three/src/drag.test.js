@@ -282,7 +282,6 @@ describe("drag", () => {
     assert.equal(manager.isStopped(heard.selectend), false, "and so did its release");
     press(left, "selectend");
     assert.strictEqual(box.parent, board);
-    assert.equal(manager.isStopped(heard.selectend), true, "the holding hand's is taken");
     assert.deepEqual(events, ["dragstart", "dragend"]);
     dispose();
   });

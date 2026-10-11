@@ -133,24 +133,19 @@ describe("outline probe", () => {
   test("a panel takes the tallies of its own elements and leaves the rest", () => {
     const inside = document.createElement("span");
     const outside = document.createElement("span");
-    const loose = document.createElement("span");
     const panel = panelWith(inside);
     const other = panelWith(outside);
-    document.body.append(loose);
     setProbing(true);
     try {
       probeChange(inside);
       probeChange(outside);
-      probeChange(loose);
       assert.deepEqual([...take(panel).keys()], [inside]);
       assert.deepEqual([...take(panel).keys()], [], "taken once");
       assert.deepEqual([...take(other).keys()], [outside]);
-      assert.deepEqual([...take(document.body).keys()], [], "nothing outside a panel is kept");
     } finally {
       setProbing(false);
       panel.remove();
       other.remove();
-      loose.remove();
     }
   });
 

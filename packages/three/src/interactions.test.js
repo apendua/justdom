@@ -389,6 +389,72 @@ describe("select", () => {
     subscription.unsubscribe();
   });
 
+  test("the events that end a press go no further than its start did", () => {
+    // A piece on a board, the piece taking the press: the board heard no
+    // press, so it hears no release, no completion and no miss either,
+    // whoever stops them and whether or not the piece is still listening.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+
+    for (const [start, end, done, missed] of /** @type {const} */ ([
+      ["selectstart", "selectend", "select", "selectmissed"],
+      ["squeezestart", "squeezeend", "squeeze", "squeezemissed"],
+    ])) {
+      const board = /** @type {THREE.Object3D<XREventMap>} */ (
+        /** @type {unknown} */ (new THREE.Object3D())
+      );
+      const piece = targetMesh(5);
+      board.add(piece);
+      board.updateMatrixWorld(true);
+      manager.add(piece);
+
+      /** @type {string[]} */
+      const events = [];
+      for (const [name, object] of /** @type {const} */ ([
+        ["piece", piece],
+        ["board", board],
+      ])) {
+        for (const type of [start, end, done, missed]) {
+          object.addEventListener(type, (event) => {
+            events.push(`${name}:${type}${"lost" in event && event.lost ? " lost" : ""}`);
+          });
+        }
+      }
+      piece.addEventListener(start, (event) => manager.stopPropagation(event));
+
+      // Let go on the piece, a completion.
+      controller.dispatchEvent(/** @type {any} */ ({ type: start, data: {} }));
+      controller.dispatchEvent(/** @type {any} */ ({ type: end, data: {} }));
+      assert.deepEqual(events, [`piece:${start}`, `piece:${end}`, `piece:${done}`]);
+
+      // Let go off it, a miss.
+      events.length = 0;
+      controller.dispatchEvent(/** @type {any} */ ({ type: start, data: {} }));
+      moveAside(piece);
+      controller.dispatchEvent(/** @type {any} */ ({ type: end, data: {} }));
+      assert.deepEqual(events, [`piece:${start}`, `piece:${end}`, `piece:${missed}`]);
+
+      // A hand that goes, the lost miss.
+      events.length = 0;
+      piece.position.x = 0;
+      piece.updateMatrixWorld();
+      controller.dispatchEvent(/** @type {any} */ ({ type: start, data: {} }));
+      controller.dispatchEvent(/** @type {any} */ ({ type: "disconnected", data: {} }));
+      assert.deepEqual(events, [`piece:${start}`, `piece:${end} lost`, `piece:${missed} lost`]);
+
+      // The piece taken out of the scene mid-press: the release goes along
+      // the path the press went through, and stops where the press did.
+      events.length = 0;
+      controller.dispatchEvent(/** @type {any} */ ({ type: start, data: {} }));
+      board.remove(piece);
+      manager.remove(piece);
+      controller.dispatchEvent(/** @type {any} */ ({ type: end, data: {} }));
+      assert.deepEqual(events, [`piece:${start}`, `piece:${end}`, `piece:${missed}`]);
+    }
+    subscription.unsubscribe();
+  });
+
   test("the events that end a press carry its start, and say whether it was taken", () => {
     const manager = new InteractionManager();
     const controller = fakeController();

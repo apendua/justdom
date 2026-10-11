@@ -9,6 +9,7 @@ import { isPlainObject } from "./util.js";
 /**
  * @import {ComputationLike} from "./core.js"
  * @import {EntityEffect} from "./types.js"
+ * @typedef {Map<PropertyKey, PropertyDescriptor>} Descriptors
  * @import {IEmitter} from "./Emitter.js";
  */
 
@@ -54,35 +55,59 @@ import { isPlainObject } from "./util.js";
  */
 
 /**
- * Every proxy `store()` has made. `internalsOf` asks this before it reads a
- * key of the value it was given, since reading a key of a proxy runs its
- * `get` trap: a `selector()` evaluates its source for any key, and throws
- * for a source that is not ready. Membership reads nothing, and an object
- * whose prototype is a store is not a member.
- *
- * @type {WeakSet<object>}
+ * Returns the object it is given, so that a subclass's private field is
+ * added to that object rather than to a new one.
  */
-const stores = new WeakSet();
+class Stamped {
+  /** @param {object} target */
+  constructor(target) {
+    return target;
+  }
+}
 
 /**
- * The key a store's proxy answers with its `Internals`, which `emit`,
- * `reshape` and a store used as another's definition read. It is not one
- * of the store's keys: `in`, `ownKeys` and spread do not see it. A
- * `WeakMap` from proxy to record did the same job, and holding every store's
- * record in it made building a store about a fifth slower; `stores` holds
- * the proxy alone.
+ * Stamps a store's proxy with its `Internals` in a private field, which
+ * `emit`, `reshape` and a store used as another's definition read. The field
+ * lives on the proxy itself, so reading it runs no trap: a `selector()`
+ * evaluates its source for any key, and throws for a source that is not
+ * ready. An object whose prototype is a store does not have it, and it is
+ * not one of the store's keys, so `in`, `ownKeys` and spread do not see it.
+ *
+ * A `WeakSet` of every proxy, asked before reading a symbol key through the
+ * proxy, did the same job, and adding to it was about a quarter of the cost
+ * of making a small store. A `WeakMap` from proxy to record did it before
+ * that, at more.
  */
-const internalsKey = Symbol("internals");
+class Brand extends Stamped {
+  /** @type {Internals} */
+  #internals;
+
+  /**
+   * @param {object} proxy
+   * @param {Internals} internals
+   */
+  constructor(proxy, internals) {
+    super(proxy);
+    this.#internals = internals;
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {Internals | undefined}
+   */
+  static internalsOf(value) {
+    return typeof value === "object" && value !== null && #internals in value
+      ? value.#internals
+      : undefined;
+  }
+}
 
 /**
  * @param {unknown} value
  * @returns {Internals | undefined} The record of `value` if it is a store.
  */
 function internalsOf(value) {
-  if (typeof value !== "object" || value === null || !stores.has(value)) {
-    return undefined;
-  }
-  return /** @type {{ [internalsKey]: Internals }} */ (value)[internalsKey];
+  return Brand.internalsOf(value);
 }
 
 /**
@@ -408,8 +433,7 @@ function store(data, operators = []) {
     // `reshapeWith` keeps the same.
     /** @type {Record<PropertyKey, unknown>} */
     const held = kind === "array" ? /** @type {never} */ ([]) : {};
-    for (const key of Reflect.ownKeys(descriptors)) {
-      const descriptor = descriptors[key];
+    for (const [key, descriptor] of descriptors) {
       const value = descriptor.get || descriptor.set ? undefined : descriptor.value;
       if (storeKindOf(value) && !isStore(value)) {
         const inner = store(/** @type {object} */ (value));
@@ -479,7 +503,9 @@ function store(data, operators = []) {
    * @returns {void}
    */
   const dependOn = (key) => {
-    if (internals.mutator !== activeComputation) {
+    // Outside a computation there is nobody to record the read for, and
+    // making the key's version would only cost the read an allocation.
+    if (activeComputation && internals.mutator !== activeComputation) {
       addDependency(getChangesAtKey(key));
     }
   };
@@ -549,9 +575,6 @@ function store(data, operators = []) {
       }
       if (key === "removeEventListener") {
         return removeEventListener;
-      }
-      if (key === internalsKey) {
-        return internals;
       }
       if (array) {
         const mutator = arrayMutators.get(key);
@@ -726,7 +749,7 @@ function store(data, operators = []) {
       return Reflect.ownKeys(state);
     },
   });
-  stores.add(proxy);
+  new Brand(proxy, internals);
 
   if (operators.length > 0) {
     // Skipped when there is nothing to apply, which is the common case: a
@@ -1034,30 +1057,42 @@ function reshapeKey(internals, key, value, from, adopted) {
  * enumerable keys, the ones a spread copies.
  *
  * @param {object} definition
- * @returns {Record<PropertyKey, PropertyDescriptor>}
+ * @returns {Descriptors}
  */
 function describe(definition) {
+  /** @type {Descriptors} */
+  const descriptors = new Map();
   const internals = internalsOf(definition);
   if (!internals) {
-    // The keys a spread would copy: the enumerable ones.
-    /** @type {Record<PropertyKey, PropertyDescriptor>} */
-    const descriptors = Object.getOwnPropertyDescriptors(definition);
-    for (const key of Reflect.ownKeys(descriptors)) {
-      if (!descriptors[key].enumerable) {
-        delete descriptors[key];
+    // The keys a spread would copy: the enumerable ones, in the order of
+    // `Reflect.ownKeys`. `Object.keys` lists the strings from V8's enum
+    // cache, where `Reflect.ownKeys` builds a fresh list each call and was
+    // the larger part of making a small store.
+    for (const key of Object.keys(definition)) {
+      descriptors.set(
+        key,
+        /** @type {PropertyDescriptor} */ (Reflect.getOwnPropertyDescriptor(definition, key)),
+      );
+    }
+    for (const key of Object.getOwnPropertySymbols(definition)) {
+      const descriptor = /** @type {PropertyDescriptor} */ (
+        Reflect.getOwnPropertyDescriptor(definition, key)
+      );
+      if (descriptor.enumerable) {
+        descriptors.set(key, descriptor);
       }
     }
     return descriptors;
   }
-  /** @type {Record<PropertyKey, PropertyDescriptor>} */
-  const descriptors = {};
   for (const key of Reflect.ownKeys(internals.state)) {
     const get = internals.getters.get(key);
     const set = internals.setters.get(key);
-    descriptors[key] =
+    descriptors.set(
+      key,
       get || set
         ? { get, set, enumerable: true, configurable: true }
-        : { value: internals.state[key], writable: true, enumerable: true, configurable: true };
+        : { value: internals.state[key], writable: true, enumerable: true, configurable: true },
+    );
   }
   return descriptors;
 }
@@ -1067,11 +1102,10 @@ function describe(definition) {
  *
  * @param {Map<PropertyKey, () => unknown>} getters
  * @param {Map<PropertyKey, (value: unknown) => void>} setters
- * @param {Record<PropertyKey, PropertyDescriptor>} descriptors
+ * @param {Descriptors} descriptors
  */
 function defineAccessors(getters, setters, descriptors) {
-  for (const key of Reflect.ownKeys(descriptors)) {
-    const descriptor = descriptors[key];
+  for (const [key, descriptor] of descriptors) {
     if (descriptor.get) {
       getters.set(key, descriptor.get);
     }
@@ -1083,7 +1117,7 @@ function defineAccessors(getters, setters, descriptors) {
 
 /**
  * @param {Internals} internals
- * @param {Record<PropertyKey, PropertyDescriptor>} descriptors
+ * @param {Descriptors} descriptors
  * @param {Internals | undefined} from The definition's record, when the
  *   definition is a store.
  */
@@ -1117,8 +1151,7 @@ function reshapeWith(internals, descriptors, from) {
   }
   // The values of the data keys, written to `state` rather than through the
   // store, so no setter runs.
-  for (const key of Reflect.ownKeys(descriptors)) {
-    const descriptor = descriptors[key];
+  for (const [key, descriptor] of descriptors) {
     if (descriptor.get || descriptor.set) {
       // A key with an accessor is in `state` as a key holding `undefined`,
       // as at `store()` time, so `in`, `ownKeys` and spread see it, and a
@@ -1140,7 +1173,7 @@ function reshapeWith(internals, descriptors, from) {
   }
   // The keys the definition no longer has, unless the program put them there.
   for (const key of Reflect.ownKeys(state)) {
-    if (!Object.hasOwn(descriptors, key) && !touched?.has(key)) {
+    if (!descriptors.has(key) && !touched?.has(key)) {
       countHolder(internals, state[key], -1);
       delete state[key];
       derived.delete(key);

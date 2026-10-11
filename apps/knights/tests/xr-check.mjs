@@ -12,7 +12,7 @@
  * the scene places it by (`src/placement.ts`). First, the page alone, with
  * no emulator, must not fetch the headset scene, and a click on a field
  * the stack can reach, with no move before it, must send the stack there.
- * Then, in a session, with the left hand pointing at the floor, in order:
+ * Then, in a session, in order:
  *
  * - the ray over a field the white stack can reach previews the route
  *   there, through the board's own `mousemove` handler;
@@ -240,19 +240,6 @@ async function main() {
     // Where the head was as the session started, which is the origin of the
     // `local` space the scene is laid out in.
     const head = await headPosition(page);
-
-    // The left hand hangs down, its ray on the floor, as a player's free hand
-    // does. Only one hand moves the mouse, the primary one, and an idle hand
-    // left pointing at the board could be it: the route would follow it and
-    // not the right hand this check aims.
-    await page.evaluate(() => {
-      const left = /** @type {any} */ (window).xrDevice.controllers.left;
-      left.quaternion.x = -Math.SQRT1_2;
-      left.quaternion.y = 0;
-      left.quaternion.z = 0;
-      left.quaternion.w = Math.SQRT1_2;
-    });
-    await frames(page, 3);
 
     /**
      * Where a point on the page, in its px, is in the scene: the panel is

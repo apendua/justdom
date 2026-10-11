@@ -30,10 +30,12 @@ is set against and shows the room, and the × at the end of the toolbar, which e
 
 On a laptop the page is the page and nothing else. No session can be opened, so no button is shown,
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
-(IWER, with its dev panels) and the **Enter** button appears at the bottom. Press it and the
-emulated session is drawn over the page. `?emulator=bare` installs the runtime without the panels.
+(IWER, with its dev panels) and the **Enter** button appears at the top, over the sky in the
+backdrop, since freedom's place for it at the bottom is the toolbar's. Press it and the emulated
+session is drawn over the page. `?emulator=bare` installs the runtime without the panels.
 
-The page needed four changes to look the same in the panel, each one invisible on the page:
+The page needed four changes to look the same in the panel. The first three do not show on the page;
+the fourth does:
 
 - The battlefield behind the board is an `<img>` under the rest, not the container's
   `background-image`. A panel draws a `url()` background as nothing, which left the black grid on a
@@ -44,30 +46,36 @@ The page needed four changes to look the same in the panel, each one invisible o
   move the clip with it.
 - The walls are filled `url(#…) black`. A panel draws no `<pattern>` yet, and draws the fallback
   colour instead, so the walls are solid black there and hatched on the page.
-- The board carries `cursor: pointer` while it takes orders. A panel sends the ray's moves and
-  presses only to what is under `cursor: pointer`.
+- The board carries `cursor: pointer` while it takes orders, so on the page the mouse is a hand over
+  the whole board, walls and fields out of reach included. A panel sends the ray's moves and presses
+  only to what is under `cursor: pointer`.
+
+A click sends the stack to the field it lands on, not along the route the last `mousemove` showed.
+In a headset only the primary hand moves the mouse while either hand's trigger clicks, so the last
+move can be the other hand's, and a tap on a touchscreen comes with no move at all.
 
 `node tests/xr-check.mjs` loads the page alone in headless Chromium, which can present nothing, and
 fails if the headset scene is fetched, if the menu behind ☰ does not stack its items one under
 another, or if a click on a field the white stack can reach, with no move before it, does not send
 the stack there. Then it loads the page with the emulator and fails if the Enter button covers the
-toolbar. Then it plays on the emulated headset, which takes about a minute: with the left hand
-pointing at the floor, it points the ray at a field the white stack can reach and checks that the
-route is drawn, pulls the trigger and checks that the click reached the board at that place and the
-turn passed on, then turns the passthrough on and leaves by the ×. `SHOTS=<dir>` also photographs
-the page and the session, and `STACKS=1` prints a stack for anything the page throws. It drives the
-browser and the controller through `@apendua.dev/headset/driver`, which borrows Playwright from
-`apps/showcase-xr`, so that project has to have been installed. It launches the Chromium at
+toolbar. Then it plays on the emulated headset, which takes about a minute: it points the ray at a
+field the white stack can reach and checks that the route is drawn, pulls the trigger and checks
+that the click reached the board at that place and the turn passed on, then turns the passthrough on
+and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
+a stack for anything the page throws. It drives the browser and the controller through
+`@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has
+to have been installed. It launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
-elsewhere. A pull request that touches this app or a package it imports runs it, with minesweeper's,
-the desk's and Euclid's, from `.github/workflows/driven.yml`.
+elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
+tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
+`.github/workflows/driven.yml`.
 
-| File                      | What it is                                                                                                                                                  |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/offer.ts`            | Installs `@apendua.dev/headset`'s emulator behind `?emulator`, checks the platform can present, and only then loads `xr.ts`. Imports nothing from three.js. |
-| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin, and the Enter button.                                                                                         |
-| `src/components/Scene.ts` | The panel, a backdrop, lights and the cursors.                                                                                                              |
-| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                  |
+| File                      | What it is                                                                                                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open. |
+| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin, follows `?theming` and `?outlines`, and adds the Enter button.                                               |
+| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                |
+| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                 |
 
 ## How it is put together
 

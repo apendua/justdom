@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { $, children, cursors, dom, getScene, getXRSession } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
 import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { backdropShown, enterSession } from "@apendua.dev/headset/session";
+import { enterSession } from "@apendua.dev/headset/session";
+import { Backdrop, clientRect } from "@apendua.dev/headset/scene";
 import { GAME_AT, gameScale } from "../placement";
 
 /**
@@ -17,35 +18,6 @@ const BACKDROP = "#181410";
  * while there is nothing to mount.
  */
 const NOTHING = new Stream<never>(() => {});
-
-const backdropMaterial = new THREE.MeshBasicMaterial({
-  color: BACKDROP,
-  side: THREE.BackSide,
-  depthWrite: false,
-  depthTest: false,
-});
-const backdropGeometry = new THREE.SphereGeometry(10, 32, 16);
-
-/**
- * An opaque sky in `BACKDROP`, for the case `scene.background` cannot
- * cover, and taken down by the toolbar's passthrough switch.
- *
- * In an AR session three clears the frame to transparent whatever the
- * scene's background says, so that the passthrough shows. A sphere around
- * the viewer, drawn first and taking no part in the depth test, is a
- * background three has no rule about: everything else in the scene draws
- * over it, and nothing of the room shows through. Inside the camera's far
- * plane, which is 20 m.
- */
-const Backdrop = component(() =>
-  $(new THREE.Mesh(backdropGeometry, backdropMaterial), [
-    effects((o) => {
-      o.renderOrder = -1;
-      o.frustumCulled = false;
-      o.visible = backdropShown();
-    }),
-  ]),
-);
 
 /**
  * The scene: the page's own game, mirrored whole into one panel in front
@@ -93,7 +65,7 @@ export const Scene = (root: HTMLElement) =>
         }
       }),
       children(
-        Backdrop(),
+        Backdrop(BACKDROP),
         $(new THREE.PointLight(0xffffff, 100, 5), [
           effects((o) => {
             o.position.set(0, 1, 3);
@@ -104,14 +76,14 @@ export const Scene = (root: HTMLElement) =>
           if (!getXRSession(ctx)) {
             return NOTHING;
           }
-          // Measured once, as the session starts.
-          const scale = gameScale(root.getBoundingClientRect().width);
           return dom(
             ctx,
             root,
             [
               effects((o) => {
-                o.scale.setScalar(scale);
+                // Read again whenever the page is resized, as it is when
+                // the window is, so the panel keeps its width.
+                o.scale.setScalar(gameScale(clientRect(root).width));
                 o.position.set(...GAME_AT);
               }),
             ],

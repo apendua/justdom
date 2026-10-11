@@ -7,8 +7,8 @@ body {
 /*
  * Freedom's Enter button sits at the bottom of the page, where the toolbar
  * is, so it goes to the top instead, over the sky in the backdrop. Freedom
- * writes its `bottom` inline, and again whenever it restyles the button,
- * so only `!important` keeps it off.
+ * writes its `bottom` inline as it makes the button, so only `!important`
+ * keeps it off.
  */
 #ARButton,
 #VRButton {

@@ -85,9 +85,8 @@ import { useFrame } from "./render.js";
  * common — so `makeInteractive()` goes in the same list. Taking the object out
  * of the scene mid-drag takes it off the hand too, and its listeners with it,
  * so the release goes on along the press's path to whatever was behind, the
- * board it sat on. A hand that disconnects
- * mid-drag lets go where it is: the manager ends its press with a `lost`
- * release, which this hears as any other.
+ * board it sat on. A hand that disconnects mid-drag lets go where it is: the
+ * manager ends its press with a `lost` release, which this hears as any other.
  *
  * ```js
  * const { draggable, held } = drag(ctx, { enabled: () => props.movable });

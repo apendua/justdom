@@ -39,6 +39,7 @@ const createPortal = (ctx, options = {}) =>
   });
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import { MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
+import { enableOutlinesMode, outlinesReport } from "./outlines.js";
 import {
   countingManager,
   dispatchFontsEvent,
@@ -3015,6 +3016,88 @@ describe("createPortal", () => {
       second.portal.disconnect();
     } finally {
       THREE.TextureLoader.prototype.load = originalLoad;
+    }
+  });
+
+  test("a sheet for one class restyles the panel that wears it and no other", async () => {
+    // A keyboard that opens brings its styling library's sheets with it,
+    // each a rule for a class only the keyboard wears. They restyled and
+    // re-measured every panel on the page, which in outlines mode is every
+    // element going dotted and in a headset a frame missed. Read here
+    // through the outlines' counts: the panel that does not wear the class
+    // is not read again at all, and the one that does is.
+    const manager = new InteractionManager();
+    const plainRoot = document.createElement("div");
+    const rows = Array.from({ length: 4 }, (_, i) => {
+      const row = document.createElement("div");
+      row.id = `plain${i}`;
+      return row;
+    });
+    plainRoot.append(...rows);
+    const boardRoot = document.createElement("div");
+    const dressed = document.createElement("div");
+    dressed.id = "dressed";
+    dressed.className = "kb_dressed";
+    boardRoot.append(dressed);
+    document.body.append(plainRoot, boardRoot);
+    const plain = createPortal(InteractionContext.set({}, manager), { root: plainRoot });
+    const board = createPortal(InteractionContext.set({}, manager), { root: boardRoot });
+    plain.addTo(new THREE.Group());
+    board.addTo(new THREE.Group());
+    await settle(plain);
+    await settle(board);
+    const off = enableOutlinesMode();
+    const style = document.createElement("style");
+    try {
+      style.innerHTML = ".kb_dressed { padding: 4px; color: rgb(9, 8, 7); }";
+      document.head.append(style);
+      await drain();
+      const report = outlinesReport(Infinity);
+      const ids = report.map((row) => row.element.split("#").pop());
+      assert.ok(ids.includes("dressed"), `the dressed box was restyled, among ${ids}`);
+      for (const row of rows) {
+        assert.ok(!ids.includes(row.id), `${row.id} was not read again, among ${ids}`);
+      }
+    } finally {
+      off();
+      style.remove();
+      await drain();
+      plain.disconnect();
+      board.disconnect();
+      plainRoot.remove();
+      boardRoot.remove();
+    }
+  });
+
+  test("a sheet for a class worn before the panel restyles the whole panel", async () => {
+    // `.toolbar ~ div` starts from a class nothing in the panel wears, and
+    // still reaches the panel's root, a later sibling of the toolbar, and
+    // through inheritance everything in it.
+    const toolbar = document.createElement("div");
+    toolbar.className = "kb_toolbar";
+    const root = document.createElement("div");
+    const label = document.createElement("div");
+    label.id = "under";
+    root.append(label);
+    document.body.append(toolbar, root);
+    const portal = createPortal(InteractionContext.set({}, new InteractionManager()), { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+    const off = enableOutlinesMode();
+    const style = document.createElement("style");
+    try {
+      style.innerHTML = ".kb_toolbar ~ div { color: rgb(9, 8, 7); }";
+      document.head.append(style);
+      await drain();
+      const ids = outlinesReport(Infinity).map((row) => row.element.split("#").pop());
+      assert.ok(ids.includes("under"), `the label under the root was restyled, among ${ids}`);
+    } finally {
+      off();
+      style.remove();
+      await drain();
+      portal.disconnect();
+      root.remove();
+      toolbar.remove();
     }
   });
 

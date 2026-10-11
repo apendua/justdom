@@ -1626,10 +1626,11 @@ export class DomMirror {
    * ever hears about the change. See `documentStyles.js`.
    *
    * **It costs a whole-panel restyle and re-measure**, which is the honest
-   * price of an event that names nothing. Fine for a theme swap or a
-   * state-driven rule; expensive for a value animated at frame rate. Animate
-   * through an inline `style` instead — that is a mutation on the element
-   * that moved, and it is scoped to it.
+   * price of an event that names nothing. A change whose rules all start
+   * from classes names what it styles, and goes to `classRulesChanged`
+   * instead. Fine for a theme swap or a state-driven rule; expensive for a
+   * value animated at frame rate. Animate through an inline `style` instead
+   * — that is a mutation on the element that moved, and it is scoped to it.
    *
    * A rule may also transform something above the panel's root, which is
    * the one place the portal hears about that, so every frame reads its
@@ -1640,6 +1641,58 @@ export class DomMirror {
   documentStylesChanged() {
     invalidatePanelFrames();
     this.#everythingChanged();
+  }
+
+  /**
+   * The document's stylesheets changed, and every rule that changed starts
+   * from one of `classes` (see `scopeOfSheet` in `documentStyles.js`). Such
+   * a rule matches only an element wearing the class, its subtree, and what
+   * comes after it among its siblings. So a panel the classes cannot reach
+   * restyles nothing, and one they can reach restyles and re-measures
+   * everything, as `documentStylesChanged` does. That is the usual case for
+   * a sheet a styling library writes as the elements it dresses arrive, such
+   * as a keyboard's when the keyboard opens: the keyboard's panel pays, and
+   * the others do not.
+   *
+   * The classes reach the panel from an element wearing one inside it, the
+   * root included; from above the root, passing what the rule says down to
+   * all of it; and from before the root or one of its ancestors among their
+   * siblings, through a rule's `~` or `+`.
+   *
+   * A panel that is reached restyles as a whole rather than only its
+   * wearers, because the wearers are usually being adopted as their sheet
+   * arrives, and restyling only them, as a change to their `class` would,
+   * left a panel's construction picker with options the ray passed through.
+   *
+   * @param {Element} root The panel's root.
+   * @param {ReadonlySet<string>} classes Names `leadingClass` read, which
+   *   need no escaping in a selector.
+   * @returns {void}
+   */
+  classRulesChanged(root, classes) {
+    if (classes.size === 0) {
+      return;
+    }
+    const wears = (/** @type {Element} */ element) =>
+      [...classes].some((name) => element.classList.contains(name));
+    let reaches = root.querySelector([...classes].map((name) => `.${name}`).join(", ")) !== null;
+    for (
+      let current = /** @type {Element | null} */ (root);
+      current && !reaches;
+      current = current.parentElement
+    ) {
+      reaches = wears(current);
+      for (
+        let before = current.previousElementSibling;
+        before && !reaches;
+        before = before.previousElementSibling
+      ) {
+        reaches = wears(before);
+      }
+    }
+    if (reaches) {
+      this.documentStylesChanged();
+    }
   }
 
   /**

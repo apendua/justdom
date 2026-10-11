@@ -1477,3 +1477,50 @@ test("a reload leaves an array's non-index keys as they are", () => {
   reshape(list, [1, 2]);
   assert.strictEqual(Object.hasOwn(list, "meta"), true);
 });
+
+test("replace() writes no store it places into through a key one level down", () => {
+  const s = /** @type {any} */ (store({ x: { inner: { v: 1 } } }));
+  const S = s.x.inner;
+  replace(s, { x: { inner: { v: 2 } }, y: S });
+  assert.strictEqual(s.y, S);
+  assert.strictEqual(S.v, 1);
+  assert.strictEqual(s.x.inner.v, 2);
+  const t = /** @type {any} */ (store({ list: [{ n: 1 }] }));
+  const E = t.list[0];
+  replace(t, { list: [{ n: 2 }], pick: E });
+  assert.strictEqual(E.n, 1);
+});
+
+test("a reload that adopts a store already held at another key counts that key", () => {
+  const def = store({ y: { v: 1 } });
+  const S = def.y;
+  const t = /** @type {any} */ (store({ x: 0, y: 5 }));
+  trackWrites(t);
+  t.x = S;
+  reshape(t, def);
+  t.y = { v: 7 };
+  assert.strictEqual(t.x.v, 1);
+  const def2 = store({ y: { v: 1 } });
+  const S2 = def2.y;
+  const u = /** @type {any} */ (store({ y: 5 }));
+  u.y = S2;
+  reshape(u, def2);
+  u.z = S2;
+  u.z = { v: 9 };
+  assert.strictEqual(u.y.v, 1);
+});
+
+test("Object.defineProperty() on a store throws", () => {
+  const list = store([{ n: 1 }, { n: 2 }]);
+  assert.throws(
+    () =>
+      Object.defineProperty(list, 1, {
+        value: list[0],
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      }),
+    TypeError,
+  );
+  assert.strictEqual(list[1].n, 2);
+});

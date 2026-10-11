@@ -40,15 +40,12 @@ import { isPlainObject } from "./util.js";
  *   `null` for a call outside any, and `undefined` while none runs. See
  *   there for what it changes.
  * @property {number} held How many keys of its owner hold the store, kept
- *   by every write and removal of a key of the owner's `state`. A store held
+ *   by every write and removal of a key of the owner's `state`, which the
+ *   proxy makes the only ways to change one: it refuses `defineProperty`. A store held
  *   as itself can sit at two keys of its owner, after `list[1] = list[0]`,
  *   `list.meta = list[0]` or a `fill`, and a write into it through one key
  *   would show at the other, so the `set` trap writes into it in place only
  *   while this is 1. Unused for a store with no owner.
- * @property {Set<unknown> | null} placing While `replace` writes into the
- *   store, the stores `newValue` holds, which the replace is about to place
- *   at a key and so must not be written into first through another, and
- *   `null` otherwise.
  * @property {Set<PropertyKey> | null} touched The data keys the program has
  *   written or deleted through the proxy since `trackWrites` was called,
  *   which `reshape` keeps. `null` until then, so a store nobody reloads
@@ -216,22 +213,36 @@ function countHolder(internals, value, delta) {
 }
 
 /**
- * The stores `value` holds at its data keys, read without running a getter.
+ * The stores `value` holds at its data keys, read without running a getter,
+ * or `null` when it holds none, which is the common case and allocates
+ * nothing.
  *
  * @param {object} value A plain object, an array or a store.
- * @returns {Set<unknown>}
+ * @returns {Set<unknown> | null}
  */
 function storesIn(value) {
   const source = /** @type {object} */ (internalsOf(value)?.state ?? value);
-  const stores = new Set();
+  /** @type {Set<unknown> | null} */
+  let stores = null;
   for (const key of Reflect.ownKeys(source)) {
     const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
     if (descriptor && "value" in descriptor && isStore(descriptor.value)) {
-      stores.add(descriptor.value);
+      (stores ??= new Set()).add(descriptor.value);
     }
   }
   return stores;
 }
+
+/**
+ * While a `replace` runs, the stores its `newValue` holds at a data key, and
+ * those of every `replace` it runs inside, since an in-place write one level
+ * down is a `replace` of its own. The `set` trap writes into none of them:
+ * the replace is about to place each at a key, so a write into it through
+ * another key first would show there. `null` outside any replace.
+ *
+ * @type {Set<unknown> | null}
+ */
+let placing = null;
 
 /**
  * Whether `key` is an array index: the canonical string of an integer from
@@ -299,20 +310,22 @@ function bump(version) {
  * go. Each index is assigned as a key is, in order, so a plain object or an
  * array written over a store of its kind that `oldValue` owns, held at that
  * key and at no other by then, is written into that store, and the store
- * stays where it is. A store `newValue` holds at any key is never written
- * into, since the replace places it as itself.
+ * stays where it is. A store `newValue` holds at a data key is never written
+ * into, through this store or one nested in it, since the replace places it
+ * as itself. One a getter of `newValue` returns is not known before the
+ * getter runs, and is assigned as any store is.
  *
  * @param {Record<PropertyKey, unknown> | unknown[]} oldValue
  * @param {Record<PropertyKey, unknown> | unknown[]} newValue
  */
 export function replace(oldValue, newValue) {
-  const internals = internalsOf(oldValue);
   batch(() => {
     // Set and restored inside the batch, before it drains, as `mutator` is:
     // an effect the replace queued assigns as any assignment does.
-    const previous = internals ? internals.placing : null;
-    if (internals) {
-      internals.placing = storesIn(newValue);
+    const previous = placing;
+    const found = storesIn(newValue);
+    if (found) {
+      placing = previous ? new Set([...previous, ...found]) : found;
     }
     try {
       Object.assign(oldValue, newValue);
@@ -325,9 +338,7 @@ export function replace(oldValue, newValue) {
         }
       }
     } finally {
-      if (internals) {
-        internals.placing = previous;
-      }
+      placing = previous;
     }
   });
 }
@@ -499,7 +510,6 @@ function store(data, operators = []) {
     owner: null,
     mutator: undefined,
     held: 0,
-    placing: null,
     touched: null,
   };
   for (const inner of made) {
@@ -587,7 +597,7 @@ function store(data, operators = []) {
             !isStore(newValue) &&
             internals.mutator === undefined &&
             nested.held === 1 &&
-            !internals.placing?.has(oldValue)
+            !placing?.has(oldValue)
           ) {
             // Written into the nested store this one owns key by key, whose
             // traps mark the keys the value changes. This key holds the same
@@ -651,6 +661,13 @@ function store(data, operators = []) {
       // reader follows the key as `in` does.
       dependOnKey(key);
       return Reflect.getOwnPropertyDescriptor(state, key);
+    },
+    defineProperty() {
+      // A key of a store changes through its traps alone, which tell its
+      // readers, mark it for `reshape` and keep `Internals.held`. A define
+      // would bypass all three, so it is refused, and in strict code it
+      // throws, as on a non-extensible object.
+      return false;
     },
     deleteProperty(_, key) {
       if (getters.has(key) || setters.has(key)) {
@@ -809,9 +826,15 @@ function adopt(internals, value, from) {
     return nestedStore(internals, value, false);
   }
   if (from && nested.owner === from) {
-    // Counted in by the write that places it.
+    // The keys that hold it already, which a program assignment may have
+    // made; the write that places it at this key counts that one.
     nested.owner = internals;
     nested.held = 0;
+    for (const key of Reflect.ownKeys(internals.state)) {
+      if (internals.state[key] === value) {
+        nested.held += 1;
+      }
+    }
     if (internals.touched) {
       track(nested, false);
     }

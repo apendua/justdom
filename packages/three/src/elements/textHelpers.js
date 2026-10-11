@@ -196,9 +196,16 @@ function normalizeColor(color) {
 }
 
 /**
+ * @typedef {Pick<
+ *   TextRenderStyle,
+ *   "fontFamily" | "fontStyle" | "fontVariant" | "fontWeight"
+ * >} FontFace
+ */
+
+/**
  * The canvas `font` shorthand for a face at a size.
  *
- * @param {Pick<TextRenderStyle, "fontFamily" | "fontStyle" | "fontVariant" | "fontWeight">} face
+ * @param {FontFace} face
  * @param {number} fontSize In px.
  * @returns {string}
  */
@@ -227,6 +234,7 @@ export function getTextRenderStyle(style) {
   // one keyword the shorthand admits.
   const variant = style.fontVariantCaps === "small-caps" ? "small-caps" : "normal";
 
+  /** @type {FontFace} */
   const face = {
     fontFamily: style.fontFamily || "sans-serif",
     fontStyle: style.fontStyle || "normal",
@@ -844,10 +852,12 @@ export function buildTextMipmaps(canvas) {
  *   so a coverage read from a color channel comes out aliased. Painted onto
  *   black, the color channels *are* the coverage, gradient and all.
  * @param {number} [unitScale] How many CSS pixels one unit of `lines` and
- *   `bounds` is drawn at: 1 for HTML text, whose layout is in CSS pixels, and
- *   the scale of the matrices above an SVG `<text>`, whose layout is in user
- *   units. Multiplied in after `renderScale` is capped, since the cap is on
- *   how finely a panel is painted, and a user unit may be many CSS pixels.
+ *   `bounds` is drawn at: 1 for HTML text, whose layout is in CSS pixels.
+ *   SVG text hands its layout over `measuringScale` times larger than its
+ *   user units, with a style scaled to match, so it passes the scale of the
+ *   matrices above the `<text>` divided by that factor. Multiplied in after
+ *   `renderScale` is capped, since the cap is on how finely a panel is
+ *   painted, and a user unit may be many CSS pixels.
  * @returns {TextTexture}
  */
 export const generateTextTexture = (

@@ -170,7 +170,7 @@ export function measuringScale(fontSize) {
     return 1;
   }
   const exponent = Math.ceil(Math.log2(MIN_MEASURED_FONT_SIZE / fontSize));
-  return 2 ** Math.min(Math.log2(MAX_MEASURING_SCALE), Math.max(0, exponent));
+  return Math.min(MAX_MEASURING_SCALE, 2 ** Math.max(0, exponent));
 }
 
 /**
@@ -333,7 +333,8 @@ function collectRuns(element, layoutStyle) {
  *   drawn with.
  * @param {(element: Element) => readonly string[]} layoutStyle An element's
  *   `LAYOUT_PROPERTIES`, for its `white-space`.
- * @param {number} smallest The smallest `font-size` of the runs' parents.
+ * @param {number} smallest The smallest `font-size` of the runs' parents, or
+ *   `Infinity` where every one is zero.
  * @returns {TextRun[]}
  */
 function measureRuns(element, found, viewport, fonts, layoutStyle, smallest) {
@@ -523,7 +524,9 @@ export function drawText(ctx, element, instance = null) {
       // Read only when a percentage needs it, so a root that resizes does
       // not measure text it does not move.
       const viewport = relative ? viewportSize(element, instance) : null;
-      // A font of zero draws nothing, and does not count.
+      // A font of zero draws nothing, and does not count. Where every run's
+      // font is zero, `smallest` is `Infinity`, which lays the copy out at
+      // one px per unit.
       const sizes = found.map(({ parent }) => fontSize(parent)).filter((size) => size > 0);
       const smallest = Math.min(...sizes);
       return measureRuns(element, found, viewport, fonts.get(), layoutStyle, smallest);

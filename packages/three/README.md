@@ -1982,8 +1982,9 @@ font among its runs to 64 CSS pixels, and each run is drawn at the one that brin
 there. A browser snaps a small font's ascent and descent to device pixels, and not the same way in a
 layout as on a canvas, so text a unit or two tall would otherwise be drawn off its baseline. The
 factor is at most 1024, and the measuring `<svg>` at most 2^20 px a side, which keeps both inside
-what Blink lays out in, so a font under 1/16 of a unit stays a little snapped. The quad hangs under
-the same matrices as a shape: a rotated `<g>` turns the text with it. The colour is `fill`, with
+what Blink lays out in. So a font under 1/16 of a unit, or under 1/16384 of the viewport a
+percentage places it in, is laid out under 64px and stays a little snapped. The quad hangs under the
+same matrices as a shape: a rotated `<g>` turns the text with it. The colour is `fill`, with
 `fill-opacity` and `opacity`, and a colour change is a uniform write, not a new texture. The texture
 is drawn at the scale the matrices above give it, redrawn only when that crosses a half-octave, so a
 zoomed label stays sharp and a zoom does not redraw it each frame. Text takes its place in the paint

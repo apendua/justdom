@@ -48,13 +48,16 @@ The page needed four changes to look the same in the panel, each one invisible o
   presses only to what is under `cursor: pointer`.
 
 `node tests/xr-check.mjs` loads the page alone in headless Chromium, which can present nothing, and
-fails if the headset scene is fetched. Then it plays on the emulated headset, which takes about a
-minute: it points the ray at a field the white stack can reach and checks that the route is drawn,
-pulls the trigger and checks that the click reached the board at that place and the turn passed on,
-then turns the passthrough on and leaves by the ×. `SHOTS=<dir>` also photographs the page and the
-session, and `STACKS=1` prints a stack for anything the page throws. It drives the browser and the
-controller through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`,
-so that project has to have been installed. It launches the Chromium at
+fails if the headset scene is fetched, if the menu behind ☰ does not stack its items one under
+another, or if a click on a field the white stack can reach, with no move before it, does not send
+the stack there. Then it loads the page with the emulator and fails if the Enter button covers the
+toolbar. Then it plays on the emulated headset, which takes about a minute: with the left hand
+pointing at the floor, it points the ray at a field the white stack can reach and checks that the
+route is drawn, pulls the trigger and checks that the click reached the board at that place and the
+turn passed on, then turns the passthrough on and leaves by the ×. `SHOTS=<dir>` also photographs
+the page and the session, and `STACKS=1` prints a stack for anything the page throws. It drives the
+browser and the controller through `@apendua.dev/headset/driver`, which borrows Playwright from
+`apps/showcase-xr`, so that project has to have been installed. It launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that touches this app or a package it imports runs it, with minesweeper's,
 the desk's and Euclid's, from `.github/workflows/driven.yml`.

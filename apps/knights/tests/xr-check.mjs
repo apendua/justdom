@@ -151,6 +151,35 @@ async function main() {
         await plain.screenshot({ path: join(SHOTS, "page.png") });
       }
 
+      // The menu behind ☰ stacks its items one under another, each as wide
+      // as the list.
+      await plain.evaluate(() =>
+        /** @type {HTMLElement} */ (
+          [...document.querySelectorAll("#root li")].find((li) => li.textContent === "\u2630")
+        ).click(),
+      );
+      const items = await plain.evaluate(() =>
+        [...document.querySelectorAll("#root li")]
+          .filter((li) => li.textContent?.startsWith("New Game"))
+          .map((li) => li.getBoundingClientRect().toJSON()),
+      );
+      check(
+        items.length === 2 &&
+          items[0].left === items[1].left &&
+          items[0].width === items[1].width &&
+          items[0].bottom <= items[1].top,
+        "the menu stacks its items one under another",
+      );
+      // The menu's own Continue closes it. The menu comes after the toolbar,
+      // so it is the last Continue on the page.
+      await plain.evaluate(() =>
+        /** @type {HTMLElement | undefined} */ (
+          [...document.querySelectorAll("#root li")]
+            .filter((li) => li.textContent === "Continue")
+            .at(-1)
+        )?.click(),
+      );
+
       // A click with no move before it, as a tap on a touchscreen is, and as
       // a headset's trigger is when the other hand moves the mouse: the stack
       // goes where it was clicked.
@@ -181,6 +210,15 @@ async function main() {
     // is drawn once it is.
     await page.waitForSelector("#root svg polygon");
     await page.waitForSelector("#ARButton, #VRButton");
+    // The Enter button stands clear of the toolbar along the bottom.
+    const clear = await page.evaluate(() => {
+      const button = /** @type {Element} */ (document.querySelector("#ARButton, #VRButton"));
+      const bar = /** @type {Element} */ (document.querySelector("#root ul"));
+      const a = button.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      return a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right;
+    });
+    check(clear, "the Enter button does not cover the toolbar");
     await page.click("#ARButton, #VRButton");
     await page
       .waitForFunction(

@@ -68,11 +68,8 @@ const DEFAULT_CARET_MARKS = /** @type {const} */ (["▲", "▼"]);
  * scene. Everything below is boxes and clicks, which the portal already knows
  * how to project.
  *
- * The menu is mounted and unmounted rather than hidden and shown. That is the
- * one thing worth remembering when writing for a portal: sizes are re-measured
- * when the tree changes, not when an attribute does, because otherwise every
- * hover would re-measure the panel. A menu that toggled `display` would
- * restyle and never re-lay-out.
+ * The menu is mounted when it opens and unmounted when it closes, so a closed
+ * menu is not in the panel at all.
  *
  * @template T
  * @param {DropdownProps<T>} props

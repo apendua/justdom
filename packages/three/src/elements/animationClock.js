@@ -101,6 +101,13 @@ const PAINT_PROPERTIES = new Set([
   "outline-color",
   "text-decoration-color",
   "box-shadow",
+  // A background's picture and an outline paint over or around a box
+  // without moving it.
+  "background",
+  "background-image",
+  "background-position",
+  "background-size",
+  "outline",
   "visibility",
   "filter",
   // SVG's paint and geometry: none of these can move a CSS box, and the
@@ -166,12 +173,14 @@ function kebab(name) {
  * The invalidation class of one animated property. Keyframes hand properties
  * back camelCased; transition events use the CSS names; both resolve here.
  * Anything unrecognized — including a missing name — is assumed to move
- * layout, the class that invalidates most.
+ * layout, the class that invalidates most. The mirror asks `classify` the
+ * same question of an inline `style` write, and then whether the box is out
+ * of the flow (`keepsToOwnBox` in mirror.js).
  *
  * @param {string} [property]
  * @returns {AnimationClass}
  */
-function classify(property) {
+export function classify(property) {
   if (!property) {
     return "layout";
   }

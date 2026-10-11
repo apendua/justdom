@@ -339,9 +339,7 @@ export function scrollable(props) {
         }),
         children(...content),
       ]),
-      // Mounted only while there is something to scroll — and mounted rather
-      // than shown, because a portal re-measures on a tree change and not on
-      // an attribute one.
+      // Mounted only while there is something to scroll.
       list(() => (scrollable.get() ? [BAR] : []), bar),
     ),
   ]);

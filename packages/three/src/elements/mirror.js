@@ -18,6 +18,7 @@ import {
   trimLineRange,
 } from "./textLines.js";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
+import { classify } from "./animationClock.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
@@ -308,6 +309,162 @@ function isSelfScoped(element, name) {
     return true;
   }
   return SVG_GEOMETRY_ATTRIBUTES.has(name) && isSvgElement(element) && !isSvgRoot(element);
+}
+
+/**
+ * An inline style's declarations, by property name. A declaration with no
+ * colon keeps its text as its name, which `classify` reads as layout. So a
+ * value the split cuts in two, a `data:` URL with a `;` in it say, reads as
+ * a change that moves boxes when the cut part changed, and as no change when
+ * it is the same before and after.
+ *
+ * @param {string | null} text
+ * @returns {Map<string, string>}
+ */
+function readDeclarations(text) {
+  /** @type {Map<string, string>} */
+  const declarations = new Map();
+  for (const declaration of (text ?? "").split(";")) {
+    const colon = declaration.indexOf(":");
+    if (colon < 0) {
+      if (declaration.trim()) {
+        declarations.set(declaration.trim(), "");
+      }
+      continue;
+    }
+    declarations.set(
+      declaration.slice(0, colon).trim().toLowerCase(),
+      declaration.slice(colon + 1).trim(),
+    );
+  }
+  return declarations;
+}
+
+/**
+ * The properties that place and size a box, and so move nothing but that box
+ * when the box is out of the flow: an absolutely positioned box adds nothing
+ * to its parent's flow, so its siblings and its parent's size do not depend
+ * on them. The set holds the physical and logical offsets, sizes and margins
+ * an author writes, and the longhands a browser serializes a logical write
+ * as.
+ *
+ * One case escapes it. An out-of-flow box still counts towards its
+ * containing block's scrollable overflow, so where scrollbars take room, a
+ * desktop browser's classic ones, a box grown past the bottom of a scroller
+ * brings a scrollbar in and narrows what the boxes in the flow lay out in.
+ * A headset draws overlay scrollbars and a panel hides its overflow, so the
+ * rule holds where a session runs; a box left stale beside a positioned one
+ * on a desktop page is that case.
+ */
+const OUT_OF_FLOW_GEOMETRY = new Set([
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "inset",
+  "inset-block",
+  "inset-inline",
+  "inset-block-start",
+  "inset-block-end",
+  "inset-inline-start",
+  "inset-inline-end",
+  "width",
+  "height",
+  "min-width",
+  "max-width",
+  "min-height",
+  "max-height",
+  "block-size",
+  "inline-size",
+  "min-block-size",
+  "max-block-size",
+  "min-inline-size",
+  "max-inline-size",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "margin-block",
+  "margin-inline",
+  "margin-block-start",
+  "margin-block-end",
+  "margin-inline-start",
+  "margin-inline-end",
+]);
+
+/**
+ * Whether a computed `position` takes the box out of its parent's flow.
+ *
+ * @param {string} position
+ * @returns {boolean}
+ */
+function isOutOfFlowPosition(position) {
+  return position === "absolute" || position === "fixed";
+}
+
+/**
+ * Whether an inline style that went from `before` to `after` moved no box but
+ * the element's own, across every declaration added, removed or rewritten.
+ * Each one either moves no box at all, as `movesLayout` decides, or places or
+ * sizes an element that is positioned absolutely or fixed, which moves that
+ * element alone. This is what keeps a gauge that writes `style.transform`
+ * every frame, and a scrollbar thumb that writes `top` and `height` on every
+ * scroll, at the cost of their own subtrees, where a width written on a box
+ * in the flow settles the panel. A custom property moves layout, since a
+ * `var()` may feed a width, and so does `position`, which is how a box joins
+ * or leaves the flow.
+ *
+ * A `relative` or `sticky` box is left out although its offsets move it
+ * alone, because its `width` and `height` do move the flow and the gate reads
+ * the position, not the property: its offsets climb, which costs work and
+ * nothing else.
+ *
+ * The position is read from the browser rather than from the mirror's cache,
+ * because an ancestor's class changed in the same flush may not have reached
+ * the cache yet. It is read only when a geometry declaration changed, so a
+ * write of paint alone costs no style read.
+ *
+ * @param {Element} element
+ * @param {string | null} before
+ * @param {string | null} after
+ * @returns {boolean}
+ */
+function keepsToOwnBox(element, before, after) {
+  const was = readDeclarations(before);
+  const now = readDeclarations(after);
+  let placesItself = false;
+  for (const name of new Set([...was.keys(), ...now.keys()])) {
+    const old = was.get(name);
+    const value = now.get(name);
+    if (old === value || (!movesLayout(name, old) && !movesLayout(name, value))) {
+      continue;
+    }
+    if (!OUT_OF_FLOW_GEOMETRY.has(name)) {
+      return false;
+    }
+    placesItself = true;
+  }
+  return !placesItself || isOutOfFlowPosition(window.getComputedStyle(element).position);
+}
+
+/**
+ * Whether one declaration can move a box. The name decides, through the
+ * animation clock's `classify`, with its default: an unknown property moves
+ * layout. The exception is `visibility: collapse`, which takes a table row or a
+ * flex item out of the layout where every other `visibility` only paints. The
+ * value is read as CSS reads a keyword, in any case and with an `!important`
+ * after it, which is how `setProperty` with a priority writes it.
+ *
+ * @param {string} name
+ * @param {string | undefined} value
+ * @returns {boolean}
+ */
+function movesLayout(name, value) {
+  return (
+    classify(name) === "layout" ||
+    (name === "visibility" && /^collapse\s*(!\s*important)?$/i.test(value ?? ""))
+  );
 }
 
 /**
@@ -1100,20 +1257,25 @@ export class DomMirror {
       // input's siblings, which is where a checkbox's label lives.
       let presentational = true;
       let selfScoped = true;
+      let contained = true;
       for (const [name, oldValue] of names) {
-        if (element.getAttribute(name) === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
+        const value = element.getAttribute(name);
+        if (value === oldValue || PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
           continue;
         }
         changed = true;
         if (!PRESENTATIONAL_ATTRIBUTES.has(name)) {
           presentational = false;
+          if (name !== "style" || !keepsToOwnBox(element, oldValue, value)) {
+            contained = false;
+          }
         }
         if (!isSelfScoped(element, name)) {
           selfScoped = false;
         }
       }
       if (changed) {
-        this.attributeChanged(element, { presentational, selfScoped });
+        this.attributeChanged(element, { presentational, selfScoped, contained });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -1127,7 +1289,32 @@ export class DomMirror {
    * An attribute on `element` actually changed value. Restyles the
    * parent-of-target subtree (descendants through the element's own
    * signal, siblings through the parent's member signal — `:has()` alone
-   * is not modelled), and re-measures the element's own subtree.
+   * is not modelled), re-measures the element's own subtree, and settles
+   * the layout around it as a child arriving at its place would.
+   *
+   * The climb is what lets a class swap or a `hidden` resize the panel. It
+   * starts at the parent, telling the element and the children after it
+   * that they moved, and goes on past a parent that changed size or whose
+   * size says nothing, an inline box (see `#settleLayout`). Each child told
+   * re-measures its own box and stops there when the box came out where it
+   * was. So a swap that moved nothing costs a rect for the element and for
+   * each element after it, a text measurement for each text node after it,
+   * a rect for the parent's size, and a rect for each positioned box in the
+   * panel (`outOfFlowLayout`). That is the scope the restyle above already
+   * has, since an author's attribute can restyle its siblings.
+   *
+   * In a flex row every child is told, the ones before the element too:
+   * the items share the row, so an item that grows shrinks the items
+   * before it as well as moving the ones after it.
+   *
+   * Three changes start no climb. An inline `style` that moved no box but
+   * the element's own (`contained`, see `keepsToOwnBox`) is the motion a
+   * page writes every frame: a transform, a fade, a positioned thumb sliding
+   * along its track. The panel's root has nothing above it in the panel,
+   * and its own size is in the subtree re-measured above. An SVG element
+   * under an `<svg>` root is placed in user space, so an attribute on it
+   * moves none of its siblings; the root's own attributes, its `width` say,
+   * are a box's and climb.
    *
    * @param {Node} element
    * @param {object} [options]
@@ -1140,9 +1327,16 @@ export class DomMirror {
    *   own subtree. False by default. Independent of `presentational` because
    *   the two claims are: `data-xr-checked` moves no layout but may still
    *   style the label beside it. See `isSelfScoped`.
+   * @param {boolean} [options.contained] Whether the change is an inline
+   *   style that moved no box but the element's own, so the element's subtree
+   *   re-measures and the layout around it is not settled. False by default.
+   *   See `keepsToOwnBox`.
    * @returns {void}
    */
-  attributeChanged(element, { presentational = false, selfScoped = false } = {}) {
+  attributeChanged(
+    element,
+    { presentational = false, selfScoped = false, contained = false } = {},
+  ) {
     batch(() => {
       this.#restyleScope(element, { reachesSiblings: !selfScoped });
       if (presentational) {
@@ -1151,6 +1345,15 @@ export class DomMirror {
       const record = recordOf(element);
       if (record) {
         bumpReflow(element, record);
+      }
+      const parent = element.parentElement;
+      if (
+        parent &&
+        !contained &&
+        !isPortalRoot(element) &&
+        (!isSvgElement(element) || isSvgRoot(element))
+      ) {
+        this.#layoutChangedAt(parent, getFlowMode(parent) === "flex" ? null : element);
       }
     });
   }
@@ -1474,7 +1677,8 @@ export class DomMirror {
 
   /**
    * The layout inside `container` changed: a child arrived or left, a text
-   * node was rewritten, a picture turned out to have a size.
+   * node was rewritten, a picture turned out to have a size, an attribute
+   * changed a child.
    *
    * @param {Element} container
    * @param {Node | null} from The earliest child the change could have
@@ -1544,7 +1748,10 @@ export class DomMirror {
    * what makes appending to a list cost the same whether the list has ten
    * rows or a thousand: the arriving row is the last child, and there is
    * nothing after it to tell. Prepending still costs the whole list, which is
-   * right — everything in it moved.
+   * right — everything in it moved. A flex row does not keep the claim: an
+   * item that grows can shrink and move the items before it. So an attribute
+   * change there names no child and the whole row hears it; a child-list or
+   * text change in one does not yet (see `FlowMode`).
    *
    * @param {Map<Element, Node | null>} containers
    * @returns {void}
@@ -1620,7 +1827,9 @@ export class DomMirror {
    * edge, and a `from` that is no longer a child of the element — the node
    * that named it having been removed by a later record in the same flush —
    * is no hint at all. Either way the fallback is the whole list, which is
-   * what this always did.
+   * what this always did. A flex row obeys the hint although an item that
+   * grows can shrink and move the items before it, which leaves them stale
+   * after a child-list or text change (see `FlowMode`).
    *
    * @param {Element} element
    * @param {Node | null} from
@@ -1781,7 +1990,11 @@ function earlierOf(a, b) {
  * - `"flex"` — children are placed one after another in document order from a
  *   fixed start edge, but the cross axis is the container's to hand out:
  *   `stretch` and `align-items` mean a container that changed height changed
- *   its children with it.
+ *   its children with it. The order promises nothing about the items before
+ *   a change: they share the main axis, so one that grows can shrink every
+ *   item before it and move all but the first. `attributeChanged` tells the
+ *   whole row for that reason; a child arriving or text rewritten does not
+ *   yet (the plan's "Found along the way").
  * - `"block"` — the same order, and the block axis is nobody's business but
  *   each child's own. A block container that got taller got taller *because*
  *   of its children, and stacking them from the top is all it ever does.
@@ -1797,14 +2010,15 @@ const flowModeCache = nodeCache();
  *
  * Two claims rest on this, and the distinction between them is what the three
  * answers are for. The first is that a change at one child cannot move the
- * children *before* it — a narrower claim than it sounds, since plenty of
- * ordinary containers place their children from the far end, or from the
- * middle, or in an order of their own: adding a row to a `justify-content:
- * center` list moves every row already in it, and adding one to a
- * `column-reverse` list moves all of them and puts the new one first. The
- * second is that a container growing along the block axis leaves its children
- * where they are, which is true of block flow and emphatically not of flex,
- * where the cross axis is handed out by the container.
+ * children *before* it, which a flex row does not keep (see `FlowMode`) — a
+ * narrower claim than it sounds, since plenty of ordinary containers place
+ * their children from the far end, or from the middle, or in an order of their
+ * own: adding a row to a `justify-content: center` list moves every row already
+ * in it, and adding one to a `column-reverse` list moves all of them and puts
+ * the new one first. The second is that a container growing along the block
+ * axis leaves its children where they are, which is true of block flow and
+ * emphatically not of flex, where the cross axis is handed out by the
+ * container.
  *
  * So the whitelist is written as a whitelist, and everything not on it falls
  * back to telling every child — which costs what this did before the
@@ -2035,8 +2249,7 @@ export function isPortalRoot(node) {
  * @returns {boolean}
  */
 function isPositioned(element) {
-  const position = getPositionStyle(element);
-  return position === "absolute" || position === "fixed";
+  return isOutOfFlowPosition(getPositionStyle(element));
 }
 
 /** @type {WeakMap<Node, Derived<number>>} */

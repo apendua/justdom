@@ -556,15 +556,30 @@ colours are drawn in the first side's, and a dashed, dotted or double border is 
 
 Two things about a portal are worth knowing before writing UI for one.
 
-**Sizes are re-measured when the tree changes, not when an attribute does.** The panel's forwarder
-writes `data-xr-*` back onto the elements the ray is on, so re-measuring the panel on every
-attribute mutation would mean re-laying-out the whole thing on every twitch of the ray. Every
-attribute is followed: a class, an inline style, an app's own `data-*` or `aria-*` flag, an SVG
-shape's `d` or `fill`. Changing one restyles the element, its subtree and its siblings (apart from
-the SVG geometry below, which does not reach the siblings), and repaints; the one thing it
-re-measures is the element's own subtree, which is what a toggled `transform` moves (see below), and
-nothing outside it. So anything that changes _layout_ — a menu opening, a section expanding — has to
-be mounted and unmounted rather than hidden and shown.
+**An attribute can move the layout, as a child arriving can.** Every attribute is followed: a class,
+an inline style, `hidden`, an app's own `data-*` or `aria-*` flag. Changing one restyles the
+element, its subtree and its siblings (apart from the SVG geometry below, which does not reach the
+siblings), and re-measures the element's subtree. Then the element and what comes after it in its
+parent re-measure where they are, every item in the row when the parent is a flex row, since its
+items share the row's width. The change climbs on to the parent's own siblings if the parent changed
+size or is an inline box, whose size says nothing about where the next line starts, and so on up to
+the panel, which resizes with what it holds. So a menu opened by a class, or a section shown by
+taking `hidden` off, resizes the panel as it would if it were mounted. A change that moved nothing
+costs a client rect for the element, for each element after it and for the parent, a text
+measurement for each text node after it, and a client rect for each positioned box in the panel.
+
+Two changes stay cheaper. An inline `style` write that moves no box but the element's own
+re-measures the element's subtree and nothing around it. That is a write of properties that move no
+box at all, `transform`, `opacity`, a `visibility` other than `collapse`, the colours and the like,
+and a write of the offsets, sizes and margins, physical or logical (`top`, `inset-inline-start`,
+`width`, `max-height`, `margin` and the rest), on an element positioned `absolute` or `fixed`, which
+is out of the flow. On a desktop page with classic scrollbars, a positioned box grown past the
+bottom of a scroller can still bring a scrollbar in, which this does not follow. So a gauge that
+writes `style.transform` every frame, and a scrollbar thumb that writes `top` and `height` on every
+scroll, pay for re-measuring themselves alone. Changing `position` itself moves what follows, as any
+box joining or leaving the flow does. An SVG shape's `d` or `fill` is followed too, but a shape is
+placed in user space, so it moves none of the shapes beside it; the `<svg>` root's own attributes
+move what follows it, as a box's do.
 
 Inside an `<svg>`, the attributes that place and size what it draws — `x`, `y`, `width`, `height`,
 `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d`, `points`, `dx`, `dy`, `rotate` and
@@ -575,7 +590,9 @@ shapes every frame, and a restyle of every sibling for each one cost the whole d
 author's attribute does. An `<svg>` directly inside a `<foreignObject>` is laid out the same way,
 but nothing under a `<foreignObject>` is drawn, so its siblings have nothing to restyle.
 
-**Hover and press are presentational, by contract.** The four attributes the portal writes itself —
+**Hover and press are presentational, by contract.** The panel's forwarder writes `data-xr-*` back
+onto the elements the ray is on, so settling the layout after each of those would re-measure part of
+the panel on every twitch of the ray. The four attributes the portal writes itself —
 `data-xr-hover`, `data-xr-active`, `data-xr-checked` and `data-xr-focus` — restyle the panel but are
 declared unable to move it. Colour, background, border colour, opacity and `transform` all work; a
 width, a padding or a font size that changes under the ray is not mirrored, and the boxes stay the

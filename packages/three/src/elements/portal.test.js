@@ -3065,6 +3065,38 @@ describe("createPortal", () => {
     }
   });
 
+  test("a sheet for a class worn before the panel restyles the whole panel", async () => {
+    // `.toolbar ~ div` starts from a class nothing in the panel wears, and
+    // still reaches the panel's root, a later sibling of the toolbar, and
+    // through inheritance everything in it.
+    const toolbar = document.createElement("div");
+    toolbar.className = "kb_toolbar";
+    const root = document.createElement("div");
+    const label = document.createElement("div");
+    label.id = "under";
+    root.append(label);
+    document.body.append(toolbar, root);
+    const portal = createPortal(InteractionContext.set({}, new InteractionManager()), { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+    const off = enableOutlinesMode();
+    const style = document.createElement("style");
+    try {
+      style.innerHTML = ".kb_toolbar ~ div { color: rgb(9, 8, 7); }";
+      document.head.append(style);
+      await drain();
+      const ids = outlinesReport(Infinity).map((row) => row.element.split("#").pop());
+      assert.ok(ids.includes("under"), `the label under the root was restyled, among ${ids}`);
+    } finally {
+      off();
+      style.remove();
+      await drain();
+      portal.disconnect();
+      root.remove();
+      toolbar.remove();
+    }
+  });
+
   test("a rule rewritten behind a stable class name restyles the panel", async () => {
     // What a styling library that hands out class names does when the value
     // inside one of its templates changes: it rewrites the rule in the head

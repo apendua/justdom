@@ -21,12 +21,13 @@
  * Most sheets such a library writes can name what they style, though. A
  * rule whose selector starts from a class matches only elements in the
  * subtree of an element with that class, or after it among its siblings,
- * and a `className` tag writes nothing else. So each announcement carries
- * the classes every rule of the changed sheets starts from (`scopeOfSheet`),
- * and a panel restyles only the elements that wear one, as though their
- * `class` had changed (`mirror.classRulesChanged()`). A panel with none of
- * them restyles nothing. A sheet with a rule that starts anywhere else or
- * cannot be read, a `<link>`, and a change theming mode finds are announced
+ * and a `className` tag whose body nests no rule writes nothing else. So
+ * each announcement carries the classes every rule of the changed sheets
+ * starts from (`scopeOfSheet`), and a panel restyles only the elements that
+ * wear one, as though their `class` had changed
+ * (`mirror.classRulesChanged()`). A panel with none of them restyles
+ * nothing. A sheet with a rule that starts anywhere else or cannot be read,
+ * a nested rule, a `<link>`, and a change theming mode finds are announced
  * with no classes, and cost a whole-panel restyle.
  *
  * One observer for the whole page rather than one per portal: the thing being
@@ -249,6 +250,12 @@ function enclosingStyleElement(node) {
 const PLAIN_CLASS = /^-?[_a-zA-Z][_a-zA-Z0-9-]*/;
 
 /**
+ * What may follow a class name in a compound: the end of the selector,
+ * another simple selector, a pseudo-class or a combinator.
+ */
+const ENDS_NAME = /^$|^[.#[:\s>+~]/;
+
+/**
  * The class a complex selector starts from: one named by the first compound
  * itself, outside any `:not()`, `:is()` or `:has()`, and outside attribute
  * brackets. Every element the selector matches is that element, in its
@@ -276,8 +283,10 @@ export function leadingClass(selector) {
       }
       if (c === ".") {
         const name = PLAIN_CLASS.exec(text.slice(i + 1))?.[0];
-        // A name that goes on in an escape is a longer name than it reads.
-        return name && text[i + 1 + name.length] !== "\\" ? name : null;
+        // Read only up to where the name ends. A name that goes on in a
+        // character this does not read, an escape or one past ASCII, is a
+        // longer name than it reads.
+        return name && ENDS_NAME.test(text[i + 1 + name.length] ?? "") ? name : null;
       }
     }
   }
@@ -286,12 +295,16 @@ export function leadingClass(selector) {
 
 /**
  * A selector list split at its top-level commas, so that `:is(a, b)` stays
- * one selector.
+ * one selector, or null for a list with a quote or an escape in it, whose
+ * brackets and commas this does not read.
  *
  * @param {string} list
- * @returns {string[]}
+ * @returns {string[] | null}
  */
 function splitSelectors(list) {
+  if (/["'\\]/.test(list)) {
+    return null;
+  }
   /** @type {string[]} */
   const parts = [];
   let depth = 0;
@@ -331,7 +344,11 @@ function collectLeadingClasses(rules, classes) {
       if (style.cssRules && style.cssRules.length > 0) {
         return false;
       }
-      for (const selector of splitSelectors(style.selectorText)) {
+      const selectors = splitSelectors(style.selectorText);
+      if (selectors === null) {
+        return false;
+      }
+      for (const selector of selectors) {
         const name = leadingClass(selector);
         if (name === null) {
           return false;
@@ -380,12 +397,19 @@ export function scopeOfSheet(element) {
  * @returns {StyleScope}
  */
 function rescope(element) {
-  const before = styleScopes.has(element) ? styleScopes.get(element) : null;
-  // A sheet that has left styles nothing any more.
-  const after = element.isConnected ? scopeOfSheet(element) : new Set();
-  if (element.isConnected) {
-    styleScopes.set(element, after);
+  // Every `<style>` in the head is recorded when watching starts, so one
+  // not recorded arrived since, in this flush, and styled nothing before:
+  // one that arrived and left in the same flush styled nothing at all.
+  const recorded = styleScopes.get(element);
+  /** @type {StyleScope} */
+  const before = recorded === undefined ? new Set() : recorded;
+  if (!element.isConnected) {
+    // A sheet that has left styles nothing any more.
+    styleScopes.delete(element);
+    return before;
   }
+  const after = scopeOfSheet(element);
+  styleScopes.set(element, after);
   return before && after ? new Set([...before, ...after]) : null;
 }
 
@@ -437,15 +461,7 @@ function scopeOfFlush(records) {
     }
   }
   for (const element of rewritten) {
-    // A sheet that arrives is new to `styleScopes`, and then what it styled
-    // before is nothing at all.
-    if (!styleScopes.has(element) && element.isConnected) {
-      styleScopes.set(element, new Set());
-    }
     add(rescope(element));
-    if (!element.isConnected) {
-      styleScopes.delete(element);
-    }
   }
   if (!touched) {
     return undefined;

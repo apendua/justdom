@@ -474,6 +474,9 @@ describe("watchDocumentStyles", () => {
         ".kb { color: red; } body .kb { color: blue; }",
         ".kb { animation: spin 1s; } @keyframes spin { to { opacity: 0; } }",
         ":not(.kb) { color: red; }",
+        // A quoted bracket hides the comma before `.b` from a reader that
+        // counts brackets, which would scope this to `a` alone.
+        '.a[data-label="("], .b { color: red; }',
       ]) {
         const style = document.createElement("style");
         style.innerHTML = text;
@@ -481,7 +484,7 @@ describe("watchDocumentStyles", () => {
         styles.push(style);
         await flush();
       }
-      assert.deepEqual(heard, [null, null, null]);
+      assert.deepEqual(heard, [null, null, null, null]);
     } finally {
       for (const style of styles) {
         style.remove();
@@ -501,6 +504,30 @@ describe("watchDocumentStyles", () => {
     assert.equal(leadingClass(":is(.a, .b)"), null);
     assert.equal(leadingClass("[title='.a']"), null);
     assert.equal(leadingClass(".a\\:b"), null, "an escape is not read");
+    assert.equal(leadingClass(".kbé"), null, "nor a name that goes on past ASCII");
+    assert.equal(leadingClass(".a.b#c"), "a");
     assert.equal(leadingClass("*"), null);
+  });
+
+  test("a sheet that arrives and leaves in one flush styled nothing", async () => {
+    // A component that mounts and fails in the same tick subscribes and
+    // unsubscribes its classes before the observer reports either. No style
+    // was ever worked out from the sheet, so nothing restyles.
+    /** @type {(ReadonlySet<string> | null)[]} */
+    const heard = [];
+    const stop = watchDocumentStyles((scope) => heard.push(scope));
+    try {
+      const style = document.createElement("style");
+      style.innerHTML = ".gone { color: red; }";
+      document.head.appendChild(style);
+      style.remove();
+      await flush();
+      assert.deepEqual(
+        heard.map((scope) => scope && [...scope]),
+        [[]],
+      );
+    } finally {
+      stop();
+    }
   });
 });

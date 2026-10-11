@@ -1628,10 +1628,9 @@ export class DomMirror {
    * **It costs a whole-panel restyle and re-measure**, which is the honest
    * price of an event that names nothing. A change whose rules all start
    * from classes names what it styles, and goes to `classRulesChanged`
-   * instead. Fine for a theme swap or a
-   * state-driven rule; expensive for a value animated at frame rate. Animate
-   * through an inline `style` instead — that is a mutation on the element
-   * that moved, and it is scoped to it.
+   * instead. Fine for a theme swap or a state-driven rule; expensive for a
+   * value animated at frame rate. Animate through an inline `style` instead
+   * — that is a mutation on the element that moved, and it is scoped to it.
    *
    * A rule may also transform something above the panel's root, which is
    * the one place the portal hears about that, so every frame reads its
@@ -1655,8 +1654,11 @@ export class DomMirror {
    * library writes as the elements it dresses arrive, such as a keyboard's
    * when the keyboard opens.
    *
-   * An element above the panel's root wearing one is outside the panel, and
-   * passes what the rule says down to all of it, so then everything changes.
+   * An element outside the panel wearing one can still reach into it: above
+   * the root, it passes what the rule says down to all of the panel, and
+   * before the root or one of the root's ancestors among their siblings, a
+   * rule's `~` or `+` reaches the panel from there and inheritance carries
+   * it on. Either way everything changes.
    *
    * @param {Element} root The panel's root.
    * @param {ReadonlySet<string>} classes Names `leadingClass` read, which
@@ -1669,8 +1671,20 @@ export class DomMirror {
     }
     const wears = (/** @type {Element} */ element) =>
       [...classes].some((name) => element.classList.contains(name));
-    for (let above = root.parentElement; above; above = above.parentElement) {
-      if (wears(above)) {
+    for (
+      let current = /** @type {Element | null} */ (root);
+      current;
+      current = current.parentElement
+    ) {
+      let reaches = current !== root && wears(current);
+      for (
+        let before = current.previousElementSibling;
+        before && !reaches;
+        before = before.previousElementSibling
+      ) {
+        reaches = wears(before);
+      }
+      if (reaches) {
         this.documentStylesChanged();
         return;
       }

@@ -196,10 +196,12 @@ function normalizeColor(color) {
 }
 
 /**
- * @typedef {Pick<
- *   TextRenderStyle,
- *   "fontFamily" | "fontStyle" | "fontVariant" | "fontWeight"
- * >} FontFace
+ * The properties of a `TextRenderStyle` that pick its face. Two typedefs,
+ * since `tsc` copies a type split across comment lines into the declaration
+ * file with the lines' asterisks in it.
+ *
+ * @typedef {"fontFamily" | "fontStyle" | "fontVariant" | "fontWeight"} FaceKey
+ * @typedef {Pick<TextRenderStyle, FaceKey>} FontFace
  */
 
 /**

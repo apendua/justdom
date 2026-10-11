@@ -88,6 +88,14 @@ a paper panned changes the drawing on every move. A move whose reading fits the 
 that frame either way. One whose reading overruns it would land once a second rather than follow the
 hand, so the panel takes a torn frame instead.
 
+The three panels share one budget per frame, and the drawing's is offered it first. A drag rewrites
+the dragged point's statement on every move, so the program has work to bring in on the same frames
+as the drawing, and the drawing is what follows the hand. The program catches up once the hand
+stops, and it has little to catch up on: its highlighted copy is one block per line, each written
+only when its own line changes, so a drag replaces the nodes of one line rather than of the whole
+program. A line is one line-height tall whatever it holds, so a change inside it moves nothing below
+it.
+
 The drawing needs nothing from the headset. freedom sends a ray's press, its moves and its release
 as the pointer events a browser sends for a mouse, each hand its own pointer, carrying the point the
 ray met as `clientX` and `clientY`, so the handlers that serve the mouse and the finger place

@@ -282,7 +282,7 @@ const Editor = component((store: AppStore) => {
                 (index: number) =>
                   $("div", [
                     set("className", lineStyle),
-                    set("innerHTML", () => lines.get()[index] ?? ""),
+                    set("innerHTML", () => lines.get()[index]),
                   ]),
               ),
             ),

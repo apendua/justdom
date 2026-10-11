@@ -153,8 +153,15 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         // lands that frame either way; one whose reading overruns it would
         // land once a second rather than follow the hand. A torn frame of a
         // drawing in motion is the lesser harm.
+        //
+        // And first in the frame's budget, which the three panels share: a
+        // drag rewrites a statement on every move, so the program has work
+        // to bring in exactly when the drawing does, and the drawing is
+        // what follows the hand. The program catches up once the hand
+        // stops.
         Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height), {
           atomic: false,
+          priority: 1,
         }),
         // The mark at the end of each ray. Half the default size: a drawn
         // point is a few millimetres across, and the mark aiming at one

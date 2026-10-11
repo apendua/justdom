@@ -3,7 +3,7 @@ import { children } from "@apendua/justdom";
 import { just } from "@apendua/signal";
 import { xrSession } from "@apendua.dev/headset/session";
 import AppStore from "../store/App";
-import Editor, { renderHighlight } from "./Editor";
+import Editor, { renderHighlightLines } from "./Editor";
 
 /** The text of every span carrying `style`, in order. */
 function marked(html: string, style: string): string[] {
@@ -14,7 +14,12 @@ function marked(html: string, style: string): string[] {
     .map((span) => span.textContent ?? "");
 }
 
-describe("renderHighlight", () => {
+/** The rendered lines as one HTML string, as the panel shows them. */
+function renderHighlight(...args: Parameters<typeof renderHighlightLines>): string {
+  return renderHighlightLines(...args).join("\n");
+}
+
+describe("renderHighlightLines", () => {
   const code = "A=point(0, 0);\nB=point(4, 0);\nl=line(A, B);\n";
 
   it("grounds the selected statement, and nothing else", () => {
@@ -41,7 +46,7 @@ describe("renderHighlight", () => {
   it("keeps the text as it is", () => {
     const pre = document.createElement("pre");
     pre.innerHTML = renderHighlight(code, { start: 2, end: 7 }, { start: 15, end: 30 });
-    expect(pre.textContent).toBe(`${code}\n`);
+    expect(pre.textContent).toBe(code);
   });
 });
 
@@ -92,6 +97,61 @@ describe("the program's textarea", () => {
     expect(document.activeElement).not.toBe(textarea);
     xrSession.set(null);
     expect(textarea.readOnly).toBe(false);
+    subscription.unsubscribe();
+  });
+});
+
+describe("the highlighted program", () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it("replaces the nodes of the line that changed, and no other line's", () => {
+    const store = new AppStore();
+    store.setCode("A=point(0, 0);\nB=point(4, 0);\nl=line(A, B);\n");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const subscription = just(host, [children(Editor(store))]).subscribe({});
+    const lines = () => [...host.querySelectorAll("pre > div")];
+    const before = lines();
+    const nodesBefore = before.map((line) => [...line.childNodes]);
+    expect(before.map((line) => line.textContent)).toEqual([
+      "A=point(0, 0);",
+      "B=point(4, 0);",
+      "l=line(A, B);",
+      "",
+    ]);
+
+    // What a drag of B writes: its own statement, and nothing else.
+    const changed: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        changed.push(record.target);
+      }
+    });
+    observer.observe(host.querySelector("pre > div")?.parentElement as Element, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    store.setCode("A=point(0, 0);\nB=point(4.5, 0.25);\nl=line(A, B);\n");
+    const records = observer.takeRecords();
+    for (const record of records) {
+      changed.push(record.target);
+    }
+    observer.disconnect();
+
+    const after = lines();
+    expect(after).toHaveLength(before.length);
+    after.forEach((line, index) => expect(line).toBe(before[index]));
+    expect(after[1].textContent).toBe("B=point(4.5, 0.25);");
+    expect(changed.length).toBeGreaterThan(0);
+    expect(changed.every((target) => target === before[1])).toBe(true);
+    for (const index of [0, 2, 3]) {
+      const nodes = [...after[index].childNodes];
+      expect(nodes).toHaveLength(nodesBefore[index].length);
+      nodes.forEach((node, i) => expect(node).toBe(nodesBefore[index][i]));
+    }
     subscription.unsubscribe();
   });
 });

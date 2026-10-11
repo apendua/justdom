@@ -1,5 +1,5 @@
-import { $, children, className, on, set } from "@apendua/justdom";
-import { component, effects } from "@apendua/signal";
+import { $, children, className, list, on, set } from "@apendua/justdom";
+import { Derived, component, effects } from "@apendua/signal";
 import { tokenize, KEYWORDS, BUILTINS } from "@apendua.dev/euclid-lang";
 import { xrSession } from "@apendua.dev/headset/session";
 import type AppStore from "../store/App";
@@ -51,6 +51,16 @@ const highlightStyle = className`
   overflow: hidden;
   pointer-events: none;
   color: #3d3a33;
+`;
+
+/**
+ * One line of the highlighted code, a block of its own. A line of
+ * monospace text is always the one line-height tall, and an empty one is
+ * held open to it, so that a change in one line moves nothing below it.
+ */
+const lineStyle = className`
+  display: block;
+  min-height: 1lh;
 `;
 
 const inputStyle = className`
@@ -116,15 +126,19 @@ const ERROR_STYLE = "text-decoration:underline wavy #dc2626 1px; text-underline-
 const SELECTED_STYLE = "background:#dbeafe";
 
 /**
- * Renders the code as highlighted HTML. The error span (if any) gets a wavy
- * red underline, and the selected statement (if any) a pale blue ground,
- * which shows where the textarea's own selection cannot: a headset draws
- * the highlighted copy of the code, and not the browser's selection over
- * it.
+ * Renders the code as highlighted HTML, one string per line, without the
+ * line breaks. The error span (if any) gets a wavy red underline, and the
+ * selected statement (if any) a pale blue ground, which shows where the
+ * textarea's own selection cannot: a headset draws the highlighted copy of
+ * the code, and not the browser's selection over it.
  */
-export function renderHighlight(code: string, error: Span | null, selected: Span | null): string {
+export function renderHighlightLines(
+  code: string,
+  error: Span | null,
+  selected: Span | null,
+): string[] {
   const tokens = tokenize(code);
-  let html = "";
+  const lines = [""];
   let offset = 0;
   const errorStart = error ? Math.min(error.start, code.length) : -1;
   const errorEnd = error ? Math.max(Math.min(error.end, code.length), errorStart + 1) : -1;
@@ -154,18 +168,19 @@ export function renderHighlight(code: string, error: Span | null, selected: Span
       const from = cuts[i];
       const to = cuts[i + 1];
       const text = escapeHtml(code.slice(from, to));
-      const marked = text !== "\n";
+      if (text === "\n") {
+        lines.push("");
+        continue;
+      }
       const styles = [
         color ? `color:${color}` : "",
         italic ? "font-style:italic" : "",
-        marked && error !== null && from >= errorStart && to <= errorEnd ? ERROR_STYLE : "",
-        marked && selected !== null && from >= selectedStart && to <= selectedEnd
-          ? SELECTED_STYLE
-          : "",
+        error !== null && from >= errorStart && to <= errorEnd ? ERROR_STYLE : "",
+        selected !== null && from >= selectedStart && to <= selectedEnd ? SELECTED_STYLE : "",
       ]
         .filter(Boolean)
         .join(";");
-      html += styles ? `<span style="${styles}">${text}</span>` : text;
+      lines[lines.length - 1] += styles ? `<span style="${styles}">${text}</span>` : text;
     }
   };
 
@@ -175,8 +190,12 @@ export function renderHighlight(code: string, error: Span | null, selected: Span
     offset = token.end;
   }
   emit(offset, code.length, null);
-  // A trailing newline needs something after it, or the <pre> collapses it.
-  return `${html}\n`;
+  return lines;
+}
+
+/** Whether two renderings have the same lines. */
+function sameLines(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((line, i) => line === b[i]);
 }
 
 function lineNumbers(code: string): string {
@@ -215,6 +234,23 @@ const Editor = component((store: AppStore) => {
     store.cursorOffset.set(textarea.selectionStart);
   };
 
+  /**
+   * The highlighted lines. Each is the HTML of one block below, written only
+   * when it changes, so that a point dragged in the drawing, which rewrites
+   * one statement, replaces the nodes of one line and not of the whole
+   * program: a headset's panel builds, measures and rasterizes every node a
+   * write replaces.
+   */
+  const lines = new Derived(
+    () => renderHighlightLines(store.code.get(), errorSpan(), selectedStatement()),
+    { isEqual: sameLines },
+  );
+
+  /** One index per line, the same list for as long as the count stays. */
+  const lineIndices = new Derived(() => lines.get().map((_, index) => index), {
+    isEqual: (a, b) => a.length === b.length,
+  });
+
   const syncScroll = (textarea: HTMLTextAreaElement) => {
     if (highlightRef) {
       highlightRef.scrollTop = textarea.scrollTop;
@@ -240,8 +276,15 @@ const Editor = component((store: AppStore) => {
         children(
           $("pre", [
             set("className", highlightStyle),
-            set("innerHTML", () =>
-              renderHighlight(store.code.get(), errorSpan(), selectedStatement()),
+            children(
+              list(
+                () => lineIndices.get(),
+                (index: number) =>
+                  $("div", [
+                    set("className", lineStyle),
+                    set("innerHTML", () => lines.get()[index] ?? ""),
+                  ]),
+              ),
             ),
             (el: HTMLPreElement) => {
               highlightRef = el;

@@ -2,6 +2,7 @@ import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
+import { clipMatrixOf } from "../test/clipUniforms.js";
 import { acquireImage, releaseIdleImages, releaseImage } from "../elements/image.js";
 import { parsePreserveAspectRatio } from "./geometry.js";
 import { buildImageGeometry, getSvgImageSource, image, placeImage } from "./image.js";
@@ -172,25 +173,6 @@ function bounds(mesh) {
     box.expandByPoint(new THREE.Vector2(position.getX(i), position.getY(i)));
   }
   return [box.min.x, box.min.y, box.max.x, box.max.y].map(round);
-}
-
-/**
- * The clip patch's matrix, read by letting the material patch a shader.
- *
- * @param {Mesh} mesh
- * @returns {THREE.Matrix3}
- */
-function clipMatrixOf(mesh) {
-  const shader = {
-    uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
-    vertexShader: "void main() {\n#include <begin_vertex>\n}",
-    fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
-  };
-  /** @type {THREE.Material} */ (mesh.material).onBeforeCompile(
-    /** @type {never} */ (shader),
-    /** @type {never} */ (null),
-  );
-  return /** @type {THREE.Matrix3} */ (shader.uniforms.clipMatrix.value);
 }
 
 describe("placeImage", () => {

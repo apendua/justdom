@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { withComputation } from "@apendua/signal";
+import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
 import { InteractionContext } from "../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "./frameRequester.js";
@@ -69,7 +70,7 @@ const GHOST_Z = -2;
 const GHOST_OPACITY = 0.7;
 
 /** Drawn after everything else in the scene, so the panel never covers it. */
-const GHOST_RENDER_ORDER = 1e9;
+const GHOST_RENDER_ORDER = OVERLAY_RENDER_ORDER;
 
 /**
  * What a ray needs of a panel: its container object, its root element, its

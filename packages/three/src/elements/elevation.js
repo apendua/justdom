@@ -164,9 +164,9 @@ export function isOverlay(element) {
  * plausible tree climbs out of one. A pile of cards that are not opaque
  * climbs a few levels a card (see `getDrawLevel`), so a band has to hold
  * thousands of cards rather than a deep tree. It is bounded from above as
- * well: the cursor and the drag ghost draw at 1e9, after every panel, so
- * the band times the deepest elevation a page reaches has to stay well
- * under that.
+ * well: a draggable panel's strips draw at `HANDLE_RENDER_ORDER`, after
+ * every panel, so the band times the deepest elevation a page reaches has
+ * to stay well under that.
  */
 export const ELEVATION_BAND = 100_000;
 

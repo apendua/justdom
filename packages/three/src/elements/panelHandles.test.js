@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
 import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
 import { withStart } from "../test/rays.js";
@@ -81,7 +82,7 @@ describe("createPanelHandles", () => {
       // Three sorts the transparent pass by `renderOrder` first, and a
       // panel's boxes are in it at their elevation band and draw level.
       assert.ok(bar.renderOrder > 100 * ELEVATION_BAND, `the ${side} bar after a panel's boxes`);
-      assert.ok(bar.renderOrder < 1e9, `and before the cursor`);
+      assert.ok(bar.renderOrder < OVERLAY_RENDER_ORDER, `and before the cursor`);
       assert.equal(bar.material.depthTest, true, "under what is in front of it");
     }
     handles.dispose();

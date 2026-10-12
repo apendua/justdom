@@ -1062,10 +1062,10 @@ wants.
   `tilt` and its scale from whichever panel it hangs below. On a plain page, or under a test runner,
   it hangs below the panel.
 - **It can be moved.** A board in the room has the strips a draggable panel has (see **Letting the
-  player move a panel**), and always has them. The carry takes the anchor the board hangs from, so
-  the next board opens where the player put the last one down, unless they have since walked more
-  than a metre or turned more than 60° away. A board below a panel has no strips, moves with the
-  panel, and does not show the panel's strips when a ray is on its keys.
+  player move a panel**), without asking for them as a panel does. The carry takes the anchor the
+  board hangs from, so the next board opens where the player put the last one down, unless they have
+  since walked more than a metre or turned more than 60° away. A board below a panel has no strips,
+  moves with the panel, and does not show the panel's strips when a ray is on its keys.
 - **It shows what is being typed.** A board in the room carries a copy of the field above its keys:
   the value as it is typed, the placeholder while it is empty, the caret where the next key goes,
   hinged toward the player. It is unmasked, since only the player can see it. It wears the field's
@@ -1639,7 +1639,7 @@ dom(ctx, Map(ctx), [], { draggable: { level: false, handleWidth: 20 } });
   group, so whatever the scene does to place the parent still applies.
 - Dragging is off unless a panel asks for it, and it is not one of the scene's panel defaults. A
   carry follows the hand in the renderer's frames, so a portal without a renderer has no strips. The
-  keyboard uses the same strips and always has them in the room.
+  keyboard uses the same strips, and in the room has them without asking.
 
 ### How sharp the text comes out
 

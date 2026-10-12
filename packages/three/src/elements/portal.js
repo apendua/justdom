@@ -334,7 +334,7 @@ function claimRoot(root) {
  *   move the panel. Four strips along its edges are invisible until a ray
  *   is on the panel, faint while one is, and full on the strip a ray is on.
  *   While the panel loads they are not there at all, until its loading
- *   frame shows. A press on one picks the panel up with `carry()`, and the
+ *   frame shows or, with no frame, until it loads. A press on one picks the panel up with `carry()`, and the
  *   release puts it down. Off by default. The carry moves a group the
  *   portal puts between the parent and the panel, so the scene goes on
  *   placing the parent and the player's move is added on top. By default
@@ -678,6 +678,17 @@ function buildPortal(ctx, ownOptions = {}) {
       : null;
 
   /**
+   * Whether anything of the panel is drawn: its loading frame, or the panel
+   * once loaded. Until then there is nothing for the strips to be around.
+   * Goes true once and stays.
+   */
+  const drawn = Signal.of(false);
+  const markDrawn = () => {
+    handles?.setShown(true);
+    drawn.set(true);
+  };
+
+  /**
    * What stands where the panel will be until the panel does: a frame its
    * size, with a few dots breathing in it. Placed and animated on frames of
    * its own while the mount runs, and taken down by `markLoaded` in the
@@ -731,7 +742,7 @@ function buildPortal(ctx, ownOptions = {}) {
       }
       containerObject.add(loadingFrameObject.object);
       loadingFrameObject.show(now);
-      handles?.setShown(true);
+      markDrawn();
     };
     /** @type {(() => void) | null} */
     let stopFrames = null;
@@ -1314,7 +1325,7 @@ function buildPortal(ctx, ownOptions = {}) {
     loading.set(false);
     onLoadingChanged?.(false);
     // Whether or not a frame stood in for it, the panel is drawn now.
-    handles?.setShown(true);
+    markDrawn();
   };
 
   /**
@@ -1983,6 +1994,14 @@ function buildPortal(ctx, ownOptions = {}) {
      */
     isLoading() {
       return loading.get();
+    },
+    /**
+     * Whether anything of the panel is drawn: its loading frame, or the
+     * panel itself once loaded. Reactive, and true from then on. What a
+     * draggable panel's strips wait for.
+     */
+    isDrawn() {
+      return drawn.get();
     },
     /**
      * How big the panel is, in its px: its container's border box, which

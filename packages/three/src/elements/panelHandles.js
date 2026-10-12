@@ -65,7 +65,8 @@ export const HANDLE_OPACITY_ACTIVE = 0.9;
 /**
  * Where the bars go in the draw: past the bands every panel draws in
  * (`elevation * ELEVATION_BAND + level`, see elevation.js), and short of
- * the cursor and a drag's ghost at 1e9, which go over everything.
+ * the cursor and a drag's ghost at `OVERLAY_RENDER_ORDER`, which go over
+ * everything.
  */
 export const HANDLE_RENDER_ORDER = 1e8;
 

@@ -11,6 +11,7 @@ import {
   toEffect,
 } from "@apendua/signal";
 import { list } from "./core.js";
+import { OVERLAY_RENDER_ORDER } from "./drawOrder.js";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 
@@ -67,13 +68,8 @@ const ballMaterial = memoizeWithTTL(
   },
 );
 
-/**
- * Above every figure a panel gives its quads. Panels draw at
- * `elevation * ELEVATION_BAND + level` (see elevation.js), so anything past
- * a few bands already clears them; the margin is for a scene that orders
- * something of its own.
- */
-const CURSOR_RENDER_ORDER = 1e9;
+/** Above every figure a panel gives its quads (see drawOrder.js). */
+const CURSOR_RENDER_ORDER = OVERLAY_RENDER_ORDER;
 
 /**
  * The chrome a template's widgets wear: one set of materials per template,

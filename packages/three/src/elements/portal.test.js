@@ -20,6 +20,7 @@ import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
+import { getContentGroup } from "./contentGroup.js";
 import { fakeClock } from "../test/clock.js";
 import { syntheticEvent } from "../test/events.js";
 
@@ -2428,6 +2429,72 @@ describe("createPortal", () => {
 
     assert.deepEqual(listObject.children, [objB], "A is gone");
     assert.equal(objB.children[0].children[0], objE, "and E's object, the same one, is under B");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("a child moved to a parent where it keeps its offset is drawn under the new parent", async () => {
+    // E moves from row A to row B and lands at the same offset in B as it
+    // had in A, so nothing about its own place changes and nothing writes
+    // its matrix again. Its world matrix still changed: it was computed
+    // under A, by the frame drawn before the move, and the commit has to
+    // say so when it attaches the object to B, since three's `add` does not.
+    const manager = new InteractionManager();
+    const ctx = InteractionContext.set({}, manager);
+    const portal = createPortal(ctx, { budget: Infinity });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const containerObject = parent.children[0];
+
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const tree = $("div");
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
+    const a = document.createElement("div");
+    const b = document.createElement("div");
+    const e = document.createElement("div");
+    a.getBoundingClientRect = () => clientRect(0, 0, 100, 20);
+    b.getBoundingClientRect = () => clientRect(0, 40, 100, 20);
+    // Wherever it is, E is at its parent's top left.
+    e.getBoundingClientRect = () => {
+      const at = /** @type {HTMLElement} */ (e.parentElement).getBoundingClientRect();
+      return clientRect(at.left, at.top, 10, 10);
+    };
+    a.appendChild(e);
+    list.appendChild(a);
+    list.appendChild(b);
+    await drain();
+
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find((child) => !(child instanceof THREE.Mesh))
+    );
+    const listObject = rootObject.children[0];
+    const [objA, objB] = listObject.children;
+    const objE = getContentGroup(objA).children[0];
+    assert.ok(objE, "E was built under A");
+    // A frame is drawn, and every world matrix is current.
+    parent.updateMatrixWorld();
+    const local = objE.position.clone();
+
+    b.appendChild(e);
+    await drain();
+    assert.equal(getContentGroup(objB).children[0], objE, "E's object is under B");
+    assert.ok(objE.position.equals(local), "at the offset it had under A");
+
+    // The next frame.
+    parent.updateMatrixWorld();
+    const expected = objE.position.clone().applyMatrix4(getContentGroup(objB).matrixWorld);
+    const drawn = new THREE.Vector3().setFromMatrixPosition(objE.matrixWorld);
+    assert.deepEqual(drawn.toArray(), expected.toArray(), "and drawn where B puts it");
 
     subscription.unsubscribe();
     portal.disconnect();

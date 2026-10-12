@@ -1820,28 +1820,34 @@ describe("div clipping", () => {
     }
   });
 
+  // A box placed by a matrix only: a plain box's offset comes through
+  // `getContentPosition`, already gated on equality, so a reflow that leaves
+  // it in place never reaches `placement`. On a transformed chain the offset
+  // is read fresh from the reflow context, and `placementEqual` decides.
+  test("a re-read layout that leaves a transformed box in place writes no matrix", () => {
+    const { container, object, moveTo, subscription } = setupScrolledRow({
+      transform: "matrix(1, 0, 0, 1, 5, 0)",
+    });
+    try {
+      object.matrixWorldNeedsUpdate = false;
+      // Reflowed where it already was: the placement is read again and
+      // comes out the same.
+      moveTo(10);
+      assert.equal(
+        object.matrixWorldNeedsUpdate,
+        false,
+        "three is not asked to recompute the world matrices under the box",
+      );
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
   for (const [name, transform] of [
     ["placed by its position", undefined],
     ["placed by a matrix", "matrix(1, 0, 0, 1, 5, 0)"],
   ]) {
-    test(`a re-read layout that leaves the box in place writes no matrix, ${name}`, () => {
-      const { container, object, moveTo, subscription } = setupScrolledRow({ transform });
-      try {
-        object.matrixWorldNeedsUpdate = false;
-        // Reflowed where it already was: the placement is read again and
-        // comes out the same.
-        moveTo(10);
-        assert.equal(
-          object.matrixWorldNeedsUpdate,
-          false,
-          "three is not asked to recompute the world matrices under the box",
-        );
-        subscription.unsubscribe();
-      } finally {
-        container.remove();
-      }
-    });
-
     test(`a scroll moves the clip and leaves the box's matrix alone, ${name}`, () => {
       const { container, object, scrollTo, subscription } = setupScrolledRow({ transform });
       try {

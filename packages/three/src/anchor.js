@@ -94,6 +94,16 @@ function anchorTransform(viewer, baseInLevel) {
  * up tipped), so the yaw is measured in the session's `local-floor` space
  * when it has one, and in `local` when it does not.
  *
+ * The offset space is checked before three gets it: its pose in `base` has
+ * to come out as numbers. IWER, up to 2.5.0 at least and in the Immersive
+ * Web Emulator browser extension, reads the transform as a matrix and
+ * offsets the space by NaN, and three then drew the scene from whatever
+ * space the previous pose call had measured, metres off. Such a space is
+ * dropped and the session stays on plain `local`, at the head where the
+ * session started. The emulator's tracking is never stale, so that origin
+ * is right, if tilted with the head. `@apendua.dev/headset` mends IWER, so
+ * under its emulator the anchor runs in full.
+ *
  * The runtime's `reset` event — tracking recovered, the player recentered —
  * re-runs the same wait, so a system recenter puts the scene back in front of
  * the player instead of requiring the page refresh it used to. The override
@@ -150,9 +160,12 @@ export function anchorToViewer(renderer) {
         visible &&
         (!pose.emulatedPosition || patience-- <= 0)
       ) {
-        renderer.xr.setReferenceSpace(
-          base.getOffsetReferenceSpace(anchorTransform(pose, baseInLevel ?? null)),
-        );
+        const anchored = base.getOffsetReferenceSpace(anchorTransform(pose, baseInLevel ?? null));
+        // A runtime that cannot offset a space gets no anchor, and three
+        // keeps `base`; see the IWER paragraph above.
+        if (Number.isFinite(frame.getPose(anchored, base)?.transform.position.x)) {
+          renderer.xr.setReferenceSpace(anchored);
+        }
         return;
       }
       handle = session.requestAnimationFrame(settle);

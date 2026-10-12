@@ -12,9 +12,9 @@
  * have, so the offset is sixteen NaNs. A pose against the space then
  * inverts a NaN matrix, which fails and leaves IWER's scratch matrix as the
  * previous pose call wrote it, so the space draws from wherever that call
- * measured. freedom's `anchorToViewer` hands three such a space for every
- * session, and under the emulator the scene was drawn from the space of
- * the last pose the anchor read, not from the anchor.
+ * measured. freedom's `anchorToViewer` builds such a space for every
+ * session and, finding it NaN, keeps plain `local` instead; with the fix
+ * the anchor runs in full under the emulator.
  *
  * The transform's `matrix` is the column-major array the space wants.
  * Emulator-only, as `install` in `emulator.js` is.

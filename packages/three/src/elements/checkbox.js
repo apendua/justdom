@@ -197,8 +197,10 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
       material.color.copy(properties.textColor);
       material.opacity = properties.textAlpha;
     }),
-    // Its own effect, so that a scroll writes four numbers and nothing else —
-    // the same split `div` makes for the box's clip uniforms.
+    // Its own effect, so that a scroll writes four numbers and nothing else.
+    // A budget can run it a pass apart from the box's own clip when the box
+    // moves inside a clipping ancestor; see "A panel that is not atomic" in
+    // `docs/freedom-atomic-panel-updates.md`.
     effects(() => {
       const box = clipBox();
       clipUniform.value.set(box.left, box.top, box.right, box.bottom);

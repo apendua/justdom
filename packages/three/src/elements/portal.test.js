@@ -1081,7 +1081,11 @@ describe("createPortal", () => {
       assert.equal(rows(), 8, `frame ${frame + 1}: built a row, shown none`);
     }
 
-    await settle(portal);
+    // Drained rather than settled: at a budget of zero the pump warms one
+    // effect a frame, and a box re-placed by the append warms two, its
+    // properties and its place with its clip, so the commit takes more
+    // frames than `settle` gives a mounted panel.
+    await drain();
     assert.equal(rows(), 12, "the whole batch, in the frame the update commits");
     assert.deepEqual(transitions, [false], "with no second announcement");
 

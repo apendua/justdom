@@ -333,13 +333,14 @@ function claimRoot(root) {
  * @property {boolean | PanelDragOptions} [draggable] Whether the player can
  *   move the panel. Four strips along its edges are invisible until a ray
  *   is on the panel, faint while one is, and full on the strip a ray is on.
- *   A press on one picks the panel up with `carry()`, and the release puts
- *   it down. Off by default. The carry moves a group the portal puts
- *   between the parent and the panel, so the scene goes on placing the
- *   parent and the player's move is added on top. By default the panel
- *   turns only about the vertical and keeps the tilt the scene gave it, so
- *   a panel standing up stays standing up. `level: false` gives it the
- *   hand's whole rotation.
+ *   While the panel loads they are not there at all, until its loading
+ *   frame shows. A press on one picks the panel up with `carry()`, and the
+ *   release puts it down. Off by default. The carry moves a group the
+ *   portal puts between the parent and the panel, so the scene goes on
+ *   placing the parent and the player's move is added on top. By default
+ *   the panel turns only about the vertical and keeps the tilt the scene
+ *   gave it, so a panel standing up stays standing up. `level: false` gives
+ *   it the hand's whole rotation.
  *   An object also sets the strips' width and what is carried; see
  *   `PanelDragOptions`. A carry follows the hand in the renderer's frames,
  *   so a portal on a plain page or under a test runner has no strips. Not
@@ -730,6 +731,7 @@ function buildPortal(ctx, ownOptions = {}) {
       }
       containerObject.add(loadingFrameObject.object);
       loadingFrameObject.show(now);
+      handles?.setShown(true);
     };
     /** @type {(() => void) | null} */
     let stopFrames = null;
@@ -1311,6 +1313,8 @@ function buildPortal(ctx, ownOptions = {}) {
     }
     loading.set(false);
     onLoadingChanged?.(false);
+    // Whether or not a frame stood in for it, the panel is drawn now.
+    handles?.setShown(true);
   };
 
   /**

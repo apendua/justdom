@@ -3792,6 +3792,85 @@ describe("a draggable panel", () => {
     }
   });
 
+  test("keeps its strips out of the raycast until its loading frame shows", async () => {
+    // A mount of several frames under a 250 ms delay: at 0 ms nothing is
+    // drawn, and a ray must not find strips around the empty space; at
+    // 300 ms the frame is up, and the strips go with it.
+    const clock = fakeClock();
+    try {
+      const { ctx } = countingManager();
+      const renderer = /** @type {any} */ ({});
+      const portal = createPortal(RendererContext.set(ctx, renderer), {
+        draggable: true,
+        budget: 0,
+        loadingFrame: { delay: 250, minimumTime: 1000 },
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      const group = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handles"));
+      const loadingFrame = () => parent.getObjectByName("loading-frame");
+      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      let mountable;
+      const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+
+      clock.set(0);
+      flushFrame(renderer);
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true);
+      assert.equal(loadingFrame(), undefined, "inside the delay, nothing is drawn");
+      assert.equal(group.visible, false, "and there are no strips");
+
+      clock.set(300);
+      flushFrame(renderer);
+      await nextMacrotask();
+      assert.equal(portal.isLoading(), true);
+      assert.ok(loadingFrame(), "the frame is up");
+      assert.equal(group.visible, true, "and the strips with it");
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      clock.restore();
+    }
+  });
+
+  test("with no loading frame, keeps its strips out of the raycast until it loads", async () => {
+    const { ctx } = countingManager();
+    const renderer = /** @type {any} */ ({});
+    const portal = createPortal(RendererContext.set(ctx, renderer), {
+      draggable: true,
+      budget: 0,
+      loadingFrame: false,
+    });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    const group = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handles"));
+    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    let mountable;
+    const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await nextMacrotask();
+    flushFrame(renderer);
+    await nextMacrotask();
+    assert.equal(portal.isLoading(), true, "still mounting");
+    assert.equal(group.visible, false, "no strips around a panel not yet drawn");
+
+    await settle(portal, renderer);
+    assert.equal(portal.isLoading(), false);
+    assert.equal(group.visible, true, "loaded, and the strips are there");
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
   test("does not show its strips for a ray on the keyboard below it", async () => {
     const { ctx, manager, targets } = countingManager();
     const renderer = /** @type {any} */ ({});

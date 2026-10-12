@@ -20,10 +20,21 @@ import { $ } from "../operators.js";
  * have to know it can be moved. The keyboard a field brings up is a panel
  * too, and is moved by the same strips.
  *
- * They are not there until they are wanted. With no ray on the panel they
+ * They are not there until they are wanted. Until the owner says something
+ * of the panel is drawn (`setShown`), they are out of the scene and out of
+ * the raycast: a panel still loading draws nothing, or a loading frame only
+ * once its delay has passed, and strips around nothing would be found by a
+ * ray and carry an empty space. Once shown, with no ray on the panel they
  * are invisible, though a ray finds them all the same; with a ray anywhere
  * on it they show faintly, so there is something to find; the one a ray is
  * on, and all of them while the panel is being carried, show in full.
+ *
+ * The bars draw after every panel (`HANDLE_RENDER_ORDER`). They are
+ * translucent, and so is every box a panel draws, so all of them go in the
+ * transparent pass, which three sorts by `renderOrder` before distance. At
+ * the default of 0 a bar drew before any panel, and since it writes no
+ * depth, a panel behind it drew over it. Drawn last and depth-tested, a bar
+ * goes over what is behind it and under what is in front of it.
  *
  * The carry is `carry()`'s, so by default the panel turns only about the
  * vertical and keeps whatever tilt the scene gave it: a panel standing up
@@ -51,6 +62,13 @@ export const HANDLE_OPACITY_IDLE = 0;
 export const HANDLE_OPACITY_NEAR = 0.25;
 export const HANDLE_OPACITY_ACTIVE = 0.9;
 
+/**
+ * Where the bars go in the draw: past the bands every panel draws in
+ * (`elevation * ELEVATION_BAND + level`, see elevation.js), and short of
+ * the cursor and a drag's ghost at 1e9, which go over everything.
+ */
+export const HANDLE_RENDER_ORDER = 1e8;
+
 const BAR_COLOR = 0xe8ecf2;
 /** The drawn bar's thickness, in px, and its length as a share of its side. */
 const BAR_THICKNESS = 4;
@@ -71,6 +89,9 @@ const SIDES = ["top", "bottom", "left", "right"];
  * @property {(width: number, height: number, units: number) => void} layout
  *   Fit the strips to a panel this many px across and down, at `units` per
  *   px.
+ * @property {(shown: boolean) => void} setShown Say whether anything of the
+ *   panel is drawn: the panel, or a frame standing in for it. The strips are
+ *   in the scene and the raycast only while it is and they are laid out.
  * @property {() => void} dispose Take the strips down, and the frame out of
  *   its parent.
  */
@@ -116,10 +137,15 @@ export function createPanelHandles(ctx, options = {}) {
 
   const group = new THREE.Group();
   group.name = "panel-handles";
-  // Out of the raycast until it is laid out: a strip is a metre-wide plane
-  // until then.
+  // Out of the raycast until it is laid out, since a strip is a metre-wide
+  // plane until then, and while nothing of the panel is drawn.
   group.visible = false;
   face.add(group);
+  let laidOut = false;
+  let shown = false;
+  const updateVisible = () => {
+    group.visible = laidOut && shown;
+  };
   const plane = new THREE.PlaneGeometry(1, 1);
   // Never drawn, always hit: the manager leaves out what is not `visible`,
   // and three's raycast does not ask the material.
@@ -141,6 +167,7 @@ export function createPanelHandles(ctx, options = {}) {
     );
     bar.name = `panel-handle-${side}-bar`;
     bar.visible = false;
+    bar.renderOrder = HANDLE_RENDER_ORDER;
     // Beside the strip rather than under it, so the ray tests the strip
     // alone.
     group.add(hit, bar);
@@ -222,7 +249,8 @@ export function createPanelHandles(ctx, options = {}) {
       const w = panelWidth;
       const h = panelHeight;
       const hw = handleWidth;
-      group.visible = true;
+      laidOut = true;
+      updateVisible();
       /** @type {Record<Side, [number, number, number, number]>} */
       const boxes = {
         top: [0, (h + hw) / 2, w, hw],
@@ -242,6 +270,10 @@ export function createPanelHandles(ctx, options = {}) {
           1,
         );
       }
+    },
+    setShown(next) {
+      shown = next;
+      updateVisible();
     },
     dispose() {
       for (const subscription of subscriptions) {

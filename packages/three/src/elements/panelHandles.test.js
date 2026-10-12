@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
 import { withStart } from "../test/rays.js";
+import { ELEVATION_BAND } from "./elevation.js";
 import { createPanelHandles, DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 
 /**
@@ -52,9 +53,37 @@ describe("createPanelHandles", () => {
   test("are out of the raycast until they are laid out", () => {
     const { handles, strip } = setup();
     const group = /** @type {THREE.Object3D} */ (strip("top").parent);
+    handles.setShown(true);
     assert.equal(group.visible, false, "a strip is a metre wide until then");
     handles.layout(200, 100, 0.01);
     assert.equal(group.visible, true);
+    handles.dispose();
+  });
+
+  test("are out of the raycast while nothing of the panel is drawn", () => {
+    const { handles, strip } = setup();
+    const group = /** @type {THREE.Object3D} */ (strip("top").parent);
+    handles.layout(200, 100, 0.01);
+    assert.equal(group.visible, false, "laid out, but around nothing");
+    handles.setShown(true);
+    assert.equal(group.visible, true, "the panel is drawn");
+    handles.setShown(false);
+    assert.equal(group.visible, false, "and gone again");
+    handles.dispose();
+  });
+
+  test("draw after every panel and depth-tested, so a panel behind never covers them", () => {
+    const { handles } = setup();
+    for (const side of SIDES) {
+      const bar = /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>} */ (
+        handles.frame.getObjectByName(`panel-handle-${side}-bar`)
+      );
+      // Three sorts the transparent pass by `renderOrder` first, and a
+      // panel's boxes are in it at their elevation band and draw level.
+      assert.ok(bar.renderOrder > 100 * ELEVATION_BAND, `the ${side} bar after a panel's boxes`);
+      assert.ok(bar.renderOrder < 1e9, `and before the cursor`);
+      assert.equal(bar.material.depthTest, true, "under what is in front of it");
+    }
     handles.dispose();
   });
 

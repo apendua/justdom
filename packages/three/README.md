@@ -1630,9 +1630,11 @@ dom(ctx, Map(ctx), [], { draggable: { level: false, handleWidth: 20 } });
 | `onPutDown`   | none      | Called when a carry ends, which is where a scene saves the panel's new place.                                        |
 
 - Four strips along the panel's edges are invisible until a ray is on the panel, faint while one is,
-  and full on the strip the ray is on and on all four while the panel is held. A press on a strip
-  picks the panel up with `carry()`, and the release puts it down; a press on the panel itself means
-  what it always meant.
+  and full on the strip the ray is on and on all four while the panel is held. While the panel loads
+  they are not there at all, until its loading frame shows, and a keyboard's board, which has no
+  loading frame, has none until it loads. They draw after every panel, so a panel behind one never
+  covers it, and a panel in front of one hides it. A press on a strip picks the panel up with
+  `carry()`, and the release puts it down; a press on the panel itself means what it always meant.
 - The portal puts a group of its own between the parent and the panel, and the carry moves that
   group, so whatever the scene does to place the parent still applies.
 - Dragging is off unless a panel asks for it, and it is not one of the scene's panel defaults. A

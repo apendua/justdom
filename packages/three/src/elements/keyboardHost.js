@@ -139,6 +139,7 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  *   mount: (mountable: Mountable) => void,
  *   disconnect: () => void,
  *   size: () => { width: number, height: number },
+ *   isLoading: () => boolean,
  * }} CreatePortal
  */
 
@@ -412,6 +413,9 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
               pivot.rotation.set(-tilt, 0, 0);
               place(drop, 0, -(boardSize.height / 2) * units, 0);
               current.handles?.layout(boardSize.width, boardSize.height, units);
+              // The board has no loading frame, so nothing of it is drawn
+              // until it loads, and its strips wait for it.
+              current.handles?.setShown(!shown.panel.isLoading());
             },
             { name: "portal-keyboard-place" },
           ),

@@ -1281,6 +1281,30 @@ describe("the keyboard's handles", () => {
     b.cleanup();
   });
 
+  test("are out of the raycast until the board has loaded", async () => {
+    // The board has no loading frame, so until it loads nothing of it is
+    // drawn, and strips around it would be strips around nothing.
+    const slot = createKeyboardSlot();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(0, 1.6, 0);
+    camera.updateMatrixWorld();
+    const panel = keyboardPanel((create) => ({ options: { keyboard: { create } } }), slot, {
+      scene,
+      camera,
+      renderer: {},
+    });
+    await settle();
+    panel.press(panel.fieldObject());
+    const group = () => scene.children[0]?.getObjectByName("panel-handles");
+    assert.ok(group(), "the board is open");
+    assert.equal(group()?.visible, false, "and not yet drawn, with no strips");
+    await settle();
+    assert.equal(group()?.visible, true, "loaded, and the strips are there");
+    panel.cleanup();
+    disposeKeyboardSlot(slot);
+  });
+
   test("go idle when the ray leaves, however far it drifted within a key first", async () => {
     const b = await openBoard();
     const key = b.board();

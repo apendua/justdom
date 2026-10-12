@@ -655,7 +655,12 @@ positional selectors, and the mirror follows those exactly as far as CSS lets th
 from the change — `~`, `+`, `:nth-child`, `:first-child` and their `-of-type` forms restyle the rows
 after the arrival — and one element back, for `:last-child`, `:only-child` and the `-of-type` pair.
 Inserting or removing in the middle restyles the rows from that point on; prepending restyles the
-list, correctly, since every row's `:nth-child` position changed.
+list, correctly, since every row's `:nth-child` position changed. A change restyles what sits beside
+the list as well only when it may have made the list empty or ended its being empty: when the list
+holds no element, or text node with any data, that it held before the change. A comment does not
+count toward `:empty`, so the first row into an empty list that holds only a framework's comment
+anchor restyles the list's neighbours. A log that drops its oldest row as each new one arrives keeps
+its other rows, so it restyles its rows and leaves the rest of the panel alone.
 
 ```css
 .row:nth-child(even) {
@@ -686,6 +691,10 @@ Not followed:
   a sibling combinator on all but `data-xr-checked`.
 - `:nth-last-child` and `:nth-last-of-type`: a row appended at the end shifts every earlier row's
   position from the end, and following them would restyle the whole list on every append.
+- `:has()`: a change to the rows does not restyle a list or an ancestor matched by what it contains.
+- `:empty` moved by a text node's data: the mirror judges a text node by the data it has after the
+  flush, so a list's only text node emptied, or an empty one filled as the list's first row arrives,
+  does not restyle what sits beside the list.
 - A rule like `circle[cx="3"] ~ circle` on an SVG geometry attribute.
 - A rule that selects on `data-xr-portal`, `data-xr-loading` or `data-xr-busy`: the container is
   above every element in the panel, and the mirror ignores it.

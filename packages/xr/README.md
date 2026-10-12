@@ -52,7 +52,7 @@ three an offset space for every session, so without the fix the emulator drew th
 wrong origin, or from the right one by luck.
 
 Import it lazily, as above, so that it lands in a chunk of its own, named `emulator-<hash>.js`. A
-service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperplane-xr`
+service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperwings-xr`
 do it with `globIgnores: ["**/emulator-*.js"]`.
 
 ## `@apendua.dev/headset/offer`
@@ -122,7 +122,7 @@ rules edited, added or switched off in the browser's developer tools, which they
 "Stylesheets" in freedom's README says what it reads and what that costs. The apps never turn it
 off, so it stays on for the life of the page. Every app built on freedom calls it next to where it
 reads `?emulator`, or where it calls `render()` when the module that reads `?emulator` imports
-nothing from three.js. `paperplane-xr` calls it in its labs edition only.
+nothing from three.js. `paperwings-xr` calls it in its labs edition only.
 
 `followOutlinesQuery(query)` is the same switch for freedom's `enableOutlinesMode()` and
 `?outlines`: every panel outlines the elements that change, and the ones the mirror measures again

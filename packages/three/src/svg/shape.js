@@ -1509,8 +1509,8 @@ function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, unif
  * effects. Split, a frame could draw the new matrix through the old clip,
  * which for a sprite sheet shifted under a frame-sized clip is a sliver of
  * the next frame. The box itself is a `Derived`, so a transform that leaves
- * it where it was copies it again and computes nothing, and a scroll costs
- * the two matrix copies besides the four numbers.
+ * it where it was copies it again and computes nothing, and a scroll writes
+ * the four numbers and copies `clipMatrix` again.
  *
  * @param {() => Chain} chain
  * @param {Derived<Element | null>} root The chain's root, apart from the
@@ -1668,11 +1668,25 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
     hittable = () => hit.get();
     drawing = drawn.content;
   }
+  /**
+   * The matrix last committed. `own` keeps the value it holds while the
+   * matrix compares equal, so a change of reference is a change of matrix.
+   *
+   * @type {Matrix2D | null}
+   */
+  let committed = null;
   return just(object, [
     effects((obj) => {
-      commitMatrix(obj, own.get());
-      // In the same effect, so the clip can never lag the matrix it is
-      // drawn through (see `clipUniforms`).
+      // The clip is written in the same effect, so it can never lag the
+      // matrix it is drawn through (see `clipUniforms`). The effect re-runs
+      // on anything in the chain, an opacity or a scroll among them, and a
+      // commit asks three to recompute every world matrix under the object,
+      // so the matrix is committed only when it moved.
+      const matrix = own.get();
+      if (matrix !== committed) {
+        commitMatrix(obj, matrix);
+        committed = matrix;
+      }
       followClip();
     }),
     ...(instance === null ? [rayTarget(ctx, element, hittable)] : []),

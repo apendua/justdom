@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { clientRect } from "../test/clientRect.js";
+import { clipMatrixOf, clipUniformsOf } from "../test/clipUniforms.js";
 import * as THREE from "three";
 import { UpdateChannel, withChannel } from "@apendua/signal";
 import { InteractionContext, InteractionManager, intersectVisible } from "../interactions.js";
@@ -167,52 +168,31 @@ function round(value) {
 }
 
 /**
- * The clip patch's uniforms, read the way three reads them: by letting the
- * material patch a shader.
- *
- * @param {Mesh} mesh
- */
-function clipUniformsOf(mesh) {
-  const shader = {
-    uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
-    vertexShader: "void main() {\n#include <begin_vertex>\n}",
-    fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
-  };
-  /** @type {THREE.Material} */ (mesh.material).onBeforeCompile(
-    /** @type {never} */ (shader),
-    /** @type {never} */ (null),
-  );
-  return shader.uniforms;
-}
-
-/**
- * The clip patch's `clipMatrix`: the matrix from the mesh's vertices to the
- * root's frame — where the clip box is, and where the browser draws.
- *
- * @param {Mesh} mesh
- * @returns {THREE.Matrix3}
- */
-function clipMatrixOf(mesh) {
-  return /** @type {THREE.Matrix3} */ (clipUniformsOf(mesh).clipMatrix.value);
-}
-
-/**
- * The clip patch's box, taken back through the clip matrix into the mesh's
- * own user space, where a `clip-path` of the shape's own stands still
- * however the shape moves.
+ * The extent of the clip patch's box, taken back through the clip matrix
+ * into the mesh's own user space, where a `clip-path` of the shape's own
+ * stands still however the shape moves. All four corners are mapped, so a
+ * rotation gives the extent of the rotated box.
  *
  * @param {Mesh} mesh
  */
 function localClipOf(mesh) {
   const box = /** @type {THREE.Vector4} */ (clipUniformsOf(mesh).clipBox.value);
   const back = clipMatrixOf(mesh).clone().invert();
-  const from = new THREE.Vector3(box.x, box.y, 1).applyMatrix3(back);
-  const to = new THREE.Vector3(box.z, box.w, 1).applyMatrix3(back);
+  const extent = new THREE.Box2();
+  for (const [x, y] of [
+    [box.x, box.y],
+    [box.z, box.y],
+    [box.z, box.w],
+    [box.x, box.w],
+  ]) {
+    const at = new THREE.Vector3(x, y, 1).applyMatrix3(back);
+    extent.expandByPoint(new THREE.Vector2(at.x, at.y));
+  }
   return {
-    left: round(Math.min(from.x, to.x)),
-    top: round(Math.min(from.y, to.y)),
-    right: round(Math.max(from.x, to.x)),
-    bottom: round(Math.max(from.y, to.y)),
+    left: round(extent.min.x),
+    top: round(extent.min.y),
+    right: round(extent.max.x),
+    bottom: round(extent.max.y),
   };
 }
 
@@ -330,8 +310,13 @@ describe("svg shape", () => {
     // three: the object's matrix, the clip matrix and the clip box. A panel
     // that is not atomic runs its effects under a budget, and a clock that
     // moves a whole budget per effect stops every pass after one of them.
+    // No pass is let off the budget for having been cut short before.
     let time = 0;
-    const channel = new UpdateChannel({ manual: true, now: () => time++ });
+    const channel = new UpdateChannel({
+      manual: true,
+      now: () => time++,
+      maxStalePasses: Infinity,
+    });
     const s = withChannel(channel, () =>
       setup("rect", {
         width: "40",
@@ -372,6 +357,19 @@ describe("svg shape", () => {
       );
     }
     assert.deepEqual(matrix2d(s.object), [1, 0, 0, 1, -10, 0]);
+    s.teardown();
+  });
+
+  test("a change to the chain that leaves the matrix alone does not commit it again", () => {
+    const s = setup("rect", { width: "10", height: "10", fill: "red", style: "opacity: 1" });
+    s.object.matrixWorldNeedsUpdate = false;
+    s.setAttribute("style", "opacity: 0.5");
+    assert.equal(material(s.meshes[0]).opacity, 0.5, "the change reached the shape");
+    assert.equal(
+      s.object.matrixWorldNeedsUpdate,
+      false,
+      "three is not asked to recompute the world matrices under the shape",
+    );
     s.teardown();
   });
 

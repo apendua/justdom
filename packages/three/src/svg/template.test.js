@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { UNBOUNDED } from "../elements/clip.js";
 import { createMirror } from "../elements/mirror.js";
+import { clipMatrixOf, clipUniformsOf } from "../test/clipUniforms.js";
 import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { drawShape, drawUse } from "./template.js";
 
@@ -37,35 +38,6 @@ function svg(tag, attributes, children = []) {
  */
 function round(value) {
   return Math.round(value * 1e4) / 1e4 + 0;
-}
-
-/**
- * The clip patch's uniforms, read by letting the material patch a shader.
- *
- * @param {Mesh} mesh
- * @returns {Record<string, { value: unknown }>}
- */
-function clipUniformsOf(mesh) {
-  const shader = {
-    uniforms: /** @type {Record<string, { value: unknown }>} */ ({}),
-    vertexShader: "void main() {\n#include <begin_vertex>\n}",
-    fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
-  };
-  /** @type {THREE.Material} */ (mesh.material).onBeforeCompile(
-    /** @type {never} */ (shader),
-    /** @type {never} */ (null),
-  );
-  return shader.uniforms;
-}
-
-/**
- * The clip patch's matrix: from a mesh's vertices to the root's frame.
- *
- * @param {Mesh} mesh
- * @returns {THREE.Matrix3}
- */
-function clipMatrixOf(mesh) {
-  return /** @type {THREE.Matrix3} */ (clipUniformsOf(mesh).clipMatrix.value);
 }
 
 /**

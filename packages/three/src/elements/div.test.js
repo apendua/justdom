@@ -1698,8 +1698,12 @@ function layout(element, rect) {
  * jsdom does not have: a window that stays put and a 40px row that slides
  * through it, starting 10px into a 100px scroller. `moveTo` moves the row by
  * layout, as a change of its `top` would.
+ *
+ * @param {object} [options]
+ * @param {string} [options.transform] A CSS transform on the row, which puts
+ *   it on a transformed chain: placed by a matrix rather than a position.
  */
-function setupScrolledRow() {
+function setupScrolledRow({ transform } = {}) {
   let scrollTop = 0;
   let rowTop = 10;
 
@@ -1710,6 +1714,9 @@ function setupScrolledRow() {
 
   scroller.style.overflow = "hidden";
   row.style.cursor = "pointer";
+  if (transform) {
+    row.style.transform = transform;
+  }
   scroller.appendChild(row);
   container.appendChild(scroller);
   document.body.appendChild(container);
@@ -1805,6 +1812,7 @@ describe("div clipping", () => {
           `after pass ${passes}, the clip is where the window is`,
         );
       }
+      assert.ok(passes > 1, "the budget split the move across passes");
       assert.equal(row.object.position.y, 30);
       row.subscription.unsubscribe();
     } finally {
@@ -1812,22 +1820,50 @@ describe("div clipping", () => {
     }
   });
 
-  test("a scroll moves the clip and leaves the box's matrix alone", () => {
-    const { container, object, scrollTo, subscription } = setupScrolledRow();
-    try {
-      object.matrixWorldNeedsUpdate = false;
-      scrollTo(30);
-      assert.deepEqual(quadClipOf(object), [0, 20, 200, 120], "the scroll reached the clip");
-      assert.equal(
-        object.matrixWorldNeedsUpdate,
-        false,
-        "three is not asked to recompute the world matrices under the box",
-      );
-      subscription.unsubscribe();
-    } finally {
-      container.remove();
-    }
-  });
+  for (const [name, transform] of [
+    ["placed by its position", undefined],
+    ["placed by a matrix", "matrix(1, 0, 0, 1, 5, 0)"],
+  ]) {
+    test(`a re-read layout that leaves the box in place writes no matrix, ${name}`, () => {
+      const { container, object, moveTo, subscription } = setupScrolledRow({ transform });
+      try {
+        object.matrixWorldNeedsUpdate = false;
+        // Reflowed where it already was: the placement is read again and
+        // comes out the same.
+        moveTo(10);
+        assert.equal(
+          object.matrixWorldNeedsUpdate,
+          false,
+          "three is not asked to recompute the world matrices under the box",
+        );
+        subscription.unsubscribe();
+      } finally {
+        container.remove();
+      }
+    });
+
+    test(`a scroll moves the clip and leaves the box's matrix alone, ${name}`, () => {
+      const { container, object, scrollTo, subscription } = setupScrolledRow({ transform });
+      try {
+        // jsdom lays nothing out, so the only x a box gets is its transform's.
+        assert.equal(object.matrix.elements[12], transform ? 5 : 0, `the box is ${name}`);
+        const matrix = object.matrix.clone();
+        const clip = quadClipOf(object);
+        object.matrixWorldNeedsUpdate = false;
+        scrollTo(30);
+        assert.notDeepEqual(quadClipOf(object), clip, "the scroll reached the clip");
+        assert.ok(object.matrix.equals(matrix), "the matrix is where it was");
+        assert.equal(
+          object.matrixWorldNeedsUpdate,
+          false,
+          "three is not asked to recompute the world matrices under the box",
+        );
+        subscription.unsubscribe();
+      } finally {
+        container.remove();
+      }
+    });
+  }
 
   test("the box is told what its ancestors leave of it, in its own px", () => {
     const { container, object, scrollTo, subscription } = setupScrolledRow();

@@ -1081,11 +1081,18 @@ describe("createPortal", () => {
       assert.equal(rows(), 8, `frame ${frame + 1}: built a row, shown none`);
     }
 
-    // Drained rather than settled: at a budget of zero the pump warms one
-    // effect a frame, and a box re-placed by the append warms two, its
-    // properties and its place with its clip, so the commit takes more
-    // frames than `settle` gives a mounted panel.
-    await drain();
+    // Then frame by frame to the commit, which is more frames than `settle`
+    // gives a mounted panel: at a budget of zero the pump warms one effect a
+    // frame, and a box re-placed by the append warms two, its properties and
+    // its place with its clip. Every frame shows the old rows or all of them.
+    for (let frame = 4; rows() !== 12 && frame < 500; frame++) {
+      flushFrame();
+      await nextMacrotask();
+      assert.ok(
+        rows() === 8 || rows() === 12,
+        `frame ${frame + 1}: ${rows()} rows, where only 8 or 12 may be shown`,
+      );
+    }
     assert.equal(rows(), 12, "the whole batch, in the frame the update commits");
     assert.deepEqual(transitions, [false], "with no second announcement");
 

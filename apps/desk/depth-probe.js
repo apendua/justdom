@@ -153,6 +153,34 @@ function placePile(distance, tilt, yaw) {
 
 const VISUAL_EPS = [0, 2 ** -21, 2 ** -16, 2 ** -12];
 
+/**
+ * A label above the pile saying which epsilon it is drawn with. It is in
+ * the pile's scene only during a session, so the sweep never draws it.
+ */
+const labelCanvas = document.createElement("canvas");
+labelCanvas.width = 512;
+labelCanvas.height = 128;
+const labelTexture = new THREE.CanvasTexture(labelCanvas);
+labelTexture.colorSpace = THREE.SRGBColorSpace;
+const label = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.4, 0.1),
+  new THREE.MeshBasicMaterial({ map: labelTexture }),
+);
+label.position.set(0, 0.32, -1);
+
+function showEpsilon(eps) {
+  const context = /** @type {CanvasRenderingContext2D} */ (labelCanvas.getContext("2d"));
+  context.fillStyle = "#222";
+  context.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
+  context.fillStyle = "#fff";
+  context.font = "bold 64px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  const text = eps === 0 ? "\u03b5 = 0" : `\u03b5 = 2^${Math.log2(eps)}`;
+  context.fillText(text, labelCanvas.width / 2, labelCanvas.height / 2);
+  labelTexture.needsUpdate = true;
+}
+
 document.getElementById("start").addEventListener("click", async () => {
   try {
     if (!navigator.xr) throw new Error("no navigator.xr");
@@ -166,10 +194,13 @@ document.getElementById("start").addEventListener("click", async () => {
     setOrder("descending");
     let visualIndex = 1;
     epsUniform.value = VISUAL_EPS[visualIndex];
+    showEpsilon(epsUniform.value);
+    pileScene.add(label);
     const shown = [];
     session.addEventListener("select", () => {
       visualIndex = (visualIndex + 1) % VISUAL_EPS.length;
       epsUniform.value = VISUAL_EPS[visualIndex];
+      showEpsilon(epsUniform.value);
       shown.push(epsUniform.value);
     });
     let count = 0;
@@ -200,6 +231,7 @@ document.getElementById("start").addEventListener("click", async () => {
     session.addEventListener("end", () => {
       renderer.setAnimationLoop(null);
       visualUniform.value = 0;
+      pileScene.remove(label);
       results.session = {
         ...results.session,
         frames: count,

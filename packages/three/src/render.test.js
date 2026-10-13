@@ -120,7 +120,14 @@ describe("createControllerHandle", () => {
     const controller = /** @type {THREE.XRTargetRaySpace} */ (new THREE.Group());
     const grip = /** @type {THREE.XRGripSpace} */ (new THREE.Group());
     const hand = /** @type {THREE.XRHandSpace} */ (new THREE.Group());
-    return { controller, grip, hand, handle: createControllerHandle(0, controller, grip, hand) };
+    const ray = new THREE.Object3D();
+    return {
+      controller,
+      grip,
+      hand,
+      ray,
+      handle: createControllerHandle(0, controller, grip, hand, ray),
+    };
   }
 
   /**
@@ -130,6 +137,11 @@ describe("createControllerHandle", () => {
   function connect(space, data) {
     space.dispatchEvent(/** @type {any} */ ({ type: "connected", data }));
   }
+
+  test("hands out the ray line it was given, for an app to hide", () => {
+    const { ray, handle } = slot();
+    assert.equal(handle.ray, ray);
+  });
 
   test("tells a tracked hand from a controller the way three does: by the source's hand", () => {
     const { controller, handle } = slot();

@@ -13,8 +13,8 @@
  * inverts a NaN matrix, which fails and leaves IWER's scratch matrix as the
  * previous pose call wrote it, so the space draws from wherever that call
  * measured. freedom's `anchorToViewer` builds such a space for every
- * session and, finding it NaN, keeps plain `local` instead; with the fix
- * the anchor runs in full under the emulator.
+ * session and, finding it NaN, leaves three on the space it requested
+ * instead; with the fix the anchor runs in full under the emulator.
  *
  * The transform's `matrix` is the column-major array the space wants.
  * Emulator-only, as `install` in `emulator.js` is.

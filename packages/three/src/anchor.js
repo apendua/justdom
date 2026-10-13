@@ -99,10 +99,13 @@ function anchorTransform(viewer, baseInLevel) {
  * Web Emulator browser extension, reads the transform as a matrix and
  * offsets the space by NaN, and three then drew the scene from whatever
  * space the previous pose call had measured, metres off. Such a space is
- * dropped and the session stays on plain `local`, at the head where the
- * session started. The emulator's tracking is never stale, so that origin
- * is right, if tilted with the head. `@apendua.dev/headset` mends IWER, so
- * under its emulator the anchor runs in full.
+ * dropped and any earlier override cleared, so three draws from `base`, the
+ * space it requested, at the head where the session started. The
+ * emulator's tracking is never stale, so that origin is right, if tilted
+ * with the head. A `reset` runs the same wait and the same check again. A
+ * frame that cannot say where the space is (no pose at all) proves
+ * nothing, and the wait goes on to the next frame. `@apendua.dev/headset`
+ * mends IWER, so under its emulator the anchor runs in full.
  *
  * The runtime's `reset` event — tracking recovered, the player recentered —
  * re-runs the same wait, so a system recenter puts the scene back in front of
@@ -122,6 +125,10 @@ function anchorTransform(viewer, baseInLevel) {
 export function anchorToViewer(renderer) {
   /** @type {(() => void) | null} */
   let teardown = null;
+
+  // Hands three back the space it requested.
+  const clearOverride = () =>
+    renderer.xr.setReferenceSpace(/** @type {XRReferenceSpace} */ (/** @type {unknown} */ (null)));
 
   const onSessionStart = () => {
     const session = renderer.xr.getSession();
@@ -161,12 +168,17 @@ export function anchorToViewer(renderer) {
         (!pose.emulatedPosition || patience-- <= 0)
       ) {
         const anchored = base.getOffsetReferenceSpace(anchorTransform(pose, baseInLevel ?? null));
-        // A runtime that cannot offset a space gets no anchor, and three
-        // keeps `base`; see the IWER paragraph above.
-        if (Number.isFinite(frame.getPose(anchored, base)?.transform.position.x)) {
-          renderer.xr.setReferenceSpace(anchored);
+        const offset = frame.getPose(anchored, base);
+        if (offset) {
+          // A runtime that cannot offset a space gets no anchor, and three
+          // goes back to `base`; see the IWER paragraph above.
+          if (Number.isFinite(offset.transform.position.x)) {
+            renderer.xr.setReferenceSpace(anchored);
+          } else {
+            clearOverride();
+          }
+          return;
         }
-        return;
       }
       handle = session.requestAnimationFrame(settle);
     };
@@ -191,9 +203,7 @@ export function anchorToViewer(renderer) {
         session.cancelAnimationFrame(handle);
         handle = 0;
       }
-      renderer.xr.setReferenceSpace(
-        /** @type {XRReferenceSpace} */ (/** @type {unknown} */ (null)),
-      );
+      clearOverride();
     };
   };
 

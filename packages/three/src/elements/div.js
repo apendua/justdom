@@ -70,6 +70,29 @@ export const PortalReadyContext = createProperty(
 const BLOCKER_OFFSET = 2;
 
 /**
+ * Where a box stands in its parent's object (see `placement` in `box`).
+ *
+ * @typedef {object} Placement
+ * @property {number} x
+ * @property {number} y
+ * @property {number} z
+ * @property {THREE.Matrix4 | null} matrix The local matrix, on a transformed
+ *   chain; null where the offsets and the lift are the whole of it.
+ */
+
+/**
+ * @param {Placement} a
+ * @param {Placement} b
+ * @returns {boolean}
+ */
+function placementEqual(a, b) {
+  if (a.x !== b.x || a.y !== b.y || a.z !== b.z) {
+    return false;
+  }
+  return a.matrix === null || b.matrix === null ? a.matrix === b.matrix : a.matrix.equals(b.matrix);
+}
+
+/**
  * What a box hands to whatever else is drawn inside it: the properties it is
  * being drawn from — the same live object its own mesh reads, so a mark keeps
  * step with the surface it sits on — and where that content belongs in the
@@ -338,6 +361,43 @@ export function box(ctx, element, options = {}) {
   });
 
   /**
+   * Where this box stands in its parent's object: content-space offsets and
+   * a lift, or, on a transformed chain, the matrix those compose to with the
+   * element's own transform about its origin. The offset here is then
+   * layout offsets (see `getBoxOffset`), and `getBoxOffset` reads the reflow
+   * context, so layout moves recompute this. A scroll does not, which is
+   * what lets the effect that writes it share a run with the clip.
+   */
+  const placement = new Derived(
+    () => {
+      // How far in front of the parent this box sits. An overlay's subtree
+      // is positioned against the overlay, so it comes along with the lift.
+      const z = -getLift(element);
+      const offset = getBoxOffset(element);
+      if (!isTransformed(element)) {
+        return { x: offset.x, y: offset.y, z, matrix: null };
+      }
+      const own = getOwnTransform(element);
+      const matrix = new THREE.Matrix4();
+      if (own) {
+        composeTransform(matrix, offset.x, offset.y, z, own.matrix, own.origin);
+      } else {
+        matrix.makeTranslation(offset.x, offset.y, z);
+      }
+      return { x: offset.x, y: offset.y, z, matrix };
+    },
+    { isEqual: placementEqual },
+  );
+
+  /**
+   * The placement last written to the object, so a run that finds the same
+   * one writes nothing.
+   *
+   * @type {Placement | null}
+   */
+  let placed = null;
+
+  /**
    * Being a ray target, and forwarding what happens there back to the DOM.
    *
    * @type {EntityEffect<THREE.Object3D<XREventMap>>[]}
@@ -385,47 +445,42 @@ export function box(ctx, element, options = {}) {
       }
       useEffects(obj, draggability);
     }),
-    effects((obj) => {
-      // How far in front of the parent this box sits. An overlay's subtree
-      // is positioned against the overlay, so it comes along with the lift.
-      const z = -getLift(element);
-      const offset = getBoxOffset(element);
-      if (isTransformed(element)) {
-        // The offset here is layout offsets (see `getBoxOffset`), and
-        // `getBoxOffset` reads the reflow context, so layout moves re-run
-        // this.
-        const own = getOwnTransform(element);
-        obj.matrixAutoUpdate = false;
-        if (own) {
-          composeTransform(obj.matrix, offset.x, offset.y, z, own.matrix, own.origin);
-        } else {
-          obj.matrix.makeTranslation(offset.x, offset.y, z);
-        }
-        obj.matrixWorldNeedsUpdate = true;
-      } else {
-        // Content-space coordinates: relative to the parent's border box
-        // plus its scroll offset, which is what makes them constants of the
-        // layout — a scroll changes the content group's translation below,
-        // not this. A positioned element is anchored to its containing
-        // block instead, and holds still while scrollers between the two
-        // slide (see `getObjectPosition`).
-        //
-        // `place` recomposes from position, quaternion and scale, which is
-        // what makes this the way back out of the transformed branch above:
-        // that branch writes `matrix` without ever disturbing the three, so
-        // they are still the identity a plain box wants.
-        place(obj, offset.x, offset.y, z);
-      }
+    effects(() => {
       properties.setFromElement(element);
       batchChanged();
     }),
-    // Everything a scroll can move, kept apart from the layout effect above:
-    // a scroll shifts the clip and slides this element's own content group,
-    // while positions and sizes hold still — so neither recomputes the
-    // other's dependencies. One effect for the three cheap writes rather
-    // than one each; every element pays for its computations up front, in
-    // allocation and subscription, and these always move together.
+    // Where the box stands and what clips it, in one effect: the clip is
+    // given in the box's own frame, so a box that moves inside a clipping
+    // ancestor changes both, and a channel that runs effects under a budget
+    // could otherwise draw the box in its new place through the clip of
+    // the old one. A scroll shifts the clip and slides this element's own
+    // content group while the placement holds still, and the placement is
+    // a `Derived` compared by value, so a scroll re-runs this without
+    // writing the matrix: the layout reads behind it are not re-run, and
+    // three is not asked to recompute the world matrices under the box.
     effects((obj) => {
+      const at = placement.get();
+      if (at !== placed) {
+        if (at.matrix) {
+          obj.matrixAutoUpdate = false;
+          obj.matrix.copy(at.matrix);
+          obj.matrixWorldNeedsUpdate = true;
+        } else {
+          // Content-space coordinates: relative to the parent's border box
+          // plus its scroll offset, which is what makes them constants of
+          // the layout — a scroll changes the content group's translation
+          // below, not this. A positioned element is anchored to its
+          // containing block instead, and holds still while scrollers
+          // between the two slide (see `getObjectPosition`).
+          //
+          // `place` recomposes from position, quaternion and scale, which
+          // is what makes this the way back out of the branch above: that
+          // branch writes `matrix` without ever disturbing the three, so
+          // they are still the identity a plain box wants.
+          place(obj, at.x, at.y, at.z);
+        }
+        placed = at;
+      }
       // A scroll, applied where a scroll belongs: one translation of the
       // group that carries the scrolled content. Nothing inside is
       // re-measured or repositioned — their coordinates were chosen so the
@@ -436,6 +491,7 @@ export function box(ctx, element, options = {}) {
         place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
       }
       currentClipBox = getLocalClipBox(element);
+      writeClipUniforms(uniforms, currentClipBox);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
       // its descendants from the render traversal, and from the batch's walk,
@@ -543,11 +599,6 @@ export function box(ctx, element, options = {}) {
         // group beside it stays for any child that says `visible`.
         effects((obj) => {
           obj.visible = !hidden();
-          batchChanged();
-        }),
-        // Its own effect, so a scroll writes four numbers and nothing else.
-        effects((obj) => {
-          writeClipUniforms(uniforms, getLocalClipBox(element));
           batchChanged();
         }),
         // Lets go of the ramp row when the box goes, and not before.

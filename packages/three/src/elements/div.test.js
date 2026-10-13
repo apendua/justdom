@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { UpdateChannel, withChannel } from "@apendua/signal";
 import { InteractionContext } from "../interactions.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
@@ -1695,10 +1696,16 @@ function layout(element, rect) {
 /**
  * A clickable row inside something that hides its overflow, with the layout
  * jsdom does not have: a window that stays put and a 40px row that slides
- * through it, starting 10px into a 100px scroller.
+ * through it, starting 10px into a 100px scroller. `moveTo` moves the row by
+ * layout, as a change of its `top` would.
+ *
+ * @param {object} [options]
+ * @param {string} [options.transform] A CSS transform on the row, which puts
+ *   it on a transformed chain: placed by a matrix rather than a position.
  */
-function setupScrolledRow() {
+function setupScrolledRow({ transform } = {}) {
   let scrollTop = 0;
+  let rowTop = 10;
 
   const container = document.createElement("div");
   container.setAttribute(PORTAL_ATTRIBUTE, "");
@@ -1707,6 +1714,9 @@ function setupScrolledRow() {
 
   scroller.style.overflow = "hidden";
   row.style.cursor = "pointer";
+  if (transform) {
+    row.style.transform = transform;
+  }
   scroller.appendChild(row);
   container.appendChild(scroller);
   document.body.appendChild(container);
@@ -1720,7 +1730,7 @@ function setupScrolledRow() {
 
   layout(container, () => [0, 0, 200, 100]);
   layout(scroller, () => [0, 0, 200, 100]);
-  layout(row, () => [0, 10 - scrollTop, 200, 50 - scrollTop]);
+  layout(row, () => [0, rowTop - scrollTop, 200, rowTop + 40 - scrollTop]);
 
   /** @type {string[]} */
   const registrations = [];
@@ -1750,10 +1760,117 @@ function setupScrolledRow() {
       scrollTop = value;
       mirror.scrolled(scroller);
     },
+    /** @param {number} value */
+    moveTo: (value) => {
+      rowTop = value;
+      mirror.reflowed([row]);
+    },
   };
 }
 
+/**
+ * The clip the box's quad is drawn with, as `[left, top, right, bottom]` in
+ * the box's own px.
+ *
+ * @param {THREE.Object3D} object
+ */
+function quadClipOf(object) {
+  const quad = /** @type {THREE.Mesh} */ (
+    object.children.find((child) => child instanceof THREE.Mesh)
+  );
+  const material = /** @type {THREE.ShaderMaterial} */ (quad.material);
+  return material.uniforms.uClip.value.toArray();
+}
+
 describe("div clipping", () => {
+  test("a move reaches the place and the clip together, under a budget of one effect", () => {
+    // A panel that is not atomic runs its effects under a budget, and a
+    // clock that moves a whole budget per effect stops every pass after one
+    // of them. No pass is let off the budget for having been cut short.
+    let time = 0;
+    const channel = new UpdateChannel({
+      manual: true,
+      now: () => time++,
+      maxStalePasses: Infinity,
+    });
+    const row = withChannel(channel, () => setupScrolledRow());
+    try {
+      channel.flush({ budget: Infinity });
+      // The window's top edge is the scroller's, so in the row's own px it
+      // is wherever the row is not: the row's place and the clip's top sum
+      // to nothing.
+      assert.equal(row.object.position.y + quadClipOf(row.object)[1], 0);
+
+      row.moveTo(30);
+      let passes = 0;
+      while (channel.hasPendingUpdates) {
+        channel.flush({ budget: 1 });
+        passes += 1;
+        assert.equal(
+          row.object.position.y + quadClipOf(row.object)[1],
+          0,
+          `after pass ${passes}, the clip is where the window is`,
+        );
+      }
+      assert.ok(passes > 1, "the budget split the move across passes");
+      assert.equal(row.object.position.y, 30);
+      row.subscription.unsubscribe();
+    } finally {
+      row.container.remove();
+    }
+  });
+
+  // A box placed by a matrix only: a plain box's offset comes through
+  // `getContentPosition`, already gated on equality, so a reflow that leaves
+  // it in place never reaches `placement`. On a transformed chain the offset
+  // is read fresh from the reflow context, and `placementEqual` decides.
+  test("a re-read layout that leaves a transformed box in place writes no matrix", () => {
+    const { container, object, moveTo, subscription } = setupScrolledRow({
+      transform: "matrix(1, 0, 0, 1, 5, 0)",
+    });
+    try {
+      object.matrixWorldNeedsUpdate = false;
+      // Reflowed where it already was: the placement is read again and
+      // comes out the same.
+      moveTo(10);
+      assert.equal(
+        object.matrixWorldNeedsUpdate,
+        false,
+        "three is not asked to recompute the world matrices under the box",
+      );
+      subscription.unsubscribe();
+    } finally {
+      container.remove();
+    }
+  });
+
+  for (const [name, transform] of [
+    ["placed by its position", undefined],
+    ["placed by a matrix", "matrix(1, 0, 0, 1, 5, 0)"],
+  ]) {
+    test(`a scroll moves the clip and leaves the box's matrix alone, ${name}`, () => {
+      const { container, object, scrollTo, subscription } = setupScrolledRow({ transform });
+      try {
+        // jsdom lays nothing out, so the only x a box gets is its transform's.
+        assert.equal(object.matrix.elements[12], transform ? 5 : 0, `the box is ${name}`);
+        const matrix = object.matrix.clone();
+        const clip = quadClipOf(object);
+        object.matrixWorldNeedsUpdate = false;
+        scrollTo(30);
+        assert.notDeepEqual(quadClipOf(object), clip, "the scroll reached the clip");
+        assert.ok(object.matrix.equals(matrix), "the matrix is where it was");
+        assert.equal(
+          object.matrixWorldNeedsUpdate,
+          false,
+          "three is not asked to recompute the world matrices under the box",
+        );
+        subscription.unsubscribe();
+      } finally {
+        container.remove();
+      }
+    });
+  }
+
   test("the box is told what its ancestors leave of it, in its own px", () => {
     const { container, object, scrollTo, subscription } = setupScrolledRow();
     try {

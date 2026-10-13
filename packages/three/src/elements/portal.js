@@ -1214,6 +1214,14 @@ function buildPortal(ctx, ownOptions = {}) {
    * the end of its children, which is where a re-appended node went in the
    * tree, and where the batches' walk expects to meet it.
    *
+   * An object under a new parent has a new world matrix, whatever its own
+   * matrix says, and `add` does not mark it. The panel's objects compose
+   * their matrices themselves, so three's walk recomputes a world matrix
+   * only for an object marked since the walk before (see
+   * `keepSubtreeMatrices`). A moved object whose place in its new parent is
+   * the one it had in the old has nothing else to mark it, and without this
+   * it would be drawn and hit where its old parent put it.
+   *
    * @param {Node} node
    */
   const place = (node) => {
@@ -1221,6 +1229,7 @@ function buildPortal(ctx, ownOptions = {}) {
     const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
     if (object && parentObject) {
       getContentGroup(parentObject).add(object);
+      object.matrixWorldNeedsUpdate = true;
     }
   };
 

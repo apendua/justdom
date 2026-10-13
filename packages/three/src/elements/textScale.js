@@ -27,10 +27,22 @@ import { MAX_TEXT_SCALE } from "./textHelpers.js";
  */
 export const TextScaleContext = createProperty(
   /**
-   * @returns {(() => number) | null}
+   * @returns {TextScale | null}
    */
   () => null,
 );
+
+/**
+ * What a run asks its panel: the step to draw at, and which steps are worth
+ * keeping rasterized beside it.
+ *
+ * @typedef {object} TextScale
+ * @property {() => number} read The step the panel shows. A tracked read.
+ * @property {(step: number) => boolean} holds Whether the panel keeps a
+ *   run's raster at this step once the run is showing another. Untracked:
+ *   it is asked when a run lets go of rasters, which is not something that
+ *   should re-run because the answer moved.
+ */
 
 /**
  * How finely a run is rasterized: what the panel it is on measures, or, for
@@ -39,12 +51,12 @@ export const TextScaleContext = createProperty(
  * Read inside the computation that draws the run, so a panel the player walks
  * up to re-draws its text at the step it has reached.
  *
- * @param {(() => number) | null} textScale The run's `TextScaleContext`.
+ * @param {TextScale | null} textScale The run's `TextScaleContext`.
  * @returns {number}
  */
 export function readTextScale(textScale) {
   if (textScale) {
-    return textScale();
+    return textScale.read();
   }
   if (typeof window === "undefined") {
     return 1;
@@ -74,10 +86,12 @@ const MIN_DISTANCE = 0.05;
  * two it gets 2.83, which no eye has told the two apart from, at half the
  * memory and half of every upload the panel makes for the rest of its life.
  *
- * What it costs back is more boundaries to cross, and crossing one re-draws
- * every run on the panel. That is the trade, and it is the right way round:
- * a crossing is a burst that the hold below already makes rare, and the
- * memory is paid the whole time the panel is open.
+ * What it costs back is more boundaries to cross, and crossing up into a
+ * step re-draws every run on the panel. That is the trade, and it is the
+ * right way round: a crossing is a burst that the hold below already makes
+ * rare, and the memory is paid the whole time the panel is open. Crossing
+ * back down into the step below costs nothing to draw, since the panel holds
+ * it (`holds`).
  *
  * Counted in steps to a doubling rather than kept as the ratio itself so
  * that the ladder comes out *exact* on the octaves. `Math.SQRT2 ** 2` is
@@ -99,6 +113,27 @@ const STEPS_PER_DOUBLING = 2;
  * text on the way in is what the delay would cost.
  */
 const COARSEN_MARGIN = 0.8;
+
+/**
+ * How close to the shown step the measurement has to come before the panel
+ * starts preparing the step above it.
+ *
+ * The step above is published the moment the measurement passes the shown
+ * step, so this is a share of the shown step, not of the one above. At 0.85
+ * a player leaning in at a steady pace gives the pump the last sixth of the
+ * way, and one standing still at the hold below a step (`COARSEN_MARGIN`) is
+ * well clear of it. A guess until a headset trace says otherwise.
+ */
+export const PREPARE_SHARE = 0.85;
+
+/**
+ * How long the measurement has to stay under `PREPARE_SHARE` of the shown
+ * step before the panel stops preparing the step above and frees what it
+ * made. Long enough that a head swaying on the threshold does not throw the
+ * work away and start it again, short enough that a player who stepped back
+ * does not leave a step's worth of memory behind for long.
+ */
+export const ABANDON_MS = 1000;
 
 const scratchScale = new THREE.Vector3();
 const scratchPosition = new THREE.Vector3();
@@ -167,6 +202,56 @@ function pixelsPerUnitAtUnitDistance(renderer, camera) {
 }
 
 /**
+ * The step under `step` on the ladder, or null at the bottom of it.
+ *
+ * Found on the ladder rather than by dividing, so that it is the very number
+ * `stepFor` hands out for that step and a run's raster kept under it is found
+ * again. A step a panel's cap put off the ladder, 3 say, has the ladder step
+ * under it, 2.83, as its own. The tolerance is for the steps between the
+ * octaves, whose logarithm comes back a hair over the integer it is.
+ *
+ * @param {number} step
+ * @returns {number | null}
+ */
+export function stepBelow(step) {
+  const exponent = Math.ceil(Math.log2(step) * STEPS_PER_DOUBLING - 1e-9);
+  if (exponent <= 0) {
+    return null;
+  }
+  return 2 ** ((exponent - 1) / STEPS_PER_DOUBLING);
+}
+
+/**
+ * The step a panel showing `step` publishes when the measurement passes it,
+ * or null for a panel at its cap. Worked out as `stepFor` does, so that it is
+ * the very number a run is later asked to draw at.
+ *
+ * @param {number} step
+ * @param {number} max
+ * @returns {number | null}
+ */
+export function stepAbove(step, max) {
+  const exponent = Math.floor(Math.log2(step) * STEPS_PER_DOUBLING + 1e-9) + 1;
+  const above = Math.min(max, 2 ** (exponent / STEPS_PER_DOUBLING));
+  return above > step ? above : null;
+}
+
+/**
+ * Whether a panel showing `shown` holds a run's raster at `held`: the shown
+ * step, the one below it, and the one it is preparing. The one below is the
+ * step a panel leaned into has just left, which is the one the player
+ * leaning back out comes to first, and it costs half the shown step's memory.
+ *
+ * @param {number} shown
+ * @param {number} held
+ * @param {number | null} [prepared]
+ * @returns {boolean}
+ */
+export function holdsStep(shown, held, prepared = null) {
+  return held === shown || held === stepBelow(shown) || held === prepared;
+}
+
+/**
  * The panel's own answer to "how sharp should this text be", remeasured once
  * a frame and published as a step the runs can be rasterized at.
  *
@@ -182,8 +267,16 @@ function pixelsPerUnitAtUnitDistance(renderer, camera) {
  *   ceiling is reached by hundreds of runs at once rather than by one. Only
  *   ever lowers: `MAX_TEXT_SCALE` is what a run is allowed to cost at all,
  *   and nothing asked for here goes above it.
+ * @param {{ now?: () => number }} [options] The clock `ABANDON_MS` is
+ *   measured on, injectable so tests are deterministic.
  */
-export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT_SCALE) {
+export function createTextScale(
+  container,
+  renderer,
+  camera,
+  maxScale = MAX_TEXT_SCALE,
+  { now = () => performance.now() } = {},
+) {
   const max = Math.min(
     MAX_TEXT_SCALE,
     Math.max(1, Number.isFinite(maxScale) ? maxScale : MAX_TEXT_SCALE),
@@ -191,6 +284,21 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
   const published = Signal.of(1);
   /** Read back without tracking anything, which a frame callback must not. */
   let step = 1;
+  /**
+   * The step being prepared ahead of the measurement reaching it, or null.
+   * Always the step above `step` when set; the rules are in section 5.1 of
+   * `docs/freedom-text-step-cache.md`.
+   *
+   * @type {number | null}
+   */
+  let prepared = null;
+  /**
+   * When the measurement last fell under `PREPARE_SHARE` of the shown step
+   * while `prepared` was set, or null while it is above it.
+   *
+   * @type {number | null}
+   */
+  let fallingSince = null;
   /** The panel's middle, in the container's own pixels. */
   const centre = new THREE.Vector3();
 
@@ -202,6 +310,25 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
      * @returns {number}
      */
     read: () => published.get(),
+
+    /**
+     * Whether a run keeps its raster at `held` while the panel shows the
+     * step it does now (`holdsStep`). Any other step a run drew at is let go
+     * of when the run next changes texture.
+     *
+     * @param {number} held
+     * @returns {boolean}
+     */
+    holds: (held) => holdsStep(step, held, prepared),
+
+    /**
+     * The step being prepared ahead of the measurement, or null. Untracked,
+     * like `holds`: it is read once a frame by whoever runs the preparing,
+     * right after `measure`.
+     *
+     * @returns {number | null}
+     */
+    prepared: () => prepared,
 
     /**
      * Where the middle of the panel is, which is what its distance is
@@ -255,6 +382,21 @@ export function createTextScale(container, renderer, camera, maxScale = MAX_TEXT
       if (wanted > step || (wanted < step && measured <= boundary * COARSEN_MARGIN)) {
         step = wanted;
         published.set(wanted);
+        // Rule 3: the step above is a different step now. Whatever was
+        // prepared is the shown step, the one below it, or let go of.
+        prepared = null;
+        fallingSince = null;
+      }
+      const above = stepAbove(step, max);
+      if (above !== null && measured >= PREPARE_SHARE * step) {
+        prepared = above;
+        fallingSince = null;
+      } else if (prepared !== null) {
+        fallingSince ??= now();
+        if (now() - fallingSince >= ABANDON_MS) {
+          prepared = null;
+          fallingSince = null;
+        }
       }
     },
   };

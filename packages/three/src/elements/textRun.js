@@ -1,18 +1,20 @@
 import { Mesh } from "three";
-import { effects, onCleanup, selector, set } from "@apendua/signal";
+import { Derived, effects, onCleanup, selector, set } from "@apendua/signal";
 import { $ } from "../operators.js";
 import { createMarkMaterial, generateTextTexture, makeTextQuadGeometry } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
 import { applyClip, applyReveal } from "./clip.js";
 import { TextBatchContext } from "./textBatch.js";
 import { readTextScale, TextScaleContext } from "./textScale.js";
+import { TextPrepareContext } from "./textPrepare.js";
 
 /**
- * @import {MeshBasicMaterial, Vector4} from 'three';
+ * @import {MeshBasicMaterial, Texture, Vector4} from 'three';
  * @import {EntityEffect, Source} from '@apendua/signal';
  * @import {Component} from '../core.js';
- * @import {TextBounds, TextRenderStyle} from './textHelpers.js';
+ * @import {TextBounds, TextRenderStyle, TextTexture} from './textHelpers.js';
  * @import {TextLine} from './textLines.js';
+ * @import {PreparedRun} from './textPrepare.js';
  */
 
 /**
@@ -69,15 +71,154 @@ export function textRun(ctx, source, extra = []) {
    */
   const textScale = TextScaleContext.get(ctx);
 
-  const textureData = selector(() => {
+  /**
+   * Everything the raster depends on apart from the step, copied out of the
+   * source. Copied, not passed through, for two reasons. The copy reads
+   * every key the rasterizer would, so this is what goes stale when the
+   * lines, the style, the bounds or the mask change and nothing else does.
+   * And what is drawn from it is drawn from plain values, so drawing reads
+   * nothing reactive and could be done outside any computation at all.
+   */
+  const rasterInputs = new Derived(() => {
     const { lines, bounds } = source.layout();
-    return generateTextTexture(
-      lines,
-      source.renderStyle(),
-      bounds,
-      readTextScale(textScale),
-      source.tint().masked,
-    );
+    return {
+      lines: lines.map(({ text, left, top, width, height }) => ({
+        text,
+        left,
+        top,
+        width,
+        height,
+      })),
+      bounds: { width: bounds.width, height: bounds.height },
+      style: { ...source.renderStyle() },
+      masked: source.tint().masked,
+    };
+  });
+
+  /**
+   * The run's rasters, one per step it was drawn at, all of them drawn from
+   * `drawnFrom`. A panel that crosses back to a step the run still has here
+   * shows the run again without drawing it, and the batch, which keeps a
+   * layer for each of them, without writing or uploading anything.
+   *
+   * What stays is the panel's to say (`TextScale.holds`), and a raster goes
+   * at a commit, in the effect that shows its replacement: never while the
+   * mesh may still be drawing it, which under the portal's atomic channel is
+   * until that commit.
+   *
+   * @type {Map<number, TextTexture>}
+   */
+  const rasters = new Map();
+  /** @type {ReturnType<typeof rasterInputs.get> | null} */
+  let drawnFrom = null;
+  /**
+   * Rasters the run no longer wants, because what it says changed, kept
+   * until the commit that stops the mesh drawing them.
+   *
+   * @type {TextTexture[]}
+   */
+  const retired = [];
+  /**
+   * The texture the mesh draws, as of the last commit, which is the one
+   * raster nothing may dispose.
+   *
+   * @type {Texture | null}
+   */
+  let shown = null;
+
+  /**
+   * The pump that draws the run ahead of a step its panel is about to show,
+   * and null off a panel.
+   */
+  const preparer = TextPrepareContext.get(ctx);
+
+  /**
+   * Dispose of a raster, and tell the batch its layer is free.
+   *
+   * @param {TextTexture} raster
+   * @returns {void}
+   */
+  const dispose = (raster) => {
+    batch?.forget(mesh, /** @type {HTMLCanvasElement} */ (raster.texture.image));
+    raster.texture.dispose();
+  };
+
+  /**
+   * Let go of every raster the run is not showing that its panel does not
+   * hold any more, and of every retired one. Off a panel nothing is held but
+   * what is shown.
+   *
+   * Asked when the run shows a new texture, which is when a step change
+   * reaches it. A step the panel publishes and takes back before the run's
+   * commit leaves the run showing what it showed, and the raster drawn for
+   * that step in between stays until the run next changes texture.
+   *
+   * @returns {void}
+   */
+  const evict = () => {
+    for (const [step, raster] of rasters) {
+      if (raster.texture !== shown && !textScale?.holds(step)) {
+        rasters.delete(step);
+        dispose(raster);
+      }
+    }
+    for (const raster of retired) {
+      dispose(raster);
+    }
+    retired.length = 0;
+  };
+
+  /**
+   * The run as the prepare pump sees it. It draws from what the shown raster
+   * was drawn from rather than reading the source, so preparing reads and
+   * holds nothing in the panel's graph. A run whose content changed and was
+   * not read again yet is prepared from its old content, and `textureData`
+   * drops that raster and queues the run again when it reads the new.
+   *
+   * @type {PreparedRun}
+   */
+  const preparedRun = {
+    prepare(step) {
+      if (!drawnFrom || rasters.has(step)) {
+        return null;
+      }
+      const { lines, style, bounds, masked } = drawnFrom;
+      const raster = generateTextTexture(lines, style, bounds, step, masked);
+      rasters.set(step, raster);
+      const canvas = /** @type {HTMLCanvasElement} */ (raster.texture.image);
+      if (masked && batch?.stage(mesh, canvas)) {
+        return null;
+      }
+      return raster.texture;
+    },
+    release(step) {
+      const raster = rasters.get(step);
+      if (raster && raster.texture !== shown) {
+        rasters.delete(step);
+        dispose(raster);
+      }
+    },
+  };
+
+  // The raster at the step the panel shows: the one the run kept, or one
+  // drawn now and kept.
+  const textureData = selector(() => {
+    const inputs = rasterInputs.get();
+    const step = readTextScale(textScale);
+    if (inputs !== drawnFrom) {
+      // Every raster the run has was drawn from what it said before, at
+      // every step.
+      retired.push(...rasters.values());
+      rasters.clear();
+      drawnFrom = inputs;
+      preparer?.requeue(preparedRun);
+    }
+    let raster = rasters.get(step);
+    if (!raster) {
+      raster = generateTextTexture(inputs.lines, inputs.style, inputs.bounds, step, inputs.masked);
+      rasters.set(step, raster);
+    }
+    return raster;
   });
 
   const reveal = source.reveal ?? null;
@@ -98,8 +239,22 @@ export function textRun(ctx, source, extra = []) {
       } else {
         applyClip(material, source.clip);
       }
+      // The run is prepared for as long as it has a material, which is as
+      // long as it is mounted.
+      preparer?.register(preparedRun);
       onCleanup(() => {
         material.dispose();
+        preparer?.unregister(preparedRun);
+        // And every raster the run kept, which go with it. Here rather than in
+        // an effect of their own, which would be a scope per run for one
+        // teardown. Their layers in the batch go with `batch.remove`, below.
+        for (const raster of [...rasters.values(), ...retired]) {
+          raster.texture.dispose();
+        }
+        rasters.clear();
+        retired.length = 0;
+        drawnFrom = null;
+        shown = null;
       });
       return material;
     }),
@@ -122,6 +277,8 @@ export function textRun(ctx, source, extra = []) {
       if (hadMap !== !!material.map || hadAlphaMap !== !!material.alphaMap) {
         material.needsUpdate = true;
       }
+      shown = texture;
+      evict();
       batch?.invalidate();
     }),
     set("geometry", () => {

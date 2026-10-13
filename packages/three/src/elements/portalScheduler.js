@@ -14,8 +14,14 @@ import { createProperty } from "@apendua/signal";
  * updates — at which point the scheduler forgets it until it is scheduled
  * again.
  *
+ * A pump marked `idle` is the exception: it does work that may wait, such as
+ * rasterizing a step the panel may never cross into, so it is offered the
+ * frame after every other pump, and only while time remains. It is never the
+ * first pump of a frame, and it never moves the rotation.
+ *
  * @typedef {object} PortalPump
  * @property {number} priority
+ * @property {boolean} [idle] Run only in the time the other pumps leave.
  * @property {(deadline: number) => boolean} tick
  */
 
@@ -149,6 +155,14 @@ export function createPortalScheduler({
   /** Advances every frame; what makes the within-bucket offer rotate. */
   let rotation = 0;
 
+  /**
+   * The idle pumps waiting this frame, refilled at the top of every tick
+   * rather than made anew.
+   *
+   * @type {PortalPump[]}
+   */
+  const idle = [];
+
   /** Let go of the frame loop the moment no pump has work. */
   const stopIfIdle = () => {
     if (waiting.size === 0 && stopFrames) {
@@ -164,7 +178,12 @@ export function createPortalScheduler({
     // within a bucket is stable, and the rotation below is what varies it.
     /** @type {Map<number, PortalPump[]>} */
     const buckets = new Map();
+    idle.length = 0;
     for (const pump of waiting) {
+      if (pump.idle) {
+        idle.push(pump);
+        continue;
+      }
       const bucket = buckets.get(pump.priority);
       if (bucket) {
         bucket.push(pump);
@@ -193,6 +212,16 @@ export function createPortalScheduler({
       }
     }
     rotation += 1;
+    // What the frame has left, if anything. Each idle pump keeps to the
+    // deadline itself; this only stops offering once the time is gone.
+    for (const pump of idle) {
+      if (now() >= deadline) {
+        break;
+      }
+      if (pump.tick(deadline)) {
+        waiting.delete(pump);
+      }
+    }
     stopIfIdle();
   };
 

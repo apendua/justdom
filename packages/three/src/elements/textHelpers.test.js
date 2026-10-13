@@ -1,6 +1,5 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { Derived } from "@apendua/signal";
 import {
   buildTextMipmaps,
   createTextCanvas,
@@ -431,19 +430,16 @@ describe("generateTextTexture", () => {
     const style = getTextRenderStyle(
       styleOf({ fontSize: "10px", fontFamily: "sans-serif", color: "#ffffff" }),
     );
-    const drawn = new Derived(() =>
-      generateTextTexture(
-        [{ text: "A", left: 0, top: 0, width: 10, height: 12 }],
-        style,
-        { width: 10, height: 12 },
-        renderScale,
-        true,
-        unitScale,
-      ),
+    const drawn = generateTextTexture(
+      [{ text: "A", left: 0, top: 0, width: 10, height: 12 }],
+      style,
+      { width: 10, height: 12 },
+      renderScale,
+      true,
+      unitScale,
     );
-    const subscription = drawn.subscribe({});
-    const width = /** @type {HTMLCanvasElement} */ (drawn.get().texture.image).width;
-    subscription.unsubscribe();
+    const width = /** @type {HTMLCanvasElement} */ (drawn.texture.image).width;
+    drawn.texture.dispose();
     return width;
   };
 

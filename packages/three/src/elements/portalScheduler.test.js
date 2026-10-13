@@ -252,3 +252,101 @@ describe("createFrameShareBudget", () => {
     assert.equal(slow.budget(), 8);
   });
 });
+
+describe("idle pumps", () => {
+  /**
+   * A pump of `units` that only works while the clock allows, as the prepare
+   * pump does: no unit is guaranteed.
+   *
+   * @param {number} units
+   */
+  function idlePump(units) {
+    let left = units;
+    let ticks = 0;
+    return {
+      priority: 10,
+      idle: true,
+      /** @param {number} deadline */
+      tick(deadline) {
+        ticks += 1;
+        while (left > 0 && now() < deadline) {
+          left -= 1;
+          advance(1);
+        }
+        return left <= 0;
+      },
+      remaining: () => left,
+      ticks: () => ticks,
+    };
+  }
+
+  test("an idle pump gets only what the other pumps leave, whatever its priority", () => {
+    clock = 0;
+    const frames = frameDriver();
+    const scheduler = createPortalScheduler({
+      budget: 3,
+      now,
+      requestFrames: frames.requestFrames,
+    });
+    const busy = makePump({ units: 2, now });
+    const idle = idlePump(10);
+    scheduler.schedule(idle);
+    scheduler.schedule(busy);
+
+    frames.frame();
+    assert.equal(busy.remaining(), 0, "the panel's own pump went first");
+    assert.equal(idle.remaining(), 9, "and the idle pump had the one unit left");
+  });
+
+  test("an idle pump is not offered a frame with no time left", () => {
+    clock = 0;
+    const frames = frameDriver();
+    const scheduler = createPortalScheduler({
+      budget: 3,
+      now,
+      requestFrames: frames.requestFrames,
+    });
+    const busy = makePump({ units: 10, now });
+    const idle = idlePump(10);
+    scheduler.schedule(idle);
+    scheduler.schedule(busy);
+
+    frames.frame();
+    assert.equal(idle.ticks(), 0);
+    assert.equal(idle.remaining(), 10);
+  });
+
+  test("an idle pump alone gets the whole budget, and is not given a unit past it", () => {
+    clock = 0;
+    const frames = frameDriver();
+    const scheduler = createPortalScheduler({
+      budget: 3,
+      now,
+      requestFrames: frames.requestFrames,
+    });
+    const idle = idlePump(10);
+    scheduler.schedule(idle);
+
+    frames.frame();
+    assert.equal(idle.remaining(), 7);
+  });
+
+  test("a zero budget gives an idle pump nothing, where it would move any other by a unit", () => {
+    clock = 0;
+    const frames = frameDriver();
+    const scheduler = createPortalScheduler({
+      budget: 0,
+      now,
+      requestFrames: frames.requestFrames,
+    });
+    const idle = idlePump(1);
+    const busy = makePump({ units: 2, now });
+    scheduler.schedule(idle);
+    scheduler.schedule(busy);
+
+    frames.frame();
+    assert.equal(busy.remaining(), 1);
+    assert.equal(idle.ticks(), 0);
+    assert.equal(frames.running(), true, "and it keeps asking for frames");
+  });
+});

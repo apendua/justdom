@@ -34,6 +34,7 @@ import { watchPageGeometry } from "./panelFrame.js";
 import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
 import { TextBatchContext, createTextBatch } from "./textBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
+import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
 import { keepSubtreeMatrices, placeAndScale } from "./place.js";
 import { createPanelScrollDrags, ScrollDragsContext } from "./scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
@@ -51,11 +52,12 @@ import { registerOutlineHost } from "./outlines.js";
 
 /**
  * @import {Mountable} from '../core.js';
- * @import {Object3D} from 'three';
+ * @import {Object3D, Texture} from 'three';
  * @import {MutationBatch} from './animationClock.js';
  * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
+ * @import {TextPreparer} from './textPrepare.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {PortalPlugin} from './plugins.js';
  * @import {PanelDragOptions} from './panelHandles.js';
@@ -481,14 +483,27 @@ function buildPortal(ctx, ownOptions = {}) {
    * @type {ReturnType<typeof createTextScale> | null}
    */
   let textScale = null;
+  /**
+   * What sends an array the panel built ahead of a step to the GPU, before
+   * the step that draws from it is shown. Null with no renderer, where no
+   * step is ever prepared.
+   *
+   * @type {((texture: Texture) => void) | null}
+   */
+  let uploadTexture = null;
+  /**
+   * What draws the panel's runs ahead of the step it is about to show, in
+   * the time the panels' own pumps leave in a frame. Made below, once there
+   * is a scheduler to pace it; null where there is no step to prepare.
+   *
+   * @type {TextPreparer | null}
+   */
+  let textPreparer = null;
   try {
-    textScale = createTextScale(
-      containerObject,
-      RendererContext.get(ctx),
-      CameraContext.get(ctx),
-      maxTextScale,
-    );
-    ctx = TextScaleContext.set(ctx, textScale.read);
+    const renderer = RendererContext.get(ctx);
+    textScale = createTextScale(containerObject, renderer, CameraContext.get(ctx), maxTextScale);
+    uploadTexture = (texture) => renderer.initTexture(texture);
+    ctx = TextScaleContext.set(ctx, textScale);
   } catch {
     // No renderer or camera on this context. Same shape of absence the late
     // frame hook below is written for, and the same answer: the panel does
@@ -520,6 +535,10 @@ function buildPortal(ctx, ownOptions = {}) {
     // First, so that a step the panel has just crossed is one the runs
     // re-rasterize against rather than one they find out about next frame.
     textScale?.measure();
+    // And the step it is preparing, which that measurement may have moved.
+    if (textScale) {
+      textPreparer?.retarget(textScale.prepared());
+    }
     boxBatch.flush();
     textBatch.flush();
   };
@@ -834,6 +853,16 @@ function buildPortal(ctx, ownOptions = {}) {
         budget,
         requestFrames,
       }));
+
+  if (textScale && uploadTexture && scheduler) {
+    textPreparer = createTextPreparer({
+      scheduler,
+      batch: textBatch,
+      holds: textScale.holds,
+      upload: uploadTexture,
+    });
+    ctx = TextPrepareContext.set(ctx, textPreparer);
+  }
 
   /**
    * Run a change to the panel's state as one transaction in the panel's own
@@ -1901,6 +1930,7 @@ function buildPortal(ctx, ownOptions = {}) {
     portalKeyboard?.dispose();
     ownKeyboardHost?.dispose();
     pump?.dispose();
+    textPreparer?.dispose();
     panelScrolls.dispose();
     forwarder.dispose();
     unregisterPanel();

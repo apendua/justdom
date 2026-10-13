@@ -138,10 +138,10 @@ const NO_LAYER = -1;
  * The runs of one exact size, and the array texture holding them.
  *
  * Layers are handed out and taken back rather than repacked: a label whose
- * text changes rewrites its own layer of the mirror and disturbs nobody
- * else's. What reaches the GPU is the whole array, freshly allocated, once
- * per rebuild that changed anything -- `commit` says why a layer at a time
- * was not enough.
+ * text changes gives its layer back and takes one off the free list, most
+ * often the same one, and disturbs nobody else's. What reaches the GPU is the
+ * whole array, freshly allocated, once per rebuild that changed anything --
+ * `commit` says why a layer at a time was not enough.
  */
 class SizeClass {
   /** @type {THREE.DataArrayTexture | null} */
@@ -154,8 +154,20 @@ class SizeClass {
   next = 0;
   /** Bumped when the texture object is replaced, so buckets rebind. */
   generation = 0;
-  /** Whether the mirror has changed since the texture was last built. */
+  /** Whether a shown run changed the mirror since the texture was built. */
   stale = false;
+  /**
+   * The layers prepared runs wrote since the texture was built, which the
+   * texture does not hold. Kept apart from `stale` because a rebuild commits
+   * only for a shown run (rule 12 in `docs/freedom-text-step-cache.md`):
+   * the prepare pump writes a class over many frames, and committing it at
+   * each rebuild between them would upload the growing array again every
+   * time. Kept per layer so that a layer given back takes its claim on a
+   * build with it, and so that a shown run drawing from one can be told.
+   *
+   * @type {Set<number>}
+   */
+  #staged = new Set();
 
   /**
    * @param {number} width
@@ -164,6 +176,21 @@ class SizeClass {
   constructor(width, height) {
     this.width = width;
     this.height = height;
+  }
+
+  /** Whether the mirror holds layers the texture does not. */
+  get staged() {
+    return this.#staged.size > 0;
+  }
+
+  /**
+   * Whether `layer` was written by a prepared run and not built since.
+   *
+   * @param {number} layer
+   * @returns {boolean}
+   */
+  isStaged(layer) {
+    return this.#staged.has(layer);
   }
 
   /** @returns {number} */
@@ -175,10 +202,14 @@ class SizeClass {
    * Room in the mirror for this many layers. The texture is not touched
    * here: `commit` builds it, once, after every write of a rebuild is in.
    *
+   * Growth for a prepared run marks nothing: the layer it makes room for is
+   * marked when it is written, and a layer never written needs no build.
+   *
    * @param {number} needed
+   * @param {boolean} staged Whether a prepared run is what needs the room.
    * @returns {void}
    */
-  #reserve(needed) {
+  #reserve(needed, staged) {
     if (needed <= this.capacity) {
       return;
     }
@@ -192,7 +223,9 @@ class SizeClass {
     }
     this.data = data;
     this.capacity = capacity;
-    this.stale = true;
+    if (!staged) {
+      this.stale = true;
+    }
   }
 
   /**
@@ -233,10 +266,37 @@ class SizeClass {
    * @returns {void}
    */
   commit() {
-    if (!this.stale || !this.data) {
+    if (this.stale) {
+      this.#build();
+    }
+  }
+
+  /**
+   * Build the texture for what prepared runs wrote, which `commit` leaves
+   * alone. The prepare pump calls it once it has written every run.
+   *
+   * @returns {boolean} Whether there was anything to build.
+   */
+  commitStaged() {
+    if (!this.#staged.size) {
+      return false;
+    }
+    this.#build();
+    return true;
+  }
+
+  /**
+   * A fresh texture over the whole mirror, which carries every layer in it,
+   * shown and staged alike.
+   *
+   * @returns {void}
+   */
+  #build() {
+    this.stale = false;
+    this.#staged.clear();
+    if (!this.data) {
       return;
     }
-    this.stale = false;
     if (this.texture) {
       this.texture.dispose();
     }
@@ -265,19 +325,20 @@ class SizeClass {
    * already has room for, whatever the cap says — which matters, because it is
    * how a run declined earlier gets in once another leaves.
    *
+   * @param {boolean} [staged] Whether the layer is for a prepared run.
    * @returns {number}
    */
-  acquire() {
+  acquire(staged = false) {
     if (this.free.length) {
       const layer = /** @type {number} */ (this.free.pop());
-      this.#reserve(layer + 1);
+      this.#reserve(layer + 1, staged);
       return layer;
     }
     if (this.next >= MAXIMUM_LAYERS) {
       return NO_LAYER;
     }
     const layer = this.next++;
-    this.#reserve(layer + 1);
+    this.#reserve(layer + 1, staged);
     return layer;
   }
 
@@ -289,6 +350,7 @@ class SizeClass {
     if (layer === NO_LAYER) {
       return;
     }
+    this.#staged.delete(layer);
     this.free.push(layer);
   }
 
@@ -334,16 +396,21 @@ class SizeClass {
    *
    * @param {number} layer
    * @param {HTMLCanvasElement} canvas
+   * @param {boolean} [staged] Whether the pixels are a prepared run's.
    * @returns {void}
    */
-  write(layer, canvas) {
+  write(layer, canvas, staged = false) {
     const context = canvas.getContext("2d");
     if (layer === NO_LAYER || !context || !this.data) {
       return;
     }
     const pixels = context.getImageData(0, 0, this.width, this.height).data;
     this.data.set(pixels, layer * this.layerBytes);
-    this.stale = true;
+    if (staged) {
+      this.#staged.add(layer);
+    } else {
+      this.stale = true;
+    }
   }
 
   /** @returns {void} */
@@ -355,6 +422,7 @@ class SizeClass {
     this.data = null;
     this.capacity = 0;
     this.stale = false;
+    this.#staged.clear();
   }
 }
 
@@ -395,6 +463,15 @@ class Bucket {
       }
       this.#build(capacity);
     }
+    this.rebind();
+  }
+
+  /**
+   * Draw from the texture the size class holds now, if it has built a new one.
+   *
+   * @returns {void}
+   */
+  rebind() {
     if (this.mesh && this.generation !== this.sizeClass.generation) {
       /** @type {THREE.ShaderMaterial} */ (this.mesh.material).uniforms.uRuns.value =
         this.sizeClass.texture;
@@ -473,10 +550,11 @@ class Bucket {
   /**
    * @param {number} index
    * @param {Member} member
+   * @param {Slot} slot The layer the run is drawn from.
    * @param {THREE.Matrix4} matrix
    * @returns {void}
    */
-  write(index, member, matrix) {
+  write(index, member, slot, matrix) {
     const mesh = this.mesh;
     if (!mesh) {
       return;
@@ -489,7 +567,7 @@ class Bucket {
     this.data.aColor[index * 4 + 1] = material.color.g;
     this.data.aColor[index * 4 + 2] = material.color.b;
     this.data.aColor[index * 4 + 3] = material.opacity;
-    this.data.aLayer[index] = member.layer;
+    this.data.aLayer[index] = slot.layer;
     const clip = member.clip.value;
     this.data.aClip[index * 4] = clip.x;
     this.data.aClip[index * 4 + 1] = clip.y;
@@ -535,16 +613,29 @@ class Bucket {
 }
 
 /**
- * What the batch keeps about one run between rebuilds: which layer of which
- * array holds its pixels, and the canvas those pixels came from — kept so that
- * a re-rasterized run is noticed and re-uploaded, and only then.
+ * Which layer of which array holds the pixels of one of a run's rasters.
+ *
+ * @typedef {object} Slot
+ * @property {SizeClass} sizeClass
+ * @property {number} layer
+ */
+
+/**
+ * What the batch keeps about one run between rebuilds: a layer for each of
+ * the run's rasters it has copied, keyed by the canvas the pixels came from,
+ * and which of them the run is showing.
+ *
+ * More than one, because a run keeps its rasters at the steps its panel
+ * holds (`textRun.js`), and a layer kept with each is what lets the panel
+ * go back to one of those steps without writing or uploading anything: the
+ * run shows a canvas the batch already has, and every array stays as it is.
+ * A layer goes back when the run lets go of its raster (`forget`) or leaves
+ * the batch (`remove`), and only then.
  *
  * @typedef {object} Member
  * @property {THREE.Mesh} mesh
  * @property {{ value: THREE.Vector4 }} clip The run's clip uniform (`textRun.js`).
- * @property {SizeClass | null} sizeClass
- * @property {number} layer
- * @property {HTMLCanvasElement | null} canvas
+ * @property {Map<HTMLCanvasElement, Slot>} slots
  * @property {number} width
  * @property {number} height
  */
@@ -590,6 +681,12 @@ export class TextBatch {
   #disposed = false;
   /** @type {Member[]} */
   #found = [];
+  /**
+   * The layer each of `#found` is drawn from, at the same index.
+   *
+   * @type {Slot[]}
+   */
+  #foundSlots = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
 
@@ -625,9 +722,7 @@ export class TextBatch {
     this.#members.set(mesh, {
       mesh,
       clip,
-      sizeClass: null,
-      layer: 0,
-      canvas: null,
+      slots: new Map(),
       width: 0,
       height: 0,
     });
@@ -648,8 +743,8 @@ export class TextBatch {
     if (!member) {
       return;
     }
-    if (member.sizeClass) {
-      member.sizeClass.release(member.layer);
+    for (const slot of member.slots.values()) {
+      slot.sizeClass.release(slot.layer);
     }
     this.#members.delete(mesh);
     if (mesh.material) {
@@ -657,6 +752,120 @@ export class TextBatch {
     }
     mesh.frustumCulled = true;
     this.invalidate();
+  }
+
+  /**
+   * Give back the layer a run's raster was copied into, because the run has
+   * let go of the raster: its panel no longer holds the step it was drawn
+   * at, or what the run says changed. Nothing to give back for a raster the
+   * batch never copied, which is every raster of a run it does not draw.
+   *
+   * Told by the run, at the commit that stops it showing the raster or after
+   * it, and never sooner. A layer given back while the run still showed its
+   * canvas would be taken again by the next rebuild and never returned.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {HTMLCanvasElement} canvas
+   * @returns {void}
+   */
+  forget(mesh, canvas) {
+    const member = this.#members.get(mesh);
+    const slot = member?.slots.get(canvas);
+    if (!member || !slot) {
+      return;
+    }
+    slot.sizeClass.release(slot.layer);
+    member.slots.delete(canvas);
+    this.invalidate();
+  }
+
+  /**
+   * Copy a raster the run is not showing yet into a layer of its own, for a
+   * step its panel is preparing. The layer is marked staged, not stale, so
+   * no rebuild builds its class for it; `commitStaged` does, once every run
+   * is prepared. When the run later shows the canvas, `#settle` finds the
+   * layer, and nothing is copied or built at the crossing, unless the panel
+   * crossed before the pump built the class, and then that rebuild does.
+   *
+   * Only for a mask: a raster with its colours baked in is never batched.
+   * Nothing for a run the batch has not taken in yet, or one whose class is
+   * full; it is copied at the crossing instead, as if it was never prepared.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {HTMLCanvasElement} canvas
+   * @returns {boolean} Whether the batch has the canvas, to draw from once
+   *   the run shows it.
+   */
+  stage(mesh, canvas) {
+    const member = this.#members.get(mesh);
+    if (!member || !canvas.width || !canvas.height) {
+      return false;
+    }
+    if (member.slots.has(canvas)) {
+      return true;
+    }
+    const sizeClass = this.#classFor(canvas);
+    const layer = sizeClass.acquire(true);
+    if (layer === NO_LAYER) {
+      return false;
+    }
+    sizeClass.write(layer, canvas, true);
+    member.slots.set(canvas, { sizeClass, layer });
+    return true;
+  }
+
+  /**
+   * Build and upload the arrays of the classes `stage` wrote into: at most
+   * `bytes` of them, and at least one class whatever its size. Each class's
+   * buckets are rebound to its new array here, in the same call that
+   * disposed the old one, so nothing samples a disposed texture until the
+   * next rebuild.
+   *
+   * @param {number} bytes
+   * @param {(texture: THREE.Texture) => void} upload Send a texture to the
+   *   GPU now rather than at the next render: `renderer.initTexture` in a
+   *   session. The batch is given it rather than a renderer, which it has no
+   *   business holding.
+   * @returns {boolean} Whether staged classes are left for another call.
+   */
+  commitStaged(bytes, upload) {
+    let spent = 0;
+    for (const sizeClass of this.#classes.values()) {
+      if (!sizeClass.staged) {
+        continue;
+      }
+      const size = sizeClass.capacity * sizeClass.layerBytes;
+      if (spent > 0 && spent + size > bytes) {
+        return true;
+      }
+      if (!sizeClass.commitStaged() || !sizeClass.texture) {
+        continue;
+      }
+      upload(sizeClass.texture);
+      for (const bucket of this.#buckets.values()) {
+        if (bucket.sizeClass === sizeClass) {
+          bucket.rebind();
+        }
+      }
+      spent += size;
+    }
+    return false;
+  }
+
+  /**
+   * The size class for a canvas of this size, made if there is none.
+   *
+   * @param {HTMLCanvasElement} canvas
+   * @returns {SizeClass}
+   */
+  #classFor(canvas) {
+    const key = `${canvas.width}x${canvas.height}`;
+    let sizeClass = this.#classes.get(key);
+    if (!sizeClass) {
+      sizeClass = new SizeClass(canvas.width, canvas.height);
+      this.#classes.set(key, sizeClass);
+    }
+    return sizeClass;
   }
 
   /**
@@ -692,12 +901,14 @@ export class TextBatch {
   }
 
   /**
-   * Make sure a run's pixels are in an array, moving it between arrays if it
-   * has been re-rasterized at a new size. Only a run whose canvas actually
-   * changed is uploaded, and then only its own layer.
+   * Make sure the pixels of the raster a run shows are in an array. A canvas
+   * the batch has a layer for already, which is a run gone back to a step its
+   * panel held, writes nothing, and the array it is in is not built again.
+   * Only a canvas the batch has not seen is copied, into a layer of its own.
    *
    * @param {Member} member
-   * @returns {boolean} Whether the run can be drawn from a batch at all.
+   * @returns {Slot | null} The layer the run is drawn from, or null when the
+   *   batch cannot draw it.
    */
   #settle(member) {
     const material = /** @type {THREE.MeshBasicMaterial} */ (member.mesh.material);
@@ -706,50 +917,33 @@ export class TextBatch {
     const texture = material.alphaMap;
     const canvas = texture ? /** @type {HTMLCanvasElement} */ (texture.image) : null;
     if (!canvas || !canvas.width || !canvas.height) {
-      return false;
+      return null;
     }
     const positions = /** @type {THREE.BufferAttribute} */ (
       member.mesh.geometry.getAttribute("position")
     ).array;
     member.width = positions[3];
     member.height = positions[7];
-    const key = `${canvas.width}x${canvas.height}`;
-    const previousKey = member.sizeClass
-      ? `${member.sizeClass.width}x${member.sizeClass.height}`
-      : null;
-    if (previousKey !== key) {
-      // The run is leaving its old class whatever happens next, so the layer
-      // goes back first. Everything after this either gives the member a layer
-      // of the new class or leaves it holding none of either — a member left
-      // pointing at a class it has no layer in would hand that class a
-      // borrowed index the next time it moved, and the free list would start
-      // giving one layer to two runs.
-      if (member.sizeClass) {
-        member.sizeClass.release(member.layer);
-        member.sizeClass = null;
-        member.layer = NO_LAYER;
-      }
-      let sizeClass = this.#classes.get(key);
-      if (!sizeClass) {
-        sizeClass = new SizeClass(canvas.width, canvas.height);
-        this.#classes.set(key, sizeClass);
-      }
+    let slot = member.slots.get(canvas);
+    if (!slot) {
+      const sizeClass = this.#classFor(canvas);
       const layer = sizeClass.acquire();
-      member.canvas = null;
       if (layer === NO_LAYER) {
         // Full. The run draws itself, exactly as one with baked colours does,
         // and is asked again on the next rebuild — which is what lets it in
-        // when another run of its size goes away, since `remove` invalidates.
-        return false;
+        // when another run of its size goes away, since `remove` and `forget`
+        // invalidate.
+        return null;
       }
-      member.sizeClass = sizeClass;
-      member.layer = layer;
+      slot = { sizeClass, layer };
+      sizeClass.write(layer, canvas);
+      member.slots.set(canvas, slot);
+    } else if (slot.sizeClass.isStaged(slot.layer)) {
+      // Prepared, and the panel crossed before the pump built its class:
+      // drawn now, so this rebuild builds it, as a shown write would.
+      slot.sizeClass.stale = true;
     }
-    if (member.canvas !== canvas) {
-      /** @type {SizeClass} */ (member.sizeClass).write(member.layer, canvas);
-      member.canvas = canvas;
-    }
-    return true;
+    return slot;
   }
 
   /**
@@ -774,8 +968,10 @@ export class TextBatch {
       }
     }
     const found = this.#found;
+    const foundSlots = this.#foundSlots;
     const matrices = this.#matrices;
     found.length = 0;
+    foundSlots.length = 0;
     let count = 0;
 
     /**
@@ -790,15 +986,17 @@ export class TextBatch {
       const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
       const member = this.#members.get(/** @type {THREE.Mesh} */ (object));
       if (member) {
-        const batched = this.#settle(member);
+        const slot = this.#settle(member);
+        const batched = slot !== null;
         // A run draws itself exactly when the batch cannot draw it, and this
         // is the one place that decides — so a run that changes its mind, by
         // gaining a decoration the mirror cannot tint, is handed back rather
         // than lost.
         /** @type {THREE.Material} */ (member.mesh.material).visible = !batched;
         member.mesh.frustumCulled = !batched;
-        if (batched) {
+        if (slot) {
           found.push(member);
+          foundSlots.push(slot);
           if (!matrices[count]) {
             matrices[count] = new THREE.Matrix4();
           }
@@ -830,7 +1028,7 @@ export class TextBatch {
     const keys = [];
     for (let i = 0; i < count; i++) {
       const member = found[i];
-      const sizeClass = /** @type {SizeClass} */ (member.sizeClass);
+      const sizeClass = foundSlots[i].sizeClass;
       const key = `${sizeClass.width}x${sizeClass.height}|${member.mesh.renderOrder}`;
       keys.push(key);
       wanted.set(key, (wanted.get(key) ?? 0) + 1);
@@ -838,10 +1036,10 @@ export class TextBatch {
     for (const [key, needed] of wanted) {
       let bucket = this.#buckets.get(key);
       if (!bucket) {
-        const member = found[keys.indexOf(key)];
+        const index = keys.indexOf(key);
         bucket = new Bucket(
-          /** @type {SizeClass} */ (member.sizeClass),
-          member.mesh.renderOrder,
+          foundSlots[index].sizeClass,
+          found[index].mesh.renderOrder,
           this.#container,
         );
         this.#buckets.set(key, bucket);
@@ -857,7 +1055,7 @@ export class TextBatch {
     for (let i = 0; i < count; i++) {
       const bucket = this.#buckets.get(keys[i]);
       if (bucket) {
-        bucket.write(bucket.count, found[i], matrices[i]);
+        bucket.write(bucket.count, found[i], foundSlots[i], matrices[i]);
         bucket.count += 1;
       }
     }
@@ -865,8 +1063,9 @@ export class TextBatch {
       bucket.finish(bucket.count);
     }
     // Everything has been settled and written by now, so a class whose every
-    // layer has come back is one no run in the panel is in. Give its array
-    // back rather than hold the panel's high-water mark until it closes.
+    // layer has come back is one no run in the panel is in, at any step its
+    // panel holds. Give its array back rather than hold the panel's
+    // high-water mark until it closes.
     for (const sizeClass of this.#classes.values()) {
       sizeClass.releaseStorageIfEmpty();
     }

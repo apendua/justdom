@@ -173,6 +173,10 @@ export function getXRSession(ctx) {
  * @property {THREE.XRTargetRaySpace} controller Target ray space: origin at the
  *   controller, -Z pointing where it aims.
  * @property {THREE.XRGripSpace} grip Grip space: where a held object sits.
+ * @property {THREE.Object3D} ray The line drawn down the target ray, a child
+ *   of `controller`, cut at whatever the ray is on. Hiding it hides the line
+ *   and nothing else: the hand still points, hovers and presses, and its
+ *   cursor still shows on what it points at.
  * @property {THREE.XRHandSpace} hand Hand space: `joints` are the twenty-five
  *   `XRHandJoint`s three fills in every frame while a tracked hand drives
  *   this slot, each an `Object3D` in the reference space. Empty and hidden
@@ -218,9 +222,10 @@ export function controllers(ctx) {
  * @param {THREE.XRTargetRaySpace} controller
  * @param {THREE.XRGripSpace} grip
  * @param {THREE.XRHandSpace} hand
+ * @param {THREE.Object3D} ray
  * @returns {ControllerHandle}
  */
-export function createControllerHandle(index, controller, grip, hand) {
+export function createControllerHandle(index, controller, grip, hand, ray) {
   /** @type {Signal<XRInputSource | null>} */
   const inputSource = Signal.of(/** @type {XRInputSource | null} */ (null));
   controller.addEventListener("connected", (event) => {
@@ -258,6 +263,7 @@ export function createControllerHandle(index, controller, grip, hand) {
     index,
     controller,
     grip,
+    ray,
     hand,
     inputSource,
     tracked: () => tracked.get(),
@@ -636,6 +642,18 @@ export function render(fn, options = {}) {
       }),
     );
 
+    // Add simple rays to controllers. This will need to be revisited.
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, -1),
+    ]);
+
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0xdddddd,
+    });
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    line.name = "line";
+
     // Each slot is three spaces on one input: the target ray it points with,
     // the grip a held thing sits in, and the hand space whose joints three
     // fills in when a tracked hand rather than a controller is driving it.
@@ -651,7 +669,13 @@ export function render(fn, options = {}) {
       if (options.createHandModel) {
         hand.add(options.createHandModel(hand));
       }
-      const handle = createControllerHandle(index, controller, grip, hand);
+      // The length is not fixed: each ray is cut at whatever it is pointing
+      // at, so it stops at the surface rather than disappearing into it. Both
+      // clones share the geometry, which is why the length lives in the scale.
+      const ray = line.clone();
+      controller.add(ray);
+      subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
+      const handle = createControllerHandle(index, controller, grip, hand, ray);
       subscriber.add(
         interactionManager
           .addController(
@@ -668,27 +692,6 @@ export function render(fn, options = {}) {
     });
 
     ctx = ControllersContext.set(ctx, handles);
-
-    // Add simple rays to controllers. This will need to be revisited.
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, -1),
-    ]);
-
-    const lineMaterial = new THREE.LineBasicMaterial({
-      color: 0xdddddd,
-    });
-    const line = new THREE.Line(lineGeometry, lineMaterial);
-    line.name = "line";
-
-    // The length is not fixed: each ray is cut at whatever it is pointing at,
-    // so it stops at the surface rather than disappearing into it. Both clones
-    // share the geometry, which is why the length lives in the scale.
-    for (const { controller } of handles) {
-      const ray = line.clone();
-      controller.add(ray);
-      subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
-    }
 
     // The context is whole now; the keyboard looks for the scene, the camera
     // and the renderer here.

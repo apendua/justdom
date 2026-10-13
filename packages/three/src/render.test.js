@@ -120,7 +120,13 @@ describe("createControllerHandle", () => {
     const controller = /** @type {THREE.XRTargetRaySpace} */ (new THREE.Group());
     const grip = /** @type {THREE.XRGripSpace} */ (new THREE.Group());
     const hand = /** @type {THREE.XRHandSpace} */ (new THREE.Group());
-    return { controller, grip, hand, handle: createControllerHandle(0, controller, grip, hand) };
+    const ray = new THREE.Object3D();
+    return {
+      controller,
+      grip,
+      hand,
+      handle: createControllerHandle(0, controller, grip, hand, ray),
+    };
   }
 
   /**

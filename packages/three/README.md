@@ -177,7 +177,8 @@ The rules:
   hand is pointing now and not a frame ago. Nested ray targets cost no extra casts: a registered
   object inside another is reached by the outer one's walk.
 - The ray each controller draws is cut at the hit, and stretches back out to a fixed reach when the
-  hand is pointing at nothing.
+  hand is pointing at nothing. It is the handle's `ray`, so an app can hide it while a hand is busy
+  with something else.
 
 `cursors(ctx, options)` puts a mark where each ray meets something interactive, one per hand that is
 pointing at something, gone with the hit:
@@ -342,16 +343,17 @@ for (const handle of controllers(ctx)) {
 }
 ```
 
-A `ControllerHandle` carries `index`, `controller` (the target ray space), `grip`, `hand`,
-`inputSource` (a signal, for the gamepad and the handedness), `tracked()` and `pinching()`.
-`handle.hand` is three's `XRHandSpace`: its `joints` are the twenty-five `XRHandJoint`s, each an
-`Object3D` posed in the reference space every frame the hand is tracked, and empty while a
-controller is in the slot. Whatever `createHandModel` returns is added to it, and hears the same
-`connected` / `disconnected` events a controller model hears on the grip — three's `OculusHandModel`
-and `XRHandModelFactory` both do. `tracked()` changes only when what drives the slot changes;
-`pinching()` is three's own measure of the pinch (20 mm with 5 mm of hysteresis), state to read
-rather than input to act on, since the runtime already turns the pinch into the select events
-`makeInteractive` listens for.
+A `ControllerHandle` carries `index`, `controller` (the target ray space), `grip`, `ray` (the line
+drawn down the target ray), `hand`, `inputSource` (a signal, for the gamepad and the handedness),
+`tracked()` and `pinching()`. Setting `ray.visible = false` hides the line and nothing else: the
+hand still points, hovers and presses, and its cursor still shows. `handle.hand` is three's
+`XRHandSpace`: its `joints` are the twenty-five `XRHandJoint`s, each an `Object3D` posed in the
+reference space every frame the hand is tracked, and empty while a controller is in the slot.
+Whatever `createHandModel` returns is added to it, and hears the same `connected` / `disconnected`
+events a controller model hears on the grip — three's `OculusHandModel` and `XRHandModelFactory`
+both do. `tracked()` changes only when what drives the slot changes; `pinching()` is three's own
+measure of the pinch (20 mm with 5 mm of hysteresis), state to read rather than input to act on,
+since the runtime already turns the pinch into the select events `makeInteractive` listens for.
 
 ## Projecting DOM into the scene
 

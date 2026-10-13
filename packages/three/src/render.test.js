@@ -125,6 +125,7 @@ describe("createControllerHandle", () => {
       controller,
       grip,
       hand,
+      ray,
       handle: createControllerHandle(0, controller, grip, hand, ray),
     };
   }
@@ -136,6 +137,11 @@ describe("createControllerHandle", () => {
   function connect(space, data) {
     space.dispatchEvent(/** @type {any} */ ({ type: "connected", data }));
   }
+
+  test("hands out the ray line it was given, for an app to hide", () => {
+    const { ray, handle } = slot();
+    assert.equal(handle.ray, ray);
+  });
 
   test("tells a tracked hand from a controller the way three does: by the source's hand", () => {
     const { controller, handle } = slot();

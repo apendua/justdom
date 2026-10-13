@@ -173,49 +173,67 @@ document.getElementById("start").addEventListener("click", async () => {
       shown.push(epsUniform.value);
     });
     let count = 0;
+    /** What went wrong inside the session's frames, first of each kind. */
+    const errors = {};
+    const note = (where, error) => {
+      errors[where] ??= `${error}\n${error?.stack ?? ""}`;
+    };
     renderer.setAnimationLoop((_time, frame) => {
-      renderer.render(pileScene, camera);
+      try {
+        renderer.render(pileScene, camera);
+      } catch (error) {
+        note("render", error);
+      }
       if (++count !== 5) return;
-      // three binds the session's own target before this callback, so
-      // what is bound after a render is what the headset draws into.
-      const target = renderer.getRenderTarget();
-      const depth = boundDepth();
-      const layer = renderer.xr.getBaseLayer();
-      const pose = frame.getViewerPose(renderer.xr.getReferenceSpace());
-      results.session = {
-        userAgent: navigator.userAgent,
-        glRenderer: glRendererName(),
-        contextAttributes: gl.getContextAttributes(),
-        projectionLayerApi:
-          typeof XRWebGLBinding !== "undefined" &&
-          "createProjectionLayer" in XRWebGLBinding.prototype,
-        layer: layer?.constructor?.name,
-        layerSize: layer?.textureWidth
-          ? [layer.textureWidth, layer.textureHeight]
-          : [layer?.framebufferWidth, layer?.framebufferHeight],
-        ignoreDepthValues: layer?.ignoreDepthValues,
-        depth,
-        threeDepthTexture: target?.depthTexture
-          ? { type: target.depthTexture.type, format: target.depthTexture.format }
-          : null,
-        samples: target?.samples,
-        renderState: {
-          depthNear: session.renderState.depthNear,
-          depthFar: session.renderState.depthFar,
-        },
-        views: pose?.views.map((view) => ({ eye: view.eye, ...planesOf(view.projectionMatrix) })),
-      };
+      try {
+        readSession(session, frame);
+      } catch (error) {
+        note("report", error);
+      }
     });
     session.addEventListener("end", () => {
       renderer.setAnimationLoop(null);
       visualUniform.value = 0;
-      results.session = { ...results.session, epsilonsShown: shown };
+      results.session = { ...results.session, frames: count, errors, epsilonsShown: shown };
       show(`Session:\n${JSON.stringify(results.session, null, 2)}`);
+      console.log(JSON.stringify(results.session));
     });
   } catch (error) {
     show(`Session failed: ${error}`);
   }
 });
+
+/** What the session gets: its layer, its depth buffer and its planes. */
+function readSession(session, frame) {
+  results.session = { glRenderer: glRendererName() };
+  // three binds the session's own target before this callback, so
+  // what is bound after a render is what the headset draws into.
+  const target = renderer.getRenderTarget();
+  results.session.depth = boundDepth();
+  const layer = renderer.xr.getBaseLayer();
+  const pose = frame.getViewerPose(renderer.xr.getReferenceSpace());
+  results.session = {
+    ...results.session,
+    userAgent: navigator.userAgent,
+    contextAttributes: gl.getContextAttributes(),
+    projectionLayerApi:
+      typeof XRWebGLBinding !== "undefined" && "createProjectionLayer" in XRWebGLBinding.prototype,
+    layer: layer?.constructor?.name,
+    layerSize: layer?.textureWidth
+      ? [layer.textureWidth, layer.textureHeight]
+      : [layer?.framebufferWidth, layer?.framebufferHeight],
+    ignoreDepthValues: layer?.ignoreDepthValues,
+    threeDepthTexture: target?.depthTexture
+      ? { type: target.depthTexture.type, format: target.depthTexture.format }
+      : null,
+    samples: target?.samples,
+    renderState: {
+      depthNear: session.renderState.depthNear,
+      depthFar: session.renderState.depthFar,
+    },
+    views: pose?.views.map((view) => ({ eye: view.eye, ...planesOf(view.projectionMatrix) })),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // 2. The sweep, off screen.
@@ -310,6 +328,8 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
 document.getElementById("sweep").addEventListener("click", async () => {
   if (renderer.xr.isPresenting) return;
+  results.gpu = glRendererName();
+  results.size = SIZE;
   results.targets = {
     rt: depthOfTarget(target("rt")),
     rt16: depthOfTarget(target("rt16")),
@@ -358,6 +378,7 @@ document.getElementById("sweep").addEventListener("click", async () => {
 
 document.getElementById("copy").addEventListener("click", async () => {
   const text = JSON.stringify(results, null, 2);
+  console.log(text);
   try {
     await navigator.clipboard.writeText(text);
     append("Copied.");

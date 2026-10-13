@@ -52,8 +52,9 @@ class FakeSession {
 
 /**
  * How a runtime offsets a reference space: as the spec has it, by the
- * transform it is given; as IWER does, by NaN for a transform and by the
- * matrix for a matrix; or by NaN whatever it is given.
+ * transform it is given, throwing a `TypeError` on anything else; as IWER
+ * does, by NaN for a transform and by the matrix for a matrix; or by NaN
+ * whatever it is given.
  *
  * @typedef {"spec" | "matrix" | "nan"} Offsets
  */
@@ -69,6 +70,7 @@ function fakeSpace({ offsets = /** @type {Offsets} */ ("spec") } = {}) {
   const listeners = new Map();
   const space = {
     offsets,
+    offsetCalls: 0,
     /**
      * @param {string} type
      * @param {() => void} listener
@@ -100,10 +102,17 @@ function fakeSpace({ offsets = /** @type {Offsets} */ ("spec") } = {}) {
     },
     /** @param {XRRigidTransform | Float32Array} offset */
     getOffsetReferenceSpace(offset) {
+      space.offsetCalls += 1;
       const nan = { x: NaN, y: NaN, z: NaN, w: NaN };
       const isMatrix = offset instanceof Float32Array;
-      if (space.offsets === "spec" && !isMatrix) {
-        return { base: space, offset, fromMatrix: false };
+      if (space.offsets === "spec") {
+        if (isMatrix) {
+          throw new TypeError("getOffsetReferenceSpace takes an XRRigidTransform");
+        }
+        const { x = 0 } = /** @type {XRRigidTransform} */ (offset).position;
+        return Number.isFinite(x)
+          ? { base: space, offset, fromMatrix: false }
+          : { base: space, offset: { position: nan, orientation: nan }, fromMatrix: false };
       }
       if (space.offsets === "matrix" && isMatrix) {
         const position = new THREE.Vector3();
@@ -507,6 +516,36 @@ describe("anchorToViewer", () => {
 
     session.pump(fakeFrame(space, pose));
     assert.equal(overrides.length, 1);
+    assert.ok(/** @type {{ fromMatrix?: boolean }} */ (overrides[0])?.fromMatrix);
+  });
+
+  test("offsets a space once on a runtime that keeps to the spec", () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace();
+    startSession(session, space);
+    session.pump(fakeFrame(space, fakePose({ position: { x: 1, y: 2, z: 3 } })));
+
+    assert.equal(overrides.length, 1);
+    assert.equal(space.offsetCalls, 1);
+  });
+
+  test("never hands a spec runtime the matrix when the transform is NaN itself", () => {
+    // A runtime that keeps to the spec throws on anything but a transform,
+    // and a throw out of the frame loop ends the session.
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace();
+    startSession(session, space);
+    session.pump(fakeFrame(space, fakePose({ position: { x: NaN, y: 0, z: 0 } })));
+
+    assert.deepEqual(overrides, [null]);
+    assert.equal(space.offsetCalls, 1);
+    assert.equal(session.pending, 0);
   });
 
   test("keeps the base space when the runtime offsets a space by NaN either way", () => {

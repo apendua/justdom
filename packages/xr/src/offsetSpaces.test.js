@@ -31,8 +31,9 @@ describe("offsetByTransform", () => {
     offsetByTransform(Space);
     const local = new Space(XRReferenceSpaceType.Local, new GlobalSpace());
     const transform = new XRRigidTransform({ x: 0, y: 1.6, z: -2 }, { x: 0, y: 0, z: 0, w: 1 });
-    // IWER types the argument as the matrix it wrongly expects; three and
-    // freedom pass a transform, as the WebXR spec has them do.
+    // IWER types the argument as the matrix it wrongly expects; three
+    // passes a transform, as the WebXR spec has it do, and so does freedom
+    // until a space comes out as NaN.
     const offset = local.getOffsetReferenceSpace(/** @type {any} */ (transform));
     assert.deepEqual(offsetOf(offset), Array.from(transform.matrix));
   });

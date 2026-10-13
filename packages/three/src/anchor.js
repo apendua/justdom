@@ -85,7 +85,10 @@ function measured(pose) {
  * IWER, up to 2.5.0 at least, reads the transform it is given as a matrix
  * and offsets the space by NaN. Handed the transform's `matrix`, the array
  * it reads, it offsets the space as the spec has it, so that is the second
- * try. A runtime that keeps to the spec never gets there.
+ * try. It is made only when the transform itself is all numbers, and so
+ * only when the NaN came from the runtime: a runtime that keeps to the spec
+ * offsets by such a transform without NaN and never gets there, which
+ * matters because it would throw a `TypeError` on the array.
  *
  * @param {XRReferenceSpace} base
  * @param {XRFrame} frame
@@ -95,8 +98,14 @@ function measured(pose) {
 function offsetSpace(base, frame, transform) {
   const space = base.getOffsetReferenceSpace(transform);
   const pose = frame.getPose(space, base);
-  if (!pose || measured(pose)) {
-    return pose ? space : undefined;
+  if (!pose) {
+    return undefined;
+  }
+  if (measured(pose)) {
+    return space;
+  }
+  if (!transform.matrix.every(Number.isFinite)) {
+    return null;
   }
   const mended = base.getOffsetReferenceSpace(
     /** @type {XRRigidTransform} */ (/** @type {unknown} */ (transform.matrix)),
@@ -142,8 +151,9 @@ function offsetSpace(base, frame, transform) {
  * space the previous pose call had measured, metres off. For such a
  * runtime the space is built again from the transform's `matrix`, which is
  * what IWER reads (see `offsetSpace`), and the anchor runs in full. A
- * runtime that offsets by NaN either way gets no anchor: any earlier
- * override is cleared, so three draws from `base`, the space it requested.
+ * runtime that offsets by NaN either way, or a transform that is NaN
+ * itself, gets no anchor: any earlier override is cleared, so three draws
+ * from `base`, the space it requested.
  * A `reset` runs the same wait and the same check again. A frame that
  * cannot say where the space is (no pose at all) proves nothing, and the
  * wait goes on to the next frame.

@@ -1,7 +1,6 @@
-import { XRDevice, XRReferenceSpace, metaQuest3 } from "iwer";
+import { XRDevice, metaQuest3 } from "iwer";
 import { DevUI, useKeyMapStore } from "@iwer/devui";
 import { shadowClearStateQueries } from "./clearState.js";
-import { offsetByTransform } from "./offsetSpaces.js";
 
 /**
  * Keys to move the emulated controllers to, by hand and by the DevUI's name
@@ -47,7 +46,6 @@ export function install({ devUI = true, keyMap } = {}) {
   // and IWER steps aside for it unless told not to; the whole point of asking
   // for the emulator is to have it stand in for that.
   xrDevice.installRuntime({ forceInstall: true });
-  offsetByTransform(XRReferenceSpace);
   if (devUI) {
     xrDevice.installDevUI(DevUI);
     const { bindKey } = useKeyMapStore.getState();

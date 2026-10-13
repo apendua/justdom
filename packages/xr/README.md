@@ -45,14 +45,6 @@ Installing it also answers WebGL's three clear-state queries from a shadow kept 
 frame, and each read is a pipeline sync that stalls the emulated session for as long as the GPU
 takes to finish the frame. Nothing on a headset runs it.
 
-It also mends IWER's `getOffsetReferenceSpace` (`src/offsetSpaces.js`). IWER 2.4.0 and 2.5.0 take
-the `XRRigidTransform` it is given for a matrix, so every offset space came out offset by NaN and
-was drawn from whatever space the previous pose call measured. freedom's `anchorToViewer` builds an
-offset space for every session, and on a space that comes out as NaN it builds it again from the
-transform's `matrix`, which is how it runs in the Immersive Web Emulator extension. Under this
-emulator the fix makes the first space right, and does the same for any other caller of
-`getOffsetReferenceSpace`.
-
 Import it lazily, as above, so that it lands in a chunk of its own, named `emulator-<hash>.js`. A
 service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperwings-xr`
 do it with `globIgnores: ["**/emulator-*.js"]`.
@@ -173,6 +165,5 @@ session's rules, `canPresent` against a stubbed `navigator.xr`, the offer agains
 and service worker, the controller and hand models' addresses against a stubbed `fetch`,
 `clientRect` against a stand-in `ResizeObserver`, the clear-state shadow against a stand-in WebGL
 context, which queries `followThemingQuery` takes for `?theming` and `followOutlinesQuery` for
-`?outlines`, and that each hands back freedom's off switch, and the offset-space fix against IWER's
-own `XRReferenceSpace`, including a test that fails once IWER fixes it and the fix can go. `install`
-itself needs a browser, and is exercised by the apps' own check scripts, as is the driver.
+`?outlines`, and that each hands back freedom's off switch. `install` itself needs a browser, and is
+exercised by the apps' own check scripts, as is the driver.

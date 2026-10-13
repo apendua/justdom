@@ -173,6 +173,7 @@ document.getElementById("start").addEventListener("click", async () => {
       shown.push(epsUniform.value);
     });
     let count = 0;
+    let read = false;
     /** What went wrong inside the session's frames, first of each kind. */
     const errors = {};
     const note = (where, error) => {
@@ -184,9 +185,14 @@ document.getElementById("start").addEventListener("click", async () => {
       } catch (error) {
         note("render", error);
       }
-      if (++count !== 5) return;
+      ++count;
+      // Read once the session has drawn a few frames, and only from a call
+      // that carries an XRFrame: on the headset some do not. Retry until a
+      // read gets through, keeping the first error.
+      if (count < 5 || read || !frame) return;
       try {
         readSession(session, frame);
+        read = true;
       } catch (error) {
         note("report", error);
       }
@@ -194,7 +200,13 @@ document.getElementById("start").addEventListener("click", async () => {
     session.addEventListener("end", () => {
       renderer.setAnimationLoop(null);
       visualUniform.value = 0;
-      results.session = { ...results.session, frames: count, errors, epsilonsShown: shown };
+      results.session = {
+        ...results.session,
+        frames: count,
+        read,
+        errors,
+        epsilonsShown: shown,
+      };
       show(`Session:\n${JSON.stringify(results.session, null, 2)}`);
       console.log(JSON.stringify(results.session));
     });
@@ -212,6 +224,7 @@ function readSession(session, frame) {
   results.session.depth = boundDepth();
   const layer = renderer.xr.getBaseLayer();
   const pose = frame.getViewerPose(renderer.xr.getReferenceSpace());
+  if (!pose) throw new Error("no viewer pose yet");
   results.session = {
     ...results.session,
     userAgent: navigator.userAgent,

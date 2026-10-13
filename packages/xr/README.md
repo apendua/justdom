@@ -48,9 +48,10 @@ takes to finish the frame. Nothing on a headset runs it.
 It also mends IWER's `getOffsetReferenceSpace` (`src/offsetSpaces.js`). IWER 2.4.0 and 2.5.0 take
 the `XRRigidTransform` it is given for a matrix, so every offset space came out offset by NaN and
 was drawn from whatever space the previous pose call measured. freedom's `anchorToViewer` builds an
-offset space for every session; it now drops one that comes out as NaN and leaves three on the space
-it requested, which is what happens in the Immersive Web Emulator extension. The fix is what lets
-the anchor run in full under this emulator.
+offset space for every session, and on a space that comes out as NaN it builds it again from the
+transform's `matrix`, which is how it runs in the Immersive Web Emulator extension. Under this
+emulator the fix makes the first space right, and does the same for any other caller of
+`getOffsetReferenceSpace`.
 
 Import it lazily, as above, so that it lands in a chunk of its own, named `emulator-<hash>.js`. A
 service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperwings-xr`

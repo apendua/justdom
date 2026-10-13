@@ -68,6 +68,47 @@ function anchorTransform(viewer, baseInLevel) {
 }
 
 /**
+ * Whether a pose came out as numbers, which a pose against a space that
+ * IWER offset by NaN does not.
+ *
+ * @param {XRPose} pose
+ */
+function measured(pose) {
+  return Number.isFinite(pose.transform.position.x);
+}
+
+/**
+ * `base` offset by `transform`, in a form the runtime can draw from: the
+ * space, null when the runtime cannot offset `base` at all, or undefined
+ * when this frame cannot say where the space is.
+ *
+ * IWER, up to 2.5.0 at least, reads the transform it is given as a matrix
+ * and offsets the space by NaN. Handed the transform's `matrix`, the array
+ * it reads, it offsets the space as the spec has it, so that is the second
+ * try. A runtime that keeps to the spec never gets there.
+ *
+ * @param {XRReferenceSpace} base
+ * @param {XRFrame} frame
+ * @param {XRRigidTransform} transform
+ * @returns {XRReferenceSpace | null | undefined}
+ */
+function offsetSpace(base, frame, transform) {
+  const space = base.getOffsetReferenceSpace(transform);
+  const pose = frame.getPose(space, base);
+  if (!pose || measured(pose)) {
+    return pose ? space : undefined;
+  }
+  const mended = base.getOffsetReferenceSpace(
+    /** @type {XRRigidTransform} */ (/** @type {unknown} */ (transform.matrix)),
+  );
+  const mendedPose = frame.getPose(mended, base);
+  if (!mendedPose) {
+    return undefined;
+  }
+  return measured(mendedPose) ? mended : null;
+}
+
+/**
  * Keeps every session's origin where the scenes here assume it is: at the
  * player's head, facing the way the player faces.
  *
@@ -98,14 +139,14 @@ function anchorTransform(viewer, baseInLevel) {
  * to come out as numbers. IWER, up to 2.5.0 at least and in the Immersive
  * Web Emulator browser extension, reads the transform as a matrix and
  * offsets the space by NaN, and three then drew the scene from whatever
- * space the previous pose call had measured, metres off. Such a space is
- * dropped and any earlier override cleared, so three draws from `base`, the
- * space it requested, at the head where the session started. The
- * emulator's tracking is never stale, so that origin is right, if tilted
- * with the head. A `reset` runs the same wait and the same check again. A
- * frame that cannot say where the space is (no pose at all) proves
- * nothing, and the wait goes on to the next frame. `@apendua.dev/headset`
- * mends IWER, so under its emulator the anchor runs in full.
+ * space the previous pose call had measured, metres off. For such a
+ * runtime the space is built again from the transform's `matrix`, which is
+ * what IWER reads (see `offsetSpace`), and the anchor runs in full. A
+ * runtime that offsets by NaN either way gets no anchor: any earlier
+ * override is cleared, so three draws from `base`, the space it requested.
+ * A `reset` runs the same wait and the same check again. A frame that
+ * cannot say where the space is (no pose at all) proves nothing, and the
+ * wait goes on to the next frame.
  *
  * The runtime's `reset` event — tracking recovered, the player recentered —
  * re-runs the same wait, so a system recenter puts the scene back in front of
@@ -167,12 +208,11 @@ export function anchorToViewer(renderer) {
         visible &&
         (!pose.emulatedPosition || patience-- <= 0)
       ) {
-        const anchored = base.getOffsetReferenceSpace(anchorTransform(pose, baseInLevel ?? null));
-        const offset = frame.getPose(anchored, base);
-        if (offset) {
+        const anchored = offsetSpace(base, frame, anchorTransform(pose, baseInLevel ?? null));
+        if (anchored !== undefined) {
           // A runtime that cannot offset a space gets no anchor, and three
           // goes back to `base`; see the IWER paragraph above.
-          if (Number.isFinite(offset.transform.position.x)) {
+          if (anchored) {
             renderer.xr.setReferenceSpace(anchored);
           } else {
             clearOverride();

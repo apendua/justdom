@@ -206,7 +206,7 @@ console.log("-".repeat(87));
 // The shapes a panel actually makes. A readout is the full width of its box;
 // a button's label is shorter. The sizes are rasterized pixel sizes of a run
 // at the device pixel ratio a headset reports, which is where the classes
-// come from. paperplane-xr's own panel is the first row.
+// come from. paperwings-xr's own panel is the first row.
 measure("8 readouts, 256x32", 8, 256, 32, 1);
 measure("24 labels, 128x24", 24, 128, 24, 1);
 measure("64 labels, 128x24", 64, 128, 24, 1);

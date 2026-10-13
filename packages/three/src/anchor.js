@@ -79,8 +79,9 @@ function measured(pose) {
 
 /**
  * `base` offset by `transform`, in a form the runtime can draw from: the
- * space, null when the runtime cannot offset `base` at all, or undefined
- * when this frame cannot say where the space is.
+ * space, null when the runtime cannot offset `base` at all or the transform
+ * is not all numbers, or undefined when this frame cannot say where the
+ * space is.
  *
  * IWER, up to 2.5.0 at least, reads the transform it is given as a matrix
  * and offsets the space by NaN. Handed the transform's `matrix`, the array
@@ -220,8 +221,9 @@ export function anchorToViewer(renderer) {
       ) {
         const anchored = offsetSpace(base, frame, anchorTransform(pose, baseInLevel ?? null));
         if (anchored !== undefined) {
-          // A runtime that cannot offset a space gets no anchor, and three
-          // goes back to `base`; see the IWER paragraph above.
+          // A runtime that cannot offset a space, or a transform that is not
+          // all numbers, gets no anchor, and three goes back to `base`; see
+          // the IWER paragraph above.
           if (anchored) {
             renderer.xr.setReferenceSpace(anchored);
           } else {

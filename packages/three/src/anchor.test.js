@@ -50,10 +50,18 @@ class FakeSession {
   }
 }
 
-function fakeSpace() {
+/**
+ * A reference space. Its offset spaces carry the transform they were made
+ * with, unless `nanOffsets`, set now or later, makes them carry NaN the way
+ * IWER's do.
+ *
+ * @param {{ nanOffsets?: boolean }} [options]
+ */
+function fakeSpace({ nanOffsets = false } = {}) {
   /** @type {Map<string, Set<() => void>>} */
   const listeners = new Map();
   const space = {
+    nanOffsets,
     /**
      * @param {string} type
      * @param {() => void} listener
@@ -85,7 +93,11 @@ function fakeSpace() {
     },
     /** @param {XRRigidTransform} transform */
     getOffsetReferenceSpace(transform) {
-      return { base: space, offset: transform };
+      const nan = { x: NaN, y: NaN, z: NaN, w: NaN };
+      return {
+        base: space,
+        offset: space.nanOffsets ? { position: nan, orientation: nan } : transform,
+      };
     },
   };
   return space;
@@ -106,6 +118,18 @@ function fakePose({
 }
 
 /**
+ * The pose of an offset space in the space it was made from: the offset it
+ * carries.
+ *
+ * @param {unknown} space
+ * @param {unknown} from
+ */
+function offsetPose(space, from) {
+  const offset = /** @type {{ base?: unknown, offset?: XRRigidTransform }} */ (space);
+  return offset.base === from ? { transform: offset.offset } : null;
+}
+
+/**
  * A frame that only answers for the given space, the way a real frame only
  * answers for spaces of its own session.
  *
@@ -117,6 +141,7 @@ function fakeFrame(space, pose) {
   return /** @type {XRFrame} */ (
     /** @type {unknown} */ ({
       getViewerPose: (/** @type {unknown} */ asked) => (asked === space ? pose : null),
+      getPose: offsetPose,
     })
   );
 }
@@ -176,7 +201,7 @@ function levelFrame(base, level, baseInLevel, viewerInLevel) {
       getViewerPose: (/** @type {unknown} */ asked) =>
         asked === level ? viewerInLevel : asked === base ? viewerInBase : null,
       getPose: (/** @type {unknown} */ space, /** @type {unknown} */ from) =>
-        space === base && from === level ? baseInLevel : null,
+        space === base && from === level ? baseInLevel : offsetPose(space, from),
     })
   );
 }
@@ -392,6 +417,70 @@ describe("anchorToViewer", () => {
     session.pump(
       fakeFrame(space, fakePose({ position: { x: 1, y: 2, z: 3 }, orientation: YAW_90 })),
     );
+    assert.equal(overrides.length, 1);
+    const { offset } = /** @type {{ offset: XRRigidTransform }} */ (overrides[0]);
+    assert.deepEqual(offset.position, { x: 1, y: 2, z: 3 });
+  });
+
+  test("keeps the base space when the runtime offsets a space by NaN", () => {
+    // IWER does, and three then drew the scene from wherever the previous
+    // pose call had measured.
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace({ nanOffsets: true });
+    startSession(session, space);
+    session.pump(fakeFrame(space, fakePose({ position: { x: 0, y: 1.6, z: 0 } })));
+
+    // Three is handed back the space it requested, and the wait is over.
+    assert.deepEqual(overrides, [null]);
+    assert.equal(session.pending, 0);
+  });
+
+  test("drops the earlier anchor when a reset's offset space comes out NaN", () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace();
+    startSession(session, space);
+    session.pump(fakeFrame(space, fakePose({ position: { x: 1, y: 0, z: 0 } })));
+    assert.equal(overrides.length, 1);
+
+    // The earlier anchor is an offset from an origin the reset moved, so
+    // three must not be left holding it.
+    space.nanOffsets = true;
+    space.dispatch("reset");
+    session.pump(fakeFrame(space, fakePose({ position: { x: 0, y: 0, z: -2 } })));
+
+    assert.equal(overrides.length, 2);
+    assert.equal(overrides[1], null);
+    assert.equal(session.pending, 0);
+  });
+
+  test("waits on when a frame cannot say where the offset space is", () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace();
+    startSession(session, space);
+
+    // A pose for the viewer, but none for the offset space in `base`.
+    const pose = fakePose({ position: { x: 1, y: 2, z: 3 } });
+    session.pump(
+      /** @type {XRFrame} */ (
+        /** @type {unknown} */ ({
+          getViewerPose: (/** @type {unknown} */ asked) => (asked === space ? pose : null),
+          getPose: () => null,
+        })
+      ),
+    );
+    assert.equal(overrides.length, 0);
+    assert.equal(session.pending, 1);
+
+    session.pump(fakeFrame(space, pose));
     assert.equal(overrides.length, 1);
     const { offset } = /** @type {{ offset: XRRigidTransform }} */ (overrides[0]);
     assert.deepEqual(offset.position, { x: 1, y: 2, z: 3 });

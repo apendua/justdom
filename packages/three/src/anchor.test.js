@@ -51,17 +51,26 @@ class FakeSession {
 }
 
 /**
- * A reference space. Its offset spaces carry the transform they were made
- * with, unless `nanOffsets`, set now or later, makes them carry NaN the way
- * IWER's do.
+ * How a runtime offsets a reference space: as the spec has it, by the
+ * transform it is given, throwing a `TypeError` on anything else; as IWER
+ * does, by NaN for a transform and by the matrix for a matrix; or by NaN
+ * whatever it is given.
  *
- * @param {{ nanOffsets?: boolean }} [options]
+ * @typedef {"spec" | "matrix" | "nan"} Offsets
  */
-function fakeSpace({ nanOffsets = false } = {}) {
+
+/**
+ * A reference space, offsetting the way `offsets` says, now or after it is
+ * set again.
+ *
+ * @param {{ offsets?: Offsets }} [options]
+ */
+function fakeSpace({ offsets = /** @type {Offsets} */ ("spec") } = {}) {
   /** @type {Map<string, Set<() => void>>} */
   const listeners = new Map();
   const space = {
-    nanOffsets,
+    offsets,
+    offsetCalls: 0,
     /**
      * @param {string} type
      * @param {() => void} listener
@@ -91,13 +100,34 @@ function fakeSpace({ nanOffsets = false } = {}) {
     listenerCount(type) {
       return listeners.get(type)?.size ?? 0;
     },
-    /** @param {XRRigidTransform} transform */
-    getOffsetReferenceSpace(transform) {
+    /** @param {XRRigidTransform | Float32Array} offset */
+    getOffsetReferenceSpace(offset) {
+      space.offsetCalls += 1;
       const nan = { x: NaN, y: NaN, z: NaN, w: NaN };
-      return {
-        base: space,
-        offset: space.nanOffsets ? { position: nan, orientation: nan } : transform,
-      };
+      const isMatrix = offset instanceof Float32Array;
+      if (space.offsets === "spec") {
+        if (isMatrix) {
+          throw new TypeError("getOffsetReferenceSpace takes an XRRigidTransform");
+        }
+        const { x = 0 } = /** @type {XRRigidTransform} */ (offset).position;
+        return Number.isFinite(x)
+          ? { base: space, offset, fromMatrix: false }
+          : { base: space, offset: { position: nan, orientation: nan }, fromMatrix: false };
+      }
+      if (space.offsets === "matrix" && isMatrix) {
+        const position = new THREE.Vector3();
+        const orientation = new THREE.Quaternion();
+        new THREE.Matrix4().fromArray(offset).decompose(position, orientation, new THREE.Vector3());
+        return {
+          base: space,
+          offset: {
+            position: { x: position.x, y: position.y, z: position.z },
+            orientation: { x: orientation.x, y: orientation.y, z: orientation.z, w: orientation.w },
+          },
+          fromMatrix: true,
+        };
+      }
+      return { base: space, offset: { position: nan, orientation: nan }, fromMatrix: isMatrix };
     },
   };
   return space;
@@ -278,7 +308,7 @@ const GLOBAL = /** @type {{ XRRigidTransform?: unknown }} */ (/** @type {unknown
 describe("anchorToViewer", () => {
   beforeEach(() => {
     // Not a thing node's jsdom provides; the fakes only need it to carry its
-    // two arguments through to the offset space.
+    // two arguments through to the offset space, and the matrix they make.
     GLOBAL.XRRigidTransform = class {
       /**
        * @param {DOMPointInit} [position]
@@ -287,6 +317,17 @@ describe("anchorToViewer", () => {
       constructor(position = {}, orientation = {}) {
         this.position = position;
         this.orientation = orientation;
+        const { x = 0, y = 0, z = 0 } = position;
+        const q = { x: 0, y: 0, z: 0, w: 1, ...orientation };
+        this.matrix = new Float32Array(
+          new THREE.Matrix4()
+            .compose(
+              new THREE.Vector3(x, y, z),
+              new THREE.Quaternion(q.x, q.y, q.z, q.w),
+              new THREE.Vector3(1, 1, 1),
+            )
+            .toArray(),
+        );
       }
     };
   });
@@ -422,14 +463,99 @@ describe("anchorToViewer", () => {
     assert.deepEqual(offset.position, { x: 1, y: 2, z: 3 });
   });
 
-  test("keeps the base space when the runtime offsets a space by NaN", () => {
-    // IWER does, and three then drew the scene from wherever the previous
-    // pose call had measured.
+  test("offsets the space by the transform's matrix on a runtime that reads one", () => {
+    // IWER does, and offsets by NaN when it is given the transform itself.
     const { renderer, overrides, startSession } = fakeRenderer();
     anchorToViewer(renderer);
 
     const session = new FakeSession();
-    const space = fakeSpace({ nanOffsets: true });
+    const space = fakeSpace({ offsets: "matrix" });
+    startSession(session, space);
+    session.pump(
+      fakeFrame(space, fakePose({ position: { x: 1, y: 2, z: 3 }, orientation: YAW_90 })),
+    );
+
+    assert.equal(overrides.length, 1);
+    const override =
+      /** @type {{ base: unknown, offset: XRRigidTransform, fromMatrix: boolean }} */ (
+        overrides[0]
+      );
+    assert.equal(override.base, space);
+    assert.ok(override.fromMatrix);
+    const { position, orientation } = override.offset;
+    assert.ok(Math.abs((position.x ?? 0) - 1) < 1e-6);
+    assert.ok(Math.abs((position.y ?? 0) - 2) < 1e-6);
+    assert.ok(Math.abs((position.z ?? 0) - 3) < 1e-6);
+    assert.ok(Math.abs((orientation.y ?? 0) - YAW_90.y) < 1e-6);
+    assert.ok(Math.abs((orientation.w ?? 0) - YAW_90.w) < 1e-6);
+    assert.equal(session.pending, 0);
+  });
+
+  test("waits on when a frame cannot say where the space built from the matrix is", () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace({ offsets: "matrix" });
+    startSession(session, space);
+
+    // The space built from the transform answers, NaN; the one built from
+    // the matrix does not answer at all.
+    const pose = fakePose({ position: { x: 1, y: 2, z: 3 } });
+    session.pump(
+      /** @type {XRFrame} */ (
+        /** @type {unknown} */ ({
+          getViewerPose: (/** @type {unknown} */ asked) => (asked === space ? pose : null),
+          getPose: (/** @type {{ fromMatrix?: boolean }} */ offset, /** @type {unknown} */ from) =>
+            offset.fromMatrix ? null : offsetPose(offset, from),
+        })
+      ),
+    );
+    assert.equal(overrides.length, 0);
+    assert.equal(session.pending, 1);
+
+    session.pump(fakeFrame(space, pose));
+    assert.equal(overrides.length, 1);
+    assert.ok(/** @type {{ fromMatrix?: boolean }} */ (overrides[0])?.fromMatrix);
+  });
+
+  test("offsets a space once on a runtime that keeps to the spec", () => {
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace();
+    startSession(session, space);
+    session.pump(fakeFrame(space, fakePose({ position: { x: 1, y: 2, z: 3 } })));
+
+    assert.equal(overrides.length, 1);
+    assert.equal(space.offsetCalls, 1);
+  });
+
+  test("never hands a spec runtime the matrix when the transform is NaN itself", () => {
+    // A runtime that keeps to the spec throws on anything but a transform,
+    // and a throw out of the frame loop ends the session.
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace();
+    startSession(session, space);
+    session.pump(fakeFrame(space, fakePose({ position: { x: NaN, y: 0, z: 0 } })));
+
+    assert.deepEqual(overrides, [null]);
+    assert.equal(space.offsetCalls, 1);
+    assert.equal(session.pending, 0);
+  });
+
+  test("keeps the base space when the runtime offsets a space by NaN either way", () => {
+    // Three would draw the scene from wherever the previous pose call had
+    // measured.
+    const { renderer, overrides, startSession } = fakeRenderer();
+    anchorToViewer(renderer);
+
+    const session = new FakeSession();
+    const space = fakeSpace({ offsets: "nan" });
     startSession(session, space);
     session.pump(fakeFrame(space, fakePose({ position: { x: 0, y: 1.6, z: 0 } })));
 
@@ -450,7 +576,7 @@ describe("anchorToViewer", () => {
 
     // The earlier anchor is an offset from an origin the reset moved, so
     // three must not be left holding it.
-    space.nanOffsets = true;
+    space.offsets = "nan";
     space.dispatch("reset");
     session.pump(fakeFrame(space, fakePose({ position: { x: 0, y: 0, z: -2 } })));
 

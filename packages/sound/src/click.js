@@ -13,6 +13,8 @@
  * is and where it comes from.
  */
 
+import { checkSampleRate, createNoise, normalize } from "./waveform.js";
+
 /** How long the click lasts, in seconds. Much longer and it reads as a thud. */
 const DURATION = 0.05;
 
@@ -43,9 +45,6 @@ const NOISE_DECAY = 900;
 const ATTACK = 0.001;
 const RELEASE = 0.006;
 
-/** Any non-zero start for the noise. Fixed, so the click never changes. */
-const SEED = 0x9e3779b9;
-
 /**
  * One click, mono, at the given sample rate, scaled so its loudest sample is
  * exactly one — loudness belongs to whoever plays it, not to the waveform.
@@ -58,13 +57,10 @@ const SEED = 0x9e3779b9;
  * @returns {Float32Array<ArrayBuffer>} samples in [-1, 1], ready for `AudioBuffer.copyToChannel`
  */
 export function createClickWaveform(sampleRate) {
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
-    throw new Error(`Sample rate must be a positive number, got ${sampleRate}`);
-  }
+  checkSampleRate(sampleRate);
   const length = Math.max(1, Math.round(DURATION * sampleRate));
   const samples = new Float32Array(length);
-  let noise = SEED | 0;
-  let peak = 0;
+  const noise = createNoise();
   for (let i = 0; i < length; i += 1) {
     const t = i / sampleRate;
     let value = 0;
@@ -72,19 +68,9 @@ export function createClickWaveform(sampleRate) {
       value +=
         partial.gain * Math.exp(-partial.decay * t) * Math.sin(2 * Math.PI * partial.frequency * t);
     }
-    // xorshift32: cheap, and the same grain of noise every time.
-    noise ^= noise << 13;
-    noise ^= noise >>> 17;
-    noise ^= noise << 5;
-    value += NOISE_GAIN * Math.exp(-NOISE_DECAY * t) * (noise / 0x80000000);
+    value += NOISE_GAIN * Math.exp(-NOISE_DECAY * t) * noise();
     value *= Math.min(1, t / ATTACK, (DURATION - t) / RELEASE);
     samples[i] = value;
-    peak = Math.max(peak, Math.abs(value));
   }
-  if (peak > 0) {
-    for (let i = 0; i < length; i += 1) {
-      samples[i] /= peak;
-    }
-  }
-  return samples;
+  return normalize(samples);
 }

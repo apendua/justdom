@@ -46,6 +46,20 @@ and the positions the game already has are in its coordinates, not the room's.
 `volume` — and the defaults suit a board about a metre square within arm's reach, which is every app
 here so far.
 
+**`createVoices(listener, samples, options?)`** is the same, for any waveform. `createClicks` is
+`createVoices` with the click in it. The options are the same, and `play(position, loudness?)` takes
+a second argument from 0 to 1 that scales that one note, for a sound that is louder the harder its
+event was.
+
+**`createSweepWaveform(sampleRate, sweep)`** is one frequency slide (`from` and `to` in Hz, over
+`duration` seconds), dying away at `decay`, with `edge` of second harmonic on it and `noise` of
+contact on its onset. A slide up is a pluck and a slide down is a thump. Like the click it returns
+samples peaking at exactly one and touches no Web Audio API.
+
+**`checkSampleRate`, `createNoise` and `normalize`** are what the click and the sweep are both made
+of: the rate check, the seeded noise, and the pass that makes a waveform's loudest sample one. They
+are exported for an app writing a noise of its own.
+
 **`audioOutputSelection()`** — which speakers all of this comes out of. A desktop headset is rarely
 the only thing plugged in, and the browser's own choice is not always the one the player is wearing:
 
@@ -107,6 +121,10 @@ frame would put the click wherever the _last_ one landed.
 `castle-xr` and `marblerun` on a brick coming to rest, and `polytope-xr` on two clusters snapping
 together — which is the same event wearing a different hat, and used to be a `Switch1.wav` loaded by
 hand in that app.
+
+`pinball` makes all of its noises with `createSweepWaveform` and `createVoices`, and uses the click
+for the ball meeting a wall or a flipper. `hexboard-xr` and `paperwings-xr` each carry an older copy
+of the sweep and of the voice pool, written before the package had them.
 
 The soundtrack player and the output picker are used by every app here with music, the three above
 among them, each behind a Music section on a panel it already had. Every one of them had its own

@@ -68,6 +68,126 @@ export const BoxBatchContext = createProperty(
   () => null,
 );
 
+/**
+ * Which depth bias a panel's boxes are drawn with, if any: a prototype of
+ * the paint rank in item 10.2 of `docs/freedom-architecture-plan.md`, set by
+ * the panel's `depthRank` option. Each box moves toward the viewer by its
+ * rank (`getPaintRank` in `elevation.js`) times a step in NDC depth:
+ *
+ * - `"constant"`: `DEPTH_RANK_EPSILON` a rank, whatever the panel's angle.
+ * - `"slope"`: `DEPTH_RANK_SLOPE_FACTOR` times how much NDC depth changes
+ *   from one pixel to the next across the panel, plus `DEPTH_RANK_FLOOR`.
+ *
+ * Either is on top of the geometric lift, which stays until item 10.3, and
+ * moves only the boxes: text and the other marks are not biased yet, so a
+ * box can cover its own marks where its rank times the step reaches the
+ * 1 px they stand in front of it.
+ *
+ * @typedef {"constant" | "slope"} DepthRankBias
+ */
+
+/**
+ * The step a rank under `"constant"`, in NDC depth: what item 10.1 found
+ * the steepest panel needs on a Quest 3, a pile tipped 45° or more at 1 m.
+ */
+export const DEPTH_RANK_EPSILON = 2 ** -18;
+
+/**
+ * The step a rank under `"slope"` for a panel facing the viewer, where the
+ * slope is nothing: what item 10.1 found every pile facing the viewer needs,
+ * at 1, 5 and 10 m, in the emulator and on a Quest 3.
+ */
+export const DEPTH_RANK_FLOOR = 2 ** -22;
+
+/**
+ * `k` in `rank · (k · slope + floor)`: how many pixels' worth of the panel's
+ * depth slope one rank takes. Set by the probe's sweep in item 10.2, in the
+ * emulator, as the least power of two that left no pixel of any pile wrong;
+ * the plan's Status row says whether the Quest has confirmed it.
+ */
+export const DEPTH_RANK_SLOPE_FACTOR = 2 ** -3;
+
+/**
+ * The most one rank moves a box under `"slope"`, in NDC depth, so a panel
+ * seen nearly edge on, whose slope runs to infinity, does not throw its
+ * boxes past the near plane. The step item 10.1's steepest pile needed in
+ * the emulator.
+ */
+export const DEPTH_RANK_STEP_LIMIT = 2 ** -12;
+
+/**
+ * The bias as GLSL, for the batch's vertex shader and for a probe that has
+ * to draw with the same formula. Compiled only under `DEPTH_RANK`, and
+ * under `DEPTH_RANK_SLOPE` for the slope.
+ *
+ * The slope is taken from the plane rather than from the pixels, so it
+ * costs a few operations a vertex, adds no draw and writes no
+ * `gl_FragDepth`, which would turn the early depth test off. NDC depth is
+ * affine in NDC x and y across a plane, under a perspective projection and
+ * an orthographic one alike, so its gradient is one number for the whole
+ * quad and every vertex computes the same one. It is found by moving the
+ * vertex along the quad's two edges, `modelView`'s first two columns:
+ * each move changes NDC x, y and z together, and the two moves give the
+ * change in z per change in x and in y. A change of 2 in NDC is the eye's
+ * viewport, `uDepthRankViewport` in device pixels, so dividing by it gives
+ * the change from one pixel to the next; the larger of the two directions
+ * is the slope, as `glPolygonOffset` takes it.
+ */
+export const DEPTH_RANK_GLSL = /* glsl */ `
+#ifdef DEPTH_RANK
+uniform vec2 uDepthRankViewport;
+float depthRankStep(mat4 modelView, vec4 clip) {
+  #ifdef DEPTH_RANK_SLOPE
+  vec4 along = projectionMatrix * vec4(modelView[0].xyz, 0.0);
+  vec4 across = projectionMatrix * vec4(modelView[1].xyz, 0.0);
+  // The change in NDC along each edge, times clip.w squared, which the
+  // ratio below cancels.
+  vec3 a = along.xyz * clip.w - clip.xyz * along.w;
+  vec3 b = across.xyz * clip.w - clip.xyz * across.w;
+  float det = a.x * b.y - a.y * b.x;
+  if (abs(det) < 1e-30) {
+    return DEPTH_RANK_STEP_LIMIT;
+  }
+  vec2 gradient = vec2(a.z * b.y - b.z * a.y, a.x * b.z - b.x * a.z) / det;
+  vec2 perPixel = abs(gradient) * 2.0 / uDepthRankViewport;
+  float slope = max(perPixel.x, perPixel.y);
+  return min(DEPTH_RANK_SLOPE_FACTOR * slope + DEPTH_RANK_FLOOR, DEPTH_RANK_STEP_LIMIT);
+  #else
+  return DEPTH_RANK_EPSILON;
+  #endif
+}
+#endif
+`;
+
+/**
+ * The defines that compile `DEPTH_RANK_GLSL` for a bias, with its constants.
+ *
+ * @param {DepthRankBias} bias
+ * @returns {Record<string, string>}
+ */
+export function depthRankDefines(bias) {
+  /** @type {Record<string, string>} */
+  const defines = {
+    DEPTH_RANK: "",
+    DEPTH_RANK_EPSILON: glslFloat(DEPTH_RANK_EPSILON),
+    DEPTH_RANK_FLOOR: glslFloat(DEPTH_RANK_FLOOR),
+    DEPTH_RANK_SLOPE_FACTOR: glslFloat(DEPTH_RANK_SLOPE_FACTOR),
+    DEPTH_RANK_STEP_LIMIT: glslFloat(DEPTH_RANK_STEP_LIMIT),
+  };
+  if (bias === "slope") {
+    defines.DEPTH_RANK_SLOPE = "";
+  }
+  return defines;
+}
+
+/**
+ * @param {number} value
+ * @returns {string}
+ */
+function glslFloat(value) {
+  return value.toExponential();
+}
+
 // Attribute slots are the budget here, not bytes. WebGL promises sixteen and
 // a headset browser gives exactly that; the quad's position takes one and
 // the instance matrix four, which leaves eleven for a box's description, and
@@ -76,8 +196,18 @@ export const BoxBatchContext = createProperty(
 // leave empty: `z` is a header packing the kind, three flags and the ramp
 // row into one integer-valued float (exact far past any row count a page
 // reaches), and `w` the element's opacity. Unpacked here, once per vertex,
-// rather than per fragment. Two slots of the eleven are left.
+// rather than per fragment.
+//
+// None of the eleven is left, though nine are named here. Chromium's WebGL
+// runs on ANGLE, and ANGLE counts every attribute a shader declares, used or
+// not, against the sixteen, while three declares `normal` and `uv` in front
+// of every `ShaderMaterial`'s vertex shader. A tenth fails to link. So a
+// panel with a `depthRank` packs the box's rank into `aSize.w` as well,
+// `2 * rank + opacity`: the rank is a whole number and the opacity runs
+// from 0 to 1, so the floor of half of it is the rank, and what is left is
+// the opacity, to about a ten-thousandth up to a rank of a thousand.
 const instancedVertex = /* glsl */ `
+${DEPTH_RANK_GLSL}
 attribute vec4 aSize;
 attribute vec4 aRadii;
 attribute vec4 aBorder;
@@ -116,10 +246,19 @@ void main() {
     mod(floor(flags / 2.0), 2.0),
     mod(floor(flags / 4.0), 2.0)
   );
+  #ifdef DEPTH_RANK
+  float depthRank = floor(aSize.w * 0.5);
+  vGradientRamp = vec2(floor(flags / 8.0), aSize.w - 2.0 * depthRank);
+  #else
   vGradientRamp = vec2(floor(flags / 8.0), aSize.w);
+  #endif
   vGradientGeometry = aGradientGeometry;
   vGradientTile = aGradientTile;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  mat4 modelView = modelViewMatrix * instanceMatrix;
+  gl_Position = projectionMatrix * modelView * vec4(position, 1.0);
+  #ifdef DEPTH_RANK
+  gl_Position.z -= depthRank * depthRankStep(modelView, gl_Position) * gl_Position.w;
+  #endif
 }
 `;
 
@@ -175,10 +314,15 @@ void main() {
  * stays linked after the last panel closes (`programKeeper.js`), so the next
  * one to open does not link it again.
  *
+ * A panel drawn with a depth bias compiles the program with its defines, so
+ * a panel without one runs the shader it always did.
+ *
+ * @param {DepthRankBias | undefined} depthRank
  * @returns {THREE.ShaderMaterial}
  */
-function batchMaterial() {
+function batchMaterial(depthRank) {
   return new THREE.ShaderMaterial({
+    defines: depthRank ? depthRankDefines(depthRank) : {},
     vertexShader: instancedVertex,
     fragmentShader: instancedFragment,
     transparent: true,
@@ -193,12 +337,58 @@ function batchMaterial() {
     uniforms: {
       uRamp: rampUniforms.uRamp,
       uRampHeight: rampUniforms.uRampHeight,
+      ...(depthRank === "slope" ? { uDepthRankViewport: { value: new THREE.Vector2(1, 1) } } : {}),
     },
   });
 }
 
-/** @type {ProgramKind<THREE.ShaderMaterial>} */
-const BOX_PROGRAM = { name: "freedom-box-batch", create: batchMaterial };
+/**
+ * The bias a batch material was made for, read back off its defines.
+ *
+ * @param {THREE.ShaderMaterial} material
+ * @returns {DepthRankBias | undefined}
+ */
+function biasOf(material) {
+  if ("DEPTH_RANK_SLOPE" in material.defines) {
+    return "slope";
+  }
+  return "DEPTH_RANK" in material.defines ? "constant" : undefined;
+}
+
+/**
+ * Each bias compiles a program of its own, so each is a variant with a
+ * keeper of its own, made with the same bias.
+ *
+ * @type {ProgramKind<THREE.ShaderMaterial>}
+ */
+const BOX_PROGRAM = {
+  name: "freedom-box-batch",
+  create: (material) => batchMaterial(biasOf(material)),
+  variant: (material) => biasOf(material) ?? "none",
+};
+
+/** Scratch for reading the viewport a bucket is drawn into. */
+const viewport = new THREE.Vector4();
+
+/**
+ * Keep a slope-biased material's `uDepthRankViewport` at the viewport it is
+ * drawn into: the eye's, in a session, which three sets before each eye's
+ * draws. Uploaded only when it changes, which is when a session starts or
+ * ends, since the program keeps the last value it was given.
+ *
+ * @this {THREE.Mesh}
+ * @param {THREE.WebGLRenderer} renderer
+ * @returns {void}
+ */
+function followViewport(renderer) {
+  const material = /** @type {THREE.ShaderMaterial} */ (this.material);
+  renderer.getCurrentViewport(viewport);
+  const size = material.uniforms.uDepthRankViewport.value;
+  if (size.x !== viewport.z || size.y !== viewport.w) {
+    size.set(viewport.z, viewport.w);
+    material.uniformsNeedUpdate = true;
+  }
+}
 
 /**
  * How far behind its integer a box bucket draws, so that text of the same
@@ -258,11 +448,13 @@ class Bucket {
    * @param {number} renderOrder
    * @param {Object3D} parent
    * @param {THREE.ShaderMaterial} material The panel's, shared by its buckets.
+   * @param {DepthRankBias | undefined} depthRank The panel's depth bias.
    */
-  constructor(renderOrder, parent, material) {
+  constructor(renderOrder, parent, material, depthRank) {
     this.renderOrder = renderOrder;
     this.parent = parent;
     this.material = material;
+    this.depthRank = depthRank;
   }
 
   /**
@@ -326,6 +518,9 @@ class Bucket {
     // up as text that scrolls into view being missing rather than as nothing
     // working at all.
     mesh.matrixWorldNeedsUpdate = true;
+    if (this.depthRank === "slope") {
+      mesh.onBeforeRender = followViewport;
+    }
     this.mesh = mesh;
     this.parent.add(mesh);
   }
@@ -338,9 +533,10 @@ class Bucket {
    *   in rather than read off `box.material`, because a batched box shares one
    *   invisible material with every other batched box on the page and keeps
    *   its numbers to itself.
+   * @param {number} rank The box's paint rank, written only under a bias.
    * @returns {void}
    */
-  write(index, box, matrix, uniforms) {
+  write(index, box, matrix, uniforms, rank) {
     const mesh = this.mesh;
     if (!mesh) {
       return;
@@ -356,7 +552,9 @@ class Bucket {
     // Unpacked by the vertex shader; see `instancedVertex`.
     size[index * 4 + 2] =
       gradient.x + 4 * gradient.y + 8 * gradient.z + 16 * gradient.w + 32 * ramp.x;
-    size[index * 4 + 3] = ramp.y;
+    // The opacity, and under a depth bias the rank with it; see
+    // `instancedVertex`.
+    size[index * 4 + 3] = this.depthRank ? 2 * rank + ramp.y : ramp.y;
     writeVec4(this.data.aGradientGeometry, index, uGradientGeometry.value);
     writeVec4(this.data.aGradientTile, index, uGradientTile.value);
     writeVec4(this.data.aRadii, index, uRadii.value);
@@ -468,11 +666,27 @@ export class BoxBatch {
   #container;
 
   /**
+   * The depth bias this panel's boxes are drawn with, if any.
+   *
+   * @readonly
+   * @type {DepthRankBias | undefined}
+   */
+  depthRank;
+
+  /**
    * This panel's, shared by its buckets. See `batchMaterial`.
    *
    * @type {THREE.ShaderMaterial}
    */
-  #material = keepProgram(batchMaterial(), BOX_PROGRAM);
+  #material;
+
+  /**
+   * Each box's paint rank, under a depth bias: written by the box from
+   * `getPaintRank` and copied into the bucket at the next rebuild.
+   *
+   * @type {Map<THREE.Mesh, number>}
+   */
+  #ranks = new Map();
 
   #dirty = false;
   #disposed = false;
@@ -503,9 +717,12 @@ export class BoxBatch {
    * @param {Object3D} container The portal's container object. Buckets hang
    *   off it, so instance matrices are in its frame and it carries the whole
    *   panel as one.
+   * @param {DepthRankBias} [depthRank] The panel's `depthRank` option.
    */
-  constructor(container) {
+  constructor(container, depthRank) {
     this.#container = container;
+    this.depthRank = depthRank;
+    this.#material = keepProgram(batchMaterial(depthRank), BOX_PROGRAM);
   }
 
   /**
@@ -549,9 +766,27 @@ export class BoxBatch {
     }
     // No visibility to restore: the material was never this mesh's to hide.
     mesh.frustumCulled = true;
+    this.#ranks.delete(mesh);
     if (this.#drawn.delete(mesh)) {
       this.invalidate();
     }
+  }
+
+  /**
+   * Say where a box stands in the paint order, for the depth bias. Does
+   * nothing for a panel drawn without one, which is why a box asks
+   * `depthRank` before it reads its rank at all.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {number} rank `getPaintRank` of the box's element.
+   * @returns {void}
+   */
+  setRank(mesh, rank) {
+    if (!this.depthRank || this.#ranks.get(mesh) === rank) {
+      return;
+    }
+    this.#ranks.set(mesh, rank);
+    this.invalidate();
   }
 
   /**
@@ -687,7 +922,7 @@ export class BoxBatch {
     for (const [order, needed] of wanted) {
       let bucket = this.#buckets.get(order);
       if (!bucket) {
-        bucket = new Bucket(order, this.#container, this.#material);
+        bucket = new Bucket(order, this.#container, this.#material, this.depthRank);
         this.#buckets.set(order, bucket);
       }
       bucket.reserve(needed);
@@ -709,6 +944,7 @@ export class BoxBatch {
           box,
           matrices[i],
           /** @type {Record<string, THREE.IUniform>} */ (this.#members.get(box)),
+          this.#ranks.get(box) ?? 0,
         );
         bucket.count += 1;
       }
@@ -742,14 +978,16 @@ export class BoxBatch {
     this.#buckets.clear();
     this.#members.clear();
     this.#drawn.clear();
+    this.#ranks.clear();
     this.#material.dispose();
   }
 }
 
 /**
  * @param {Object3D} container
+ * @param {DepthRankBias} [depthRank] The panel's `depthRank` option.
  * @returns {BoxBatch}
  */
-export function createBoxBatch(container) {
-  return new BoxBatch(container);
+export function createBoxBatch(container, depthRank) {
+  return new BoxBatch(container, depthRank);
 }

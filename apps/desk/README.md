@@ -34,6 +34,15 @@ On a laptop there is no session to offer, so there is no button and no renderer.
 installs a headset in the browser (IWER, with its dev panels, from `@apendua.dev/headset`) and an
 Enter button appears at the bottom; `?emulator=bare` installs the runtime without the panels.
 
+`?depthRank=constant` or `?depthRank=slope` draws every panel's boxes with freedom's depth bias by
+paint rank, a prototype for item 10.2 of
+[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md), and `?gpuTime` logs
+the GPU time of the session's frames to the console every 300 frames, where the headset's browser
+exposes `EXT_disjoint_timer_query_webgl2`. Night Ops, `?look=ops`, is the look with the most panels,
+so it is the one to time. `depth-probe.html`, beside `index.html`, is the item's probe; its comment
+says how to run it on a Quest. The probe and `?gpuTime` are temporary, there until the headset's
+numbers are in.
+
 `node tests/xr-check.mjs` puts each look up in turn in a session on the emulated headset in headless
 Chromium. It fails unless every zone the look places becomes a panel and loads, the ray aimed at the
 power control is on it, and the trigger there ends the session, or if the page throws. It takes

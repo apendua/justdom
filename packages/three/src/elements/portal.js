@@ -55,6 +55,7 @@ import { registerOutlineHost } from "./outlines.js";
  * @import {Mountable} from '../core.js';
  * @import {Object3D, Texture} from 'three';
  * @import {MutationBatch} from './animationClock.js';
+ * @import {DepthRankBias} from './boxBatch.js';
  * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
@@ -272,6 +273,12 @@ function claimRoot(root) {
  *   when the channel next empties. For a panel where responding to the
  *   hand matters more than never being seen half-updated. The initial
  *   mount is held back until it is whole either way.
+ * @property {DepthRankBias} [depthRank] A prototype, off by default: draw
+ *   the panel's boxes with a depth bias by paint rank on top of the lift,
+ *   `"constant"` or `"slope"` (see `DepthRankBias` in `boxBatch.js`). It is
+ *   there to measure the bias on a headset for item 10 of
+ *   `docs/freedom-architecture-plan.md`, and moves only the boxes, so a box
+ *   far enough up a pile can cover its own text.
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a
@@ -396,6 +403,7 @@ function buildPortal(ctx, ownOptions = {}) {
     haptics = {},
     thumbstickWheel = false,
     draggable = false,
+    depthRank,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -442,7 +450,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * so their instance matrices are in its frame, and a panel is the unit that
    * comes and goes.
    */
-  const boxBatch = createBoxBatch(containerObject);
+  const boxBatch = createBoxBatch(containerObject, depthRank);
 
   /**
    * And its text, drawn from arrays of exactly-sized runs rather than a

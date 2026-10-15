@@ -596,9 +596,9 @@ describe("box batch attribute budget", () => {
     // Sixteen is the minimum MAX_VERTEX_ATTRIBS, and what a headset browser
     // gives. A vec4 or smaller takes one slot, a mat4 four. ANGLE, under
     // Chromium's WebGL, counts every declared attribute against them, used
-    // or not. Three declares `position`, `normal` and `uv`
-    // in front of a `ShaderMaterial`, and the instance matrix takes four.
-    // Counted in the source, every `#ifdef` included, under the slope.
+    // or not. Three declares `position`, `normal` and `uv` in front of a
+    // `ShaderMaterial`, and the instance matrix takes four. Counted in the
+    // source, every `#ifdef` included, under the slope.
     const container = new THREE.Group();
     const { mesh, uniforms } = makeBox();
     container.add(mesh);

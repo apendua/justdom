@@ -38,10 +38,10 @@ export function timeGpu(renderer: WebGLRenderer, label: string): void {
   let count = 0;
   const render = renderer.render.bind(renderer);
   renderer.render = (scene, camera) => {
-    // Only the session's frames: a drag ghost's snapshot renders into a
-    // target of its own and is not a frame.
-    const timed =
-      renderer.xr.isPresenting && renderer.getRenderTarget() === null && !inFlight[next];
+    // Only the session's frames. Three sets the session's own target before
+    // each of them, so the target cannot tell them apart; a drag ghost's
+    // snapshot turns `xr.enabled` off while it draws (`ghostSnapshot.js`).
+    const timed = renderer.xr.enabled && renderer.xr.isPresenting && !inFlight[next];
     if (timed) gl.beginQuery(ext.TIME_ELAPSED_EXT, ring[next]);
     render(scene, camera);
     if (timed) {

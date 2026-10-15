@@ -940,8 +940,11 @@ function buildPortal(ctx, ownOptions = {}) {
    * before its children's, and every node it passed.
    *
    * @typedef {object} Unlinked
-   * @property {Array<() => void>} teardowns
-   * @property {Node[]} nodes
+   * @property {Array<() => void>} teardowns Collected once each, however
+   *   many walks reach the object.
+   * @property {Node[]} nodes Every node the walks reached, a node reached by
+   *   two of them twice: a row held for a commit is unlinked by name and
+   *   again by the DOM walk. `scheduleTeardown` allows for the repeat.
    */
 
   /**

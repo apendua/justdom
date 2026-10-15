@@ -22,7 +22,7 @@ import { classify } from "./animationClock.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
-  CHECKED_ATTRIBUTE,
+  ELEMENT_FLAGS,
   FOCUS_ATTRIBUTE,
   HOVER_ATTRIBUTE,
   PORTAL_ATTRIBUTE,
@@ -213,13 +213,10 @@ export function isBookkeepingMutation(mutation) {
  * `class` and `style` are pointedly not in this set: they are the author's
  * own, and an inline width or a swapped class is exactly how a panel does
  * move its layout on purpose.
+ *
+ * @type {ReadonlySet<string>}
  */
-const PRESENTATIONAL_ATTRIBUTES = new Set([
-  HOVER_ATTRIBUTE,
-  ACTIVE_ATTRIBUTE,
-  CHECKED_ATTRIBUTE,
-  FOCUS_ATTRIBUTE,
-]);
+const PRESENTATIONAL_ATTRIBUTES = new Set(ELEMENT_FLAGS);
 
 /**
  * Of those, the ones that may only style the element they match and its

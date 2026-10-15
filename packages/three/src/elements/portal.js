@@ -25,7 +25,7 @@ import {
   isPortalRoot,
   LOADING_ATTRIBUTE,
 } from "./mirror.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { ELEMENT_FLAGS, PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -41,6 +41,7 @@ import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
+import { finishTeardownOf, scheduleTeardown } from "./portalTeardown.js";
 import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
 import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
@@ -171,6 +172,9 @@ function createContainerElement() {
  * @returns {HTMLElement}
  */
 function claimRoot(root) {
+  // The panel this element was the root of may still be taking its objects
+  // down, and that has to be over before another starts on the element.
+  finishTeardownOf(root);
   if (!root.isConnected) {
     throw new Error("A portal can only mirror an element that is in the document.");
   }
@@ -834,6 +838,13 @@ function buildPortal(ctx, ownOptions = {}) {
     : null;
 
   /**
+   * The scheduler `render()` installed, if this portal is under one. Besides
+   * pacing the panel, it is what takes the panel's objects down after it
+   * closes, since it outlives the panel (see `portalTeardown.js`).
+   */
+  const sceneScheduler = PortalSchedulerContext.get(ctx);
+
+  /**
    * Who paces this portal. The scheduler `render()` installed, whenever
    * there is one — that is what makes the budget global, one pool of frame
    * time divided across every panel in the scene, because the frame the
@@ -848,7 +859,7 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   const scheduler = !hasFrames
     ? null
-    : (PortalSchedulerContext.get(ctx) ??
+    : (sceneScheduler ??
       createPortalScheduler({
         budget,
         requestFrames,
@@ -925,9 +936,23 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /**
-   * Take down everything the portal made for a node and for everything under
-   * it: the subscription that keeps each object in step with its element,
-   * and with it the object's place in the raycast set.
+   * What a walk of `unlink` collects: each object's teardown, a parent's
+   * before its children's, and every node it passed.
+   *
+   * @typedef {object} Unlinked
+   * @property {Array<() => void>} teardowns
+   * @property {Node[]} nodes
+   */
+
+  /**
+   * Let go of everything the portal made for a node and for everything under
+   * it, in the bookkeeping: the maps between nodes and objects, the
+   * keyboard's hold on a field, and the mirror's caches. What it does not do
+   * is the expensive half, unsubscribing each object, which takes the
+   * object's effects, its place in the batches and its place in the raycast
+   * set with it. Those teardowns are collected instead, children before
+   * their parents, for `cleanup` to run now or `disconnect` to queue (see
+   * `portalTeardown.js`).
    *
    * Descendants are looked for in two places, and both are needed. The DOM
    * is the obvious one — but by the time a portal is told to disconnect, the
@@ -945,24 +970,35 @@ function buildPortal(ctx, ownOptions = {}) {
    * dead tree.
    *
    * Both walks are idempotent — the maps are cleared as they go — so a node
-   * reachable both ways is cleaned once.
+   * reachable both ways is collected once.
    *
    * @param {Node} node
+   * @param {Unlinked} unlinked
    */
-  function cleanup(node) {
+  function unlink(node, unlinked) {
     portalKeyboard?.released(node);
+    unlinked.nodes.push(node);
+    if (released && root && node.nodeType === Node.ELEMENT_NODE) {
+      // A panel over the page's own element is closing, and the page shows
+      // that element again. Every flag the portal wrote on it comes off now,
+      // with the root's marks, rather than with each control's teardown,
+      // which may be frames away.
+      for (const flag of ELEMENT_FLAGS) {
+        /** @type {Element} */ (node).removeAttribute(flag);
+      }
+    }
     const object = nodeToObject.get(node);
     if (object) {
-      const cleanupFn = objectToCleanup.get(object);
-      if (cleanupFn) {
-        cleanupFn();
+      const teardown = objectToCleanup.get(object);
+      if (teardown) {
+        unlinked.teardowns.push(teardown);
         objectToCleanup.delete(object);
       }
       nodeToObject.delete(node);
       objectToNode.delete(object);
-      // A snapshot: tearing an object down detaches it from its parent,
-      // which would mutate the array a live walk is reading.
-      for (const child of [...getContentGroup(object).children]) {
+      // Nothing is taken down during the walk, so the children are read as
+      // they stand.
+      for (const child of getContentGroup(object).children) {
         const childNode = objectToNode.get(child);
         // A child whose node is still in the tree was moved out of this
         // subtree, not removed with it: its object sits here only until the
@@ -972,18 +1008,33 @@ function buildPortal(ctx, ownOptions = {}) {
         // is the other walk's, so this skips nothing that is anybody's to
         // clean.
         if (childNode && !containerElement.contains(childNode)) {
-          cleanup(childNode);
+          unlink(childNode, unlinked);
         }
       }
     }
     node.childNodes.forEach((childNode) => {
-      cleanup(childNode);
+      unlink(childNode, unlinked);
     });
     // Forgotten as well as taken down: the mirror's caches outlive the
     // portal, and a node kept in them keeps this mirror's signals under it.
     // The element the page owns is the one that comes back — see
     // `forgetNode` in mirror.js.
     mirror.forget(node);
+  }
+
+  /**
+   * Take down everything the portal made for a node and for everything under
+   * it, here and now: `unlink`, then every teardown it collected.
+   *
+   * @param {Node} node
+   */
+  function cleanup(node) {
+    /** @type {Unlinked} */
+    const unlinked = { teardowns: [], nodes: [] };
+    unlink(node, unlinked);
+    for (const teardown of unlinked.teardowns) {
+      teardown();
+    }
   }
 
   /**
@@ -1017,6 +1068,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * @returns {THREE.Object3D | undefined}
    */
   function createObjectForNode(node) {
+    // The objects a closed panel built for this node may still be waiting
+    // to be taken down, and their teardowns write to what this build will
+    // own.
+    finishTeardownOf(node);
     mirror.adopt(node);
     const parent = node.parentNode;
     if (parent && templateNodes.has(parent)) {
@@ -1914,26 +1969,54 @@ function buildPortal(ctx, ownOptions = {}) {
   let released = false;
 
   /**
-   * Take the panel down: everything under the element, then, for an element
-   * the page owns, the portal's marks — after the walk, not before it, since
-   * the teardowns it runs still look up the tree for the top of the panel.
-   * What is left on the element afterwards is the page's own, the hover and
-   * press flags included, which each element's teardown clears for itself.
+   * Take the panel down. Everything that could change it stops, and the
+   * panel leaves the scene, the raycast and the page, all in this task:
+   * `takeDownContainer`, then `unlink` over everything under the element,
+   * then, for an element the page owns, the portal's marks. What is left
+   * on the element afterwards is the page's own, the hover and press flags
+   * included, which `unlink` takes off with the marks.
+   *
+   * Then the objects' own teardowns, which are most of the cost: queued on
+   * the scene's scheduler and run a budget at a time where there is one,
+   * run here where the portal paces itself. `portalTeardown.js` has the
+   * rules.
    */
   function disconnect() {
     if (released) {
       return;
     }
     released = true;
-    cleanup(containerElement);
+    /** @type {Unlinked} */
+    const unlinked = { teardowns: [], nodes: [] };
+    takeDownContainer(unlinked);
+    unlink(containerElement, unlinked);
     if (root) {
       containerElement.removeAttribute(PORTAL_ATTRIBUTE);
       containerElement.removeAttribute(LOADING_ATTRIBUTE);
       containerElement.removeAttribute(BUSY_ATTRIBUTE);
     }
+    if (sceneScheduler) {
+      scheduleTeardown({
+        scheduler: sceneScheduler,
+        requestFrames,
+        teardowns: unlinked.teardowns,
+        nodes: unlinked.nodes,
+      });
+    } else {
+      for (const teardown of unlinked.teardowns) {
+        teardown();
+      }
+    }
   }
 
-  objectToCleanup.set(containerObject, () => {
+  /**
+   * Everything the portal set up around its content, taken down by
+   * `disconnect` before anything under the container.
+   *
+   * @param {Unlinked} unlinked Where the objects held for a commit are
+   *   collected, with the rest of the panel's.
+   */
+  function takeDownContainer(unlinked) {
     // First: the board is a panel of its own hanging off this one's parent,
     // and it comes down before the parent is left.
     portalKeyboard?.dispose();
@@ -1946,15 +2029,21 @@ function buildPortal(ctx, ownOptions = {}) {
     // A panel closed before it finished mounting still had a frame up.
     stopLoadingFrame();
     // Nothing is waiting for a commit that is not going to come. Both lists
-    // are taken down here by name, because an object can be in neither
-    // place the walks below look — built for a commit, then its node left
-    // — and `cleanup` is idempotent for the ones that are.
+    // are collected here by name, because an object can be in neither
+    // place the walks look — built for a commit, then its node left — and
+    // `unlink` is idempotent for the ones that are. An object built for an
+    // arrival hangs off no parent yet, so nothing above it is hidden with
+    // the container: it is hidden itself.
     for (const node of pendingAttachments) {
-      cleanup(node);
+      const object = nodeToObject.get(node);
+      if (object) {
+        object.visible = false;
+      }
+      unlink(node, unlinked);
     }
     pendingAttachments.clear();
     for (const node of pendingRemovals) {
-      cleanup(node);
+      unlink(node, unlinked);
     }
     pendingRemovals.clear();
     if (blocker) {
@@ -1963,13 +2052,17 @@ function buildPortal(ctx, ownOptions = {}) {
     }
     // The portal's own container goes with it. One the page handed over is
     // the page's, and stays exactly where it is; `disconnect` takes the
-    // portal's marks off it once everything under it is cleaned up.
+    // portal's marks off it.
     if (!root && containerElement.parentNode) {
       containerElement.parentNode.removeChild(containerElement);
     }
     if (containerObject.parent) {
       containerObject.parent.remove(containerObject);
     }
+    // Out of the raycast as well as the scene: every object under the
+    // container stays registered as a ray target until its teardown runs,
+    // and the manager casts none whose parents include a hidden one.
+    containerObject.visible = false;
     handles?.dispose();
     if (document.fonts) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
@@ -1988,7 +2081,7 @@ function buildPortal(ctx, ownOptions = {}) {
     stopFlushing();
     boxBatch.dispose();
     textBatch.dispose();
-  });
+  }
 
   return {
     /**

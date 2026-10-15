@@ -38,6 +38,18 @@ export const CHECKED_ATTRIBUTE = "data-xr-checked";
 export const FOCUS_ATTRIBUTE = "data-xr-focus";
 
 /**
+ * Every flag above: what a portal over the page's own element takes off that
+ * element's subtree when it closes, and what the mirror's contract sets are
+ * made from.
+ */
+export const ELEMENT_FLAGS = /** @type {const} */ ([
+  HOVER_ATTRIBUTE,
+  ACTIVE_ATTRIBUTE,
+  CHECKED_ATTRIBUTE,
+  FOCUS_ATTRIBUTE,
+]);
+
+/**
  * The portal a node was projected through, if it was.
  *
  * Worth having because a click inside a portal and a click on the page are not

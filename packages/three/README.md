@@ -53,18 +53,18 @@ rather than producing one. `getCamera(ctx)`, `getScene(ctx)`, `getXRSession(ctx)
 `controllers(ctx)` and `useFrame(ctx, fn)` read from the context it hands the tree, through the
 `createProperty` context mechanism the rest of this monorepo's stack shares.
 
-| Option                  | Default                                         | What it does                                                                                                                                                                             |
-| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `antialias`             | `true`                                          | The renderer's antialiasing.                                                                                                                                                             |
-| `foveation`             | `0`                                             | Fixed foveation for the headset's layer, 0 to 1.                                                                                                                                         |
-| `presentingOnly`        | `false`                                         | Draw, run `useFrame` and pump portals only while a session is presenting. For a page with a flat interface of its own.                                                                   |
-| `portalBudget`          | three tenths of a frame, clamped to 1.5 to 8 ms | Milliseconds of each frame every portal in the scene shares for mounting and settling content; a number or a getter read at the top of every frame. See **Loading, budget and updates**. |
-| `portalPlugins`         | none                                            | Element plugins for every portal; `svgElements()` from `@apendua/freedom/svg` is the one so far. See **Element plugins**.                                                                |
-| `panelOptions`          | none                                            | What every panel starts from. See **Panel defaults**.                                                                                                                                    |
-| `createControllerModel` | none                                            | Something to draw on a controller's grip space.                                                                                                                                          |
-| `createHandModel`       | none                                            | Something to draw on a tracked hand's space. See **Hands**.                                                                                                                              |
-| `onBeforeRender`        | none                                            | Called with the renderer before each draw.                                                                                                                                               |
-| `onAfterRender`         | none                                            | Called with the renderer after each draw.                                                                                                                                                |
+| Option                  | Default                                         | What it does                                                                                                                                                                                                           |
+| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `antialias`             | `true`                                          | The renderer's antialiasing.                                                                                                                                                                                           |
+| `foveation`             | `0`                                             | Fixed foveation for the headset's layer, 0 to 1.                                                                                                                                                                       |
+| `presentingOnly`        | `false`                                         | Draw, run `useFrame` and pump portals only while a session is presenting. For a page with a flat interface of its own.                                                                                                 |
+| `portalBudget`          | three tenths of a frame, clamped to 1.5 to 8 ms | Milliseconds of each frame every portal in the scene shares for mounting and settling content and taking closed panels down; a number or a getter read at the top of every frame. See **Loading, budget and updates**. |
+| `portalPlugins`         | none                                            | Element plugins for every portal; `svgElements()` from `@apendua/freedom/svg` is the one so far. See **Element plugins**.                                                                                              |
+| `panelOptions`          | none                                            | What every panel starts from. See **Panel defaults**.                                                                                                                                                                  |
+| `createControllerModel` | none                                            | Something to draw on a controller's grip space.                                                                                                                                                                        |
+| `createHandModel`       | none                                            | Something to draw on a tracked hand's space. See **Hands**.                                                                                                                                                            |
+| `onBeforeRender`        | none                                            | Called with the renderer before each draw.                                                                                                                                                                             |
+| `onAfterRender`         | none                                            | Called with the renderer after each draw.                                                                                                                                                                              |
 
 `useFrame(ctx, fn)` runs `fn` once a frame, on the session's frame loop while one is presenting. Use
 it rather than `requestAnimationFrame`: once a session has the display the page stops being rendered
@@ -808,6 +808,17 @@ dom(ctx, menu, [set({ position })], {
 - **A scroll is never deferred.** Everything the offset moves — the content group's translation, the
   clip boxes, the culling at the window's edges — is arithmetic on cached values and settles
   synchronously in the event that carried the scroll, whatever the budget.
+- **A panel closes at once and is taken down afterwards.** `disconnect`, which `dom()` calls when
+  its panel goes, takes the panel out of the scene and out of the rays, and the portal's marks and
+  flags off the page, in the task that closes it. What its objects hold, about a hundred reactive
+  nodes for each element, is let go of over the frames that follow, in the time the budget has left
+  once every panel mounting or updating has had its share. A list of a hundred rows that took 46 ms
+  to close in Chromium takes 2.4 ms, and its objects are gone ten frames later
+  (`bench/dispose.browser.mjs`). Only under `render()`, whose scheduler outlives the panel: a portal
+  pacing itself takes everything down at once. A scene that stops drawing, as a `presentingOnly`
+  scene does when its session ends, goes on taking the panel down on timers, 4 ms at a time, and a
+  portal claiming the same element again first finishes what is left. `portalTeardown.js` has the
+  rules.
 
 ### Dragging and dropping
 

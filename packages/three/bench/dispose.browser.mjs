@@ -1,0 +1,229 @@
+/**
+ * What taking a panel down costs in Chromium, against what building it
+ * cost, as a function of how many rows the panel holds.
+ *
+ *   node bench/dispose.browser.mjs
+ *
+ * A panel is mounted the way an app mounts one, a frame budget at a time
+ * under `requestAnimationFrame`, and left to load. Then `disconnect` is
+ * called, as `dom()` calls it when a panel goes. The table reports the
+ * longest frame the mount took, how long `disconnect` itself took, the
+ * longest frame after it until the panel had nothing left to take down, and
+ * how many frames that took. Milliseconds on whatever machine runs it, the
+ * median of `REPEATS` runs. The portals share one scheduler, as they do
+ * under `render()`, which is what spreads the teardown over frames.
+ *
+ * Chromium is launched through `packages/headset/driver`, as
+ * `bench/lineBoxCopy.browser.mjs` explains.
+ */
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { dirname, extname, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { closeAll, launch } from "../../headset/driver/index.mjs";
+
+const SIZES = (process.env.SIZES ?? "25,50,100,200,400").split(",").map(Number);
+const REPEATS = 5;
+
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+const PAGE = `<!doctype html>
+<meta charset="utf-8">
+<script type="importmap">
+  {
+    "imports": {
+      "@apendua/signal": "/packages/signal/src/index.js",
+      "three": "/packages/freedom/node_modules/three/build/three.module.js",
+      "three/addons/": "/packages/freedom/node_modules/three/examples/jsm/"
+    }
+  }
+</script>
+<style>
+  body { margin: 0; font: 16px/1.25 sans-serif; }
+  .row { display: flex; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #ccc; }
+  .row button { border-radius: 4px; background: #eef; cursor: pointer; }
+</style>
+<script type="module">
+  import * as THREE from "three";
+  import { createPortal } from "/packages/freedom/src/elements/portal.js";
+  import { InteractionContext, InteractionManager } from "/packages/freedom/src/interactions.js";
+  import {
+    createPortalScheduler,
+    PortalSchedulerContext,
+  } from "/packages/freedom/src/elements/portalScheduler.js";
+  import { createFrameRequester } from "/packages/freedom/src/elements/frameRequester.js";
+
+  // One scheduler for every portal on the page, as \`render()\` installs one
+  // for every portal in a scene: what paces the mounts, and what takes a
+  // closed panel's objects down.
+  // Counting the ray targets every panel registers tells when a closed
+  // panel's teardown is over: the last thing each control's teardown does
+  // is leave the raycast set.
+  const manager = new InteractionManager();
+  let targets = 0;
+  const add = manager.add.bind(manager);
+  const remove = manager.remove.bind(manager);
+  manager.add = (object) => {
+    targets += 1;
+    add(object);
+  };
+  manager.remove = (object) => {
+    targets -= 1;
+    remove(object);
+  };
+  const sceneCtx = InteractionContext.set({}, manager);
+  const scene = PortalSchedulerContext.set(
+    sceneCtx,
+    createPortalScheduler({ requestFrames: createFrameRequester(sceneCtx) }),
+  );
+
+  function buildList(rows) {
+    const list = document.createElement("div");
+    list.style.width = "400px";
+    for (let i = 0; i < rows; i++) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const label = document.createElement("span");
+      label.textContent = "row " + i;
+      const button = document.createElement("button");
+      button.textContent = "remove";
+      row.append(label, button);
+      list.appendChild(row);
+    }
+    return list;
+  }
+
+  const nextFrame = () => new Promise((done) => requestAnimationFrame(done));
+
+  window.runBench = async (rows) => {
+    const ctx = scene;
+    let resolveLoaded;
+    const loaded = new Promise((done) => (resolveLoaded = done));
+    const portal = createPortal(ctx, {
+      loadingFrame: false,
+      onLoadingChanged: (loading) => {
+        if (!loading) {
+          resolveLoaded();
+        }
+      },
+    });
+    portal.addTo(new THREE.Group());
+    const containers = document.querySelectorAll("[data-xr-portal]");
+    const container = containers[containers.length - 1];
+    // Every frame's length, from one animation frame to the next.
+    const frames = [];
+    let counting = true;
+    let last = performance.now();
+    const count = (time) => {
+      frames.push(time - last);
+      last = time;
+      if (counting) {
+        requestAnimationFrame(count);
+      }
+    };
+    requestAnimationFrame((time) => {
+      last = time;
+      requestAnimationFrame(count);
+    });
+    await nextFrame();
+    const mountStarted = performance.now();
+    container.appendChild(buildList(rows));
+    await loaded;
+    const mountMs = performance.now() - mountStarted;
+    const mountWorst = Math.max(...frames);
+    // Let the panel settle before taking it down.
+    for (let i = 0; i < 5; i++) {
+      await nextFrame();
+    }
+    frames.length = 0;
+    const started = performance.now();
+    portal.disconnect();
+    const syncMs = performance.now() - started;
+    container.remove();
+    // Until the teardown spread across frames is over, and a few more.
+    let teardownFrames = 0;
+    while (targets > 0 && teardownFrames < 600) {
+      await nextFrame();
+      teardownFrames += 1;
+    }
+    for (let i = 0; i < 5; i++) {
+      await nextFrame();
+    }
+    counting = false;
+    const disposeWorst = Math.max(...frames);
+    return { mountMs, mountWorst, syncMs, disposeWorst, teardownFrames, left: targets };
+  };
+  window.benchReady = true;
+</script>`;
+
+const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript" };
+
+const server = createServer(async (request, response) => {
+  const path = new URL(request.url ?? "/", "http://localhost").pathname;
+  if (path === "/") {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(PAGE);
+    return;
+  }
+  const file = resolve(REPO, `.${path}`);
+  if (!file.startsWith(REPO + sep)) {
+    response.writeHead(403).end();
+    return;
+  }
+  try {
+    const body = await readFile(file);
+    response.writeHead(200, {
+      "content-type": TYPES[/** @type {keyof TYPES} */ (extname(file))] ?? "text/plain",
+    });
+    response.end(body);
+  } catch {
+    response.writeHead(404).end();
+  }
+});
+await new Promise((done) => server.listen(0, "127.0.0.1", () => done(undefined)));
+const address = server.address();
+const port = typeof address === "object" && address ? address.port : 0;
+
+/**
+ * @param {number[]} values
+ * @returns {number}
+ */
+const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+const browser = await launch();
+try {
+  const page = await browser.newPage();
+  page.on("pageerror", (error) => console.error(error));
+  await page.goto(`http://127.0.0.1:${port}/`);
+  await page.waitForFunction(() => /** @type {any} */ (window).benchReady === true);
+  console.log(
+    "rows\tmount ms\tworst mount frame\tdisconnect ms\tworst frame after\tteardown frames",
+  );
+  for (const rows of SIZES) {
+    /** @type {{ mountMs: number, mountWorst: number, syncMs: number, disposeWorst: number, teardownFrames: number, left: number }[]} */
+    const results = [];
+    // The first run warms the JIT and is dropped.
+    for (let repeat = 0; repeat <= REPEATS; repeat++) {
+      const result = await page.evaluate((n) => /** @type {any} */ (window).runBench(n), rows);
+      if (result.left !== 0) {
+        throw new Error(`${result.left} ray targets of a closed panel were never taken down`);
+      }
+      if (repeat > 0) {
+        results.push(result);
+      }
+    }
+    console.log(
+      [
+        rows,
+        median(results.map((r) => r.mountMs)).toFixed(0),
+        median(results.map((r) => r.mountWorst)).toFixed(1),
+        median(results.map((r) => r.syncMs)).toFixed(1),
+        median(results.map((r) => r.disposeWorst)).toFixed(1),
+        median(results.map((r) => r.teardownFrames)),
+      ].join("\t\t"),
+    );
+  }
+} finally {
+  await closeAll(browser);
+  server.close();
+}

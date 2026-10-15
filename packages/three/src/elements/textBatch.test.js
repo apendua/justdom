@@ -110,6 +110,28 @@ describe("text batch teardown", () => {
     assert.equal(current.count, 12);
   });
 
+  test("a bucket that grows keeps its material, and disposing the batch lets it go", () => {
+    const p = panel(6);
+    p.batch.flush();
+    p.watch();
+    const [first] = p.meshes.keys();
+    const material = first.material;
+    let disposed = 0;
+    /** @type {THREE.Material} */ (material).addEventListener("dispose", () => {
+      disposed += 1;
+    });
+
+    p.grow(6);
+    p.batch.flush();
+    p.watch();
+    const [, grown] = p.meshes.keys();
+    assert.equal(grown.material, material);
+    assert.equal(disposed, 0);
+
+    p.batch.dispose();
+    assert.equal(disposed, 1);
+  });
+
   test("disposing the batch tells three about the mesh it was still drawing with", () => {
     const p = panel(4);
     p.batch.flush();

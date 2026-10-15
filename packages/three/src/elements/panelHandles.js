@@ -3,10 +3,12 @@ import { useEffect, withComputation } from "@apendua/signal";
 import { carry } from "../carry.js";
 import { interactions } from "../interactions.js";
 import { $ } from "../operators.js";
+import { keepProgram } from "./programKeeper.js";
 
 /**
  * @import {Unsubscribable} from '@apendua/signal';
  * @import {PointerCancelEvent, PointerEvent, XREventMap} from '../core.js';
+ * @import {ProgramKind} from './programKeeper.js';
  */
 
 /**
@@ -74,6 +76,26 @@ const BAR_COLOR = 0xe8ecf2;
 /** The drawn bar's thickness, in px, and its length as a share of its side. */
 const BAR_THICKNESS = 4;
 const BAR_LENGTH = 0.4;
+
+/**
+ * What a bar is drawn with. One per bar, since each fades on its own. Its
+ * program stays linked after the last panel's bars go (`programKeeper.js`).
+ * A bar is first drawn when a hand comes near, and a link in that frame is a
+ * hitch the player sees while reaching for the panel.
+ *
+ * @returns {THREE.MeshBasicMaterial}
+ */
+function barMaterial() {
+  return new THREE.MeshBasicMaterial({
+    color: BAR_COLOR,
+    transparent: true,
+    opacity: HANDLE_OPACITY_IDLE,
+    depthWrite: false,
+  });
+}
+
+/** @type {ProgramKind<THREE.MeshBasicMaterial>} */
+const BAR_PROGRAM = { name: "freedom-handle-bar", create: barMaterial };
 
 /** @typedef {"top" | "bottom" | "left" | "right"} Side */
 
@@ -157,15 +179,7 @@ export function createPanelHandles(ctx, options = {}) {
       new THREE.Mesh(plane, hitMaterial)
     );
     hit.name = `panel-handle-${side}`;
-    const bar = new THREE.Mesh(
-      plane,
-      new THREE.MeshBasicMaterial({
-        color: BAR_COLOR,
-        transparent: true,
-        opacity: HANDLE_OPACITY_IDLE,
-        depthWrite: false,
-      }),
-    );
+    const bar = new THREE.Mesh(plane, keepProgram(barMaterial(), BAR_PROGRAM));
     bar.name = `panel-handle-${side}-bar`;
     bar.visible = false;
     bar.renderOrder = HANDLE_RENDER_ORDER;

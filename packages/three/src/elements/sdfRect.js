@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { RAMP_WIDTH, rampUniforms } from "./gradient.js";
+import { keepProgram } from "./programKeeper.js";
 
 /**
  * @import VisualProperties from './VisualProperties.js';
  * @import {ContentImage} from './image.js';
  * @import {RampSlot} from './gradient.js';
+ * @import {ProgramKind} from './programKeeper.js';
  */
 
 /**
@@ -324,13 +326,6 @@ void main() {
 `;
 
 /**
- * The material drawing one element's box. Per-mesh — its uniforms are the
- * element's own — but the program behind it is compiled once and shared by
- * every box in the scene.
- *
- * @returns {THREE.ShaderMaterial}
- */
-/**
  * A box's numbers, in the shape a shader wants them.
  *
  * Split from the material below because most boxes have no use for a
@@ -374,7 +369,31 @@ export function createRectUniforms() {
   };
 }
 
+/**
+ * The material drawing one element's box. Per-mesh — its uniforms are the
+ * element's own — but the program behind it is compiled once and shared by
+ * every box in the scene, and kept linked after the last box of the page
+ * goes (`programKeeper.js`). The frame a panel shows while it mounts is one
+ * of these, and nothing else holds the program between two mounts.
+ *
+ * @param {Record<string, THREE.IUniform>} [uniforms]
+ * @returns {THREE.ShaderMaterial}
+ */
 export function createRectMaterial(uniforms = createRectUniforms()) {
+  return keepProgram(rectMaterial(uniforms), RECT_PROGRAM);
+}
+
+/** @type {ProgramKind<THREE.ShaderMaterial>} */
+const RECT_PROGRAM = {
+  name: "freedom-rect",
+  create: () => rectMaterial(createRectUniforms()),
+};
+
+/**
+ * @param {Record<string, THREE.IUniform>} uniforms
+ * @returns {THREE.ShaderMaterial}
+ */
+function rectMaterial(uniforms) {
   return new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader,
@@ -424,7 +443,7 @@ let batchedMaterial = null;
  */
 export function batchedBoxMaterial() {
   if (!batchedMaterial) {
-    batchedMaterial = createRectMaterial();
+    batchedMaterial = rectMaterial(createRectUniforms());
     batchedMaterial.visible = false;
   }
   return batchedMaterial;

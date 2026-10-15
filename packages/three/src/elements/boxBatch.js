@@ -2,9 +2,11 @@ import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
 import { GRADIENT_GLSL, rectGeometry, SDF_GLSL } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
+import { keepProgram } from "./programKeeper.js";
 
 /**
  * @import {Object3D} from 'three';
+ * @import {ProgramKind} from './programKeeper.js';
  */
 
 /**
@@ -168,7 +170,9 @@ void main() {
  * that walk would take depth testing away from the entire app — which is one
  * HUD, and every panel in the scene drawing over the objects in front of it.
  * The program is cached by shader source, so panels still compile this once
- * between them; only the state a panel is allowed to own is per panel.
+ * between them; only the state a panel is allowed to own is per panel. And it
+ * stays linked after the last panel closes (`programKeeper.js`), so the next
+ * one to open does not link it again.
  *
  * @returns {THREE.ShaderMaterial}
  */
@@ -191,6 +195,9 @@ function batchMaterial() {
     },
   });
 }
+
+/** @type {ProgramKind<THREE.ShaderMaterial>} */
+const BOX_PROGRAM = { name: "freedom-box-batch", create: batchMaterial };
 
 /**
  * How far behind its integer a box bucket draws, so that text of the same
@@ -462,7 +469,7 @@ export class BoxBatch {
    *
    * @type {THREE.ShaderMaterial}
    */
-  #material = batchMaterial();
+  #material = keepProgram(batchMaterial(), BOX_PROGRAM);
 
   #dirty = false;
   #disposed = false;

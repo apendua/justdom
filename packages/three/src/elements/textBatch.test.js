@@ -748,3 +748,64 @@ describe("text batch upload budget", () => {
     assert.equal(uploads, 1, "the second class would have gone past the bytes");
   });
 });
+
+/**
+ * How many times each of the batch's instance buffers has been marked for
+ * upload, by bucket and name.
+ *
+ * @param {THREE.Object3D} container
+ */
+function instanceVersions(container) {
+  /** @type {Record<string, number>} */
+  const versions = {};
+  for (const [index, child] of container.children.entries()) {
+    const mesh = /** @type {THREE.InstancedMesh} */ (child);
+    if (!mesh.isInstancedMesh) {
+      continue;
+    }
+    versions[`${index}:instanceMatrix`] = mesh.instanceMatrix.version;
+    for (const [name, attribute] of Object.entries(mesh.geometry.attributes)) {
+      if (/** @type {THREE.InstancedBufferAttribute} */ (attribute).isInstancedBufferAttribute) {
+        versions[`${index}:${name}`] = /** @type {THREE.BufferAttribute} */ (attribute).version;
+      }
+    }
+  }
+  return versions;
+}
+
+describe("text batch instance uploads", () => {
+  test("a rebuild that changed nothing marks no buffer for upload", () => {
+    const { container, batch } = panel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+    assert.ok(Object.keys(before).length > 0, "expected a bucket");
+
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(instanceVersions(container), before);
+  });
+
+  test("a run that shows a new raster marks its layers and nothing else", () => {
+    // A clock counting tenths: one run of a panel shows a new raster of the
+    // same size, so its instance is drawn from another layer and from
+    // nowhere else. Of the bucket's five buffers only the layers change.
+    const { container, batch } = panel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+
+    const ticking = /** @type {THREE.Mesh} */ (
+      container.children.find(
+        (child) => !(/** @type {THREE.InstancedMesh} */ (child).isInstancedMesh),
+      )
+    );
+    show(ticking, countedCanvas(24, 12));
+    batch.invalidate();
+    batch.flush();
+
+    const after = instanceVersions(container);
+    const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
+    assert.equal(changed.length, 1, `expected the layers alone, got ${changed.join(", ")}`);
+    assert.match(changed[0], /:aLayer$/);
+  });
+});

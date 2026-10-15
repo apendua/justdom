@@ -485,3 +485,51 @@ describe("the material a batched box wears", () => {
     assert.ok(attributes + 4 <= 16, `${attributes} attributes and a matrix`);
   });
 });
+
+/**
+ * How many times each of the bucket's instance buffers has been marked for
+ * upload, by name.
+ *
+ * @param {THREE.Object3D} container
+ */
+function instanceVersions(container) {
+  const bucket = /** @type {THREE.InstancedMesh} */ (
+    container.children.find((child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh)
+  );
+  assert.ok(bucket, "expected the batch to have made a bucket");
+  /** @type {Record<string, number>} */
+  const versions = { instanceMatrix: bucket.instanceMatrix.version };
+  for (const [name, attribute] of Object.entries(bucket.geometry.attributes)) {
+    if (/** @type {THREE.InstancedBufferAttribute} */ (attribute).isInstancedBufferAttribute) {
+      versions[name] = /** @type {THREE.BufferAttribute} */ (attribute).version;
+    }
+  }
+  return versions;
+}
+
+describe("box batch instance uploads", () => {
+  test("a rebuild that changed nothing marks no buffer for upload", () => {
+    const { container, batch } = crowdedPanel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(instanceVersions(container), before);
+  });
+
+  test("a box that moved marks its matrices and nothing else", () => {
+    const { container, batch, boxes } = crowdedPanel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+
+    place(boxes[1], 5, 0, 0);
+    batch.invalidate();
+    batch.flush();
+
+    const after = instanceVersions(container);
+    const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
+    assert.deepEqual(changed, ["instanceMatrix"]);
+  });
+});

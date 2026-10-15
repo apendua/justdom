@@ -123,8 +123,9 @@ together — which is the same event wearing a different hat, and used to be a `
 hand in that app.
 
 `pinball` makes all of its noises with `createSweepWaveform` and `createVoices`, and uses the click
-for the ball meeting a wall or a flipper. `hexboard-xr` and `paperwings-xr` each carry an older copy
-of the sweep and of the voice pool, written before the package had them.
+for the ball meeting a wall or a flipper. `hexboard-xr`, `laser-xr` and `paperwings-xr` each carry
+an older copy of the sweep and of the voice pool, written before the package had them, and
+`pirates-xr` carries a voice pool and a variant of the sweep with its own noise decay and smoothing.
 
 The soundtrack player and the output picker are used by every app here with music, the three above
 among them, each behind a Music section on a panel it already had. Every one of them had its own

@@ -950,9 +950,9 @@ function buildPortal(ctx, ownOptions = {}) {
    * keyboard's hold on a field, and the mirror's caches. What it does not do
    * is the expensive half, unsubscribing each object, which takes the
    * object's effects, its place in the batches and its place in the raycast
-   * set with it. Those teardowns are collected instead, children before
-   * their parents, for `cleanup` to run now or `disconnect` to queue (see
-   * `portalTeardown.js`).
+   * set with it. Those teardowns are collected instead, a parent's before
+   * its children's, for `runTeardowns` to run now or `disconnect` to queue
+   * (see `portalTeardown.js`).
    *
    * Descendants are looked for in two places, and both are needed. The DOM
    * is the obvious one — but by the time a portal is told to disconnect, the
@@ -1023,8 +1023,19 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /**
+   * Run every teardown a walk of `unlink` collected, here and now.
+   *
+   * @param {Unlinked} unlinked
+   */
+  function runTeardowns(unlinked) {
+    for (const teardown of unlinked.teardowns) {
+      teardown();
+    }
+  }
+
+  /**
    * Take down everything the portal made for a node and for everything under
-   * it, here and now: `unlink`, then every teardown it collected.
+   * it, here and now.
    *
    * @param {Node} node
    */
@@ -1032,9 +1043,7 @@ function buildPortal(ctx, ownOptions = {}) {
     /** @type {Unlinked} */
     const unlinked = { teardowns: [], nodes: [] };
     unlink(node, unlinked);
-    for (const teardown of unlinked.teardowns) {
-      teardown();
-    }
+    runTeardowns(unlinked);
   }
 
   /**
@@ -2003,9 +2012,7 @@ function buildPortal(ctx, ownOptions = {}) {
         nodes: unlinked.nodes,
       });
     } else {
-      for (const teardown of unlinked.teardowns) {
-        teardown();
-      }
+      runTeardowns(unlinked);
     }
   }
 

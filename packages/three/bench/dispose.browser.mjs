@@ -139,7 +139,6 @@ const PAGE = `<!doctype html>
     const started = performance.now();
     portal.disconnect();
     const syncMs = performance.now() - started;
-    container.remove();
     // Until the teardown spread across frames is over, and a few more.
     let teardownFrames = 0;
     while (targets > 0 && teardownFrames < 600) {

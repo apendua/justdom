@@ -42,7 +42,12 @@ import { batch, withChannel } from "@apendua/signal";
  *    (`TEARDOWN_PRIORITY`). It is offered a frame only while time is left
  *    after every panel mounting or updating, and keeps to the deadline. The
  *    first pump offered a frame always tears down one object, so a queue
- *    alone in the scheduler finishes even on a zero budget.
+ *    alone in the scheduler finishes even on a zero budget. That is why it
+ *    is not an `idle` pump, which is never the first pump of a frame: on a
+ *    zero budget it would never run while frames keep coming, and rule 5
+ *    would not take over either. So a queue comes before the idle work, a
+ *    panel preparing the text step it may cross into, for the frames it
+ *    lasts: what the queue frees is held by a panel nobody sees.
  * 5. **Frames stopping.** A scene can stop drawing with a teardown queued: a
  *    `presentingOnly` scene at the end of its session, which is exactly
  *    when a page's mirrored panel closes, or a `render()` taken down. Each
@@ -56,10 +61,13 @@ import { batch, withChannel } from "@apendua/signal";
  *    be built again before the queue reaches it: the same page element
  *    claimed for the next session, or nodes moved into another panel. Its
  *    old teardown writes to what the new build owns, such as the
- *    `data-xr-checked` it puts back on a checkbox or the reveal handle it
- *    joins, so a portal building a node, or claiming a root, first runs
+ *    `data-xr-checked` it takes off a checkbox or the reveal handle it
+ *    leaves, so a portal building a node, or claiming a root, first runs
  *    every teardown still queued for it, whole and at once
- *    (`finishTeardownOf`).
+ *    (`finishTeardownOf`). A node is covered by one queue at a time: a
+ *    second panel closing over a node an older queue still covers, which
+ *    the page moved from one panel to the other, finishes the older queue
+ *    first.
  * 7. **The end.** A queue ends when it is empty, by any of the three paths,
  *    and then leaves the scheduler, stops watching frames and clears its
  *    timer. Nothing else ends it.
@@ -219,7 +227,12 @@ export function scheduleTeardown({
     return;
   }
   for (const node of nodes) {
-    covering.set(node, finishNow);
+    const older = covering.get(node);
+    // A node the walk passed twice is covered by this queue already.
+    if (older !== finishNow) {
+      older?.();
+      covering.set(node, finishNow);
+    }
   }
   const stopWatching = requestFrames(() => {
     lastFrame = now();

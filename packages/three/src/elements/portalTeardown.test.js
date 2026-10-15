@@ -7,7 +7,13 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { clientRect } from "../test/clientRect.js";
-import { countingManager, drain, flushFrame, settle } from "../test/portalHarness.js";
+import {
+  countingManager,
+  drain,
+  flushFrame,
+  nextMacrotask,
+  settle,
+} from "../test/portalHarness.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createPortal } from "./portal.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
@@ -113,6 +119,47 @@ describe("a closed panel under the scene's scheduler", () => {
     }
     assert.equal(targets.size, 0);
     await drain();
+    root.remove();
+  });
+
+  test("answers no ray from a row built for a commit that never came", async () => {
+    // Two rows added to a loaded panel, and one frame on no budget: the first
+    // is built, registered as a ray target and held for the commit, under no
+    // parent at all, so nothing above it is the hidden container.
+    const { ctx, manager, targets } = scene();
+    const root = document.createElement("div");
+    root.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
+    root.appendChild(document.createElement("div"));
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    portal.addTo(new THREE.Group());
+    await settle(portal);
+    const loaded = new Set(targets);
+    const rows = [0, 1].map(() => {
+      const row = document.createElement("div");
+      row.style.cursor = "pointer";
+      row.getBoundingClientRect = () => clientRect(10, 10, 50, 50);
+      return row;
+    });
+    root.append(...rows);
+    await nextMacrotask();
+    flushFrame();
+    const built = [...targets].filter((target) => !loaded.has(target));
+    assert.equal(built.length, 1, "the first row is built");
+    assert.equal(built[0].parent, null, "and waits for the commit under nothing");
+
+    portal.disconnect();
+    assert.ok(targets.has(built[0]), "still registered");
+    built[0].updateWorldMatrix(true, true);
+    const center = new THREE.Box3().setFromObject(built[0]).getCenter(new THREE.Vector3());
+    const controller = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    controller.position.set(center.x, center.y, center.z + 1);
+    controller.updateMatrixWorld(true);
+    assert.equal(manager.getIntersection(controller), undefined, "and the ray meets nothing");
+    await drain();
+    assert.equal(targets.size, 0);
     root.remove();
   });
 
@@ -285,6 +332,22 @@ describe("scheduleTeardown", () => {
     second.runTimers();
     assert.equal(slow.ran.count, FRAMELESS_SLICE, "a frame arrived: back to waiting");
     assert.equal(second.timers[0].at, second.now() + FRAMELESS_WAIT, "a whole wait from it");
+  });
+
+  test("finishes an older queue covering the same node before covering it", () => {
+    // A row the page moved from one panel to another, and both panels
+    // closing before a third builds it: building it has to finish both.
+    const clock = harness();
+    const node = document.createElement("div");
+    const first = slowTeardowns(clock, 3);
+    scheduleTeardown({ ...clock, teardowns: first.teardowns, nodes: [node] });
+    const second = slowTeardowns(clock, 3);
+    scheduleTeardown({ ...clock, teardowns: second.teardowns, nodes: [node, node] });
+    assert.equal(first.ran.count, 3, "the older queue ran whole when the newer covered the node");
+    assert.equal(second.ran.count, 0, "the newer one waits, the repeated node notwithstanding");
+    finishTeardownOf(node);
+    assert.equal(second.ran.count, 3);
+    assert.equal(clock.waiting.size, 0);
   });
 
   test("runs whole when a node it covers is built again", () => {

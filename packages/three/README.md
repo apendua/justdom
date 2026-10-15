@@ -1466,9 +1466,11 @@ box sits in front of the panel's root, on top of the steps above, so that the bi
 on a headset before it replaces them (item 10 of
 [`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md)). `"constant"` moves
 a box the same amount in depth a rank whatever the panel's angle; `"slope"` moves it by how steeply
-depth changes across the panel on screen, so a panel facing the viewer moves least. It moves only
-the boxes and not their text, so on a panel far enough away a box high in a pile can cover its own
-text. `boxBatch.js` has the formula and its numbers.
+depth changes across the panel on screen, so a panel facing the viewer moves least. `false` turns it
+off for a panel under a scene that set it. It moves only the batched boxes, so neither the text nor
+an `<img>`, which draws itself: on a panel far enough away a box high in a pile can cover its own
+text, and a card can cover the picture on the card under it. `boxBatch.js` has the formula and its
+numbers.
 
 ## Images
 
@@ -1735,10 +1737,11 @@ render(Scene, {
 `opaqueToRays`, `priority` and `budget` can be set this way. A panel's own options are laid over
 them: its value wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object
 is spread over the scene's, so a panel can change one thing about them without restating the rest;
-`false` at either level is none. `withPanelOptions(ctx, options)` does the same for a part of the
-scene, over whatever is in scope already. `plugins` is not among them — it has `portalPlugins`,
-whose list a panel's own is put in front of rather than in place of — and neither are `root`,
-`draggable` and `onLoadingChanged`, which are only ever one panel's.
+`false` at either level is none, for those three and for `depthRank`.
+`withPanelOptions(ctx, options)` does the same for a part of the scene, over whatever is in scope
+already. `plugins` is not among them — it has `portalPlugins`, whose list a panel's own is put in
+front of rather than in place of — and neither are `root`, `draggable` and `onLoadingChanged`, which
+are only ever one panel's.
 
 ## SVG
 

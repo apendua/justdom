@@ -10,10 +10,11 @@ import type { WebGLRenderer } from "three";
  * A frame is timed with `EXT_disjoint_timer_query_webgl2` around the
  * renderer's `render`, which a session calls once a frame for both eyes.
  * Results arrive a few frames late, so the queries are kept in flight and
- * read once they are available. Every 300 timed frames the median and the
- * 90th percentile go to the console, which the headset's browser shows
- * through `chrome://inspect`. Without the extension it says so once and
- * times nothing; OVR Metrics Tool's GPU utilisation is the fallback then.
+ * read once they are available. Only the session's frames are timed. Every
+ * 300 timed frames the median and the 90th percentile go to the console,
+ * which the headset's browser shows through `chrome://inspect`. Without
+ * the extension it says so once and times nothing; OVR Metrics Tool's GPU
+ * utilisation is the fallback then.
  */
 export function timeGpu(renderer: WebGLRenderer, label: string): void {
   const gl = renderer.getContext() as WebGL2RenderingContext;
@@ -25,32 +26,44 @@ export function timeGpu(renderer: WebGLRenderer, label: string): void {
     console.warn("[gpuTime] EXT_disjoint_timer_query_webgl2 is not exposed here");
     return;
   }
-  const pending: WebGLQuery[] = [];
-  const times: number[] = [];
+  // A ring of queries made once, and the times in an array of fixed size,
+  // so that the timer allocates nothing a frame. A query is reused once its
+  // result is read; one still in flight when its turn comes round skips
+  // that frame.
+  const ring = Array.from({ length: 8 }, () => gl.createQuery() as WebGLQuery);
+  const inFlight = new Array<boolean>(ring.length).fill(false);
+  let next = 0;
+  let oldest = 0;
+  const times = new Float64Array(300);
+  let count = 0;
   const render = renderer.render.bind(renderer);
   renderer.render = (scene, camera) => {
-    const query = gl.createQuery();
-    if (query) gl.beginQuery(ext.TIME_ELAPSED_EXT, query);
+    // Only the session's frames: a drag ghost's snapshot renders into a
+    // target of its own and is not a frame.
+    const timed =
+      renderer.xr.isPresenting && renderer.getRenderTarget() === null && !inFlight[next];
+    if (timed) gl.beginQuery(ext.TIME_ELAPSED_EXT, ring[next]);
     render(scene, camera);
-    if (query) {
+    if (timed) {
       gl.endQuery(ext.TIME_ELAPSED_EXT);
-      pending.push(query);
+      inFlight[next] = true;
+      next = (next + 1) % ring.length;
     }
-    while (pending.length > 0 && gl.getQueryParameter(pending[0], gl.QUERY_RESULT_AVAILABLE)) {
-      const done = pending.shift() as WebGLQuery;
+    while (inFlight[oldest] && gl.getQueryParameter(ring[oldest], gl.QUERY_RESULT_AVAILABLE)) {
       if (!gl.getParameter(ext.GPU_DISJOINT_EXT)) {
-        times.push(gl.getQueryParameter(done, gl.QUERY_RESULT) / 1e6);
+        times[count++] = gl.getQueryParameter(ring[oldest], gl.QUERY_RESULT) / 1e6;
       }
-      gl.deleteQuery(done);
-    }
-    if (times.length >= 300) {
-      times.sort((a, b) => a - b);
-      const median = times[Math.floor(times.length / 2)];
-      const p90 = times[Math.floor(times.length * 0.9)];
-      console.log(
-        `[gpuTime] ${label}: median ${median.toFixed(3)} ms, p90 ${p90.toFixed(3)} ms over ${times.length} frames`,
-      );
-      times.length = 0;
+      inFlight[oldest] = false;
+      oldest = (oldest + 1) % ring.length;
+      if (count === times.length) {
+        times.sort();
+        const median = times[Math.floor(count / 2)];
+        const p90 = times[Math.floor(count * 0.9)];
+        console.log(
+          `[gpuTime] ${label}: median ${median.toFixed(3)} ms, p90 ${p90.toFixed(3)} ms over ${count} frames`,
+        );
+        count = 0;
+      }
     }
   };
 }

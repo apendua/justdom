@@ -470,21 +470,6 @@ describe("the material a batched box wears", () => {
       assert.match(shader.fragmentShader, discard);
     }
   });
-
-  test("a box's description stays within the attribute slots WebGL promises", () => {
-    // Sixteen is the minimum MAX_VERTEX_ATTRIBS, and what a headset browser
-    // gives. A vec4 or smaller takes one slot, a mat4 four.
-    const p = panel();
-    const bucket = /** @type {THREE.InstancedMesh} */ (
-      p.container.children.find(
-        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
-      )
-    );
-    assert.ok(bucket);
-    const attributes = Object.keys(bucket.geometry.attributes).length;
-    // Plus the instance matrix, which is not a geometry attribute.
-    assert.ok(attributes + 4 <= 16, `${attributes} attributes and a matrix`);
-  });
 });
 
 describe("box batch instance uploads", () => {
@@ -575,6 +560,24 @@ describe("box batch depth bias", () => {
     batch.dispose();
   });
 
+  test("a box's rank set before it joins the batch is not kept", () => {
+    // As a rank effect that runs once more during a teardown, after
+    // `remove`, would set it: the box comes back with the rank its own
+    // effect writes, not a stale one.
+    const container = new THREE.Group();
+    const { mesh, uniforms } = makeBox();
+    container.add(mesh);
+    const batch = createBoxBatch(container, "constant");
+    batch.setRank(mesh, 7);
+    batch.add(mesh, uniforms);
+    batch.flush();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      container.children.find((child) => child instanceof THREE.InstancedMesh)
+    );
+    assert.equal(bucket.geometry.getAttribute("aSize").array[3], 1, "rank 0 and opacity 1");
+    batch.dispose();
+  });
+
   test("a batch without a bias ignores a rank", () => {
     const { batch, bucket, material } = ranked();
     assert.equal(bucket.geometry.getAttribute("aSize").array[3], 1, "the opacity alone");
@@ -590,8 +593,10 @@ describe("box batch depth bias", () => {
 
 describe("box batch attribute budget", () => {
   test("the vertex shader declares no more attributes than ANGLE will link", () => {
-    // ANGLE, under Chromium's WebGL, counts every declared attribute against
-    // the sixteen, used or not. Three declares `position`, `normal` and `uv`
+    // Sixteen is the minimum MAX_VERTEX_ATTRIBS, and what a headset browser
+    // gives. A vec4 or smaller takes one slot, a mat4 four. ANGLE, under
+    // Chromium's WebGL, counts every declared attribute against them, used
+    // or not. Three declares `position`, `normal` and `uv`
     // in front of a `ShaderMaterial`, and the instance matrix takes four.
     // Counted in the source, every `#ifdef` included, under the slope.
     const container = new THREE.Group();

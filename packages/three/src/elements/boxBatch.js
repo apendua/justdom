@@ -79,9 +79,11 @@ export const BoxBatchContext = createProperty(
  *   from one pixel to the next across the panel, plus `DEPTH_RANK_FLOOR`.
  *
  * Either is on top of the geometric lift, which stays until item 10.3, and
- * moves only the boxes: text and the other marks are not biased yet, so a
- * box can cover its own marks where its rank times the step reaches the
- * 1 px they stand in front of it.
+ * moves only the batched boxes. Text and the other marks are not biased
+ * yet, so a box can cover its own marks where its rank times the step
+ * reaches the 1 px they stand in front of it. Nor is an `<img>`, which is
+ * not batched (`div.js`), so a card can cover the picture on the card
+ * under it once its rank's lead passes the `CONTENT_STEP` between them.
  *
  * @typedef {"constant" | "slope"} DepthRankBias
  */
@@ -371,10 +373,31 @@ const BOX_PROGRAM = {
 const viewport = new THREE.Vector4();
 
 /**
+ * Set `size`, a `uDepthRankViewport` value, to the viewport `renderer` is
+ * drawing into now: the eye's, in a session, which three sets before each
+ * eye's draws, or a render target's. Exported for a probe that draws with
+ * `DEPTH_RANK_GLSL` outside a batch.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Vector2} size
+ * @returns {boolean} Whether it changed.
+ */
+export function readDepthRankViewport(renderer, size) {
+  renderer.getCurrentViewport(viewport);
+  if (size.x === viewport.z && size.y === viewport.w) {
+    return false;
+  }
+  size.set(viewport.z, viewport.w);
+  return true;
+}
+
+/**
  * Keep a slope-biased material's `uDepthRankViewport` at the viewport it is
- * drawn into: the eye's, in a session, which three sets before each eye's
- * draws. Uploaded only when it changes, which is when a session starts or
- * ends, since the program keeps the last value it was given.
+ * drawn into. Uploaded only when it changes, since the program keeps the
+ * last value it was given: when a session starts or ends, and twice for
+ * each drag ghost, whose snapshot (`takeSnapshot` in `ghostSnapshot.js`)
+ * draws the panel into a target of the ghost's size and so with the slope
+ * for that target's pixels.
  *
  * @this {THREE.Mesh}
  * @param {THREE.WebGLRenderer} renderer
@@ -382,10 +405,7 @@ const viewport = new THREE.Vector4();
  */
 function followViewport(renderer) {
   const material = /** @type {THREE.ShaderMaterial} */ (this.material);
-  renderer.getCurrentViewport(viewport);
-  const size = material.uniforms.uDepthRankViewport.value;
-  if (size.x !== viewport.z || size.y !== viewport.w) {
-    size.set(viewport.z, viewport.w);
+  if (readDepthRankViewport(renderer, material.uniforms.uDepthRankViewport.value)) {
     material.uniformsNeedUpdate = true;
   }
 }
@@ -447,14 +467,14 @@ class Bucket {
   /**
    * @param {number} renderOrder
    * @param {Object3D} parent
-   * @param {THREE.ShaderMaterial} material The panel's, shared by its buckets.
-   * @param {DepthRankBias | undefined} depthRank The panel's depth bias.
+   * @param {THREE.ShaderMaterial} material The panel's, shared by its
+   *   buckets, whose defines say whether the panel has a depth bias.
    */
-  constructor(renderOrder, parent, material, depthRank) {
+  constructor(renderOrder, parent, material) {
     this.renderOrder = renderOrder;
     this.parent = parent;
     this.material = material;
-    this.depthRank = depthRank;
+    this.ranked = "DEPTH_RANK" in material.defines;
   }
 
   /**
@@ -518,7 +538,7 @@ class Bucket {
     // up as text that scrolls into view being missing rather than as nothing
     // working at all.
     mesh.matrixWorldNeedsUpdate = true;
-    if (this.depthRank === "slope") {
+    if ("DEPTH_RANK_SLOPE" in this.material.defines) {
       mesh.onBeforeRender = followViewport;
     }
     this.mesh = mesh;
@@ -554,7 +574,7 @@ class Bucket {
       gradient.x + 4 * gradient.y + 8 * gradient.z + 16 * gradient.w + 32 * ramp.x;
     // The opacity, and under a depth bias the rank with it; see
     // `instancedVertex`.
-    size[index * 4 + 3] = this.depthRank ? 2 * rank + ramp.y : ramp.y;
+    size[index * 4 + 3] = this.ranked ? 2 * rank + ramp.y : ramp.y;
     writeVec4(this.data.aGradientGeometry, index, uGradientGeometry.value);
     writeVec4(this.data.aGradientTile, index, uGradientTile.value);
     writeVec4(this.data.aRadii, index, uRadii.value);
@@ -782,7 +802,9 @@ export class BoxBatch {
    * @returns {void}
    */
   setRank(mesh, rank) {
-    if (!this.depthRank || this.#ranks.get(mesh) === rank) {
+    // A box not in the batch, or no longer, keeps no rank here: its rank
+    // effect can run once more during a teardown, after `remove`.
+    if (!this.depthRank || !this.#members.has(mesh) || this.#ranks.get(mesh) === rank) {
       return;
     }
     this.#ranks.set(mesh, rank);
@@ -922,7 +944,7 @@ export class BoxBatch {
     for (const [order, needed] of wanted) {
       let bucket = this.#buckets.get(order);
       if (!bucket) {
-        bucket = new Bucket(order, this.#container, this.#material, this.depthRank);
+        bucket = new Bucket(order, this.#container, this.#material);
         this.#buckets.set(order, bucket);
       }
       bucket.reserve(needed);

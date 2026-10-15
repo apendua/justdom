@@ -38,7 +38,7 @@ import { createProperty } from "@apendua/signal";
  *   `false`, at either level, is no haptics. There is no `true` (see
  *   `PortalOptions.haptics`).
  * @property {boolean} [thumbstickWheel]
- * @property {DepthRankBias} [depthRank]
+ * @property {DepthRankBias | false} [depthRank]
  * @property {number} [maxTextScale]
  * @property {boolean} [atomic]
  * @property {boolean} [opaqueToRays]

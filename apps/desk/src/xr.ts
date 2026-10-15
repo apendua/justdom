@@ -26,7 +26,8 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
-  const depthRank = query.get("depthRank");
+  const asked = query.get("depthRank");
+  const depthRank = asked === "constant" || asked === "slope" ? asked : undefined;
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");
@@ -65,7 +66,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       // key, on the desk's keyboard too, which is a panel like any other.
       keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
       haptics: { flavor: "key" },
-      ...(depthRank === "constant" || depthRank === "slope" ? { depthRank } : {}),
+      ...(depthRank ? { depthRank } : {}),
     },
   }).subscribe({
     next: (renderer) => {

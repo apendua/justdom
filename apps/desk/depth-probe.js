@@ -10,6 +10,7 @@ import {
   DEPTH_RANK_GLSL,
   DEPTH_RANK_SLOPE_FACTOR,
   depthRankDefines,
+  readDepthRankViewport,
 } from "../../packages/freedom/src/elements/boxBatch.js";
 
 const query = new URLSearchParams(location.search);
@@ -125,11 +126,9 @@ function definesFor(formula) {
   };
 }
 
-const viewport = new THREE.Vector4();
-/** Each eye's viewport in a session, as the box batch reads it. */
+/** Each eye's viewport in a session, read as the box batch reads it. */
 function followViewport(rendererArg) {
-  rendererArg.getCurrentViewport(viewport);
-  shared.uDepthRankViewport.value.set(viewport.z, viewport.w);
+  readDepthRankViewport(rendererArg, shared.uDepthRankViewport.value);
 }
 
 const cards = [];

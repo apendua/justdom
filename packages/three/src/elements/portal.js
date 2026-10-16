@@ -1360,8 +1360,9 @@ function buildPortal(ctx, ownOptions = {}) {
    * its `reparented` signal, and the parent it left restyles and changes
    * size, so the reads cached for the subtree are told to run again. Each
    * one finds its node let go of and keeps the value it had
-   * (`keptWhileAway` in `mirror.js`), which costs a lookup, lets go of the
-   * panel's signals and tells its readers nothing, so no effect of the row
+   * (`keptWhileAway` in `mirror.js`), which costs a lookup, lets go of
+   * every signal of the panel but its record's `reparented` and tells its
+   * readers nothing, so no effect of the row
    * runs again against DOM no longer in the document. Nothing that happens
    * in the panel afterwards reaches those reads, a font arriving included. A
    * node put back before the commit is taken back by the mirror as the

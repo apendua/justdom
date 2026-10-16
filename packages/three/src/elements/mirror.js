@@ -520,9 +520,7 @@ const nodeCaches = [];
  * The exceptions hold nothing of a mirror's, only what the element itself
  * announces, and are kept for the element's life in a plain `WeakMap` that
  * says so where it is declared: `assignmentSources` below and
- * `valueVersions` in `textInput.js`. `hiddenCache` below is not one of
- * them: it holds a read of the computed style in a plain `WeakMap`, a gap
- * the architecture plan records under "Found along the way".
+ * `valueVersions` in `textInput.js`.
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
@@ -884,42 +882,43 @@ function takeDeparted(node) {
 const adoptions = new WeakMap();
 
 /**
- * The adoption signals set since the last microtask, to be set in one batch
- * (see `announceAdoption`).
+ * The writes `adopt` asked for since the last microtask, to be made in one
+ * batch (see `announceAdoption`).
  *
- * @type {Signal<boolean>[] | null}
+ * @type {(() => void)[] | null}
  */
 let adopted = null;
 
 /**
  * Tell whatever read the node before it had a record to read it again (see
- * `readRecordOf`): from a microtask, and all the nodes adopted since the
- * last one together. `adopt` is called from readers' computations, by the
- * list marker for an item's first line, and a signal written with no batch
- * open drains the queue then and there, which would run the effects that
- * depend on the adoption in the middle of the computation that adopted,
- * with the `Derived` it is evaluating still empty: a reader of it would
- * meet a cycle. A microtask runs once the stack is empty, so nothing is
+ * `readRecordOf`), or whatever kept its value while the node was away to run
+ * in full (`keptWhileAway`): from a microtask, and all the nodes adopted
+ * since the last one together. `adopt` is called from readers'
+ * computations, by the list marker for an item's first line, and a signal
+ * written with no batch open drains the queue then and there, which would
+ * run the effects that depend on the adoption in the middle of the
+ * computation that adopted, with the `Derived` it is evaluating still
+ * empty: a reader of it would meet a cycle. A microtask runs once the stack is empty, so nothing is
  * computing, and the one batch lets a template's subtree, adopted node by
  * node, come round as one update.
  *
- * @param {Signal<boolean>} signal
+ * @param {() => void} write
  * @returns {void}
  */
-function announceAdoption(signal) {
+function announceAdoption(write) {
   if (!adopted) {
     adopted = [];
     queueMicrotask(() => {
-      const signals = /** @type {Signal<boolean>[]} */ (adopted);
+      const writes = /** @type {(() => void)[]} */ (adopted);
       adopted = null;
       batch(() => {
-        for (const adoption of signals) {
-          adoption.set(true);
+        for (const announce of writes) {
+          announce();
         }
       });
     });
   }
-  adopted.push(signal);
+  adopted.push(write);
 }
 
 /**
@@ -987,18 +986,19 @@ function readRecordOf(node) {
  *    returns the value it had and depends on that record's `reparented`
  *    alone. The node has none while the mirror has let go of it, after the
  *    commit forgot it (`forget`), and a different one once another panel
- *    adopts it. The read lets go of every signal of the panel, so nothing
- *    the panel does afterwards reaches it, and its readers hear no change,
- *    so nothing they draw from it runs again. Read as the document has it, a
- *    node out of the document measures as nothing and styles as nothing, and
- *    every box, run and raster under it was drawn again from that, for
- *    objects about to be taken out.
+ *    adopts it. The read lets go of every other signal of the panel, so
+ *    nothing the panel does afterwards reaches it, and its readers hear no
+ *    change, so nothing they draw from it runs again. Read as the document
+ *    has it, a node out of the document measures as nothing and styles as
+ *    nothing, and every box, run and raster under it was drawn again from
+ *    that, for objects about to be taken out.
  * 3. **A read with nothing to keep runs in full.** One made before the node
  *    had a record follows its adoption (`readRecordOf`), and one made for
  *    the first time while the node is away reads it as the document has it.
- * 4. **Taken back, a read runs in full.** `reclaim` gives the node back the
- *    record it had and bumps that record's `reparented`, so every kept read
- *    runs again under it, as the document has the node now.
+ * 4. **Taken back, a read runs in full.** `adopt` gives the node back the
+ *    record it had, whether `reclaim` asks for it or a build does, and bumps
+ *    that record's `reparented` from a microtask (`announceAdoption`), so
+ *    every kept read runs again under it, as the document has the node now.
  * 5. **Nothing else ends it.** A record that is not given back is bumped by
  *    nobody, and a read kept under it keeps its value until the objects
  *    holding it are taken down. A portal building the node again runs those
@@ -1026,11 +1026,12 @@ function keptWhileAway(node, evaluate, isEqual) {
     evaluate: (ctx) => {
       const record = records.get(node);
       const before = madeUnder;
-      kept = before !== undefined && before !== record && ctx.hasValue();
-      if (kept) {
-        /** @type {NodeRecord} */ (before).reparented.get();
+      if (before !== undefined && before !== record && ctx.hasValue()) {
+        kept = true;
+        before.reparented.get();
         return ctx.getValue();
       }
+      kept = false;
       madeUnder = record;
       return evaluate();
     },
@@ -1139,13 +1140,18 @@ export class DomMirror {
         // it hangs off that panel's signals.
         forgetNode(node);
         record = undefined;
+      } else {
+        // Taken back: what its reads kept while it was away is read again
+        // (rule 4 of `keptWhileAway`).
+        const reparented = record.reparented;
+        announceAdoption(() => bump(reparented));
       }
     }
     records.set(node, record ?? new NodeRecord(this, node));
     const adoption = adoptions.get(node);
     if (adoption) {
       adoptions.delete(node);
-      announceAdoption(adoption);
+      announceAdoption(() => adoption.set(true));
     }
   }
 
@@ -1155,7 +1161,7 @@ export class DomMirror {
    * the mirror bumps nothing for them, and a read cached for one of them
    * keeps the value it has (`keptWhileAway`): one that runs again, for the
    * removal's bump of `reparented` or for anything the panel does before the
-   * commit, returns that value and lets go of the panel's signals, and
+   * commit, returns that value and lets go of the panel's other signals, and
    * nothing drawn from it runs again. A font arriving, or a stylesheet
    * changing, before the commit reaches each such read once at most.
    *
@@ -1192,9 +1198,8 @@ export class DomMirror {
 
   /**
    * Take back every node under `node`, itself included, that this mirror
-   * let go of (`release`), now that the panel has them again, and bump each
-   * one's `reparented`, which every read that kept its value while the node
-   * was away depends on (`keptWhileAway`). The whole
+   * let go of (`release`), now that the panel has them again (`adopt`). The
+   * whole
    * subtree is walked, not only from a node that was let go of: while out
    * of the document the page may have put one inside an element the panel
    * has never seen, and the flush then names that element. A mirror with
@@ -1207,12 +1212,8 @@ export class DomMirror {
     if (!departures.get(this)) {
       return;
     }
-    const record = departed.get(node);
-    if (record?.mirror === this) {
+    if (departed.get(node)?.mirror === this) {
       this.adopt(node);
-      // What its reads kept while it was away is read again (rule 4 of
-      // `keptWhileAway`).
-      bump(record.reparented);
     }
     node.childNodes.forEach((child) => {
       this.reclaim(child);
@@ -1310,8 +1311,8 @@ export class DomMirror {
             childListHint(mutation, kept(mutation.target)),
           );
           mutation.addedNodes.forEach((node) => {
-            // Back before the commit took it out: before the bump, so that
-            // the bump lands on the record its reads hang from.
+            // Back before the commit took it out: taken back first, so that
+            // the arrival's bump below finds the record its reads hang from.
             this.reclaim(node);
             const record = recordOf(node);
             if (record) {
@@ -2814,7 +2815,7 @@ export function hidesVisibility(visibility) {
 }
 
 /** @type {WeakMap<Element | Text, Derived<boolean>>} */
-const hiddenCache = new WeakMap();
+const hiddenCache = nodeCache();
 
 /**
  * Whether CSS says this node paints nothing of its own: computed

@@ -164,13 +164,15 @@ const PAGE = `<!doctype html>
     const syncMs = performance.now() - started;
     // Until the teardown spread across frames is over, and a few more.
     // The frame the objects left the scene in, which for a panel that stays
-    // open is its commit: until then the rows are still drawn.
-    let leaveFrames = objectCount() < drawn ? 0 : -1;
+    // open is its commit: until then the rows are still drawn. Null while
+    // they are, and a run that ends with them drawn is refused, as one that
+    // leaves ray targets behind is.
+    let leaveFrames = objectCount() < drawn ? 0 : null;
     let teardownFrames = 0;
     while (targets > left && teardownFrames < 600) {
       await nextFrame();
       teardownFrames += 1;
-      if (leaveFrames < 0 && objectCount() < drawn) {
+      if (leaveFrames === null && objectCount() < drawn) {
         leaveFrames = teardownFrames;
       }
     }
@@ -254,6 +256,9 @@ try {
         );
         if (result.left !== 0) {
           throw new Error(`${result.left} ray targets were never taken down`);
+        }
+        if (result.leaveFrames === null) {
+          throw new Error("the objects were never taken out of the scene");
         }
         if (repeat > 0) {
           results.push(result);

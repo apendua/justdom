@@ -14,6 +14,7 @@ import {
   getObjectPosition,
   getTextLayout,
   isTransformed,
+  isVisibilityHidden,
   resetMeasuringRangeForTests,
   trackCharacterEdges,
   tracksCharacterEdges,
@@ -4075,36 +4076,53 @@ describe("a checkbox's checked property", () => {
 
 describe("a read of a node the mirror let go of", () => {
   /**
-   * A card in a panel, read for its width, and how to change what the page
-   * lays it out at.
+   * A card in a panel with a label in it, each read for its width, and how
+   * to change what the page lays the two out at.
    */
   function readCard() {
     const root = document.createElement("div");
     root.setAttribute(PORTAL_ATTRIBUTE, "");
     const card = document.createElement("div");
+    const label = document.createElement("div");
+    card.appendChild(label);
     root.appendChild(card);
     document.body.appendChild(root);
     const mirror = createMirror();
-    mirror.adopt(root);
-    mirror.adopt(card);
+    for (const node of [root, card, label]) {
+      mirror.adopt(node);
+    }
     let width = 50;
+    let labelWidth = 20;
     layout(card, () => [0, 0, width, 10]);
+    layout(label, () => [0, 0, labelWidth, 10]);
     /** @type {number[]} */
     const seen = [];
-    const subscription = toObservable(new Derived(() => getBorderBoxSize(card).width)).subscribe(
-      (read) => seen.push(read),
-    );
+    /** @type {number[]} */
+    const labelSeen = [];
+    const subscriptions = [
+      toObservable(new Derived(() => getBorderBoxSize(card).width)).subscribe((read) =>
+        seen.push(read),
+      ),
+      toObservable(new Derived(() => getBorderBoxSize(label).width)).subscribe((read) =>
+        labelSeen.push(read),
+      ),
+    ];
     return {
       root,
       card,
       mirror,
       seen,
+      labelSeen,
       /** @param {number} next */
       setWidth: (next) => {
         width = next;
       },
+      /** @param {number} next */
+      setLabelWidth: (next) => {
+        labelWidth = next;
+      },
       done: () => {
-        subscription.unsubscribe();
+        subscriptions.forEach((subscription) => subscription.unsubscribe());
         root.remove();
       },
     };
@@ -4135,6 +4153,42 @@ describe("a read of a node the mirror let go of", () => {
     done();
   });
 
+  test("of a node under it runs in full once the node is taken back", async () => {
+    // What `reclaim`'s walk is for: the label came back with the card, and
+    // what it kept while away is read again too.
+    const { root, card, mirror, labelSeen, setLabelWidth, done } = readCard();
+    card.remove();
+    setLabelWidth(0);
+    mirror.release(card);
+    mirror.fontsLoaded();
+    await Promise.resolve();
+    assert.deepEqual(labelSeen, [20], "the label is read as it was");
+
+    root.appendChild(card);
+    setLabelWidth(30);
+    mirror.reclaim(card);
+    await Promise.resolve();
+    assert.deepEqual(labelSeen, [20, 30]);
+    done();
+  });
+
+  test("runs in full whichever way the node is taken back", async () => {
+    // A build adopts a node itself, and an item's first line adopts the
+    // children it walks: a node let go of is taken back by `adopt`, whoever
+    // calls it.
+    const { root, card, mirror, seen, setWidth, done } = readCard();
+    card.remove();
+    setWidth(0);
+    mirror.release(card);
+    mirror.fontsLoaded();
+    root.appendChild(card);
+    setWidth(30);
+    mirror.adopt(card);
+    await Promise.resolve();
+    assert.deepEqual(seen, [50, 30]);
+    done();
+  });
+
   test("keeps what it said for good once the node is forgotten", async () => {
     // The commit forgets the card while its objects wait for their
     // teardowns, and another panel may adopt it before they run.
@@ -4149,6 +4203,24 @@ describe("a read of a node the mirror let go of", () => {
     other.fontsLoaded();
     await Promise.resolve();
     assert.deepEqual(seen, [50]);
+    done();
+  });
+
+  test("of a node forgotten is not what another panel reads", () => {
+    // A second session claims the element while a reader the first left
+    // behind still holds what it read. The second reads it afresh.
+    const { card, mirror, done } = readCard();
+    const leftBehind = toObservable(new Derived(() => isVisibilityHidden(card))).subscribe(
+      () => {},
+    );
+    mirror.release(card);
+    mirror.forget(card);
+    const other = createMirror();
+    other.adopt(card);
+    card.style.visibility = "hidden";
+    other.attributeChanged(card);
+    assert.equal(isVisibilityHidden(card), true);
+    leftBehind.unsubscribe();
     done();
   });
 

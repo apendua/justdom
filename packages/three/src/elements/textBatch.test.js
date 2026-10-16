@@ -300,6 +300,20 @@ function declined(container) {
   );
 }
 
+/**
+ * The runs a batch draws, which are the ones no longer drawing themselves.
+ *
+ * @param {THREE.Object3D} container
+ */
+function batched(container) {
+  return container.children.filter(
+    (c) =>
+      /** @type {THREE.Mesh} */ (c).isMesh &&
+      !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
+      !(/** @type {THREE.Material} */ (/** @type {THREE.Mesh} */ (c).material).visible),
+  );
+}
+
 describe("text batch array limits", () => {
   test("runs past the layer cap draw themselves instead of failing to allocate", () => {
     // 256 is the cap; one more run of the same size than there are layers.
@@ -322,18 +336,9 @@ describe("text batch array limits", () => {
     const odd = /** @type {THREE.Mesh} */ (declined(p.container)[0]);
 
     // Any batched run leaving hands its layer back, and `remove` invalidates.
-    const batched = /** @type {THREE.Mesh} */ (
-      p.container.children.find(
-        (c) =>
-          /** @type {THREE.Mesh} */ (c).isMesh &&
-          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
-          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
-          c !== odd &&
-          !(/** @type {THREE.Material} */ (/** @type {THREE.Mesh} */ (c).material).visible),
-      )
-    );
-    p.batch.remove(batched);
-    p.container.remove(batched);
+    const leaving = /** @type {THREE.Mesh} */ (batched(p.container)[0]);
+    p.batch.remove(leaving);
+    p.container.remove(leaving);
     p.batch.flush();
 
     assert.equal(
@@ -350,21 +355,13 @@ describe("text batch array limits", () => {
     const p = panel(257);
     p.batch.flush();
     const odd = /** @type {THREE.Mesh} */ (declined(p.container)[0]);
-    const batched = /** @type {THREE.Mesh} */ (
-      p.container.children.find(
-        (c) =>
-          /** @type {THREE.Mesh} */ (c).isMesh &&
-          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
-          c !== odd &&
-          !(/** @type {THREE.Material} */ (/** @type {THREE.Mesh} */ (c).material).visible),
-      )
-    );
-    p.container.remove(batched);
+    const leaving = /** @type {THREE.Mesh} */ (batched(p.container)[0]);
+    p.container.remove(leaving);
     p.batch.invalidate();
     p.batch.flush();
     assert.equal(declined(p.container).length, 1, "still declined: the layer is still held");
 
-    p.batch.remove(batched);
+    p.batch.remove(leaving);
     p.batch.flush();
     assert.equal(
       /** @type {THREE.Material} */ (odd.material).visible,

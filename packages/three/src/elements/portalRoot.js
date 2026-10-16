@@ -39,8 +39,8 @@ export const FOCUS_ATTRIBUTE = "data-xr-focus";
 
 /**
  * Every flag above: what a portal over the page's own element takes off that
- * element's subtree when it closes, and what the mirror's contract sets are
- * made from.
+ * element's subtree when it closes, and off a row's when the row leaves the
+ * panel, and what the mirror's contract sets are made from.
  */
 export const ELEMENT_FLAGS = /** @type {const} */ ([
   HOVER_ATTRIBUTE,

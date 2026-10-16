@@ -945,7 +945,19 @@ function buildPortal(ctx, ownOptions = {}) {
    * @property {Node[]} nodes Every node the walks reached, a node reached by
    *   two of them twice: a row held for a commit is unlinked by name and
    *   again by the DOM walk. `scheduleTeardown` allows for the repeat.
+   * @property {number[]} starts For each of `nodes`, where the run of
+   *   teardowns collected for it and for everything under it starts. The
+   *   walk is depth first, so that run is one stretch of `teardowns`.
+   * @property {number[]} ends And where that run ends, past its last entry:
+   *   empty for a node reached the second time.
    */
+
+  /**
+   * An empty walk to collect into.
+   *
+   * @returns {Unlinked}
+   */
+  const startUnlinking = () => ({ teardowns: [], nodes: [], starts: [], ends: [] });
 
   /**
    * Let go of everything the portal made for a node and for everything under
@@ -980,7 +992,9 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   function unlink(node, unlinked) {
     portalKeyboard?.released(node);
-    unlinked.nodes.push(node);
+    const index = unlinked.nodes.push(node) - 1;
+    unlinked.starts.push(unlinked.teardowns.length);
+    unlinked.ends.push(unlinked.teardowns.length);
     if (released && root && node.nodeType === Node.ELEMENT_NODE) {
       // A panel over the page's own element is closing, and the page shows
       // that element again. Every flag the portal wrote on it comes off now,
@@ -1018,6 +1032,7 @@ function buildPortal(ctx, ownOptions = {}) {
     node.childNodes.forEach((childNode) => {
       unlink(childNode, unlinked);
     });
+    unlinked.ends[index] = unlinked.teardowns.length;
     // Forgotten as well as taken down: the mirror's caches outlive the
     // portal, and a node kept in them keeps this mirror's signals under it.
     // The element the page owns is the one that comes back — see
@@ -1051,6 +1066,8 @@ function buildPortal(ctx, ownOptions = {}) {
         requestFrames,
         teardowns: unlinked.teardowns,
         nodes: unlinked.nodes,
+        starts: unlinked.starts,
+        ends: unlinked.ends,
       });
     } else {
       runTeardowns(unlinked);
@@ -1064,8 +1081,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * @param {Node} node
    */
   function cleanup(node) {
-    /** @type {Unlinked} */
-    const unlinked = { teardowns: [], nodes: [] };
+    const unlinked = startUnlinking();
     unlink(node, unlinked);
     runTeardowns(unlinked);
   }
@@ -1408,44 +1424,9 @@ function buildPortal(ctx, ownOptions = {}) {
         }
       }
       pendingAttachments.clear();
-      /** @type {Unlinked} */
-      const removed = { teardowns: [], nodes: [] };
-      /**
-       * Where the objects of the rows that left wait for their teardowns:
-       * out of the scene, and under a group that is hidden, so that no ray
-       * meets them. Not each object hidden in its own right, as a closed
-       * panel's container is: this panel's channel still runs, and an
-       * effect of the row's own, the one that writes `visible` from its
-       * style, could show it again.
-       *
-       * @type {THREE.Group | null}
-       */
-      let hold = null;
-      for (const node of pendingRemovals) {
-        // Back in the tree since it was listed: moved, and just placed
-        // above.
-        if (!containerElement.contains(node)) {
-          const object = nodeToObject.get(node);
-          if (object) {
-            if (!hold) {
-              hold = new THREE.Group();
-              hold.visible = false;
-            }
-            hold.add(object);
-          }
-          unlink(node, removed);
-        }
+      if (pendingRemovals.size > 0) {
+        takeDownRemovals();
       }
-      pendingRemovals.clear();
-      if (hold) {
-        // And let go of them last, so that a row taken down is out of
-        // everything, as it was when it was taken down on the spot.
-        const held = hold;
-        removed.teardowns.push(() => {
-          held.clear();
-        });
-      }
-      takeDown(removed);
       if (changed) {
         // The batches draw what a walk of the panel finds, and the walk just
         // changed. Every box and run told its batch about itself when it was
@@ -1459,6 +1440,49 @@ function buildPortal(ctx, ownOptions = {}) {
     });
     outlines?.commit();
     return true;
+  };
+
+  /**
+   * The commit's departures: each node listed as removed and still out of the
+   * tree, taken out of the scene and down (`takeDown`). A node back in the
+   * tree since it was listed was moved, and the commit has placed it.
+   */
+  const takeDownRemovals = () => {
+    const removed = startUnlinking();
+    /**
+     * Where the objects of the rows that left wait for their teardowns: out
+     * of the scene, and under a group that is hidden, so that no ray meets
+     * them. Not each object hidden in its own right, as a closed panel's
+     * container is: this panel's channel still runs, and an effect of the
+     * row's own, the one that writes `visible` from its style, could show it
+     * again.
+     *
+     * @type {THREE.Group | null}
+     */
+    let hold = null;
+    for (const node of pendingRemovals) {
+      if (!containerElement.contains(node)) {
+        const object = nodeToObject.get(node);
+        if (object) {
+          if (!hold) {
+            hold = new THREE.Group();
+            hold.visible = false;
+          }
+          hold.add(object);
+        }
+        unlink(node, removed);
+      }
+    }
+    pendingRemovals.clear();
+    if (hold) {
+      // And let go of them last, so that a row taken down is out of
+      // everything, as it was when it was taken down on the spot.
+      const held = hold;
+      removed.teardowns.push(() => {
+        held.clear();
+      });
+    }
+    takeDown(removed);
   };
 
   /**
@@ -2053,8 +2077,7 @@ function buildPortal(ctx, ownOptions = {}) {
       return;
     }
     released = true;
-    /** @type {Unlinked} */
-    const unlinked = { teardowns: [], nodes: [] };
+    const unlinked = startUnlinking();
     takeDownContainer(unlinked);
     unlink(containerElement, unlinked);
     if (root) {

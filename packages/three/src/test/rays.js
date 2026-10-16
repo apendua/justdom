@@ -60,3 +60,20 @@ export function withStart(event) {
   }
   return event;
 }
+
+/**
+ * Whether an object hangs anywhere under another: drawn in a panel rather
+ * than detached from it, or under a group that hides it.
+ *
+ * @param {THREE.Object3D} object
+ * @param {THREE.Object3D} ancestor
+ * @returns {boolean}
+ */
+export function isUnder(object, ancestor) {
+  for (let node = object.parent; node; node = node.parent) {
+    if (node === ancestor) {
+      return true;
+    }
+  }
+  return false;
+}

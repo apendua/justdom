@@ -479,6 +479,17 @@ export class BoxBatch {
   #matrices = [];
 
   /**
+   * The boxes the last rebuild laid into buckets, so that a box leaving the
+   * batch asks for a rebuild only when the buckets hold it. A box out of the
+   * walk is in no bucket: the rows that left an open panel wait out of it
+   * for their teardowns (`portalTeardown.js`), and each of those removals
+   * would otherwise rebuild the batch to find what it already holds.
+   *
+   * @type {Set<THREE.Mesh>}
+   */
+  #drawn = new Set();
+
+  /**
    * @param {Object3D} container The portal's container object. Buckets hang
    *   off it, so instance matrices are in its frame and it carries the whole
    *   panel as one.
@@ -528,7 +539,9 @@ export class BoxBatch {
     }
     // No visibility to restore: the material was never this mesh's to hide.
     mesh.frustumCulled = true;
-    this.invalidate();
+    if (this.#drawn.delete(mesh)) {
+      this.invalidate();
+    }
   }
 
   /**
@@ -613,7 +626,9 @@ export class BoxBatch {
     }
     const found = this.#found;
     const matrices = this.#matrices;
+    const drawn = this.#drawn;
     found.length = 0;
+    drawn.clear();
     let count = 0;
 
     /**
@@ -628,6 +643,7 @@ export class BoxBatch {
       const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
       if (this.#members.has(/** @type {THREE.Mesh} */ (object))) {
         found.push(/** @type {THREE.Mesh} */ (object));
+        drawn.add(/** @type {THREE.Mesh} */ (object));
         if (!matrices[count]) {
           matrices[count] = new THREE.Matrix4();
         }
@@ -715,6 +731,7 @@ export class BoxBatch {
     }
     this.#buckets.clear();
     this.#members.clear();
+    this.#drawn.clear();
     this.#material.dispose();
   }
 }

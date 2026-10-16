@@ -689,6 +689,16 @@ export class TextBatch {
   #foundSlots = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
+  /**
+   * The runs the last rebuild laid into buckets, so that a run leaving the
+   * batch, or letting go of a raster, asks for a rebuild only when the
+   * buckets hold it; see `#drawn` in `boxBatch.js`. What such a run gives
+   * back is given back all the same, and a class it leaves with no layers
+   * is dropped by whichever rebuild comes next.
+   *
+   * @type {Set<THREE.Mesh>}
+   */
+  #drawn = new Set();
 
   /**
    * @param {Object3D} container
@@ -751,7 +761,9 @@ export class TextBatch {
       /** @type {THREE.Material} */ (mesh.material).visible = true;
     }
     mesh.frustumCulled = true;
-    this.invalidate();
+    if (this.#drawn.delete(mesh)) {
+      this.invalidate();
+    }
   }
 
   /**
@@ -776,7 +788,9 @@ export class TextBatch {
     }
     slot.sizeClass.release(slot.layer);
     member.slots.delete(canvas);
-    this.invalidate();
+    if (this.#drawn.has(mesh)) {
+      this.invalidate();
+    }
   }
 
   /**
@@ -970,8 +984,10 @@ export class TextBatch {
     const found = this.#found;
     const foundSlots = this.#foundSlots;
     const matrices = this.#matrices;
+    const drawn = this.#drawn;
     found.length = 0;
     foundSlots.length = 0;
+    drawn.clear();
     let count = 0;
 
     /**
@@ -997,6 +1013,7 @@ export class TextBatch {
         if (slot) {
           found.push(member);
           foundSlots.push(slot);
+          drawn.add(member.mesh);
           if (!matrices[count]) {
             matrices[count] = new THREE.Matrix4();
           }
@@ -1084,6 +1101,7 @@ export class TextBatch {
     this.#classes.clear();
     this.#members.clear();
     this.#bucketMeshes.clear();
+    this.#drawn.clear();
   }
 }
 

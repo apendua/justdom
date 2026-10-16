@@ -13,6 +13,10 @@
  * median of `REPEATS` runs. The portals share one scheduler, as they do
  * under `render()`, which is what spreads the teardown over frames.
  *
+ * The second table empties the panel's list instead and leaves the panel
+ * open: the same columns, with "sync ms" the removal itself and the rest
+ * counted until the rows that left are taken down.
+ *
  * Chromium is launched through `packages/headset/driver`, as
  * `bench/lineBoxCopy.browser.mjs` explains.
  */
@@ -153,18 +157,22 @@ const PAGE = `<!doctype html>
       await nextFrame();
       teardownFrames += 1;
     }
-    if (mode === "empty") {
-      portal.disconnect();
-      while (targets > 0) {
-        await nextFrame();
-      }
-    }
     for (let i = 0; i < 5; i++) {
       await nextFrame();
     }
     counting = false;
     const disposeWorst = Math.max(...frames);
-    return { mountMs, mountWorst, syncMs, disposeWorst, teardownFrames, left: targets };
+    // What the teardown left behind, counted before an emptied panel is
+    // closed in turn, which takes its own frames and is not measured.
+    let stuck = targets - left;
+    if (mode === "empty") {
+      portal.disconnect();
+      for (let frame = 0; targets > 0 && frame < 600; frame++) {
+        await nextFrame();
+      }
+      stuck += targets;
+    }
+    return { mountMs, mountWorst, syncMs, disposeWorst, teardownFrames, left: stuck };
   };
   window.benchReady = true;
 </script>`;
@@ -226,7 +234,7 @@ try {
           /** @type {const} */ ([rows, mode]),
         );
         if (result.left !== 0) {
-          throw new Error(`${result.left} ray targets of a closed panel were never taken down`);
+          throw new Error(`${result.left} ray targets were never taken down`);
         }
         if (repeat > 0) {
           results.push(result);

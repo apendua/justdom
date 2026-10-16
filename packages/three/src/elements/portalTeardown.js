@@ -41,11 +41,15 @@ import { batch, withChannel } from "@apendua/signal";
  *    an open panel wait under a hidden group of their own rather than each
  *    hidden in its own right: that panel's channel still runs, and a row's
  *    own effect that writes `visible` from its style could show it again.
- *    The group lets go of them as their last teardown. The mirror let go of
- *    such a row when it left (`DomMirror.release`), so nothing the page
- *    does reaches it. The panel's text step (`textScale.js`) still does: a
- *    step crossed while the row waits draws its text again at the new step,
- *    for nothing, as it did while the row waited for its commit.
+ *    Nor has that portal stopped, but nothing it does reaches a held
+ *    object: `unlink` took the row and everything under it out of the
+ *    portal's maps, so no commit can place one of them anywhere, and a
+ *    child still in the tree was passed over by the walk and is its
+ *    commit's to place. The group lets go of them as their last teardown. The
+ *    mirror let go of such a row when it left (`DomMirror.release`), so nothing
+ *    the page does reaches it. The panel's text step (`textScale.js`) still
+ *    does: a step crossed while the row waits draws its text again at the new
+ *    step, for nothing, as it did while the row waited for its commit.
  * 3. **Only under the scene's scheduler.** The queue outlives the panel, so
  *    it needs frames that outlive the panel, and only the scheduler
  *    `render()` installs has them. A portal pacing itself, on a plain page
@@ -71,21 +75,32 @@ import { batch, withChannel } from "@apendua/signal";
  *    other pumps leave no time for is not frameless and waits for them.
  * 6. **Building a node finishes its teardown.** A node the queue covers can
  *    be built again before the queue reaches it: the same page element
- *    claimed for the next session, or nodes moved into another panel. Its
- *    old teardown writes to what the new build owns, such as the
- *    `data-xr-checked` it takes off a checkbox or the reveal handle it
+ *    claimed for the next session, nodes moved into another panel, or a row
+ *    put back in the panel it left, as a keyed list does when a filter is
+ *    cleared. Its old teardown writes to what the new build owns, such as
+ *    the `data-xr-checked` it takes off a checkbox or the reveal handle it
  *    leaves, so a portal building a node, or claiming a root, first runs
- *    every teardown still queued for it, whole and at once
- *    (`finishTeardownOf`). A node is covered by one queue at a time: a
- *    second panel closing over a node an older queue still covers, which
- *    the page moved from one panel to the other, finishes the older queue
- *    first.
- * 7. **The end.** A queue ends when it is empty, by any of the three paths,
- *    and then leaves the scheduler, stops watching frames and clears its
- *    timer. Nothing else ends it.
+ *    the teardowns still queued for that node and for everything that was
+ *    under it, at once (`finishTeardownOf`). The rest of the queue keeps to
+ *    its frames: a row put back costs its own teardown in the frame that
+ *    builds it, not those of every row that left with it. The walk collects
+ *    a node's teardowns and those of everything under it next to each other,
+ *    so the queue knows each covered node by where its run of entries
+ *    starts and ends. A node is covered by one queue at a time: a newer
+ *    queue covering a node an older one still covers, which the page moved
+ *    from one panel to another, first finishes the older one's entries for
+ *    it.
+ * 7. **The end.** A queue ends when every entry has run, whichever path ran
+ *    the last of them, and then leaves the scheduler, stops watching frames
+ *    and clears its timer. Nothing else ends it.
  *
- * Each slice of teardowns runs as one `batch()` in the default channel: the
- * panel's own channel has no pump to drain it any more.
+ * Each slice of teardowns runs as one `batch()`, so that what a slice writes
+ * settles once. It runs in the default channel, for a closed panel and an
+ * open one alike. A channel decides where what is built gets built, and a
+ * teardown builds nothing: what its writes invalidate is queued in the
+ * channel it was built in, an open panel's own included, whose pump drains
+ * it with any other change. The default channel only keeps a slice run from
+ * inside another panel's build (rule 6) from lending it that channel.
  */
 
 /** Below any priority a panel can be given; see rule 4. */
@@ -98,22 +113,37 @@ export const FRAMELESS_WAIT = 250;
 export const FRAMELESS_SLICE = 4;
 
 /**
- * What finishes the queue covering a node, for as long as one does.
+ * Where a node's teardowns wait: the queue's run of entries for the node and
+ * everything that was under it, and the way to finish them (rule 6).
  *
- * @type {WeakMap<Node, () => void>}
+ * @typedef {object} Cover
+ * @property {object} queue Which queue, so that a queue knows its own.
+ * @property {number} start
+ * @property {number} end
+ * @property {(start: number, end: number) => void} finish
+ */
+
+/**
+ * The run of teardowns still queued for a node, for as long as one is.
+ *
+ * @type {WeakMap<Node, Cover>}
  */
 const covering = new WeakMap();
 
 /**
- * Run whatever teardown is still queued for a node, whole, before a portal
- * builds the node again or claims it as a root (rule 6). Nothing for a node
- * no queue covers.
+ * Run whatever teardowns are still queued for a node and for everything
+ * that was under it, before a portal builds the node again or claims it as
+ * a root (rule 6). Nothing for a node no queue covers.
  *
  * @param {Node} node
  * @returns {void}
  */
 export function finishTeardownOf(node) {
-  covering.get(node)?.();
+  const cover = covering.get(node);
+  if (cover) {
+    covering.delete(node);
+    cover.finish(cover.start, cover.end);
+  }
 }
 
 /**
@@ -128,6 +158,10 @@ export function finishTeardownOf(node) {
  *   runs it.
  * @property {readonly Node[]} nodes Every node the teardowns were built for
  *   (rule 6).
+ * @property {readonly number[]} starts Where the run of entries for each of
+ *   `nodes` and everything under it starts in `teardowns`.
+ * @property {readonly number[]} ends And where it ends, past its last entry.
+ *   A node passed twice has an empty run the second time.
  * @property {() => number} [now] The clock, injectable for tests.
  * @property {(fn: () => void, ms: number) => () => void} [setTimer] A timer
  *   and the way to clear it, injectable for tests.
@@ -137,8 +171,8 @@ export function finishTeardownOf(node) {
 const ran = () => {};
 
 /**
- * Queue a closed panel's teardowns on the scene's scheduler. See the rules
- * above.
+ * Queue the teardowns of a closed panel, or of the rows that left an open
+ * one, on the scene's scheduler. See the rules above.
  *
  * @param {TeardownOptions} options
  * @returns {void}
@@ -148,18 +182,45 @@ export function scheduleTeardown({
   requestFrames,
   teardowns,
   nodes,
+  starts,
+  ends,
   now = () => performance.now(),
   setTimer = (fn, ms) => {
     const handle = setTimeout(fn, ms);
     return () => clearTimeout(handle);
   },
 }) {
-  /** The next entry to run. A cursor rather than `shift`, which is linear. */
+  if (teardowns.length === 0) {
+    return;
+  }
+  /**
+   * The first entry that may not have run. A cursor rather than `shift`,
+   * which is linear; entries past it that rule 6 ran are skipped.
+   */
   let next = 0;
+  /** How many entries have not run, by whichever path. */
+  let left = teardowns.length;
   /** When the scene last drew a frame, or when the queue was made. */
   let lastFrame = now();
   /** @type {(() => void) | null} */
   let clearTimer = null;
+
+  /**
+   * Run one entry, if it has not run.
+   *
+   * @param {number} index
+   * @returns {boolean} whether it ran now
+   */
+  const runEntry = (index) => {
+    const teardown = teardowns[index];
+    if (teardown === ran) {
+      return false;
+    }
+    teardowns[index] = ran;
+    left -= 1;
+    teardown();
+    return true;
+  };
 
   /**
    * Tear down until the deadline, at least one object whatever the clock.
@@ -171,27 +232,16 @@ export function scheduleTeardown({
     withChannel(null, () => {
       batch(() => {
         let progressed = false;
-        while (next < teardowns.length && (!progressed || now() < deadline)) {
-          const teardown = teardowns[next];
-          teardowns[next] = ran;
+        while (left > 0 && (!progressed || now() < deadline)) {
+          const index = next;
           next += 1;
-          progressed = true;
-          teardown();
+          if (runEntry(index)) {
+            progressed = true;
+          }
         }
       });
     });
-    return next >= teardowns.length;
-  };
-
-  const finish = () => {
-    stopWatching();
-    clearTimer?.();
-    clearTimer = null;
-    for (const node of nodes) {
-      if (covering.get(node) === finishNow) {
-        covering.delete(node);
-      }
-    }
+    return left === 0;
   };
 
   /** @type {PortalPump} */
@@ -206,14 +256,36 @@ export function scheduleTeardown({
     },
   };
 
-  /** Rule 6, and the end of a queue run off the scheduler's frames. */
-  function finishNow() {
-    if (next < teardowns.length) {
-      runUntil(Infinity);
+  const finish = () => {
+    stopWatching();
+    clearTimer?.();
+    clearTimer = null;
+    for (const node of nodes) {
+      if (covering.get(node)?.queue === pump) {
+        covering.delete(node);
+      }
     }
-    scheduler.remove(pump);
-    finish();
-  }
+  };
+
+  /**
+   * Rule 6: run what is left of a node's entries now.
+   *
+   * @param {number} start
+   * @param {number} end
+   */
+  const finishRun = (start, end) => {
+    withChannel(null, () => {
+      batch(() => {
+        for (let index = start; index < end; index++) {
+          runEntry(index);
+        }
+      });
+    });
+    if (left === 0) {
+      scheduler.remove(pump);
+      finish();
+    }
+  };
 
   /** Rule 5: tear down on a timer while the scene draws no frames. */
   const check = () => {
@@ -229,21 +301,24 @@ export function scheduleTeardown({
         finish();
       }
     } finally {
-      if (next < teardowns.length) {
+      if (left > 0) {
         clearTimer = setTimer(check, 0);
       }
     }
   };
 
-  if (teardowns.length === 0) {
-    return;
-  }
-  for (const node of nodes) {
-    const older = covering.get(node);
-    // A node the walk passed twice is covered by this queue already.
-    if (older !== finishNow) {
-      older?.();
-      covering.set(node, finishNow);
+  for (let index = 0; index < nodes.length; index++) {
+    const start = starts[index];
+    const end = ends[index];
+    if (start === end) {
+      // Nothing queued for it here: a node with no object and nothing under
+      // it, or one the walk passed a second time.
+      continue;
+    }
+    const node = nodes[index];
+    if (covering.get(node)?.queue !== pump) {
+      finishTeardownOf(node);
+      covering.set(node, { queue: pump, start, end, finish: finishRun });
     }
   }
   const stopWatching = requestFrames(() => {

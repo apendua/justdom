@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { drain, flushFrame, settle } from "../test/portalHarness.js";
 import { rayHand } from "../test/rayHand.js";
+import { isUnder } from "../test/rays.js";
 import { describeScroller } from "../test/scroller.js";
 import { createDragAndDrop, dragAndDrop } from "./dragAndDrop.js";
 import { movesList } from "./scroll.js";
@@ -753,21 +754,6 @@ function picturingGesture(s) {
   };
 }
 
-/**
- * Whether `object` is drawn in `panel`, rather than detached from it.
- *
- * @param {THREE.Object3D} object
- * @param {THREE.Object3D} panel
- */
-function isIn(object, panel) {
-  for (let node = object.parent; node; node = node.parent) {
-    if (node === panel) {
-      return true;
-    }
-  }
-  return false;
-}
-
 describe("the picture a drag carries", () => {
   test("is taken of the source as its panel draws it, carried, and let go with the drag", async () => {
     const s = await sortableList();
@@ -779,7 +765,7 @@ describe("the picture a drag carries", () => {
     assert.equal(g.taken.length, 1);
     const { panel, frame, box, target } = g.taken[0];
     assert.equal(panel, s.panel);
-    assert.ok(isIn(frame, s.panel), "framed on an object the panel draws");
+    assert.ok(isUnder(frame, s.panel), "framed on an object the panel draws");
     assert.deepEqual(box, { x: 0, y: 0, width: 300, height: 40 });
 
     const ghost = /** @type {THREE.Mesh} */ (s.panel.getObjectByName("drag-ghost"));
@@ -829,7 +815,7 @@ describe("the picture a drag carries", () => {
     g.carry();
     assert.equal(g.taken.length, 1);
     const { frame, box } = g.taken[0];
-    assert.ok(isIn(frame, s.panel));
+    assert.ok(isUnder(frame, s.panel));
     assert.notEqual(frame, g.taken[0].panel);
     assert.deepEqual(box, { x: 0, y: 0, width: 300, height: 40 });
     g.release();

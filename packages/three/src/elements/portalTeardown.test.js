@@ -7,6 +7,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { clientRect } from "../test/clientRect.js";
+import { isUnder } from "../test/rays.js";
 import {
   countingManager,
   drain,
@@ -15,7 +16,9 @@ import {
   settle,
 } from "../test/portalHarness.js";
 import { createFrameRequester } from "./frameRequester.js";
+import { BoxBatch } from "./boxBatch.js";
 import { createPortal } from "./portal.js";
+import { TextBatch } from "./textBatch.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import {
   FRAMELESS_SLICE,
@@ -207,22 +210,6 @@ describe("a closed panel under the scene's scheduler", () => {
   });
 });
 
-/**
- * Whether an object hangs anywhere under another.
- *
- * @param {THREE.Object3D} object
- * @param {THREE.Object3D} ancestor
- * @returns {boolean}
- */
-function isUnder(object, ancestor) {
-  for (let node = object.parent; node; node = node.parent) {
-    if (node === ancestor) {
-      return true;
-    }
-  }
-  return false;
-}
-
 describe("rows that leave an open panel under the scene's scheduler", () => {
   /**
    * A loaded panel over a list of `count` clickable rows, each with a
@@ -340,9 +327,78 @@ describe("rows that leave an open panel under the scene's scheduler", () => {
     );
 
     root.appendChild(rows[0]);
-    await drain();
+    await nextMacrotask();
+    // One frame, on no budget, is the panel's: it builds the row and the
+    // queue is not offered the frame at all.
+    flushFrame();
     assert.ok(!rowTargets.some((target) => targets.has(target)), "finished by the build");
+    await drain();
     assert.equal(box.dataset.xrChecked, "true", "and the new build's flag is still there");
+    portal.disconnect();
+    await drain();
+    root.remove();
+  });
+
+  test("put back finish their own teardowns, not those of the rows that left with them", async () => {
+    const { root, rows, portal, container, targets, rowTargets } = await list(2);
+    const [back] = rows;
+    for (const row of rows) {
+      row.remove();
+    }
+    await nextMacrotask();
+    await untilCommitted(rowTargets, container);
+    // Each row's targets: the row's own, built first since the build goes
+    // breadth first, and its checkbox's, under it.
+    const [backRow] = rowTargets;
+    const backTargets = rowTargets.filter((t) => t === backRow || isUnder(t, backRow));
+    const goneTargets = rowTargets.filter((target) => !backTargets.includes(target));
+    assert.deepEqual([backTargets.length, goneTargets.length], [2, 2]);
+
+    root.appendChild(back);
+    await nextMacrotask();
+    flushFrame();
+    assert.ok(!backTargets.some((target) => targets.has(target)), "the row put back");
+    assert.ok(
+      goneTargets.every((target) => targets.has(target)),
+      "and the row still gone waits for its frames",
+    );
+    await drain();
+    assert.ok(!goneTargets.some((target) => targets.has(target)));
+    portal.disconnect();
+    await drain();
+    root.remove();
+  });
+
+  test("rebuild no batch as they are taken down", async () => {
+    // The commit takes them out of what the batches walk and rebuilds both
+    // batches once; a box or a run leaving that is in no bucket has nothing
+    // to rebuild for.
+    const { root, rows, portal, container, targets, rowTargets } = await list(3);
+    for (const row of rows) {
+      row.remove();
+    }
+    await nextMacrotask();
+    await untilCommitted(rowTargets, container);
+    await nextMacrotask();
+    let rebuilds = 0;
+    const box = BoxBatch.prototype.rebuild;
+    const text = TextBatch.prototype.rebuild;
+    BoxBatch.prototype.rebuild = function () {
+      rebuilds += 1;
+      box.call(this);
+    };
+    TextBatch.prototype.rebuild = function () {
+      rebuilds += 1;
+      text.call(this);
+    };
+    try {
+      await drain();
+    } finally {
+      BoxBatch.prototype.rebuild = box;
+      TextBatch.prototype.rebuild = text;
+    }
+    assert.ok(!rowTargets.some((target) => targets.has(target)), "taken down");
+    assert.equal(rebuilds, 0, "and no batch rebuilt for it");
     portal.disconnect();
     await drain();
     root.remove();
@@ -428,7 +484,7 @@ describe("scheduleTeardown", () => {
   test("waits for the scheduler while frames come, however long the pumps take", () => {
     const clock = harness();
     const { teardowns, ran } = slowTeardowns(clock, 10);
-    scheduleTeardown({ ...clock, teardowns, nodes: [] });
+    scheduleTeardown({ ...clock, teardowns, nodes: [], starts: [], ends: [] });
     const [pump] = clock.waiting;
     assert.equal(pump.priority, TEARDOWN_PRIORITY);
     for (let index = 0; index < 20; index++) {
@@ -450,7 +506,7 @@ describe("scheduleTeardown", () => {
   test("tears down on timers once the frames stop, and waits again when one comes", () => {
     const clock = harness();
     const { teardowns, ran } = slowTeardowns(clock, 20);
-    scheduleTeardown({ ...clock, teardowns, nodes: [] });
+    scheduleTeardown({ ...clock, teardowns, nodes: [], starts: [], ends: [] });
 
     clock.advance(FRAMELESS_WAIT - 1);
     clock.runTimers();
@@ -464,7 +520,7 @@ describe("scheduleTeardown", () => {
 
     const second = harness();
     const slow = slowTeardowns(second, 20);
-    scheduleTeardown({ ...second, teardowns: slow.teardowns, nodes: [] });
+    scheduleTeardown({ ...second, teardowns: slow.teardowns, nodes: [], starts: [], ends: [] });
     second.advance(FRAMELESS_WAIT);
     const [timer] = second.timers;
     second.timers.length = 0;
@@ -482,30 +538,74 @@ describe("scheduleTeardown", () => {
     const clock = harness();
     const node = document.createElement("div");
     const first = slowTeardowns(clock, 3);
-    scheduleTeardown({ ...clock, teardowns: first.teardowns, nodes: [node] });
+    scheduleTeardown({
+      ...clock,
+      teardowns: first.teardowns,
+      nodes: [node],
+      starts: [0],
+      ends: [3],
+    });
     const second = slowTeardowns(clock, 3);
-    scheduleTeardown({ ...clock, teardowns: second.teardowns, nodes: [node, node] });
-    assert.equal(first.ran.count, 3, "the older queue ran whole when the newer covered the node");
+    scheduleTeardown({
+      ...clock,
+      teardowns: second.teardowns,
+      nodes: [node, node],
+      starts: [0, 3],
+      ends: [3, 3],
+    });
+    assert.equal(
+      first.ran.count,
+      3,
+      "the older queue's run for the node, when the newer covered it",
+    );
     assert.equal(second.ran.count, 0, "the newer one waits, the repeated node notwithstanding");
     finishTeardownOf(node);
     assert.equal(second.ran.count, 3);
     assert.equal(clock.waiting.size, 0);
   });
 
-  test("runs whole when a node it covers is built again", () => {
+  test("runs a node's own entries and its subtree's when it is built again, and no others", () => {
+    // A row and the checkbox in it, and a second row that left with them.
     const clock = harness();
     const { teardowns, ran } = slowTeardowns(clock, 5);
-    const node = document.createElement("div");
+    const row = document.createElement("div");
+    const box = document.createElement("input");
     const other = document.createElement("div");
-    scheduleTeardown({ ...clock, teardowns, nodes: [node] });
-    finishTeardownOf(other);
+    const stranger = document.createElement("div");
+    scheduleTeardown({
+      ...clock,
+      teardowns,
+      nodes: [row, box, other],
+      starts: [0, 1, 3],
+      ends: [3, 2, 5],
+    });
+    finishTeardownOf(stranger);
     assert.equal(ran.count, 0, "a node it does not cover finishes nothing");
-    finishTeardownOf(node);
+    finishTeardownOf(box);
+    assert.equal(ran.count, 1, "the checkbox's own");
+    finishTeardownOf(row);
+    assert.equal(ran.count, 3, "then the rest of the row's, the checkbox's not again");
+    assert.equal(clock.waiting.size, 1, "the other row's still wait for frames");
+    const [pump] = clock.waiting;
+    assert.equal(pump.tick(clock.now()), false, "one entry a tick past the deadline");
+    assert.equal(ran.count, 4, "skipping those already run");
+    assert.equal(pump.tick(Infinity), true);
     assert.equal(ran.count, 5);
-    assert.equal(clock.waiting.size, 0);
     assert.equal(clock.watching(), false);
     assert.deepEqual(clock.timers, []);
-    finishTeardownOf(node);
+    finishTeardownOf(other);
     assert.equal(ran.count, 5, "and covers nothing after");
+  });
+
+  test("ends when rule 6 runs its last entries", () => {
+    const clock = harness();
+    const { teardowns, ran } = slowTeardowns(clock, 2);
+    const node = document.createElement("div");
+    scheduleTeardown({ ...clock, teardowns, nodes: [node], starts: [0], ends: [2] });
+    finishTeardownOf(node);
+    assert.equal(ran.count, 2);
+    assert.equal(clock.waiting.size, 0, "out of the scheduler");
+    assert.equal(clock.watching(), false, "no longer watching frames");
+    assert.deepEqual(clock.timers, [], "no timer left");
   });
 });

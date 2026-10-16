@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
 import { stubGlRenderer } from "../test/stubGl.js";
+import { panel } from "../test/textRuns.js";
 import { createBoxBatch } from "./boxBatch.js";
 import { applyClip, applyReveal } from "./clip.js";
 import { createLoadingFrame } from "./loadingFrame.js";
@@ -15,7 +16,6 @@ import {
   createRectUniforms,
   rectGeometry,
 } from "./sdfRect.js";
-import { createTextBatch } from "./textBatch.js";
 import { createMarkMaterial } from "./textHelpers.js";
 
 /**
@@ -23,13 +23,21 @@ import { createMarkMaterial } from "./textHelpers.js";
  * links, frees and draws.
  */
 function stage() {
-  const { renderer, counts } = stubGlRenderer();
+  const { renderer, counts, restoreContext } = stubGlRenderer();
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera();
+  const target = new THREE.WebGLRenderTarget(4, 4);
   return {
     scene,
     counts,
+    restoreContext,
     draw: () => renderer.render(scene, camera),
+    /** Draw the scene into a render target, as `ghostSnapshot.js` does. */
+    drawToTarget: () => {
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+    },
   };
 }
 
@@ -47,36 +55,14 @@ function mark(patch = (material) => applyClip(material, { value: new THREE.Vecto
 }
 
 /**
- * A panel's batch of text, `count` runs of one size.
+ * A panel's batch of text, `count` runs of one size, settled.
  *
  * @param {number} count
  */
 function textPanel(count) {
-  const container = new THREE.Group();
-  place(container, 0, 0, 0);
-  const batch = createTextBatch(container);
-  const grow = (/** @type {number} */ more) => {
-    for (let i = 0; i < more; i++) {
-      const canvas = /** @type {HTMLCanvasElement} */ (
-        /** @type {unknown} */ ({ width: 24, height: 12, getContext: () => null })
-      );
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(new Float32Array([0, 0, 0, 24, 0, 0, 0, 12, 0, 24, 12, 0]), 3),
-      );
-      const run = new THREE.Mesh(
-        geometry,
-        new THREE.MeshBasicMaterial({ alphaMap: new THREE.Texture(canvas) }),
-      );
-      place(run, 0, 0, 0);
-      container.add(run);
-      batch.add(run, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
-    }
-    batch.flush();
-  };
-  grow(count);
-  return { container, batch, grow };
+  const p = panel(count);
+  p.batch.flush();
+  return p;
 }
 
 /** A panel's batch of boxes, with one box in it. */
@@ -112,13 +98,14 @@ describe("programKeeper", () => {
 
   test("a text bucket that grows links nothing", () => {
     const { scene, counts, draw } = stage();
-    const panel = textPanel(6);
-    scene.add(panel.container);
+    const p = textPanel(6);
+    scene.add(p.container);
     draw();
     const linked = counts.programs;
 
     // A bucket starts with room for 8 runs, so this rebuilds it at 16.
-    panel.grow(6);
+    p.grow(6);
+    p.batch.flush();
     draw();
     assert.deepEqual([counts.programs, counts.programsFreed], [linked, 0]);
   });
@@ -220,6 +207,36 @@ describe("programKeeper", () => {
     show();
     draw();
     assert.deepEqual([counts.programs, counts.programsFreed], [linked, 0]);
+  });
+
+  test("a box drawn into a render target, after the last one there went, links nothing", () => {
+    const { scene, counts, draw, drawToTarget } = stage();
+    const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+    scene.add(box);
+    draw();
+    drawToTarget();
+    assert.equal(counts.programs, 2, "a target is compiled for apart from the screen");
+
+    box.material.dispose();
+    box.material = createRectMaterial();
+    drawToTarget();
+    draw();
+    assert.deepEqual([counts.programs, counts.programsFreed], [2, 0]);
+  });
+
+  test("a box after a lost context came back, and the last box went, links nothing more", () => {
+    const { scene, counts, draw, restoreContext } = stage();
+    const box = new THREE.Mesh(rectGeometry, createRectMaterial());
+    scene.add(box);
+    draw();
+    restoreContext();
+    draw();
+    assert.equal(counts.programs, 2, "a restored context links what it draws again");
+
+    box.material.dispose();
+    box.material = createRectMaterial();
+    draw();
+    assert.deepEqual([counts.programs, counts.programsFreed], [2, 0]);
   });
 
   test("a keeper is drawn once, with the first of its kind, and writes nothing", () => {

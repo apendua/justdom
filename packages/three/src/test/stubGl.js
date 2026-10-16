@@ -13,8 +13,12 @@ import * as THREE from "three";
  * first time they are read, which is all three does with them besides
  * handing them back.
  *
+ * `restoreContext` loses the context and gives it back, as a browser does
+ * when the GPU is reset, so three builds its program cache again.
+ *
  * @returns {{
  *   renderer: THREE.WebGLRenderer,
+ *   restoreContext: () => void,
  *   counts: {
  *     programs: number,
  *     programsFreed: number,
@@ -87,12 +91,25 @@ export function stubGlRenderer() {
     drawArraysInstanced: draw,
     drawElementsInstanced: draw,
   };
+  /** @type {Map<string, (event: { preventDefault(): void }) => void>} */
+  const listeners = new Map();
   const canvas = {
     width: 1,
     height: 1,
     style: {},
-    addEventListener() {},
+    /**
+     * @param {string} type
+     * @param {(event: { preventDefault(): void }) => void} listener
+     */
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
     removeEventListener() {},
+  };
+  const restoreContext = () => {
+    const event = { preventDefault() {} };
+    listeners.get("webglcontextlost")?.(event);
+    listeners.get("webglcontextrestored")?.(event);
   };
   const gl = new Proxy(
     {},
@@ -126,5 +143,5 @@ export function stubGlRenderer() {
     context: /** @type {WebGL2RenderingContext} */ (gl),
     canvas: /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (canvas)),
   });
-  return { renderer, counts };
+  return { renderer, counts, restoreContext };
 }

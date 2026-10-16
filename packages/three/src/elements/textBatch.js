@@ -534,11 +534,9 @@ class Bucket {
       this.data[name] = array;
       geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
     }
-    if (this.material) {
-      this.material.uniforms.uRuns.value = this.sizeClass.texture;
-    } else {
-      this.material = keepProgram(runsMaterial(this.sizeClass.texture), RUNS_PROGRAM);
-    }
+    // Which texture it samples is `rebind`'s to say, and `reserve` asks it
+    // next.
+    this.material ??= keepProgram(runsMaterial(null), RUNS_PROGRAM);
     const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
     // The integer itself, unbiased, which is the half of the arrangement
     // `boxBatch`'s `BOX_BUCKET_BIAS` explains: a run of text and the box of
@@ -569,7 +567,6 @@ class Bucket {
     // working at all.
     mesh.matrixWorldNeedsUpdate = true;
     this.mesh = mesh;
-    this.generation = this.sizeClass.generation;
     this.parent.add(mesh);
   }
 
@@ -628,6 +625,7 @@ class Bucket {
     // rather than one per panel.
     this.material?.dispose();
     this.material = null;
+    this.generation = -1;
   }
 
   /** @returns {void} */

@@ -1,5 +1,5 @@
 /**
- * @import {GeometryGroup, Material, WebGLRenderer} from 'three';
+ * @import {GeometryGroup, Material, WebGLRenderer, WebGLRenderTarget} from 'three';
  */
 
 /**
@@ -22,18 +22,35 @@
  * first time a material of its kind is drawn, and drawn once, in the same
  * call and just before that material, by `renderBufferDirect` with the
  * material's scene, camera, geometry and object. Three keys a program on all
- * of those as well as on the material: the render target (an XR session's
- * multiview included), the scene's fog and lights, the geometry's attributes
- * and the kind of object. Drawn with every one of them as they are, the
- * keeper compiles to the same program as the material it stands behind. The
- * one link the kind needs is the keeper's, and the material finds the program
- * already linked. A keeper writes no colour and no depth, so it puts nothing
- * on the screen.
+ * of those as well as on the material: the render target, the scene's fog
+ * and lights, the geometry's attributes and the kind of object. Drawn with
+ * every one of them as they are, the keeper compiles to the same program as
+ * the material it stands behind. The one link the kind needs is the
+ * keeper's, and the material finds the program already linked. A keeper
+ * writes no colour and no depth, so it puts nothing on the screen.
  *
- * A keeper keeps the variant it was drawn under. A scene that changes its fog
- * or its lights can make three compile a kind again, and the keeper still
- * holds the variant from before. That is all right, since what this is for is
- * panels coming and going.
+ * The render target is the one of those freedom itself varies. Three
+ * compiles for the screen, an XR session's framebuffer included, with the
+ * renderer's tone mapping and output colour space, and for any other target
+ * with neither, and `ghostSnapshot.js` draws a panel into such a target. So
+ * a kind gets a keeper for each of the two, made the first time it is drawn
+ * to each. Fog and lights are left alone: a scene that changes them can make
+ * three compile a kind again, and the keeper still holds the variant from
+ * before. That is all right, since what this is for is panels coming and
+ * going.
+ *
+ * The keepers belong to the renderer's GL context rather than to the
+ * renderer. A context that is lost and restored comes back with a new
+ * program cache and none of the programs, and `renderer.properties` is
+ * replaced with it, so that is what the keepers are filed under: the first
+ * draw after a restore makes them again.
+ *
+ * Holding the program three already picked would be shorter: after a
+ * material's first draw, `renderer.properties.get(material).currentProgram`
+ * is that program, and raising its `usedTimes` once would hold it with no
+ * second material and no recipe. Both are three's internals, though, and a
+ * keeper is a material drawn through `renderBufferDirect`, which three
+ * documents. That is the reason for the recipes below.
  */
 
 /**
@@ -50,8 +67,24 @@
  *   material's `version` moves, which is what three reads too.
  */
 
-/** @type {WeakMap<WebGLRenderer, Map<string, Material>>} */
+/** @type {WeakMap<WebGLRenderer["properties"], Map<string, Material>>} */
 const keepers = new WeakMap();
+
+/**
+ * Whether three compiles for `target` as it does for the screen: with the
+ * renderer's tone mapping and output colour space. An XR session's
+ * framebuffer is a render target three marks as its own, which the typings
+ * leave out.
+ *
+ * @param {WebGLRenderTarget | null} target
+ * @returns {boolean}
+ */
+function isScreen(target) {
+  return (
+    target === null ||
+    /** @type {{ isXRRenderTarget?: boolean }} */ (target).isXRRenderTarget === true
+  );
+}
 
 /**
  * Keep the program `material` is drawn with linked once the material is
@@ -64,22 +97,38 @@ const keepers = new WeakMap();
  * @returns {M} The material, for a factory to return.
  */
 export function keepProgram(material, kind) {
-  /** @type {WebGLRenderer | null} */
+  /** @type {WebGLRenderer["properties"] | null} */
   let keptIn = null;
-  let keptAt = -1;
+  // The `version` the material was last kept at, on the screen and in any
+  // other target.
+  let keptOnScreen = -1;
+  let keptOffScreen = -1;
   material.onBeforeRender = (renderer, scene, camera, geometry, object, group) => {
-    // A draw of a material already kept is two comparisons, and a frame has
-    // one of these per draw.
-    if (renderer === keptIn && material.version === keptAt) {
+    // A draw of a material already kept is a call and three comparisons, and
+    // a frame has one of these per draw.
+    const onScreen = isScreen(renderer.getRenderTarget());
+    if (
+      renderer.properties === keptIn &&
+      material.version === (onScreen ? keptOnScreen : keptOffScreen)
+    ) {
       return;
     }
-    keptIn = renderer;
-    keptAt = material.version;
-    const name = kind.variant ? `${kind.name}:${kind.variant(material)}` : kind.name;
-    let kept = keepers.get(renderer);
+    if (renderer.properties !== keptIn) {
+      keptIn = renderer.properties;
+      keptOnScreen = -1;
+      keptOffScreen = -1;
+    }
+    if (onScreen) {
+      keptOnScreen = material.version;
+    } else {
+      keptOffScreen = material.version;
+    }
+    const variant = kind.variant ? `:${kind.variant(material)}` : "";
+    const name = `${kind.name}${variant}@${onScreen ? "screen" : "target"}`;
+    let kept = keepers.get(keptIn);
     if (!kept) {
       kept = new Map();
-      keepers.set(renderer, kept);
+      keepers.set(keptIn, kept);
     }
     if (kept.has(name)) {
       return;

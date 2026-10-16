@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
 import { GRADIENT_GLSL, rectGeometry, SDF_GLSL } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
+import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
 
 /**
@@ -378,10 +379,12 @@ class Bucket {
     }
     mesh.count = count;
     mesh.visible = count > 0;
-    mesh.instanceMatrix.needsUpdate = true;
+    markChanged(mesh.instanceMatrix, count);
     for (const name of Object.keys(this.data)) {
-      /** @type {THREE.InstancedBufferAttribute} */ (mesh.geometry.getAttribute(name)).needsUpdate =
-        true;
+      markChanged(
+        /** @type {THREE.InstancedBufferAttribute} */ (mesh.geometry.getAttribute(name)),
+        count,
+      );
     }
   }
 

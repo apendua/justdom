@@ -5,6 +5,7 @@ import { TEXT_ANISOTROPY } from "./textHelpers.js";
 import { place } from "./place.js";
 import { panel, run } from "../test/textRuns.js";
 import { createTextBatch } from "./textBatch.js";
+import { instanceVersions } from "../test/instanceVersions.js";
 
 describe("text batch teardown", () => {
   test("the runs of a size share one bucket, and it holds them all", () => {
@@ -746,5 +747,42 @@ describe("text batch upload budget", () => {
     const first = 34 * 17 * 4 * 8;
     assert.equal(batch.commitStaged(first + 1, upload), true);
     assert.equal(uploads, 1, "the second class would have gone past the bytes");
+  });
+});
+
+describe("text batch instance uploads", () => {
+  test("a rebuild that changed nothing marks no buffer for upload", () => {
+    const { container, batch } = panel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+    assert.ok(Object.keys(before).length > 0, "expected a bucket");
+
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(instanceVersions(container), before);
+  });
+
+  test("a run that shows a new raster marks its layers and nothing else", () => {
+    // A clock counting tenths: one run of a panel shows a new raster of the
+    // same size, so its instance is drawn from another layer and from
+    // nowhere else. Of the bucket's five buffers only the layers change.
+    const { container, batch } = panel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+
+    const ticking = /** @type {THREE.Mesh} */ (
+      container.children.find(
+        (child) => !(/** @type {THREE.InstancedMesh} */ (child).isInstancedMesh),
+      )
+    );
+    show(ticking, countedCanvas(24, 12));
+    batch.invalidate();
+    batch.flush();
+
+    const after = instanceVersions(container);
+    const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
+    assert.equal(changed.length, 1, `expected the layers alone, got ${changed.join(", ")}`);
+    assert.match(changed[0], /:aLayer$/);
   });
 });

@@ -10,6 +10,7 @@ import {
 } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { place } from "./place.js";
+import { instanceVersions } from "../test/instanceVersions.js";
 
 /**
  * A box as a portal builds one for a batch: the shared invisible material
@@ -483,5 +484,34 @@ describe("the material a batched box wears", () => {
     const attributes = Object.keys(bucket.geometry.attributes).length;
     // Plus the instance matrix, which is not a geometry attribute.
     assert.ok(attributes + 4 <= 16, `${attributes} attributes and a matrix`);
+  });
+});
+
+describe("box batch instance uploads", () => {
+  test("a rebuild that changed nothing marks no buffer for upload", () => {
+    const { container, batch } = crowdedPanel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+    assert.ok(Object.keys(before).length > 0, "expected a bucket");
+
+    batch.invalidate();
+    batch.flush();
+
+    assert.deepEqual(instanceVersions(container), before);
+  });
+
+  test("a box that moved marks its matrices and nothing else", () => {
+    const { container, batch, boxes } = crowdedPanel(3);
+    batch.flush();
+    const before = instanceVersions(container);
+
+    place(boxes[1], 5, 0, 0);
+    batch.invalidate();
+    batch.flush();
+
+    const after = instanceVersions(container);
+    const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
+    assert.equal(changed.length, 1, `expected the matrices alone, got ${changed.join(", ")}`);
+    assert.match(changed[0], /:instanceMatrix$/);
   });
 });

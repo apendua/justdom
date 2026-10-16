@@ -4155,7 +4155,10 @@ describe("a read of a node the mirror let go of", () => {
 
   test("of a node under it runs in full once the node is taken back", async () => {
     // What `reclaim`'s walk is for: the label came back with the card, and
-    // what it kept while away is read again too.
+    // what it kept while away is read again too. At once, not from a
+    // microtask: a pump tick that takes the flush in itself sweeps the
+    // channel before any microtask runs, and would draw the card as the page
+    // has it and the label as it was.
     const { root, card, mirror, labelSeen, setLabelWidth, done } = readCard();
     card.remove();
     setLabelWidth(0);
@@ -4167,7 +4170,6 @@ describe("a read of a node the mirror let go of", () => {
     root.appendChild(card);
     setLabelWidth(30);
     mirror.reclaim(card);
-    await Promise.resolve();
     assert.deepEqual(labelSeen, [20, 30]);
     done();
   });

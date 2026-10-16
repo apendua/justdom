@@ -898,9 +898,10 @@ let adopted = null;
  * written with no batch open drains the queue then and there, which would
  * run the effects that depend on the adoption in the middle of the
  * computation that adopted, with the `Derived` it is evaluating still
- * empty: a reader of it would meet a cycle. A microtask runs once the stack is empty, so nothing is
- * computing, and the one batch lets a template's subtree, adopted node by
- * node, come round as one update.
+ * empty: a reader of it would meet a cycle. A microtask runs once the stack
+ * is empty, so nothing is computing, and the one batch lets a template's
+ * subtree, adopted node by node, come round as one update. `reclaim` takes
+ * nodes back from the ingest's batch and bumps them there (`#takeBack`).
  *
  * @param {() => void} write
  * @returns {void}
@@ -995,10 +996,12 @@ function readRecordOf(node) {
  * 3. **A read with nothing to keep runs in full.** One made before the node
  *    had a record follows its adoption (`readRecordOf`), and one made for
  *    the first time while the node is away reads it as the document has it.
- * 4. **Taken back, a read runs in full.** `adopt` gives the node back the
- *    record it had, whether `reclaim` asks for it or a build does, and bumps
- *    that record's `reparented` from a microtask (`announceAdoption`), so
- *    every kept read runs again under it, as the document has the node now.
+ * 4. **Taken back, a read runs in full.** Taking the node back gives it the
+ *    record it had and bumps that record's `reparented`, so every kept read
+ *    runs again under it, as the document has the node now. `reclaim` bumps
+ *    it in the ingest's batch, so the sweep after it reads the whole subtree
+ *    afresh; `adopt` called by anything else, a build or an item's first
+ *    line, bumps it from a microtask (`announceAdoption`).
  * 5. **Nothing else ends it.** A record that is not given back is bumped by
  *    nobody, and a read kept under it keeps its value until the objects
  *    holding it are taken down. A portal building the node again runs those
@@ -1130,22 +1133,33 @@ export class DomMirror {
    * @returns {void}
    */
   adopt(node) {
+    const record = this.#takeBack(node);
+    if (record) {
+      // Taken back by a build, or by a read from inside its computation,
+      // where a write would drain the queue mid-run: what the node's reads
+      // kept while it was away is read again from a microtask (rule 4 of
+      // `keptWhileAway`).
+      announceAdoption(() => bump(record.reparented));
+    }
+  }
+
+  /**
+   * `adopt`, saying which record of this mirror's it gave back to a node
+   * that was let go of, if it did, for the caller to bump.
+   *
+   * @param {Node} node
+   * @returns {NodeRecord | undefined}
+   */
+  #takeBack(node) {
     if (records.has(node)) {
-      return;
+      return undefined;
     }
     let record = takeDeparted(node);
-    if (record) {
-      if (record.mirror !== this) {
-        // Another panel's, on its way out of it, and everything cached for
-        // it hangs off that panel's signals.
-        forgetNode(node);
-        record = undefined;
-      } else {
-        // Taken back: what its reads kept while it was away is read again
-        // (rule 4 of `keptWhileAway`).
-        const reparented = record.reparented;
-        announceAdoption(() => bump(reparented));
-      }
+    if (record && record.mirror !== this) {
+      // Another panel's, on its way out of it, and everything cached for
+      // it hangs off that panel's signals.
+      forgetNode(node);
+      record = undefined;
     }
     records.set(node, record ?? new NodeRecord(this, node));
     const adoption = adoptions.get(node);
@@ -1153,6 +1167,7 @@ export class DomMirror {
       adoptions.delete(node);
       announceAdoption(() => adoption.set(true));
     }
+    return record;
   }
 
   /**
@@ -1198,12 +1213,14 @@ export class DomMirror {
 
   /**
    * Take back every node under `node`, itself included, that this mirror
-   * let go of (`release`), now that the panel has them again (`adopt`). The
-   * whole
-   * subtree is walked, not only from a node that was let go of: while out
-   * of the document the page may have put one inside an element the panel
-   * has never seen, and the flush then names that element. A mirror with
-   * nothing let go of walks nothing.
+   * let go of (`release`), now that the panel has them again, and bump each
+   * one's `reparented` at once (rule 4 of `keptWhileAway`). Called from the
+   * ingest's batch alone, so the sweep that follows, in the same pump tick
+   * when the tick took the flush in itself, reads the whole subtree as the
+   * page has it. The whole subtree is walked, not only from a node that was
+   * let go of: while out of the document the page may have put one inside
+   * an element the panel has never seen, and the flush then names that
+   * element. A mirror with nothing let go of walks nothing.
    *
    * @param {Node} node
    * @returns {void}
@@ -1213,7 +1230,10 @@ export class DomMirror {
       return;
     }
     if (departed.get(node)?.mirror === this) {
-      this.adopt(node);
+      const record = this.#takeBack(node);
+      if (record) {
+        bump(record.reparented);
+      }
     }
     node.childNodes.forEach((child) => {
       this.reclaim(child);

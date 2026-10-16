@@ -789,6 +789,12 @@ dom(ctx, menu, [set({ position })], {
   shows the frame again. The container carries `data-xr-loading` from the first content it is given
   to the load, so a harness can ask `document.querySelector("[data-xr-loading]")`. A panel given
   nothing to mount never carries it.
+- **A shader is linked once per renderer.** three.js deletes a compiled program when the last
+  material using it is disposed, and links it again for the next material that needs it, which costs
+  15 to 19 ms on a Quest 3. freedom keeps one extra material of each kind it draws, for the screen
+  and for a render target such as a drag's snapshot, for as long as the renderer's GL context lasts
+  (`programKeeper.js`). So a panel mounted after the last of its kind has closed, a text bucket that
+  grows, a loading frame and a panel's handle bars link nothing that was linked before.
 - **An update lands whole.** The panel's channel is atomic (`UpdateChannel`'s option of that name in
   `@apendua/signal`): each frame's budget goes on resolving what the update will read, and the
   writes to the scene happen together, in the frame that finds nothing left to resolve. Until then

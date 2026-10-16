@@ -1,83 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createTextBatch } from "./textBatch.js";
 import { TEXT_ANISOTROPY } from "./textHelpers.js";
 import { place } from "./place.js";
-
-/**
- * A rasterized run, as the batch reads one: a mask in the material's alpha
- * map, and a quad whose position attribute carries the run's size.
- *
- * The canvas is a stand-in. The batch asks it for its size and for a 2d
- * context to copy pixels out of, and `SizeClass.write` is written to do
- * nothing when there is no context — which is what jsdom offers, and enough
- * for everything about layers and buckets.
- *
- * @param {number} width
- * @param {number} height
- */
-function run(width, height) {
-  const canvas = /** @type {HTMLCanvasElement} */ (
-    /** @type {unknown} */ ({ width, height, getContext: () => null })
-  );
-  const texture = new THREE.Texture(canvas);
-  const material = new THREE.MeshBasicMaterial({ alphaMap: texture });
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.BufferAttribute(
-      new Float32Array([0, 0, 0, width, 0, 0, 0, height, 0, width, height, 0]),
-      3,
-    ),
-  );
-  const mesh = new THREE.Mesh(geometry, material);
-  place(mesh, 0, 0, 0);
-  return mesh;
-}
-
-/**
- * A panel of `count` runs, all the same size and render order, so they share
- * one size class and one bucket.
- *
- * @param {number} count
- */
-function panel(count) {
-  const container = new THREE.Group();
-  place(container, 0, 0, 0);
-
-  const batch = createTextBatch(container);
-  for (let i = 0; i < count; i++) {
-    const mesh = run(24, 12);
-    container.add(mesh);
-    batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
-  }
-
-  /** @type {Map<THREE.InstancedMesh, boolean>} */
-  const meshes = new Map();
-  const watch = () => {
-    for (const child of container.children) {
-      const mesh = /** @type {THREE.InstancedMesh} */ (child);
-      if (mesh.isInstancedMesh && !meshes.has(mesh)) {
-        meshes.set(mesh, false);
-        mesh.addEventListener("dispose", () => {
-          meshes.set(mesh, true);
-        });
-      }
-    }
-  };
-
-  /** @param {number} more */
-  const grow = (more) => {
-    for (let i = 0; i < more; i++) {
-      const mesh = run(24, 12);
-      container.add(mesh);
-      batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
-    }
-  };
-
-  return { container, batch, meshes, watch, grow };
-}
+import { panel, run } from "../test/textRuns.js";
+import { createTextBatch } from "./textBatch.js";
 
 describe("text batch teardown", () => {
   test("the runs of a size share one bucket, and it holds them all", () => {
@@ -108,6 +35,42 @@ describe("text batch teardown", () => {
     assert.equal(outgrown.parent, null);
     assert.equal(current.parent, p.container);
     assert.equal(current.count, 12);
+  });
+
+  test("a bucket that grows keeps its material, and disposing the batch lets it go", () => {
+    const p = panel(6);
+    p.batch.flush();
+    p.watch();
+    const [first] = p.meshes.keys();
+    const material = first.material;
+    let disposed = 0;
+    /** @type {THREE.Material} */ (material).addEventListener("dispose", () => {
+      disposed += 1;
+    });
+
+    p.grow(6);
+    p.batch.flush();
+    p.watch();
+    const [, grown] = p.meshes.keys();
+    assert.equal(grown.material, material);
+    assert.equal(disposed, 0);
+
+    p.batch.dispose();
+    assert.equal(disposed, 1);
+  });
+
+  test("a bucket that grows with its class samples the class's new array", () => {
+    const p = panel(6);
+    p.batch.flush();
+    const first = boundTexture(p.container);
+
+    // Twelve runs outgrow both the bucket and the class's array of 8 layers,
+    // in the one flush.
+    p.grow(6);
+    p.batch.flush();
+    const grown = boundTexture(p.container);
+    assert.notEqual(grown, first);
+    assert.ok(grown.image.depth >= 12, `expected the grown array, got ${grown.image.depth} layers`);
   });
 
   test("disposing the batch tells three about the mesh it was still drawing with", () => {

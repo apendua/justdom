@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
 import { MARK_MATERIAL_SETTINGS, TEXT_ANISOTROPY } from "./textHelpers.js";
+import { keepProgram } from "./programKeeper.js";
 
 /**
  * @import {Object3D} from 'three';
  * @import {ClipBox} from './clip.js';
+ * @import {ProgramKind} from './programKeeper.js';
  */
 
 /**
@@ -108,6 +110,26 @@ void main() {
   #include <colorspace_fragment>
 }
 `;
+
+/**
+ * The material a bucket draws its runs with, sampling `texture`.
+ *
+ * @param {THREE.DataArrayTexture | null} texture
+ * @returns {THREE.ShaderMaterial}
+ */
+function runsMaterial(texture) {
+  return new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms: { uRuns: { value: texture } },
+    // Blended and depth-tested as every mark on a panel is, a run drawn by
+    // itself included; the reasons are with the settings.
+    ...MARK_MATERIAL_SETTINGS,
+  });
+}
+
+/** @type {ProgramKind<THREE.ShaderMaterial>} */
+const RUNS_PROGRAM = { name: "freedom-text-batch", create: () => runsMaterial(null) };
 
 /** How many runs of a size an array has room for before it is grown. */
 const MINIMUM_LAYERS = 8;
@@ -434,6 +456,14 @@ class SizeClass {
 class Bucket {
   /** @type {THREE.InstancedMesh | null} */
   mesh = null;
+  /**
+   * What the bucket draws with, kept across a growth. Only the capacity
+   * changes when a bucket grows, and a material made again for it is a
+   * program three may link again (`programKeeper.js`).
+   *
+   * @type {THREE.ShaderMaterial | null}
+   */
+  material = null;
   capacity = 0;
   count = 0;
   generation = -1;
@@ -467,14 +497,14 @@ class Bucket {
   }
 
   /**
-   * Draw from the texture the size class holds now, if it has built a new one.
+   * Draw from the texture the size class holds now, if it has built a new one,
+   * and the first time, whatever it holds: `#build` binds no texture itself.
    *
    * @returns {void}
    */
   rebind() {
-    if (this.mesh && this.generation !== this.sizeClass.generation) {
-      /** @type {THREE.ShaderMaterial} */ (this.mesh.material).uniforms.uRuns.value =
-        this.sizeClass.texture;
+    if (this.material && this.generation !== this.sizeClass.generation) {
+      this.material.uniforms.uRuns.value = this.sizeClass.texture;
       this.generation = this.sizeClass.generation;
     }
   }
@@ -484,7 +514,7 @@ class Bucket {
    * @returns {void}
    */
   #build(capacity) {
-    this.dispose();
+    this.#disposeMesh();
     this.capacity = capacity;
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setAttribute(
@@ -505,15 +535,10 @@ class Bucket {
       this.data[name] = array;
       geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
     }
-    const material = new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      uniforms: { uRuns: { value: this.sizeClass.texture } },
-      // Blended and depth-tested as every mark on a panel is, a run drawn by
-      // itself included; the reasons are with the settings.
-      ...MARK_MATERIAL_SETTINGS,
-    });
-    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    // Which texture it samples is `rebind`'s to say, and `reserve` asks it
+    // next.
+    this.material ??= keepProgram(runsMaterial(null), RUNS_PROGRAM);
+    const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
     // The integer itself, unbiased, which is the half of the arrangement
     // `boxBatch`'s `BOX_BUCKET_BIAS` explains: a run of text and the box of
     // anything nested inside the element it belongs to share a `renderOrder`,
@@ -543,7 +568,6 @@ class Bucket {
     // working at all.
     mesh.matrixWorldNeedsUpdate = true;
     this.mesh = mesh;
-    this.generation = this.sizeClass.generation;
     this.parent.add(mesh);
   }
 
@@ -596,16 +620,24 @@ class Bucket {
 
   /** @returns {void} */
   dispose() {
+    this.#disposeMesh();
+    // Unlike the boxes', this material is the bucket's own: it carries the
+    // size class's array texture, so there is one per size per render order
+    // rather than one per panel.
+    this.material?.dispose();
+    this.material = null;
+    this.generation = -1;
+  }
+
+  /** @returns {void} */
+  #disposeMesh() {
     if (!this.mesh) {
       return;
     }
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
-    /** @type {THREE.Material} */ (this.mesh.material).dispose();
     // And the one buffer the geometry does not own — `boxBatch`'s bucket says
-    // why at length. Unlike the boxes', this material is the bucket's own: it
-    // carries the size class's array texture, so there is one per size per
-    // render order rather than one per panel.
+    // why at length.
     this.mesh.dispose();
     this.mesh = null;
     this.capacity = 0;

@@ -1,7 +1,9 @@
 import * as THREE from "three";
+import { keepProgram } from "./programKeeper.js";
 
 /**
  * @import {TextLine} from './textLines.js';
+ * @import {ProgramKind} from './programKeeper.js';
  */
 
 /**
@@ -689,15 +691,51 @@ export const MARK_MATERIAL_SETTINGS = Object.freeze({
  * tinted by the caller, and discarding the fully transparent texels a mask's
  * ground leaves.
  *
+ * Its program stays linked after the last mark drawn with it goes
+ * (`programKeeper.js`). Which program that is depends on what the caller
+ * does with the material afterwards. It can install the clip patch or the
+ * reveal's (`clip.js`), and put a picture in `map`, a mask in `alphaMap` or
+ * neither. Each of those programs gets its own keeper when it is first drawn.
+ *
  * @returns {THREE.MeshBasicMaterial}
  */
 export function createMarkMaterial() {
+  return keepProgram(markMaterial(), MARK_PROGRAM);
+}
+
+/** @returns {THREE.MeshBasicMaterial} */
+function markMaterial() {
   return new THREE.MeshBasicMaterial({
     ...MARK_MATERIAL_SETTINGS,
     alphaTest: 0.001,
     color: "white",
   });
 }
+
+/**
+ * What a keeper samples in place of a mark's picture or mask. Never uploaded:
+ * three sends a texture up only once `needsUpdate` has been set on it, and
+ * binds an empty texture of its own in the place of one that never has. Which
+ * texture it is does not enter the program, only whether there is one.
+ */
+const NO_PICTURE = new THREE.Texture();
+
+/** @type {ProgramKind<THREE.MeshBasicMaterial>} */
+const MARK_PROGRAM = {
+  name: "freedom-mark",
+  variant: (material) =>
+    `${material.customProgramCacheKey()}|${material.map ? "map" : ""}|${material.alphaMap ? "alphaMap" : ""}`,
+  create: (material) => {
+    const keeper = markMaterial();
+    // The patch itself rather than a copy of it, so that the keeper compiles
+    // to the same source whichever of the two links the program.
+    keeper.onBeforeCompile = material.onBeforeCompile;
+    keeper.customProgramCacheKey = material.customProgramCacheKey;
+    keeper.map = material.map && NO_PICTURE;
+    keeper.alphaMap = material.alphaMap && NO_PICTURE;
+    return keeper;
+  },
+};
 
 /**
  * How far one line of text advances in this style, and nothing else: the

@@ -8,14 +8,16 @@
  * under `requestAnimationFrame`, and left to load. Then `disconnect` is
  * called, as `dom()` calls it when a panel goes. The table reports the
  * longest frame the mount took, how long `disconnect` itself took, the
- * longest frame after it until the panel had nothing left to take down, and
- * how many frames that took. Milliseconds on whatever machine runs it, the
+ * longest frame after it until the panel had nothing left to take down, how
+ * many frames passed before its objects left the scene, and how many until
+ * that was over. Milliseconds on whatever machine runs it, the
  * median of `REPEATS` runs. The portals share one scheduler, as they do
  * under `render()`, which is what spreads the teardown over frames.
  *
  * The second table empties the panel's list instead and leaves the panel
- * open: the same columns, with "sync ms" the removal itself and the rest
- * counted until the rows that left are taken down.
+ * open: the same columns, with "sync ms" the removal itself, "leave frames"
+ * the frames the rows were still drawn for, until the panel's commit, and
+ * the rest counted until the rows that left are taken down.
  *
  * Chromium is launched through `packages/headset/driver`, as
  * `bench/lineBoxCopy.browser.mjs` explains.
@@ -111,7 +113,15 @@ const PAGE = `<!doctype html>
         }
       },
     });
-    portal.addTo(new THREE.Group());
+    const sceneRoot = new THREE.Group();
+    portal.addTo(sceneRoot);
+    const objectCount = () => {
+      let count = 0;
+      sceneRoot.traverse(() => {
+        count += 1;
+      });
+      return count;
+    };
     const containers = document.querySelectorAll("[data-xr-portal]");
     const container = containers[containers.length - 1];
     // Every frame's length, from one animation frame to the next.
@@ -140,6 +150,7 @@ const PAGE = `<!doctype html>
     for (let i = 0; i < 5; i++) {
       await nextFrame();
     }
+    const drawn = objectCount();
     frames.length = 0;
     const started = performance.now();
     // Either the panel closes, or every row leaves a panel that stays open,
@@ -152,10 +163,16 @@ const PAGE = `<!doctype html>
     }
     const syncMs = performance.now() - started;
     // Until the teardown spread across frames is over, and a few more.
+    // The frame the objects left the scene in, which for a panel that stays
+    // open is its commit: until then the rows are still drawn.
+    let leaveFrames = objectCount() < drawn ? 0 : -1;
     let teardownFrames = 0;
     while (targets > left && teardownFrames < 600) {
       await nextFrame();
       teardownFrames += 1;
+      if (leaveFrames < 0 && objectCount() < drawn) {
+        leaveFrames = teardownFrames;
+      }
     }
     for (let i = 0; i < 5; i++) {
       await nextFrame();
@@ -172,7 +189,7 @@ const PAGE = `<!doctype html>
       }
       stuck += targets;
     }
-    return { mountMs, mountWorst, syncMs, disposeWorst, teardownFrames, left: stuck };
+    return { mountMs, mountWorst, syncMs, disposeWorst, leaveFrames, teardownFrames, left: stuck };
   };
   window.benchReady = true;
 </script>`;
@@ -223,9 +240,11 @@ try {
         ? "\n=== the panel closes ==="
         : "\n=== every row leaves a panel that stays open ===",
     );
-    console.log("rows\tmount ms\tworst mount frame\tsync ms\tworst frame after\tteardown frames");
+    console.log(
+      "rows\tmount ms\tworst mount frame\tsync ms\tworst frame after\tleave frames\tteardown frames",
+    );
     for (const rows of SIZES) {
-      /** @type {{ mountMs: number, mountWorst: number, syncMs: number, disposeWorst: number, teardownFrames: number, left: number }[]} */
+      /** @type {{ mountMs: number, mountWorst: number, syncMs: number, disposeWorst: number, leaveFrames: number, teardownFrames: number, left: number }[]} */
       const results = [];
       // The first run warms the JIT and is dropped.
       for (let repeat = 0; repeat <= REPEATS; repeat++) {
@@ -247,6 +266,7 @@ try {
           median(results.map((r) => r.mountWorst)).toFixed(1),
           median(results.map((r) => r.syncMs)).toFixed(1),
           median(results.map((r) => r.disposeWorst)).toFixed(1),
+          median(results.map((r) => r.leaveFrames)),
           median(results.map((r) => r.teardownFrames)),
         ].join("\t\t"),
       );

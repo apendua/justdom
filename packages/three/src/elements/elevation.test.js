@@ -1,6 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { Effect } from "@apendua/signal";
 import { ELEVATION_BAND, getContentRenderOrder, getElevation, isOverlay } from "./elevation.js";
+import { createMirror } from "./mirror.js";
 
 /**
  * @param {string} cssText
@@ -67,6 +69,37 @@ describe("getElevation", () => {
     assert.equal(getElevation(modal), 1);
     assert.equal(getElevation(body), 1);
     assert.equal(getElevation(menu), 2);
+  });
+
+  test("a restyle above reaches a reader only when the count changes", () => {
+    // A box reads its count every time it is styled. A list restyled when
+    // its rows change, as a list is, used to run every row's again, and a
+    // row that had left the panel was then styled from a node out of the
+    // document.
+    const panel = element("");
+    const menu = element("", panel);
+    const option = element("", menu);
+    const mirror = createMirror();
+    for (const node of [panel, menu, option]) {
+      mirror.adopt(node);
+    }
+    let runs = 0;
+    const reader = new Effect(() => {
+      runs += 1;
+      getElevation(option);
+    });
+
+    menu.style.color = "rgb(1, 2, 3)";
+    mirror.attributeChanged(menu);
+    assert.equal(runs, 1, "a restyle that leaves the count as it was");
+
+    menu.style.cssText = "position: absolute; z-index: 1";
+    mirror.attributeChanged(menu);
+    assert.equal(runs, 2, "and one that makes it an overlay");
+    assert.equal(getElevation(option), 1);
+
+    reader.dispose();
+    panel.remove();
   });
 });
 

@@ -1357,15 +1357,16 @@ function buildPortal(ctx, ownOptions = {}) {
    * What that costs is bounded, and worth knowing. The mirror lets go of
    * the subtree here and now (`DomMirror.release`), and keeps nothing but
    * what the objects already hold. The mutation that removes a node bumps
-   * its `reparented` signal, which invalidates its subtree's styles and
-   * layouts, so its effects are queued and warmed once against DOM that is
-   * no longer in the document — reads that come back empty, and cost little
-   * for it. That is the last of it: those reads find the subtree let go of,
-   * cut off from its parent chain and from the panel's own signals, so
-   * nothing that happens in the panel afterwards reaches it, a font arriving
-   * included. One wave, and then quiet until its teardown. A node
-   * put back before the commit is taken back by the mirror as the flush
-   * that reports it arrives (`DomMirror.reclaim`).
+   * its `reparented` signal, and the parent it left restyles and changes
+   * size, so the reads cached for the subtree are told to run again. Each
+   * one finds its node let go of and keeps the value it had
+   * (`keptWhileAway` in `mirror.js`), which costs a lookup, lets go of the
+   * panel's signals and tells its readers nothing, so no effect of the row
+   * runs again against DOM no longer in the document. Nothing that happens
+   * in the panel afterwards reaches those reads, a font arriving included. A
+   * node put back before the commit is taken back by the mirror as the
+   * flush that reports it arrives (`DomMirror.reclaim`), and its reads run
+   * in full again.
    *
    * A child that *moved* out of the removed subtree — appended elsewhere
    * before the commit — is still in the tree, and its object is still under

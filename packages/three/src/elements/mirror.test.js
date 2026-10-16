@@ -4073,6 +4073,103 @@ describe("a checkbox's checked property", () => {
   });
 });
 
+describe("a read of a node the mirror let go of", () => {
+  /**
+   * A card in a panel, read for its width, and how to change what the page
+   * lays it out at.
+   */
+  function readCard() {
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const card = document.createElement("div");
+    root.appendChild(card);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    mirror.adopt(root);
+    mirror.adopt(card);
+    let width = 50;
+    layout(card, () => [0, 0, width, 10]);
+    /** @type {number[]} */
+    const seen = [];
+    const subscription = toObservable(new Derived(() => getBorderBoxSize(card).width)).subscribe(
+      (read) => seen.push(read),
+    );
+    return {
+      root,
+      card,
+      mirror,
+      seen,
+      /** @param {number} next */
+      setWidth: (next) => {
+        width = next;
+      },
+      done: () => {
+        subscription.unsubscribe();
+        root.remove();
+      },
+    };
+  }
+
+  test("keeps what it said until the node is taken back", async () => {
+    // The card leaves the panel, and its objects are drawn until the commit.
+    // Out of the document it measures as nothing, and a read that ran again
+    // then, for the removal or for a font arriving, drew it as nothing.
+    const { root, card, mirror, seen, setWidth, done } = readCard();
+    card.remove();
+    setWidth(0);
+    mirror.release(card);
+    mirror.fontsLoaded();
+    await Promise.resolve();
+    assert.deepEqual(seen, [50], "the card is read as it was");
+
+    // Put back before the commit, it is read as the page has it now.
+    root.appendChild(card);
+    setWidth(30);
+    mirror.reclaim(card);
+    await Promise.resolve();
+    assert.deepEqual(seen, [50, 30], "taken back, it is read again");
+    mirror.fontsLoaded();
+    setWidth(40);
+    mirror.fontsLoaded();
+    assert.deepEqual(seen, [50, 30, 40], "and follows the panel again");
+    done();
+  });
+
+  test("keeps what it said for good once the node is forgotten", async () => {
+    // The commit forgets the card while its objects wait for their
+    // teardowns, and another panel may adopt it before they run.
+    const { card, mirror, seen, setWidth, done } = readCard();
+    card.remove();
+    setWidth(0);
+    mirror.release(card);
+    mirror.forget(card);
+    mirror.fontsLoaded();
+    const other = createMirror();
+    other.adopt(card);
+    other.fontsLoaded();
+    await Promise.resolve();
+    assert.deepEqual(seen, [50]);
+    done();
+  });
+
+  test("of a node's style tells its readers nothing", () => {
+    // The computed style is a live object that tells its readers on every
+    // run, and a reader that ran again read a node out of the document.
+    const { card, mirror, done } = readCard();
+    let runs = 0;
+    const reader = new Effect(() => {
+      runs += 1;
+      getComputedStyleCached(card);
+    });
+    card.remove();
+    mirror.release(card);
+    mirror.fontsLoaded();
+    assert.equal(runs, 1);
+    reader.dispose();
+    done();
+  });
+});
+
 describe("a node two panels have let go of", () => {
   test("stays the second panel's when the first forgets it", () => {
     // The first panel lets go of the node; before its commit the page moves

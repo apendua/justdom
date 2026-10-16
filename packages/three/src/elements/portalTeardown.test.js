@@ -309,6 +309,25 @@ describe("rows that leave an open panel under the scene's scheduler", () => {
     root.remove();
   });
 
+  test("take the portal's flags off the page's elements at the commit", async () => {
+    const { root, rows, portal, container, targets, rowTargets } = await list(1);
+    const box = /** @type {HTMLInputElement} */ (rows[0].firstElementChild);
+    box.checked = true;
+    await drain();
+    assert.equal(box.dataset.xrChecked, "true");
+    rows[0].remove();
+    await nextMacrotask();
+    await untilCommitted(rowTargets, container);
+    assert.ok(
+      rowTargets.some((target) => targets.has(target)),
+      "the teardown is waiting",
+    );
+    assert.equal(box.dataset.xrChecked, undefined, "and the row the page keeps is as it was");
+    portal.disconnect();
+    await drain();
+    root.remove();
+  });
+
   test("put back before their teardown ends are built anew, the old one finished", async () => {
     // The old checkbox's teardown takes `data-xr-checked` off the box, and
     // run after the row was built again, it would leave a ticked box drawn

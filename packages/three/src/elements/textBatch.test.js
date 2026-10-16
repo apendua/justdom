@@ -344,6 +344,36 @@ describe("text batch array limits", () => {
     assert.equal(declined(p.container).length, 0);
   });
 
+  test("a declined run joins the batch once a run out of the walk gives its layer back", () => {
+    // What a row that left an open panel does: out of the walk at the commit,
+    // and only then, at its teardown, out of the batch.
+    const p = panel(257);
+    p.batch.flush();
+    const odd = /** @type {THREE.Mesh} */ (declined(p.container)[0]);
+    const batched = /** @type {THREE.Mesh} */ (
+      p.container.children.find(
+        (c) =>
+          /** @type {THREE.Mesh} */ (c).isMesh &&
+          !(/** @type {THREE.InstancedMesh} */ (c).isInstancedMesh) &&
+          c !== odd &&
+          !(/** @type {THREE.Material} */ (/** @type {THREE.Mesh} */ (c).material).visible),
+      )
+    );
+    p.container.remove(batched);
+    p.batch.invalidate();
+    p.batch.flush();
+    assert.equal(declined(p.container).length, 1, "still declined: the layer is still held");
+
+    p.batch.remove(batched);
+    p.batch.flush();
+    assert.equal(
+      /** @type {THREE.Material} */ (odd.material).visible,
+      false,
+      "expected the declined run to have been taken into the batch",
+    );
+    assert.equal(declined(p.container).length, 0);
+  });
+
   test("the cap is per size, so another size still batches", () => {
     const p = panel(257);
     // A different exact size is a different array with its own 256.

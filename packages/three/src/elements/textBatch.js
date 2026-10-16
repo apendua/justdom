@@ -692,13 +692,20 @@ export class TextBatch {
   /**
    * The runs the last rebuild laid into buckets, so that a run leaving the
    * batch, or letting go of a raster, asks for a rebuild only when the
-   * buckets hold it; see `#drawn` in `boxBatch.js`. What such a run gives
-   * back is given back all the same, and a class it leaves with no layers
-   * is dropped by whichever rebuild comes next.
+   * buckets hold it or a run is waiting for a layer (`#declined`); see
+   * `#drawn` in `boxBatch.js`. What such a run gives back is given back all
+   * the same, and a class it leaves with no layers is dropped by whichever
+   * rebuild comes next.
    *
    * @type {Set<THREE.Mesh>}
    */
   #drawn = new Set();
+  /**
+   * Whether the last rebuild declined a run for want of a layer. Such a run
+   * waits for a layer to come back, from any run of its size, drawn or not,
+   * so while one waits every release asks for a rebuild, `#drawn` or no.
+   */
+  #declined = false;
 
   /**
    * @param {Object3D} container
@@ -761,7 +768,7 @@ export class TextBatch {
       /** @type {THREE.Material} */ (mesh.material).visible = true;
     }
     mesh.frustumCulled = true;
-    if (this.#drawn.delete(mesh)) {
+    if (this.#drawn.delete(mesh) || this.#declined) {
       this.invalidate();
     }
   }
@@ -788,7 +795,7 @@ export class TextBatch {
     }
     slot.sizeClass.release(slot.layer);
     member.slots.delete(canvas);
-    if (this.#drawn.has(mesh)) {
+    if (this.#drawn.has(mesh) || this.#declined) {
       this.invalidate();
     }
   }
@@ -946,7 +953,8 @@ export class TextBatch {
         // Full. The run draws itself, exactly as one with baked colours does,
         // and is asked again on the next rebuild — which is what lets it in
         // when another run of its size goes away, since `remove` and `forget`
-        // invalidate.
+        // invalidate while a run is declined (`#declined`).
+        this.#declined = true;
         return null;
       }
       slot = { sizeClass, layer };
@@ -988,6 +996,7 @@ export class TextBatch {
     found.length = 0;
     foundSlots.length = 0;
     drawn.clear();
+    this.#declined = false;
     let count = 0;
 
     /**

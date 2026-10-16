@@ -995,11 +995,14 @@ function buildPortal(ctx, ownOptions = {}) {
     const index = unlinked.nodes.push(node) - 1;
     unlinked.starts.push(unlinked.teardowns.length);
     unlinked.ends.push(unlinked.teardowns.length);
-    if (released && root && node.nodeType === Node.ELEMENT_NODE) {
-      // A panel over the page's own element is closing, and the page shows
-      // that element again. Every flag the portal wrote on it comes off now,
-      // with the root's marks, rather than with each control's teardown,
-      // which may be frames away.
+    if (root && node.nodeType === Node.ELEMENT_NODE) {
+      // A panel over the page's own element, letting go of a node the page
+      // keeps: the whole panel closing, or a row that left it. Every flag the
+      // portal wrote on the node comes off now, a closing panel's with the
+      // root's marks and a row's at its commit, rather than with each
+      // control's teardown, which may be frames away. A node `unlink` reaches
+      // is out of the tree or out of the panel, and one put back is built
+      // again and writes its own.
       for (const flag of ELEMENT_FLAGS) {
         /** @type {Element} */ (node).removeAttribute(flag);
       }

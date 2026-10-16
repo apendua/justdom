@@ -208,6 +208,148 @@ describe("a closed panel under the scene's scheduler", () => {
 });
 
 /**
+ * Whether an object hangs anywhere under another.
+ *
+ * @param {THREE.Object3D} object
+ * @param {THREE.Object3D} ancestor
+ * @returns {boolean}
+ */
+function isUnder(object, ancestor) {
+  for (let node = object.parent; node; node = node.parent) {
+    if (node === ancestor) {
+      return true;
+    }
+  }
+  return false;
+}
+
+describe("rows that leave an open panel under the scene's scheduler", () => {
+  /**
+   * A loaded panel over a list of `count` clickable rows, each with a
+   * checkbox in it, and the ray targets they registered.
+   *
+   * @param {number} count
+   */
+  async function list(count) {
+    const { ctx, manager, targets } = scene();
+    const root = document.createElement("div");
+    root.getBoundingClientRect = () => clientRect(0, 0, 400, 100);
+    root.appendChild(document.createElement("div"));
+    document.body.appendChild(root);
+    const portal = createPortal(ctx, { root });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    await settle(portal);
+    const loaded = new Set(targets);
+    /** @type {HTMLDivElement[]} */
+    const rows = [];
+    for (let index = 0; index < count; index++) {
+      const row = document.createElement("div");
+      row.style.cursor = "pointer";
+      row.getBoundingClientRect = () => clientRect(10 + 60 * index, 10, 50, 50);
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.getBoundingClientRect = () => clientRect(15 + 60 * index, 15, 20, 20);
+      row.appendChild(box);
+      rows.push(row);
+    }
+    root.append(...rows);
+    await drain();
+    const rowTargets = [...targets].filter((target) => !loaded.has(target));
+    assert.equal(rowTargets.length, 2 * count, "a row and its checkbox each");
+    return { root, rows, portal, container: parent.children[0], manager, targets, rowTargets };
+  }
+
+  /**
+   * Frames, one at a time, until the commit takes the rows' objects out of
+   * the panel.
+   *
+   * @param {THREE.Object3D[]} objects
+   * @param {THREE.Object3D} container
+   */
+  async function untilCommitted(objects, container) {
+    for (let frame = 0; objects.some((o) => isUnder(o, container)) && frame < 100; frame++) {
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.ok(!objects.some((o) => isUnder(o, container)), "the commit took them out");
+  }
+
+  test("are taken down over the frames after the commit, not in it", async () => {
+    const { root, rows, portal, container, targets, rowTargets } = await list(3);
+    for (const row of rows) {
+      row.remove();
+    }
+    await nextMacrotask();
+    await untilCommitted(rowTargets, container);
+    assert.ok(
+      rowTargets.every((target) => targets.has(target)),
+      "out of the panel at the commit, and still waiting for their teardowns",
+    );
+    await drain();
+    assert.ok(!rowTargets.some((target) => targets.has(target)), "then taken down");
+    assert.ok(
+      rowTargets.every((target) => !isUnder(target, container)),
+      "and nowhere in the panel",
+    );
+    portal.disconnect();
+    await drain();
+    root.remove();
+  });
+
+  test("answer no ray while they wait", async () => {
+    const { root, rows, portal, container, manager, rowTargets } = await list(1);
+    container.updateWorldMatrix(true, true);
+    const point = container.localToWorld(new THREE.Vector3(35, 35, 0));
+    const controller = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    controller.position.set(point.x, point.y, point.z + 1);
+    controller.updateMatrixWorld(true);
+    /** Whether the ray meets the row, its checkbox or anything of theirs. */
+    const meetsRow = () => {
+      const hit = manager.getIntersection(controller)?.object;
+      return !!hit && rowTargets.some((target) => target === hit || isUnder(hit, target));
+    };
+    assert.ok(meetsRow(), "the ray meets the row");
+
+    rows[0].remove();
+    await nextMacrotask();
+    await untilCommitted(rowTargets, container);
+    assert.ok(!meetsRow(), "and none of it once it left, the panel's background instead");
+    portal.disconnect();
+    await drain();
+    root.remove();
+  });
+
+  test("put back before their teardown ends are built anew, the old one finished", async () => {
+    // The old checkbox's teardown takes `data-xr-checked` off the box, and
+    // run after the row was built again, it would leave a ticked box drawn
+    // as unticked.
+    const { root, rows, portal, container, targets, rowTargets } = await list(1);
+    const box = /** @type {HTMLInputElement} */ (rows[0].firstElementChild);
+    box.checked = true;
+    await drain();
+    assert.equal(box.dataset.xrChecked, "true");
+    rows[0].remove();
+    await nextMacrotask();
+    await untilCommitted(rowTargets, container);
+    assert.ok(
+      rowTargets.some((target) => targets.has(target)),
+      "its teardown is waiting",
+    );
+
+    root.appendChild(rows[0]);
+    await drain();
+    assert.ok(!rowTargets.some((target) => targets.has(target)), "finished by the build");
+    assert.equal(box.dataset.xrChecked, "true", "and the new build's flag is still there");
+    portal.disconnect();
+    await drain();
+    root.remove();
+  });
+});
+
+/**
  * A scheduler, a frame source and a clock that a test drives by hand.
  */
 function harness() {

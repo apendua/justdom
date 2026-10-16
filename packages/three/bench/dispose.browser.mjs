@@ -95,7 +95,7 @@ const PAGE = `<!doctype html>
 
   const nextFrame = () => new Promise((done) => requestAnimationFrame(done));
 
-  window.runBench = async (rows) => {
+  window.runBench = async (rows, mode) => {
     const ctx = scene;
     let resolveLoaded;
     const loaded = new Promise((done) => (resolveLoaded = done));
@@ -127,7 +127,8 @@ const PAGE = `<!doctype html>
     });
     await nextFrame();
     const mountStarted = performance.now();
-    container.appendChild(buildList(rows));
+    const list = buildList(rows);
+    container.appendChild(list);
     await loaded;
     const mountMs = performance.now() - mountStarted;
     const mountWorst = Math.max(...frames);
@@ -137,13 +138,26 @@ const PAGE = `<!doctype html>
     }
     frames.length = 0;
     const started = performance.now();
-    portal.disconnect();
+    // Either the panel closes, or every row leaves a panel that stays open,
+    // whose blocker is then the one ray target left.
+    const left = mode === "close" ? 0 : 1;
+    if (mode === "close") {
+      portal.disconnect();
+    } else {
+      list.replaceChildren();
+    }
     const syncMs = performance.now() - started;
     // Until the teardown spread across frames is over, and a few more.
     let teardownFrames = 0;
-    while (targets > 0 && teardownFrames < 600) {
+    while (targets > left && teardownFrames < 600) {
       await nextFrame();
       teardownFrames += 1;
+    }
+    if (mode === "empty") {
+      portal.disconnect();
+      while (targets > 0) {
+        await nextFrame();
+      }
     }
     for (let i = 0; i < 5; i++) {
       await nextFrame();
@@ -195,32 +209,40 @@ try {
   page.on("pageerror", (error) => console.error(error));
   await page.goto(`http://127.0.0.1:${port}/`);
   await page.waitForFunction(() => /** @type {any} */ (window).benchReady === true);
-  console.log(
-    "rows\tmount ms\tworst mount frame\tdisconnect ms\tworst frame after\tteardown frames",
-  );
-  for (const rows of SIZES) {
-    /** @type {{ mountMs: number, mountWorst: number, syncMs: number, disposeWorst: number, teardownFrames: number, left: number }[]} */
-    const results = [];
-    // The first run warms the JIT and is dropped.
-    for (let repeat = 0; repeat <= REPEATS; repeat++) {
-      const result = await page.evaluate((n) => /** @type {any} */ (window).runBench(n), rows);
-      if (result.left !== 0) {
-        throw new Error(`${result.left} ray targets of a closed panel were never taken down`);
-      }
-      if (repeat > 0) {
-        results.push(result);
-      }
-    }
+  for (const mode of /** @type {const} */ (["close", "empty"])) {
     console.log(
-      [
-        rows,
-        median(results.map((r) => r.mountMs)).toFixed(0),
-        median(results.map((r) => r.mountWorst)).toFixed(1),
-        median(results.map((r) => r.syncMs)).toFixed(1),
-        median(results.map((r) => r.disposeWorst)).toFixed(1),
-        median(results.map((r) => r.teardownFrames)),
-      ].join("\t\t"),
+      mode === "close"
+        ? "\n=== the panel closes ==="
+        : "\n=== every row leaves a panel that stays open ===",
     );
+    console.log("rows\tmount ms\tworst mount frame\tsync ms\tworst frame after\tteardown frames");
+    for (const rows of SIZES) {
+      /** @type {{ mountMs: number, mountWorst: number, syncMs: number, disposeWorst: number, teardownFrames: number, left: number }[]} */
+      const results = [];
+      // The first run warms the JIT and is dropped.
+      for (let repeat = 0; repeat <= REPEATS; repeat++) {
+        const result = await page.evaluate(
+          ([n, m]) => /** @type {any} */ (window).runBench(n, m),
+          /** @type {const} */ ([rows, mode]),
+        );
+        if (result.left !== 0) {
+          throw new Error(`${result.left} ray targets of a closed panel were never taken down`);
+        }
+        if (repeat > 0) {
+          results.push(result);
+        }
+      }
+      console.log(
+        [
+          rows,
+          median(results.map((r) => r.mountMs)).toFixed(0),
+          median(results.map((r) => r.mountWorst)).toFixed(1),
+          median(results.map((r) => r.syncMs)).toFixed(1),
+          median(results.map((r) => r.disposeWorst)).toFixed(1),
+          median(results.map((r) => r.teardownFrames)),
+        ].join("\t\t"),
+      );
+    }
   }
 } finally {
   await closeAll(browser);

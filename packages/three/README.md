@@ -817,8 +817,10 @@ dom(ctx, menu, [set({ position })], {
   (`bench/dispose.browser.mjs`). Only under `render()`, whose scheduler outlives the panel: a portal
   pacing itself takes everything down at once. A scene that stops drawing, as a `presentingOnly`
   scene does when its session ends, goes on taking the panel down on timers, 4 ms at a time, and a
-  portal claiming the same element again first finishes what is left. `portalTeardown.js` has the
-  rules.
+  portal claiming the same element again first finishes what is left. The rows that leave an open
+  panel go the same way: out of the scene at the commit that closes the gap, and taken down over the
+  frames after it. Emptying a list of a hundred rows cost a 100 ms frame in Chromium and costs a 33
+  ms one, the rest of which is the update before the commit. `portalTeardown.js` has the rules.
 
 ### Dragging and dropping
 

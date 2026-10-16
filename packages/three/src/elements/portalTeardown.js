@@ -6,7 +6,7 @@ import { batch, withChannel } from "@apendua/signal";
 
 /**
  * Taking a closed panel's objects down a budget at a time, the way they were
- * built.
+ * built, and the objects of the rows that leave a panel still open.
  *
  * What a panel costs to close is the reactive graph its objects hold: every
  * element keeps a subscription, and unsubscribing it disposes the effects
@@ -16,7 +16,8 @@ import { batch, withChannel } from "@apendua/signal";
  * desktop CPU, all in the task that closed it, where the same panel's mount
  * never cost a frame more than the scheduler's budget. Nothing in the graph
  * is quadratic, it is the size of the graph, so the cost moves to frames
- * rather than going away.
+ * rather than going away. A row that leaves an open panel holds the same
+ * graph, and was taken down in the frame its commit landed in.
  *
  * The rules, in order of time.
  *
@@ -26,14 +27,25 @@ import { batch, withChannel } from "@apendua/signal";
  *    takes the portal's marks and flags off the page, lets go of every node
  *    in the mirror and stops everything that could change the panel: the
  *    observer, the listeners, the clock and the pump. What is left is each
- *    object's subscription, and that is what is queued here.
+ *    object's subscription, and that is what is queued here. A commit does
+ *    the same for the rows that left an open panel: their objects leave the
+ *    scene in the frame the rows around them close the gap, and only their
+ *    teardowns wait.
  * 2. **Hidden until taken down.** An object waiting for its teardown is
  *    still registered as a ray target, and the manager casts none that has
  *    a hidden object above it. Nothing takes an element's object out of
  *    its parent's content group but the portal, which has stopped, so every
  *    waiting object stays under the hidden container whatever order the
  *    teardowns run in. An object built for a commit that never came hangs
- *    under nothing, and `disconnect` hides it as well.
+ *    under nothing, and `disconnect` hides it as well. The rows that left
+ *    an open panel wait under a hidden group of their own rather than each
+ *    hidden in its own right: that panel's channel still runs, and a row's
+ *    own effect that writes `visible` from its style could show it again.
+ *    The group lets go of them as their last teardown. The mirror let go of
+ *    such a row when it left (`DomMirror.release`), so nothing the page
+ *    does reaches it. The panel's text step (`textScale.js`) still does: a
+ *    step crossed while the row waits draws its text again at the new step,
+ *    for nothing, as it did while the row waited for its commit.
  * 3. **Only under the scene's scheduler.** The queue outlives the panel, so
  *    it needs frames that outlive the panel, and only the scheduler
  *    `render()` installs has them. A portal pacing itself, on a plain page

@@ -1037,6 +1037,27 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /**
+   * Run what a walk of `unlink` collected: queued on the scene's scheduler
+   * and run a budget at a time where there is one, here and now where the
+   * portal paces itself. `portalTeardown.js` has the rules. For a closed
+   * panel and for the rows that leave an open one alike.
+   *
+   * @param {Unlinked} unlinked
+   */
+  function takeDown(unlinked) {
+    if (sceneScheduler) {
+      scheduleTeardown({
+        scheduler: sceneScheduler,
+        requestFrames,
+        teardowns: unlinked.teardowns,
+        nodes: unlinked.nodes,
+      });
+    } else {
+      runTeardowns(unlinked);
+    }
+  }
+
+  /**
    * Take down everything the portal made for a node and for everything under
    * it, here and now.
    *
@@ -1301,8 +1322,9 @@ function buildPortal(ctx, ownOptions = {}) {
   };
 
   /**
-   * Take a node's object down — at the commit, if there is one to wait for,
-   * and the whole of it then, not just its place.
+   * Take a node's object out of the scene — at the commit, if there is one
+   * to wait for — and the whole of it down, then or over the frames after
+   * (see `takeDown`), never just its place.
    *
    * An object cannot be left standing without what stands behind it. Its
    * meshes, its materials and its place in the batches are what the
@@ -1310,7 +1332,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * object cleaned up early is an empty group, and a removed row cleaned
    * up early vanished on the spot while the rows around it waited for the
    * commit to close over the gap. So a removed row keeps its subscription,
-   * and with it its effects, until the commit.
+   * and with it its effects, until the commit, and under the scene's
+   * scheduler until its teardown's turn after it, hidden from then on.
    *
    * What that costs is bounded, and worth knowing. The mirror lets go of
    * the subtree here and now (`DomMirror.release`), and keeps nothing but
@@ -1321,14 +1344,14 @@ function buildPortal(ctx, ownOptions = {}) {
    * for it. That is the last of it: those reads find the subtree let go of,
    * cut off from its parent chain and from the panel's own signals, so
    * nothing that happens in the panel afterwards reaches it, a font arriving
-   * included. One wave, and then quiet until the commit disposes it. A node
+   * included. One wave, and then quiet until its teardown. A node
    * put back before the commit is taken back by the mirror as the flush
    * that reports it arrives (`DomMirror.reclaim`).
    *
    * A child that *moved* out of the removed subtree — appended elsewhere
    * before the commit — is still in the tree, and its object is still under
    * this one's content group, its new place being only pending. The commit
-   * places it before this object is taken down, and `cleanup`'s walk passes
+   * places it before this object is taken down, and `unlink`'s walk passes
    * over any child whose node is still in the tree besides, so it stays
    * exactly as drawn whichever of the two comes first.
    *
@@ -1357,7 +1380,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * first, each still checked against the tree, since a node can leave
    * between being built and being placed; then the departures. In that
    * order so that an object moved out of a departing subtree is under its
-   * new parent before the old one's cleanup walks the group it used to be
+   * new parent before the old one's `unlink` walks the group it used to be
    * in, whichever of the two the observer happened to report first.
    *
    * One transaction in the panel's region, like the observer callback whose
@@ -1365,7 +1388,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * ray registrations, whatever a component's own cleanup does — and each
    * such write outside a batch would drain the queue on the spot rather
    * than once at the end, while anything a teardown happened to construct
-   * would be born in the default channel rather than the panel's.
+   * would be born in the default channel rather than the panel's. That is
+   * for a portal pacing itself, whose teardowns run here; under the scene's
+   * scheduler they are queued (`takeDown`), and each slice is a batch of
+   * its own.
    */
   const commit = () => {
     if (!commitDue()) {
@@ -1382,15 +1408,44 @@ function buildPortal(ctx, ownOptions = {}) {
         }
       }
       pendingAttachments.clear();
+      /** @type {Unlinked} */
+      const removed = { teardowns: [], nodes: [] };
+      /**
+       * Where the objects of the rows that left wait for their teardowns:
+       * out of the scene, and under a group that is hidden, so that no ray
+       * meets them. Not each object hidden in its own right, as a closed
+       * panel's container is: this panel's channel still runs, and an
+       * effect of the row's own, the one that writes `visible` from its
+       * style, could show it again.
+       *
+       * @type {THREE.Group | null}
+       */
+      let hold = null;
       for (const node of pendingRemovals) {
         // Back in the tree since it was listed: moved, and just placed
         // above.
         if (!containerElement.contains(node)) {
-          nodeToObject.get(node)?.removeFromParent();
-          cleanup(node);
+          const object = nodeToObject.get(node);
+          if (object) {
+            if (!hold) {
+              hold = new THREE.Group();
+              hold.visible = false;
+            }
+            hold.add(object);
+          }
+          unlink(node, removed);
         }
       }
       pendingRemovals.clear();
+      if (hold) {
+        // And let go of them last, so that a row taken down is out of
+        // everything, as it was when it was taken down on the spot.
+        const held = hold;
+        removed.teardowns.push(() => {
+          held.clear();
+        });
+      }
+      takeDown(removed);
       if (changed) {
         // The batches draw what a walk of the panel finds, and the walk just
         // changed. Every box and run told its batch about itself when it was
@@ -2007,16 +2062,7 @@ function buildPortal(ctx, ownOptions = {}) {
       containerElement.removeAttribute(LOADING_ATTRIBUTE);
       containerElement.removeAttribute(BUSY_ATTRIBUTE);
     }
-    if (sceneScheduler) {
-      scheduleTeardown({
-        scheduler: sceneScheduler,
-        requestFrames,
-        teardowns: unlinked.teardowns,
-        nodes: unlinked.nodes,
-      });
-    } else {
-      runTeardowns(unlinked);
-    }
+    takeDown(unlinked);
   }
 
   /**

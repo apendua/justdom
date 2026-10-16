@@ -10,6 +10,7 @@ import {
 } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { place } from "./place.js";
+import { instanceVersions } from "../test/instanceVersions.js";
 
 /**
  * A box as a portal builds one for a batch: the shared invisible material
@@ -486,32 +487,12 @@ describe("the material a batched box wears", () => {
   });
 });
 
-/**
- * How many times each of the bucket's instance buffers has been marked for
- * upload, by name.
- *
- * @param {THREE.Object3D} container
- */
-function instanceVersions(container) {
-  const bucket = /** @type {THREE.InstancedMesh} */ (
-    container.children.find((child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh)
-  );
-  assert.ok(bucket, "expected the batch to have made a bucket");
-  /** @type {Record<string, number>} */
-  const versions = { instanceMatrix: bucket.instanceMatrix.version };
-  for (const [name, attribute] of Object.entries(bucket.geometry.attributes)) {
-    if (/** @type {THREE.InstancedBufferAttribute} */ (attribute).isInstancedBufferAttribute) {
-      versions[name] = /** @type {THREE.BufferAttribute} */ (attribute).version;
-    }
-  }
-  return versions;
-}
-
 describe("box batch instance uploads", () => {
   test("a rebuild that changed nothing marks no buffer for upload", () => {
     const { container, batch } = crowdedPanel(3);
     batch.flush();
     const before = instanceVersions(container);
+    assert.ok(Object.keys(before).length > 0, "expected a bucket");
 
     batch.invalidate();
     batch.flush();
@@ -530,6 +511,7 @@ describe("box batch instance uploads", () => {
 
     const after = instanceVersions(container);
     const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
-    assert.deepEqual(changed, ["instanceMatrix"]);
+    assert.equal(changed.length, 1, `expected the matrices alone, got ${changed.join(", ")}`);
+    assert.match(changed[0], /:instanceMatrix$/);
   });
 });

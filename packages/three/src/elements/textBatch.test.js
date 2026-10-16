@@ -5,6 +5,7 @@ import { TEXT_ANISOTROPY } from "./textHelpers.js";
 import { place } from "./place.js";
 import { panel, run } from "../test/textRuns.js";
 import { createTextBatch } from "./textBatch.js";
+import { instanceVersions } from "../test/instanceVersions.js";
 
 describe("text batch teardown", () => {
   test("the runs of a size share one bucket, and it holds them all", () => {
@@ -748,30 +749,6 @@ describe("text batch upload budget", () => {
     assert.equal(uploads, 1, "the second class would have gone past the bytes");
   });
 });
-
-/**
- * How many times each of the batch's instance buffers has been marked for
- * upload, by bucket and name.
- *
- * @param {THREE.Object3D} container
- */
-function instanceVersions(container) {
-  /** @type {Record<string, number>} */
-  const versions = {};
-  for (const [index, child] of container.children.entries()) {
-    const mesh = /** @type {THREE.InstancedMesh} */ (child);
-    if (!mesh.isInstancedMesh) {
-      continue;
-    }
-    versions[`${index}:instanceMatrix`] = mesh.instanceMatrix.version;
-    for (const [name, attribute] of Object.entries(mesh.geometry.attributes)) {
-      if (/** @type {THREE.InstancedBufferAttribute} */ (attribute).isInstancedBufferAttribute) {
-        versions[`${index}:${name}`] = /** @type {THREE.BufferAttribute} */ (attribute).version;
-      }
-    }
-  }
-  return versions;
-}
 
 describe("text batch instance uploads", () => {
   test("a rebuild that changed nothing marks no buffer for upload", () => {

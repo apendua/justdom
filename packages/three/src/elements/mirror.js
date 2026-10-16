@@ -992,7 +992,9 @@ function readRecordOf(node) {
  *    change, so nothing they draw from it runs again. Read as the document
  *    has it, a node out of the document measures as nothing and styles as
  *    nothing, and every box, run and raster under it was drawn again from
- *    that, for objects about to be taken out.
+ *    that, for objects about to be taken out. A change the panel heard
+ *    before letting go of the node, but that no read had run for yet, is
+ *    kept out with the rest: the objects are drawn as they last were.
  * 3. **A read with nothing to keep runs in full.** One made before the node
  *    had a record follows its adoption (`readRecordOf`), and one made for
  *    the first time while the node is away reads it as the document has it.
@@ -1047,6 +1049,12 @@ function keptWhileAway(node, evaluate, isEqual) {
  * away from its panel (`keptWhileAway`). Every cache of a node read builds
  * through here or through `probedRead`, the mirror's and the ones beside it
  * (`elevation.js`, `listMarker.js`), so that the rules hold for each of them.
+ *
+ * So does a read held by one object that holds the mirror's reads up
+ * against the document itself, as an SVG `<text>`'s runs are measured in a
+ * copy of it (`svg/text.js`). Once the node is away the two can disagree: a
+ * child list kept from before the page took a run out names a node the
+ * copy no longer has. Kept as a whole, the read never compares them.
  *
  * @template T
  * @param {Node} node

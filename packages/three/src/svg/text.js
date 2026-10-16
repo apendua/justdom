@@ -9,6 +9,7 @@ import {
   getComputedStyleCached,
   getReflowContext,
   getTextDataCached,
+  nodeDerived,
   withMeasuringRange,
 } from "../elements/mirror.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
@@ -479,7 +480,12 @@ export function drawText(ctx, element, instance = null) {
     return signal.get();
   };
 
-  const runs = new Derived(
+  // A read of the `<text>` like the mirror's own (`nodeDerived`): it lays a
+  // copy of the element out as the document has it, against the runs the
+  // mirror's reads name, and once the element has left the panel those
+  // reads keep what they said, which the copy need no longer hold.
+  const runs = nodeDerived(
+    element,
     () => {
       // What moves text from outside its own subtree: a font arriving, or a
       // layout change the portal cannot name.

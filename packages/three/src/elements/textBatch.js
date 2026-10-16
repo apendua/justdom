@@ -497,7 +497,8 @@ class Bucket {
   }
 
   /**
-   * Draw from the texture the size class holds now, if it has built a new one.
+   * Draw from the texture the size class holds now, if it has built a new one,
+   * and the first time, whatever it holds: `#build` binds no texture itself.
    *
    * @returns {void}
    */

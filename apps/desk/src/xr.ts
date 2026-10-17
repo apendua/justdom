@@ -16,11 +16,18 @@ import type { Readable } from "./session.js";
  * `?emulator` installs a headset in the browser first, so that a session
  * can be driven by hand without one; `?emulator=bare` installs it without
  * the panels that drive it, for a harness photographing the scene.
+ *
+ * `?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every
+ * panel's boxes with freedom's depth bias by paint rank, a prototype of item
+ * 10.2 in `docs/freedom-architecture-plan.md`.
  */
 export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
+  const asked = query.get("depthRank");
+  const depthRank =
+    asked === "constant" || asked === "slope" || asked === "max" ? asked : undefined;
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");
@@ -59,6 +66,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       // key, on the desk's keyboard too, which is a panel like any other.
       keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
       haptics: { flavor: "key" },
+      ...(depthRank ? { depthRank } : {}),
     },
   }).subscribe({
     next: (renderer) => {

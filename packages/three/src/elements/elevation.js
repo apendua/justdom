@@ -46,7 +46,9 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  * is stepped over draws first, back to front. An opaque box hides what it
  * covers in either order, marks included, so it keeps its tree depth, and a
  * pile of opaque cards shares one bucket. The lift and the draw level read
- * what an element clears from one list, `getClearedSiblings`.
+ * what an element clears from one list, `getClearedSiblings`, and the paint
+ * rank a prototype depth bias draws boxes by (`getPaintRank`) is the lift
+ * counted in steps.
  *
  * Marks are not stepped. Text, carets and list markers are drawn level with
  * the object of the box they belong to, so 1 px in front of its quad, with
@@ -424,9 +426,9 @@ const clearedCache = nodeCache();
  * This is the one place the paint-layer, overlap and escape rules are
  * applied. Whatever orders an element against its siblings reads it rather
  * than scanning again: `getLift` for depth and `getDrawLevel` for draw
- * order. A paint rank in place of the lift, as R5 in
- * `docs/freedom-architecture-plan.md` proposes, would be `getLift`'s
- * recursion over this list in steps of one, and would read it too.
+ * order. The paint rank R5 in `docs/freedom-architecture-plan.md` proposes
+ * in place of the lift is `getLift`'s recursion over this list in steps of
+ * one, and `getPaintRank` reads it through `getLift`.
  *
  * Reactive: it follows the style, layout and child list of the parent's
  * children. Nothing here runs per frame. The scan reads every sibling's
@@ -528,6 +530,40 @@ export function getLift(element) {
       return lift;
     });
     liftCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<Element, Derived<number>>} */
+const paintRankCache = nodeCache();
+
+/**
+ * How many steps in front of its panel's root the element's box sits, as a
+ * paint rank: `getLift` in units of `CONTENT_STEP` rather than px, summed
+ * down the panel from the root. A nested box is one rank in front of its
+ * parent, an overlay five, and a card in a pile one rank in front of the
+ * farthest thing a page paints of the cards it clears, so the rank reads
+ * the cleared-sibling list through `getLift` and keeps its order.
+ *
+ * Read by the box batch's depth bias (`boxBatch.js`), a prototype of item
+ * 10 in `docs/freedom-architecture-plan.md`, which a panel turns on with its
+ * `depthRank` option. Every lift is a multiple of `CONTENT_STEP`, so the
+ * quotient is a whole number, and it is the recursion R5 describes over the
+ * same list with a step of one. Until the bias replaces the lift (item
+ * 10.3), the two are one number in two units.
+ *
+ * @param {Element} element
+ * @returns {number}
+ */
+export function getPaintRank(element) {
+  let signal = paintRankCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(element, () => {
+      const parent = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
+      const own = getLift(element) / CONTENT_STEP;
+      return parent ? getPaintRank(parent) + own : own;
+    });
+    paintRankCache.set(element, signal);
   }
   return signal.get();
 }

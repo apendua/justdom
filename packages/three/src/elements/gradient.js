@@ -6,14 +6,16 @@ import * as THREE from "three";
  *
  * What a gradient costs is decided by where its description lives. Stops are
  * a list of any length, and a list has no place in a per-instance attribute:
- * a batched box has sixteen attribute slots to its name, and the box already
- * spends twelve. So the list is spent on the CPU instead. Each distinct run of
- * stops is baked, once, into one row of a shared texture — the *ramp* — and
- * what a box carries is which row, plus the handful of numbers that say how
- * its pixels map onto that row: a direction for a linear gradient, a centre
- * and radii for a radial one, a centre and a starting angle for a conic one,
- * and the tile the whole image is laid out in. A box with a gradient is still
- * one instance in its panel's batch; nothing about it costs a draw call.
+ * a batched box has sixteen attribute slots to its name, and the box spends
+ * all of them, counting the `normal` and `uv` three declares (see the comment
+ * above `instancedVertex` in `boxBatch.js`). So the list is spent on the CPU
+ * instead. Each distinct run of stops is baked, once, into one row of a
+ * shared texture — the *ramp* — and what a box carries is which row, plus the
+ * handful of numbers that say how its pixels map onto that row: a direction
+ * for a linear gradient, a centre and radii for a radial one, a centre and a
+ * starting angle for a conic one, and the tile the whole image is laid out
+ * in. A box with a gradient is still one instance in its panel's batch;
+ * nothing about it costs a draw call.
  *
  * The file is in three parts, each a stage the one after it depends on:
  *

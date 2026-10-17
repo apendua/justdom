@@ -26,7 +26,7 @@ import {
 } from "./mirror.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
 import { composeTransform, getOwnTransform, isTransformed } from "./cssTransform.js";
-import { getContentRenderOrder, getLift, isOverlay } from "./elevation.js";
+import { getContentRenderOrder, getLift, getPaintRank, isOverlay } from "./elevation.js";
 import { isScrollable } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
 import { BoxBatchContext } from "./boxBatch.js";
@@ -593,6 +593,15 @@ export function box(ctx, element, options = {}) {
             batch.remove(boxMesh);
           });
         }),
+        // Where the box stands in the paint order, for a panel drawn with a
+        // depth bias (`depthRank`). A panel without one never reads it.
+        ...(batch?.depthRank
+          ? [
+              effects(() => {
+                batch.setRank(boxMesh, getPaintRank(element));
+              }),
+            ]
+          : []),
         // The quad is the element's own painting, so it goes when the element
         // is hidden — out of the draw, out of the batch's walk and out of the
         // raycast, all three of which follow this flag — while the content

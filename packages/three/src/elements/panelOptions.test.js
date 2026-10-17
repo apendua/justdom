@@ -93,6 +93,14 @@ describe("mergePanelOptions", () => {
     assert.ok(refused);
   });
 
+  test("lets `depthRank: false` turn off a bias the scene set", () => {
+    /** @type {PanelOptions} */
+    const scene = { depthRank: "slope" };
+    /** @type {PortalOptions} */
+    const panel = { depthRank: false };
+    assert.equal(mergePanelOptions(scene, panel).depthRank, false);
+  });
+
   test("passes a panel's own options through untouched", () => {
     const root = document.createElement("div");
     /** @type {PortalOptions} */

@@ -34,6 +34,11 @@ On a laptop there is no session to offer, so there is no button and no renderer.
 installs a headset in the browser (IWER, with its dev panels, from `@apendua.dev/headset`) and an
 Enter button appears at the bottom; `?emulator=bare` installs the runtime without the panels.
 
+`?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every panel's boxes with
+freedom's depth bias by paint rank, a prototype for item 10.2 of
+[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md). The plan's record of
+the item says what each one measured, and where the probe that measured them last stood.
+
 `node tests/xr-check.mjs` puts each look up in turn in a session on the emulated headset in headless
 Chromium. It fails unless every zone the look places becomes a panel and loads, the ray aimed at the
 power control is on it, and the trigger there ends the session, or if the page throws. It takes

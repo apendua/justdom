@@ -6,7 +6,7 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { div } from "./div.js";
-import { getContentRenderOrder } from "./elevation.js";
+import { getContentRenderOrder, getPaintRank } from "./elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { getContentGroup } from "./contentGroup.js";
@@ -2185,5 +2185,131 @@ describe("div gradients", () => {
     assert.equal(rampAtlas.size, before + 1);
     box.subscription.unsubscribe();
     assert.equal(rampAtlas.size, before, "teardown releases the row");
+  });
+});
+
+describe("a box's paint rank in a batch with a depth bias", () => {
+  /**
+   * A board of three opaque cards, each overlapping the one before, with a
+   * label box inside the second, and a fourth card apart from the rest, all
+   * drawn into one box batch.
+   *
+   * @param {import("./boxBatch.js").DepthRankBias} [depthRank]
+   */
+  function pile(depthRank) {
+    const board = setupSiblings();
+    const container = new THREE.Group();
+    const batch = createBoxBatch(container, depthRank);
+    /** @param {HTMLElement} element */
+    const draw = (element) =>
+      container.add(
+        board.drawWith(element, (ctx) => div(BoxBatchContext.set(ctx, batch), element)),
+      );
+    const card = "position: absolute; background: white";
+    const first = board.place(card, [0, 0, 100, 100]);
+    const second = board.place(card, [50, 50, 150, 150]);
+    const label = board.place("background: navy", [60, 60, 140, 80], second);
+    const third = board.place(card, [100, 100, 200, 200]);
+    const apart = board.place(card, [300, 300, 350, 350]);
+    for (const element of [first, second, third, apart]) {
+      draw(element);
+    }
+    // The label hangs inside its card's object, as the portal nests it.
+    const labelObject = board.drawWith(label, (ctx) => div(BoxBatchContext.set(ctx, batch), label));
+    getContentGroup(/** @type {THREE.Object3D} */ (container.children[1]))?.add(labelObject);
+    batch.flush();
+    return {
+      board,
+      batch,
+      container,
+      cards: { first, second, label, third, apart },
+      /** Each instance's rank, bucket by bucket, in the order drawn. */
+      ranks() {
+        return container.children
+          .filter((child) => child instanceof THREE.InstancedMesh && child.count > 0)
+          .flatMap((bucket) => {
+            const mesh = /** @type {THREE.InstancedMesh} */ (bucket);
+            // Packed with the opacity, as the vertex shader unpacks it.
+            const size = mesh.geometry.getAttribute("aSize").array;
+            return Array.from({ length: mesh.count }, (_, i) => Math.floor(size[i * 4 + 3] / 2));
+          });
+      },
+      teardown() {
+        board.teardown();
+        batch.dispose();
+      },
+    };
+  }
+
+  test("a card is one rank in front of each card it clears, and a box in it one more", () => {
+    const { board, cards, teardown } = pile("slope");
+    try {
+      const base = getPaintRank(board.parent);
+      assert.deepEqual(
+        [cards.first, cards.second, cards.label, cards.third, cards.apart].map(
+          (element) => getPaintRank(element) - base,
+        ),
+        [1, 2, 3, 4, 1],
+        "first, second, the second's label, third, and the card apart",
+      );
+    } finally {
+      teardown();
+    }
+  });
+
+  test("each box is drawn with its own rank", () => {
+    const { cards, ranks, teardown } = pile("slope");
+    try {
+      const expected = [cards.first, cards.second, cards.label, cards.third, cards.apart].map(
+        (element) => getPaintRank(element),
+      );
+      assert.deepEqual(
+        ranks().sort((a, b) => a - b),
+        expected.sort((a, b) => a - b),
+      );
+    } finally {
+      teardown();
+    }
+  });
+
+  test("a card moved off the pile is drawn with its new rank", () => {
+    const { board, batch, cards, ranks, teardown } = pile("constant");
+    try {
+      const base = getPaintRank(board.parent);
+      const drawn = () => ranks().map((rank) => rank - base);
+      assert.deepEqual(
+        drawn().sort((a, b) => a - b),
+        [1, 1, 2, 3, 4],
+      );
+      layout(cards.third, () => [200, 0, 280, 80]);
+      board.mirror.reflowed([cards.third]);
+      batch.flush();
+      assert.deepEqual(
+        drawn().sort((a, b) => a - b),
+        [1, 1, 1, 2, 3],
+        "the third card, now apart, is drawn at the rank of a card that clears nothing",
+      );
+    } finally {
+      teardown();
+    }
+  });
+
+  test("a panel without a bias draws no rank and compiles none", () => {
+    const { container, batch, teardown } = pile();
+    try {
+      assert.equal(batch.depthRank, undefined);
+      for (const child of container.children) {
+        if (child instanceof THREE.InstancedMesh) {
+          const size = child.geometry.getAttribute("aSize").array;
+          for (let i = 0; i < child.count; i++) {
+            assert.equal(size[i * 4 + 3], 1, "the opacity alone, with no rank packed in");
+          }
+          const material = /** @type {THREE.ShaderMaterial} */ (child.material);
+          assert.equal(material.defines.DEPTH_RANK, undefined);
+        }
+      }
+    } finally {
+      teardown();
+    }
   });
 });

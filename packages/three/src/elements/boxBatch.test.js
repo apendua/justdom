@@ -1,7 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createBoxBatch } from "./boxBatch.js";
+import {
+  createBoxBatch,
+  DEPTH_RANK_EPSILON,
+  DEPTH_RANK_MAX_FACTOR,
+  DEPTH_RANK_MAX_FLOOR,
+} from "./boxBatch.js";
 import {
   batchedBoxMaterial,
   createRectMaterial,
@@ -470,21 +475,6 @@ describe("the material a batched box wears", () => {
       assert.match(shader.fragmentShader, discard);
     }
   });
-
-  test("a box's description stays within the attribute slots WebGL promises", () => {
-    // Sixteen is the minimum MAX_VERTEX_ATTRIBS, and what a headset browser
-    // gives. A vec4 or smaller takes one slot, a mat4 four.
-    const p = panel();
-    const bucket = /** @type {THREE.InstancedMesh} */ (
-      p.container.children.find(
-        (child) => /** @type {THREE.InstancedMesh} */ (child).isInstancedMesh,
-      )
-    );
-    assert.ok(bucket);
-    const attributes = Object.keys(bucket.geometry.attributes).length;
-    // Plus the instance matrix, which is not a geometry attribute.
-    assert.ok(attributes + 4 <= 16, `${attributes} attributes and a matrix`);
-  });
 });
 
 describe("box batch instance uploads", () => {
@@ -513,5 +503,130 @@ describe("box batch instance uploads", () => {
     const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
     assert.equal(changed.length, 1, `expected the matrices alone, got ${changed.join(", ")}`);
     assert.match(changed[0], /:instanceMatrix$/);
+  });
+});
+
+describe("box batch depth bias", () => {
+  /**
+   * A batch of one box under `depthRank`, ranked 7, and its bucket.
+   *
+   * @param {import("./boxBatch.js").DepthRankBias} [depthRank]
+   */
+  function ranked(depthRank) {
+    const container = new THREE.Group();
+    const { mesh, uniforms } = makeBox();
+    container.add(mesh);
+    const batch = createBoxBatch(container, depthRank);
+    batch.add(mesh, uniforms);
+    batch.setRank(mesh, 7);
+    batch.flush();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      container.children.find((child) => child instanceof THREE.InstancedMesh)
+    );
+    assert.ok(bucket, "expected a bucket");
+    return { batch, bucket, material: /** @type {THREE.ShaderMaterial} */ (bucket.material) };
+  }
+
+  test("a constant bias compiles the constant and no slope", () => {
+    const { batch, bucket, material } = ranked("constant");
+    assert.equal(material.defines.DEPTH_RANK, "");
+    assert.equal(material.defines.DEPTH_RANK_SLOPE, undefined);
+    assert.equal(Number(material.defines.DEPTH_RANK_EPSILON), DEPTH_RANK_EPSILON);
+    // Packed with the box's opacity, 1.
+    assert.equal(bucket.geometry.getAttribute("aSize").array[3], 2 * 7 + 1);
+    batch.dispose();
+  });
+
+  test("a max bias compiles max alone, and follows the viewport too", () => {
+    const { batch, bucket, material } = ranked("max");
+    assert.equal(material.defines.DEPTH_RANK_MAX, "");
+    assert.equal(material.defines.DEPTH_RANK_SLOPE, undefined);
+    assert.equal(Number(material.defines.DEPTH_RANK_MAX_FLOOR), DEPTH_RANK_MAX_FLOOR);
+    assert.equal(Number(material.defines.DEPTH_RANK_MAX_FACTOR), DEPTH_RANK_MAX_FACTOR);
+    assert.equal(bucket.onBeforeRender.name, "followViewport");
+    assert.ok(material.uniforms.uDepthRankViewport, "it reads the slope, so the viewport");
+    batch.dispose();
+  });
+
+  test("a slope bias follows the viewport it is drawn into, and uploads it once", () => {
+    const { batch, bucket, material } = ranked("slope");
+    assert.equal(material.defines.DEPTH_RANK_SLOPE, "");
+    const renderer = /** @type {THREE.WebGLRenderer} */ (
+      /** @type {unknown} */ ({
+        /** @param {THREE.Vector4} target */
+        getCurrentViewport: (target) => target.set(1680, 0, 1680, 1760),
+      })
+    );
+    const draw = () =>
+      bucket.onBeforeRender(
+        renderer,
+        new THREE.Scene(),
+        new THREE.PerspectiveCamera(),
+        bucket.geometry,
+        material,
+        new THREE.Group(),
+      );
+    material.uniformsNeedUpdate = false;
+    draw();
+    assert.deepEqual(material.uniforms.uDepthRankViewport.value.toArray(), [1680, 1760]);
+    assert.equal(material.uniformsNeedUpdate, true, "a new viewport is uploaded");
+    material.uniformsNeedUpdate = false;
+    draw();
+    assert.equal(material.uniformsNeedUpdate, false, "the same viewport is not uploaded again");
+    batch.dispose();
+  });
+
+  test("a box's rank set before it joins the batch is not kept", () => {
+    // As a rank effect that runs once more during a teardown, after
+    // `remove`, would set it: the box comes back with the rank its own
+    // effect writes, not a stale one.
+    const container = new THREE.Group();
+    const { mesh, uniforms } = makeBox();
+    container.add(mesh);
+    const batch = createBoxBatch(container, "constant");
+    batch.setRank(mesh, 7);
+    batch.add(mesh, uniforms);
+    batch.flush();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      container.children.find((child) => child instanceof THREE.InstancedMesh)
+    );
+    assert.equal(bucket.geometry.getAttribute("aSize").array[3], 1, "rank 0 and opacity 1");
+    batch.dispose();
+  });
+
+  test("a batch without a bias ignores a rank", () => {
+    const { batch, bucket, material } = ranked();
+    assert.equal(bucket.geometry.getAttribute("aSize").array[3], 1, "the opacity alone");
+    assert.equal(material.uniforms.uDepthRankViewport, undefined);
+    batch.dispose();
+  });
+
+  test("a bias is one of the two the shader has", () => {
+    // @ts-expect-error: there is no "linear" bias.
+    createBoxBatch(new THREE.Group(), "linear").dispose();
+  });
+});
+
+describe("box batch attribute budget", () => {
+  test("the vertex shader declares no more attributes than ANGLE will link", () => {
+    // Sixteen is the minimum MAX_VERTEX_ATTRIBS, and what a headset browser
+    // gives. A vec4 or smaller takes one slot, a mat4 four. ANGLE, under
+    // Chromium's WebGL, counts every declared attribute against them, used
+    // or not. Three declares `position`, `normal` and `uv` in front of a
+    // `ShaderMaterial`, and the instance matrix takes four. Counted in the
+    // source, every `#ifdef` included, under the slope.
+    const container = new THREE.Group();
+    const { mesh, uniforms } = makeBox();
+    container.add(mesh);
+    const ranked = createBoxBatch(container, "slope");
+    ranked.add(mesh, uniforms);
+    ranked.flush();
+    const bucket = /** @type {THREE.InstancedMesh} */ (
+      container.children.find((child) => child instanceof THREE.InstancedMesh)
+    );
+    const source = /** @type {THREE.ShaderMaterial} */ (bucket.material).vertexShader;
+    const own = source.match(/^\s*attribute\s+\w+\s+\w+;/gm)?.length ?? 0;
+    assert.ok(3 + 4 + own <= 16, `${3 + 4 + own} attribute slots`);
+    ranked.dispose();
   });
 });

@@ -1460,6 +1460,18 @@ Not followed:
   ordinary elements: `dropdown(props)`, whose `root` is the positioning context and `menu` the
   layer, and `keyboard(props)`.
 
+A panel's `depthRank` option, `"constant"`, `"slope"` or `"max"`, is a prototype and off by default.
+It draws the panel's boxes a little nearer the viewer by their paint rank, the number of content
+steps each box sits in front of the panel's root, on top of the steps above, so that the bias can be
+measured on a headset before it replaces them (item 10 of
+[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md)). `"constant"` moves
+a box the same amount in depth a rank whatever the panel's angle; `"slope"` moves it by how steeply
+depth changes across the panel on screen, so a panel facing the viewer moves least; `"max"` takes
+the larger of a small constant and a share of that slope. `false` turns it off for a panel under a
+scene that set it. It moves only the batched boxes, so neither the text nor an `<img>`, which draws
+itself: on a panel far enough away a box high in a pile can cover its own text, and a card can cover
+the picture on the card under it. `boxBatch.js` has the formula and its numbers.
+
 ## Images
 
 An `<img>` in a panel is an ordinary CSS box that happens to have a picture in it: the picture is a
@@ -1721,14 +1733,15 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority` and `budget` can be set this way. A panel's own options are laid over them: its value
-wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over
-the scene's, so a panel can change one thing about them without restating the rest; `false` at
-either level is none. `withPanelOptions(ctx, options)` does the same for a part of the scene, over
-whatever is in scope already. `plugins` is not among them — it has `portalPlugins`, whose list a
-panel's own is put in front of rather than in place of — and neither are `root`, `draggable` and
-`onLoadingChanged`, which are only ever one panel's.
+`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `depthRank`, `maxTextScale`, `atomic`,
+`opaqueToRays`, `priority` and `budget` can be set this way. A panel's own options are laid over
+them: its value wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object
+is spread over the scene's, so a panel can change one thing about them without restating the rest;
+`false` at either level is none, for those three and for `depthRank`.
+`withPanelOptions(ctx, options)` does the same for a part of the scene, over whatever is in scope
+already. `plugins` is not among them — it has `portalPlugins`, whose list a panel's own is put in
+front of rather than in place of — and neither are `root`, `draggable` and `onLoadingChanged`, which
+are only ever one panel's.
 
 ## SVG
 

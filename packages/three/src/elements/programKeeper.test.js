@@ -65,14 +65,18 @@ function textPanel(count) {
   return p;
 }
 
-/** A panel's batch of boxes, with one box in it. */
-function boxPanel() {
+/**
+ * A panel's batch of boxes, with one box in it.
+ *
+ * @param {import("./boxBatch.js").DepthRankBias} [depthRank]
+ */
+function boxPanel(depthRank) {
   const container = new THREE.Group();
   place(container, 0, 0, 0);
   const box = new THREE.Mesh(rectGeometry, batchedBoxMaterial());
   place(box, 0, 0, 0);
   container.add(box);
-  const batch = createBoxBatch(container);
+  const batch = createBoxBatch(container, depthRank);
   batch.add(box, createRectUniforms());
   batch.flush();
   return { container, batch };
@@ -94,6 +98,47 @@ describe("programKeeper", () => {
     scene.add(second.object);
     draw();
     assert.deepEqual([counts.programs, counts.programsFreed], [1, 0]);
+  });
+
+  test("a box panel with a depth bias, after the last one closed, links nothing", () => {
+    for (const depthRank of /** @type {const} */ (["constant", "slope", "max"])) {
+      const { scene, counts, draw } = stage();
+      const first = boxPanel(depthRank);
+      scene.add(first.container);
+      draw();
+      assert.equal(counts.programs, 1, `${depthRank}: the keeper is the panel's own program`);
+
+      first.batch.dispose();
+      scene.remove(first.container);
+      draw();
+      const second = boxPanel(depthRank);
+      scene.add(second.container);
+      draw();
+      assert.deepEqual([counts.programs, counts.programsFreed], [1, 0], depthRank);
+    }
+  });
+
+  test("box panels of every bias, after the last ones closed, link nothing", () => {
+    const { scene, counts, draw } = stage();
+    const biases = /** @type {const} */ ([undefined, "constant", "slope", "max"]);
+    const open = () =>
+      biases.map((depthRank) => {
+        const p = boxPanel(depthRank);
+        scene.add(p.container);
+        return p;
+      });
+    const first = open();
+    draw();
+    assert.equal(counts.programs, biases.length, "a program for each bias, and one for none");
+
+    for (const p of first) {
+      p.batch.dispose();
+      scene.remove(p.container);
+    }
+    draw();
+    open();
+    draw();
+    assert.deepEqual([counts.programs, counts.programsFreed], [biases.length, 0]);
   });
 
   test("a text bucket that grows links nothing", () => {

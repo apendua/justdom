@@ -429,8 +429,11 @@ function windowDepth(ranks, step, distance) {
 
 const EPS = [2 ** -24, 2 ** -22, 2 ** -20, 2 ** -18, 2 ** -16, 2 ** -14, 2 ** -12];
 const K = [2 ** -8, 2 ** -6, 2 ** -4, 2 ** -3, 2 ** -2, 2 ** -1, 1, 2, 4];
-/** For `"max"`, whose floor clears a shallow pile at any `k`. */
-const K_MAX = [2 ** -12, 2 ** -10, 2 ** -8, 2 ** -6, 2 ** -4, 2 ** -2];
+/**
+ * For `"max"`, whose floor clears a shallow pile at any `k`. Every power of
+ * two, since the Quest put the steep piles between 2^-8 and 2^-6.
+ */
+const K_MAX = Array.from({ length: 11 }, (_, i) => 2 ** (i - 12));
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 /** The desk's panels, as the eye sees them when it looks straight at one. */

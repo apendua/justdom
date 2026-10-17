@@ -678,14 +678,13 @@ function byDistance(a, b) {
  * of a scrolled list a full ray test: a registered scroller is raycast as a
  * subtree, and a 500-row list paid five hundred inverse-matrix transforms
  * per controller per frame to hit nothing anyone could see. The mirror's
- * contract is the renderer's: an object culled out of the draw is out of
- * the raycast, and its subtree with it — which is what `div()` already
- * promises when it drops a hidden row's registration. The manager's
- * `#castsOwnWalk` is the other half of the same contract, for what hangs
- * over a registered object rather than under it. The contract is the
- * object's own `visible` alone: a mesh whose material is not visible is
- * left out of the draw and stays a ray target, which is how a blocker and a
- * batched box are drawn by nothing, or by their batch, and still hit.
+ * contract: an object hidden by its own `visible` is out of the raycast,
+ * and its subtree with it — which is what `div()` already promises when it
+ * drops a hidden row's registration. The manager's `#castsOwnWalk` is the
+ * other half of the same contract, for what hangs over a registered object
+ * rather than under it. A mesh whose material is not visible is left out of
+ * the draw and stays a ray target, which is how a blocker and a batched box
+ * are drawn by nothing, or by their batch, and still hit.
  *
  * @param {THREE.Raycaster} raycaster
  * @param {THREE.Object3D<XREventMap>} object

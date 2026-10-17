@@ -1,11 +1,21 @@
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 import XRProfilesPlugin from "@apendua.dev/media/vite";
+import ProbeResultsPlugin from "./vite/probeResults.js";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   // The controller models, from this repository rather than a CDN: they are
   // served at `<base>profiles/`, where src/xr.ts points three's factory.
-  plugins: [XRProfilesPlugin()],
+  plugins: [
+    XRProfilesPlugin(),
+    // Where the depth probe uploads its results, for item 10.2. Development
+    // only, and temporary with the probe; see `vite/probeResults.js`.
+    ProbeResultsPlugin({
+      dir: fileURLToPath(new URL("probe-results", import.meta.url)),
+      base: "/apps/desk/",
+    }),
+  ],
   build: {
     target: "esnext",
     sourcemap: true,

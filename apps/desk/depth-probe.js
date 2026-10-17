@@ -529,6 +529,22 @@ document.getElementById("copy").addEventListener("click", async () => {
   }
 });
 
+// Sent to the dev server's route (`vite/probeResults.js`), relative to this
+// page so that it follows the app's base.
+document.getElementById("upload").addEventListener("click", async () => {
+  try {
+    const response = await fetch("api/probe-results", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(results, null, 2),
+    });
+    const reply = await response.json();
+    append(response.ok ? `Uploaded to ${reply.file}.` : `Upload refused: ${reply.message}`);
+  } catch (error) {
+    append(`Upload failed: ${error}. Is this page served by \`npx vite\`?`);
+  }
+});
+
 /** For a script driving the page. */
 window.probe = { results, pileTest, slopeOf, useFormula, configs };
 window.endSession = () => renderer.xr.getSession()?.end();

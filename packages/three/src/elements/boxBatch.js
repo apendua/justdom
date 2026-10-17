@@ -119,15 +119,14 @@ export const DEPTH_RANK_SLOPE_FACTOR = 2 ** -3;
 export const DEPTH_RANK_MAX_FLOOR = 2 ** -20;
 
 /**
- * `k` in `rank · max(floor, k · slope)`: the least power of two that left
- * no pixel of any pile wrong in the Quest 3's sweep in item 10.2, set by
- * the pile tipped 45° at 1 m. The keyboard, the memo and the 75° pile
- * clear at half of it. Under the plain slope one `k` has to be set by the
- * shallow piles, which need four to sixteen times more of their slope;
- * here the floor covers them. SwiftShader needs up to `2^-2`, so the
- * emulator still shows some wrong pixels on a sloped panel.
+ * `k` in `rank · max(floor, k · slope)`: the largest any device has needed
+ * in item 10.2's sweeps, SwiftShader's on a pile tipped 45°. The Quest 3
+ * needs `2^-7`. Both report the same `SUBPIXEL_BITS`, so what a GPU needs
+ * cannot be read from it, and `k` is set for the worst one measured. Under
+ * the plain slope one `k` has to be set by the shallow piles; here the
+ * floor covers them.
  */
-export const DEPTH_RANK_MAX_FACTOR = 2 ** -7;
+export const DEPTH_RANK_MAX_FACTOR = 2 ** -2;
 
 /**
  * The most one rank moves a box under `"slope"` or `"max"`, in NDC depth,

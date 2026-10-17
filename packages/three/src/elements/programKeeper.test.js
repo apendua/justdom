@@ -118,6 +118,29 @@ describe("programKeeper", () => {
     }
   });
 
+  test("box panels of every bias, after the last ones closed, link nothing", () => {
+    const { scene, counts, draw } = stage();
+    const biases = /** @type {const} */ ([undefined, "constant", "slope", "max"]);
+    const open = () =>
+      biases.map((depthRank) => {
+        const p = boxPanel(depthRank);
+        scene.add(p.container);
+        return p;
+      });
+    const first = open();
+    draw();
+    assert.equal(counts.programs, biases.length, "a program for each bias, and one for none");
+
+    for (const p of first) {
+      p.batch.dispose();
+      scene.remove(p.container);
+    }
+    draw();
+    open();
+    draw();
+    assert.deepEqual([counts.programs, counts.programsFreed], [biases.length, 0]);
+  });
+
   test("a text bucket that grows links nothing", () => {
     const { scene, counts, draw } = stage();
     const p = textPanel(6);

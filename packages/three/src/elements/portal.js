@@ -277,10 +277,10 @@ function claimRoot(root) {
  *   default: draw the panel's batched boxes with a depth bias by paint rank
  *   on top of the lift, `"constant"`, `"slope"` or `"max"` (see
  *   `DepthRankBias` in `boxBatch.js`), and `false` for none whatever the
- *   scene's `PanelOptions` say. It is there to measure the bias on a headset for
- *   item 10 of `docs/freedom-architecture-plan.md`. It moves neither the
- *   panel's text nor its pictures, so a box far enough up a pile can cover
- *   its own text and the picture of the card under it.
+ *   scene's `PanelOptions` say. It is there to measure the bias on a
+ *   headset for item 10 of `docs/freedom-architecture-plan.md`. It moves
+ *   neither the panel's text nor its pictures, so a box far enough up a
+ *   pile can cover its own text and the picture of the card under it.
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a

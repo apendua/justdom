@@ -106,8 +106,9 @@ export const DEPTH_RANK_FLOOR = 2 ** -22;
 /**
  * `k` in `rank · (k · slope + floor)`: how many pixels' worth of the panel's
  * depth slope one rank takes. Set by the probe's sweep in item 10.2, in the
- * emulator, as the least power of two that left no pixel of any pile wrong;
- * the plan's Status row says whether the Quest has confirmed it.
+ * emulator, as the least power of two that left no pixel of any pile wrong.
+ * The Quest 3 cleared every pile at `2^-6` with 4x MSAA and at `2^-4`
+ * without; it stays the emulator's, since item 10.3 takes `"max"`.
  */
 export const DEPTH_RANK_SLOPE_FACTOR = 2 ** -3;
 
@@ -437,12 +438,11 @@ function readDepthRankViewport(renderer, size) {
 
 /**
  * Keep the `uDepthRankViewport` of a material whose bias reads the slope at
- * the viewport it is
- * drawn into. Uploaded only when it changes, since the program keeps the
- * last value it was given: when a session starts or ends, and twice for
- * each drag ghost, whose snapshot (`takeSnapshot` in `ghostSnapshot.js`)
- * draws the panel into a target of the ghost's size and so with the slope
- * for that target's pixels.
+ * the viewport it is drawn into. Uploaded only when it changes, since the
+ * program keeps the last value it was given: when a session starts or
+ * ends, and twice for each drag ghost, whose snapshot (`takeSnapshot` in
+ * `ghostSnapshot.js`) draws the panel into a target of the ghost's size and
+ * so with the slope for that target's pixels.
  *
  * @this {THREE.Mesh}
  * @param {THREE.WebGLRenderer} renderer

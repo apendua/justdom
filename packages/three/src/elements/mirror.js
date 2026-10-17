@@ -520,9 +520,7 @@ const nodeCaches = [];
  * The exceptions hold nothing of a mirror's, only what the element itself
  * announces, and are kept for the element's life in a plain `WeakMap` that
  * says so where it is declared: `assignmentSources` below and
- * `valueVersions` in `textInput.js`. `hiddenCache` below is not one of
- * them: it holds a read of the computed style in a plain `WeakMap`, a gap
- * the architecture plan records under "Found along the way".
+ * `valueVersions` in `textInput.js`.
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
@@ -825,9 +823,10 @@ class NodeRecord {
  * One registry for every portal: which mirror a node belongs to, and its
  * record. Module-level so the cached reads below can be called with a node
  * alone — the way `div`/`text` and the tests want to call them. A node
- * that no portal adopted, or one its portal let go of (`release`), reads as
- * the DOM has it, and a cache of that read follows the node's adoption
- * (`readRecordOf`), so it is read again once a portal does adopt it.
+ * that no portal adopted reads as the DOM has it, and a cache of that read
+ * follows the node's adoption (`readRecordOf`), so it is read again once a
+ * portal does adopt it. One its portal let go of (`release`) keeps what its
+ * reads last said (`keptWhileAway`).
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
@@ -838,7 +837,7 @@ const records = new WeakMap();
  * waiting for the commit that takes them out (see `DomMirror.release`). Out
  * of `records`, so that nothing reaches them, and kept, so that a node put
  * back before the commit picks up the record its cached reads still hang
- * from.
+ * from. A cached read of a node here keeps its value (`keptWhileAway`).
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
@@ -883,42 +882,44 @@ function takeDeparted(node) {
 const adoptions = new WeakMap();
 
 /**
- * The adoption signals set since the last microtask, to be set in one batch
- * (see `announceAdoption`).
+ * The writes `adopt` asked for since the last microtask, to be made in one
+ * batch (see `announceAdoption`).
  *
- * @type {Signal<boolean>[] | null}
+ * @type {(() => void)[] | null}
  */
 let adopted = null;
 
 /**
  * Tell whatever read the node before it had a record to read it again (see
- * `readRecordOf`): from a microtask, and all the nodes adopted since the
- * last one together. `adopt` is called from readers' computations, by the
- * list marker for an item's first line, and a signal written with no batch
- * open drains the queue then and there, which would run the effects that
- * depend on the adoption in the middle of the computation that adopted,
- * with the `Derived` it is evaluating still empty: a reader of it would
- * meet a cycle. A microtask runs once the stack is empty, so nothing is
- * computing, and the one batch lets a template's subtree, adopted node by
- * node, come round as one update.
+ * `readRecordOf`), or whatever kept its value while the node was away to run
+ * in full (`keptWhileAway`): from a microtask, and all the nodes adopted
+ * since the last one together. `adopt` is called from readers'
+ * computations, by the list marker for an item's first line, and a signal
+ * written with no batch open drains the queue then and there, which would
+ * run the effects that depend on the adoption in the middle of the
+ * computation that adopted, with the `Derived` it is evaluating still
+ * empty: a reader of it would meet a cycle. A microtask runs once the stack
+ * is empty, so nothing is computing, and the one batch lets a template's
+ * subtree, adopted node by node, come round as one update. `reclaim` takes
+ * nodes back from the ingest's batch and bumps them there (`#takeBack`).
  *
- * @param {Signal<boolean>} signal
+ * @param {() => void} write
  * @returns {void}
  */
-function announceAdoption(signal) {
+function announceAdoption(write) {
   if (!adopted) {
     adopted = [];
     queueMicrotask(() => {
-      const signals = /** @type {Signal<boolean>[]} */ (adopted);
+      const writes = /** @type {(() => void)[]} */ (adopted);
       adopted = null;
       batch(() => {
-        for (const adoption of signals) {
-          adoption.set(true);
+        for (const announce of writes) {
+          announce();
         }
       });
     });
   }
-  adopted.push(signal);
+  adopted.push(write);
 }
 
 /**
@@ -966,6 +967,118 @@ function readRecordOf(node) {
   }
   adoption.get();
   return undefined;
+}
+
+/**
+ * A cached read of a node, which keeps what it last said once the node is
+ * away from the panel it was read in.
+ *
+ * A node the mirror let go of (`DomMirror.release`) has left the panel, and
+ * its objects are drawn as they were until the commit takes them out, which
+ * can be frames away: an atomic panel commits once its channel is drained.
+ * After the commit they wait for their teardowns, frames more under the
+ * scene's scheduler (`portalTeardown.js`). In all that time it is read as it
+ * was read before it left. The rules:
+ *
+ * 1. **A read knows the record it was made under.** Each full run of a read
+ *    remembers the node's record at the time, or that it had none.
+ * 2. **Away, a read keeps its value.** A read that runs again, for whatever
+ *    reason, and finds the node no longer has the record it was made under,
+ *    returns the value it had and depends on that record's `reparented`
+ *    alone. The node has none while the mirror has let go of it, after the
+ *    commit forgot it (`forget`), and a different one once another panel
+ *    adopts it. The read lets go of every other signal of the panel, so
+ *    nothing the panel does afterwards reaches it, and its readers hear no
+ *    change, so nothing they draw from it runs again. Read as the document
+ *    has it, a node out of the document measures as nothing and styles as
+ *    nothing, and every box, run and raster under it was drawn again from
+ *    that, for objects about to be taken out. A change the panel heard
+ *    before letting go of the node, but that no read had run for yet, is
+ *    kept out with the rest: the objects are drawn as they last were.
+ * 3. **A read with nothing to keep runs in full.** One made before the node
+ *    had a record follows its adoption (`readRecordOf`), and one made for
+ *    the first time while the node is away reads it as the document has it.
+ * 4. **Taken back, a read runs in full.** Taking the node back gives it the
+ *    record it had and bumps that record's `reparented`, so every kept read
+ *    runs again under it, as the document has the node now. `reclaim` bumps
+ *    it in the ingest's batch, so the sweep after it reads the whole subtree
+ *    afresh; `adopt` called by anything else, a build or an item's first
+ *    line, bumps it from a microtask (`announceAdoption`).
+ * 5. **Nothing else ends it.** A record that is not given back is bumped by
+ *    nobody, and a read kept under it keeps its value until the objects
+ *    holding it are taken down. A portal building the node again runs those
+ *    teardowns first (rule 6 of `portalTeardown.js`), and the build reads it
+ *    through fresh caches, since `forget` dropped the old ones.
+ *
+ * A kept run is equal to the run before it whatever the read's own equality
+ * says, so a read that always tells its readers, the computed style, tells
+ * them nothing while it keeps.
+ *
+ * @template T
+ * @param {Node} node
+ * @param {() => T} evaluate
+ * @param {(a: T, b: T) => boolean} isEqual
+ * @returns {{
+ *   evaluate: (ctx: { hasValue: () => boolean, getValue: () => T }) => T,
+ *   isEqual: (a: T, b: T) => boolean,
+ * }}
+ */
+function keptWhileAway(node, evaluate, isEqual) {
+  /** @type {NodeRecord | undefined} */
+  let madeUnder;
+  let kept = false;
+  return {
+    evaluate: (ctx) => {
+      const record = records.get(node);
+      const before = madeUnder;
+      if (before !== undefined && before !== record && ctx.hasValue()) {
+        kept = true;
+        before.reparented.get();
+        return ctx.getValue();
+      }
+      kept = false;
+      madeUnder = record;
+      return evaluate();
+    },
+    isEqual: (a, b) => kept || isEqual(a, b),
+  };
+}
+
+/**
+ * A `Derived` cached for a node, which keeps its value once the node is
+ * away from its panel (`keptWhileAway`). Every cache of a node read builds
+ * through here or through `probedRead`, the mirror's and the ones beside it
+ * (`elevation.js`, `listMarker.js`), so that the rules hold for each of them.
+ *
+ * So does a read held by one object that holds the mirror's reads up
+ * against the document itself, as an SVG `<text>`'s runs are measured in a
+ * copy of it (`svg/text.js`). Once the node is away the two can disagree: a
+ * child list kept from before the page took a run out names a node the
+ * copy no longer has. Kept as a whole, the read never compares them.
+ *
+ * @template T
+ * @param {Node} node
+ * @param {() => T} evaluate
+ * @param {{ isEqual?: (a: T, b: T) => boolean }} [options]
+ * @returns {Derived<T>}
+ */
+export function nodeDerived(node, evaluate, options) {
+  const read = keptWhileAway(node, evaluate, options?.isEqual ?? Object.is);
+  return new Derived(read.evaluate, { isEqual: read.isEqual });
+}
+
+/**
+ * `nodeDerived` for a read the outline probe tallies (`probedDerived`).
+ *
+ * @template T
+ * @param {Node} node
+ * @param {() => T} evaluate
+ * @param {(a: T, b: T) => boolean} [isEqual]
+ * @returns {Derived<T>}
+ */
+function probedRead(node, evaluate, isEqual = Object.is) {
+  const read = keptWhileAway(node, evaluate, isEqual);
+  return probedDerived(node, read.evaluate, read.isEqual);
 }
 
 /**
@@ -1028,57 +1141,66 @@ export class DomMirror {
    * @returns {void}
    */
   adopt(node) {
+    const record = this.#takeBack(node);
+    if (record) {
+      // Taken back by a build, or by a read from inside its computation,
+      // where a write would drain the queue mid-run: what the node's reads
+      // kept while it was away is read again from a microtask (rule 4 of
+      // `keptWhileAway`).
+      announceAdoption(() => bump(record.reparented));
+    }
+  }
+
+  /**
+   * `adopt`, saying which record of this mirror's it gave back to a node
+   * that was let go of, if it did, for the caller to bump.
+   *
+   * @param {Node} node
+   * @returns {NodeRecord | undefined}
+   */
+  #takeBack(node) {
     if (records.has(node)) {
-      return;
+      return undefined;
     }
     let record = takeDeparted(node);
-    if (record) {
-      if (record.mirror !== this) {
-        // Another panel's, on its way out of it, and everything cached for
-        // it hangs off that panel's signals.
-        forgetNode(node);
-        record = undefined;
-      }
+    if (record && record.mirror !== this) {
+      // Another panel's, on its way out of it, and everything cached for
+      // it hangs off that panel's signals.
+      forgetNode(node);
+      record = undefined;
     }
     records.set(node, record ?? new NodeRecord(this, node));
     const adoption = adoptions.get(node);
     if (adoption) {
       adoptions.delete(node);
-      announceAdoption(adoption);
+      announceAdoption(() => adoption.set(true));
     }
+    return record;
   }
 
   /**
    * Let go of a node that left the panel, and of everything under it, while
    * the portal keeps drawing their objects until its commit. From here on
    * the mirror bumps nothing for them, and a read cached for one of them
-   * that runs again reads it as a node no portal adopted (`readRecordOf`),
-   * which depends on nothing the panel changes. The last thing they hear is
-   * a bump of the node's `reparented`, given here before its record is put
-   * aside, so that it does not depend on the ingest of the removal having
-   * come first. It cuts the subtree off its parent chain, so each read that
-   * depended on the panel runs once more, finds no record, and keeps
-   * nothing of the panel's. A font arriving, or a stylesheet changing,
-   * before the commit then reaches none of them.
+   * keeps the value it has (`keptWhileAway`): one that runs again, for the
+   * removal's bump of `reparented` or for anything the panel does before the
+   * commit, returns that value and lets go of the panel's other signals, and
+   * nothing drawn from it runs again. A font arriving, or a stylesheet
+   * changing, before the commit reaches each such read once at most.
    *
    * Their records are kept to one side rather than dropped. A node put back
    * before the commit was moved, not removed, keeps its objects, and takes
    * its record back (`reclaim`), so the reads its objects hold, which still
-   * hang from that record, hear it again. What the page did to the subtree
-   * while it was out is not heard, since the observer stops reporting a
-   * node once it has reported the node's removal.
+   * hang from that record, hear it again, and a read that kept its value
+   * runs in full. What else the page did to the subtree while it was out is
+   * not heard, since the observer stops reporting a node once it has
+   * reported the node's removal.
    *
    * @param {Node} node
    * @returns {void}
    */
   release(node) {
-    batch(() => {
-      const record = records.get(node);
-      if (record?.mirror === this) {
-        bump(record.reparented);
-      }
-      this.#putAside(node);
-    });
+    this.#putAside(node);
   }
 
   /**
@@ -1099,11 +1221,14 @@ export class DomMirror {
 
   /**
    * Take back every node under `node`, itself included, that this mirror
-   * let go of (`release`), now that the panel has them again. The whole
-   * subtree is walked, not only from a node that was let go of: while out
-   * of the document the page may have put one inside an element the panel
-   * has never seen, and the flush then names that element. A mirror with
-   * nothing let go of walks nothing.
+   * let go of (`release`), now that the panel has them again, and bump each
+   * one's `reparented` at once (rule 4 of `keptWhileAway`). Called from the
+   * ingest's batch alone, so the sweep that follows, in the same pump tick
+   * when the tick took the flush in itself, reads the whole subtree as the
+   * page has it. The whole subtree is walked, not only from a node that was
+   * let go of: while out of the document the page may have put one inside
+   * an element the panel has never seen, and the flush then names that
+   * element. A mirror with nothing let go of walks nothing.
    *
    * @param {Node} node
    * @returns {void}
@@ -1113,7 +1238,10 @@ export class DomMirror {
       return;
     }
     if (departed.get(node)?.mirror === this) {
-      this.adopt(node);
+      const record = this.#takeBack(node);
+      if (record) {
+        bump(record.reparented);
+      }
     }
     node.childNodes.forEach((child) => {
       this.reclaim(child);
@@ -1211,8 +1339,8 @@ export class DomMirror {
             childListHint(mutation, kept(mutation.target)),
           );
           mutation.addedNodes.forEach((node) => {
-            // Back before the commit took it out: before the bump, so that
-            // the bump lands on the record its reads hang from.
+            // Back before the commit took it out: taken back first, so that
+            // the arrival's bump below finds the record its reads hang from.
             this.reclaim(node);
             const record = recordOf(node);
             if (record) {
@@ -2185,7 +2313,7 @@ const flowModeCache = nodeCache();
 function getFlowMode(element) {
   let signal = flowModeCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       const style = getComputedStyleCached(element);
       // A different writing mode or direction moves the start edge, and
       // "before in the document" stops meaning "before on screen". Read
@@ -2254,7 +2382,7 @@ const parentElementCache = nodeCache();
 export function getParentElement(node) {
   let signal = parentElementCache.get(node);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(node, () => {
       const record = readRecordOf(node);
       if (record) {
         record.reparented.get();
@@ -2280,7 +2408,7 @@ const childNodesCache = nodeCache();
 export function getChildNodes(node) {
   let signal = childNodesCache.get(node);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(node, () => {
       const record = readRecordOf(node);
       if (record) {
         record.childList.get();
@@ -2337,7 +2465,7 @@ const styleContextCache = nodeCache();
 function getStyleContext(node) {
   let signal = styleContextCache.get(node);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(node, () => {
       let sum = 0;
       const record = readRecordOf(node);
       if (record) {
@@ -2432,7 +2560,7 @@ const reflowContextCache = nodeCache();
 export function getReflowContext(node) {
   let signal = reflowContextCache.get(node);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(node, () => {
       let sum = 0;
       const record = readRecordOf(node);
       if (record) {
@@ -2484,7 +2612,7 @@ const textDataCache = nodeCache();
 export function getTextDataCached(text) {
   let signal = textDataCache.get(text);
   if (!signal) {
-    signal = probedDerived(text, () => {
+    signal = probedRead(text, () => {
       readRecordOf(text)?.character.get();
       return text.data;
     });
@@ -2507,7 +2635,7 @@ const inlineSizeCache = nodeCache();
 function getBorderBoxInlineSize(element) {
   let signal = inlineSizeCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => getBorderBoxSize(element).width);
+    signal = probedRead(element, () => getBorderBoxSize(element).width);
     inlineSizeCache.set(element, signal);
   }
   return signal.get();
@@ -2580,7 +2708,8 @@ export function getComputedStyleCached(element, pseudoElement = null) {
   }
   let signal = signalMap.get(pseudoElement);
   if (!signal) {
-    signal = new Derived(
+    signal = nodeDerived(
+      element,
       () => {
         getStyleContext(element);
         if (element.nodeType === Node.TEXT_NODE) {
@@ -2598,7 +2727,8 @@ export function getComputedStyleCached(element, pseudoElement = null) {
         // recompute as "unchanged" and swallow the invalidation — leaving
         // dependents (hover restyles, class swaps) reading stale values
         // forever. Always propagate; dependents that derive plain values
-        // gate on their own equality.
+        // gate on their own equality. A run that kept its value because the
+        // node is away propagates nothing (`keptWhileAway`).
         isEqual: () => false,
       },
     );
@@ -2633,7 +2763,7 @@ export function getAttributeCached(element, name) {
   }
   let signal = signalMap.get(name);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       readRecordOf(element)?.self.get();
       return element.getAttribute(name);
     });
@@ -2663,7 +2793,7 @@ const transformedCache = nodeCache();
 export function isTransformed(element) {
   let signal = transformedCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       if (isPortalRoot(element)) {
         return false;
       }
@@ -2692,7 +2822,7 @@ const positionCache = nodeCache();
 function getPositionStyle(element) {
   let signal = positionCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       return getComputedStyleCached(element).position || "static";
     });
     positionCache.set(element, signal);
@@ -2713,7 +2843,7 @@ export function hidesVisibility(visibility) {
 }
 
 /** @type {WeakMap<Element | Text, Derived<boolean>>} */
-const hiddenCache = new WeakMap();
+const hiddenCache = nodeCache();
 
 /**
  * Whether CSS says this node paints nothing of its own: computed
@@ -2736,7 +2866,7 @@ const hiddenCache = new WeakMap();
 export function isVisibilityHidden(node) {
   let signal = hiddenCache.get(node);
   if (!signal) {
-    signal = probedDerived(node, () => hidesVisibility(getComputedStyleCached(node).visibility));
+    signal = probedRead(node, () => hidesVisibility(getComputedStyleCached(node).visibility));
     hiddenCache.set(node, signal);
   }
   return signal.get();
@@ -2780,7 +2910,7 @@ const opacityCache = nodeCache();
 export function getOpacity(element) {
   let signal = opacityCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       const own = parseFloat(getComputedStyleCached(element).opacity);
       const opacity = Number.isNaN(own) ? 1 : own;
       if (isPortalRoot(element)) {
@@ -2853,7 +2983,7 @@ const borderBoxSizeCache = nodeCache();
 export function getBorderBoxSize(element) {
   let signal = borderBoxSizeCache.get(element);
   if (!signal) {
-    signal = probedDerived(
+    signal = probedRead(
       element,
       () => {
         getReflowContext(element);
@@ -2927,7 +3057,7 @@ const contentPositionCache = nodeCache();
 export function getContentPosition(element) {
   let signal = contentPositionCache.get(element);
   if (!signal) {
-    signal = probedDerived(
+    signal = probedRead(
       element,
       () => {
         getReflowContext(element);
@@ -2983,7 +3113,7 @@ const anchorCache = nodeCache();
 function getAnchorElement(element) {
   let signal = anchorCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       let holder = getParentElement(element);
       while (holder && !isPortalRoot(holder)) {
         if (getPositionStyle(holder) !== "static") {
@@ -3049,7 +3179,7 @@ const anchoredOffsetCache = nodeCache();
 function getAnchoredOffset(element) {
   let signal = anchoredOffsetCache.get(element);
   if (!signal) {
-    signal = probedDerived(
+    signal = probedRead(
       element,
       () => {
         const position = getPositionStyle(element);
@@ -3094,7 +3224,7 @@ const objectPositionCache = nodeCache();
 export function getObjectPosition(element) {
   let signal = objectPositionCache.get(element);
   if (!signal) {
-    signal = probedDerived(
+    signal = probedRead(
       element,
       () => {
         const parent = getParentElement(element);
@@ -3333,7 +3463,7 @@ const ownClipWindowCache = nodeCache();
 function getOwnClipWindow(element) {
   let signal = ownClipWindowCache.get(element);
   if (!signal) {
-    signal = probedDerived(
+    signal = probedRead(
       element,
       () => {
         const style = getComputedStyleCached(element);
@@ -3434,7 +3564,7 @@ const clipPairCache = nodeCache();
 function getClipPair(element) {
   let signal = clipPairCache.get(element);
   if (!signal) {
-    signal = probedDerived(
+    signal = probedRead(
       element,
       () => {
         const local = evaluateLocalClip(element);
@@ -3635,7 +3765,7 @@ export function getCheckedCached(element) {
     // one to attach and dropping the old.
     const changed = fromEvent(element, "change");
     const assigned = checkedAssignments(element);
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       addDependency(changed);
       addDependency(assigned);
       return element.checked;
@@ -3832,7 +3962,7 @@ const whiteSpaceCache = nodeCache();
 function getWhiteSpace(element) {
   let signal = whiteSpaceCache.get(element);
   if (!signal) {
-    signal = probedDerived(element, () => {
+    signal = probedRead(element, () => {
       return getComputedStyleCached(element).whiteSpace || "normal";
     });
     whiteSpaceCache.set(element, signal);
@@ -4267,7 +4397,7 @@ const lineBoxCopyCache = nodeCache();
 function getLineBoxCopy(lineBox) {
   let signal = lineBoxCopyCache.get(lineBox);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(lineBox, () => {
       getLineBoxShape(lineBox);
       readRestyledFromAbove(lineBox);
       getBorderBoxSize(lineBox);
@@ -4337,7 +4467,7 @@ const lineBoxShapeCache = nodeCache();
 function getLineBoxShape(lineBox) {
   let signal = lineBoxShapeCache.get(lineBox);
   if (!signal) {
-    signal = probedDerived(lineBox, () => {
+    signal = probedRead(lineBox, () => {
       /** @type {string[]} */
       const parts = [];
       describeShape(lineBox, parts);
@@ -4439,7 +4569,7 @@ const textLayoutCache = nodeCache();
 export function getTextLayout(text) {
   let signal = textLayoutCache.get(text);
   if (!signal) {
-    signal = probedDerived(text, () => {
+    signal = probedRead(text, () => {
       const record = readRecordOf(text);
       if (record) {
         record.character.get();

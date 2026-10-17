@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { Derived } from "@apendua/signal";
 import {
   getBorderBoxSize,
   getBoxOffset,
@@ -11,11 +10,16 @@ import {
   isTransformed,
   movesAgainstScroll,
   nodeCache,
+  nodeDerived,
 } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { composeTransform, getOwnTransform } from "./cssTransform.js";
 import { isSvgElement } from "./plugins.js";
 import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
+
+/**
+ * @import {Derived} from '@apendua/signal';
+ */
 
 /*
  * How a panel keeps one thing in front of another. A page decides that by
@@ -186,6 +190,9 @@ export function getContentRenderOrder(element) {
   return getElevation(element) * ELEVATION_BAND + getDrawLevel(element) + 1;
 }
 
+/** @type {WeakMap<HTMLElement, Derived<number>>} */
+const elevationCache = nodeCache();
+
 /**
  * How many overlays this element sits inside, counting itself. Nothing in a
  * plain panel is elevated at all; a dropdown menu is at 1, and a dropdown
@@ -193,23 +200,25 @@ export function getContentRenderOrder(element) {
  *
  * Unlike the offset each layer contributes to its own position, this is an
  * absolute figure: `renderOrder` is compared across the whole scene rather
- * than against a parent, so it has to be counted from the top every time.
- * It picks the band (`ELEVATION_BAND`); `getDrawLevel` orders within it.
+ * than against a parent, so it is counted from the top. It picks the band
+ * (`ELEVATION_BAND`); `getDrawLevel` orders within it. Cached for each
+ * element as its parent's count and its own, so that a restyle above it
+ * reaches its readers only when the count changes, and a box that left the
+ * panel keeps the count it was drawn with (`nodeDerived`).
  *
  * @param {HTMLElement} element
  * @returns {number}
  */
 export function getElevation(element) {
-  let elevation = 0;
-  /** @type {HTMLElement | null} */
-  let el = element;
-  while (el) {
-    if (isOverlay(el)) {
-      elevation += 1;
-    }
-    el = el.parentElement;
+  let signal = elevationCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(element, () => {
+      const parent = getParentElement(element);
+      return (isOverlay(element) ? 1 : 0) + (parent ? getElevation(parent) : 0);
+    });
+    elevationCache.set(element, signal);
   }
-  return elevation;
+  return signal.get();
 }
 
 /**
@@ -279,7 +288,7 @@ const paintLayerCache = nodeCache();
 function getPaintLayer(element) {
   let signal = paintLayerCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(element, () => {
       const style = getComputedStyleCached(element);
       const positioned = !!style.position && style.position !== "static";
       if (!positioned) {
@@ -316,7 +325,8 @@ const paintedBoundsCache = nodeCache();
 function getPaintedBounds(element) {
   let signal = paintedBoundsCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = nodeDerived(
+      element,
       () => {
         // A box the scroll moves against its siblings overlaps different
         // ones at every step of the scroll. Taken to cover everything, it
@@ -432,7 +442,8 @@ const clearedCache = nodeCache();
 function getClearedSiblings(element) {
   let signal = clearedCache.get(element);
   if (!signal) {
-    signal = new Derived(
+    signal = nodeDerived(
+      element,
       () => {
         // The portal's root has no siblings inside the portal.
         const layer = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getPaintLayer(element);
@@ -507,7 +518,7 @@ const liftCache = nodeCache();
 export function getLift(element) {
   let signal = liftCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(element, () => {
       let lift = isOverlay(/** @type {HTMLElement} */ (element))
         ? CONTENT_STEP + ELEVATION_STEP
         : CONTENT_STEP;
@@ -596,7 +607,7 @@ const drawLevelCache = nodeCache();
 export function getDrawLevel(element) {
   let signal = drawLevelCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(element, () => {
       const parent = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
       if (!parent) {
         // The root of a panel: everything above it is the page's, and only
@@ -642,7 +653,7 @@ const drawReachCache = nodeCache();
 function getDrawReach(element) {
   let signal = drawReachCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(element, () => {
       if (isSvgElement(element)) {
         return 1;
       }
@@ -683,7 +694,7 @@ const containedReachCache = nodeCache();
 function getReach(element) {
   let signal = reachCache.get(element);
   if (!signal) {
-    signal = new Derived(() => measureReach(element, false));
+    signal = nodeDerived(element, () => measureReach(element, false));
     reachCache.set(element, signal);
   }
   return signal.get();
@@ -703,7 +714,7 @@ function getReach(element) {
 function getContainedReach(element) {
   let signal = containedReachCache.get(element);
   if (!signal) {
-    signal = new Derived(() => measureReach(element, true));
+    signal = nodeDerived(element, () => measureReach(element, true));
     containedReachCache.set(element, signal);
   }
   return signal.get();

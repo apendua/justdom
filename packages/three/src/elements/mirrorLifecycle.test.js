@@ -95,9 +95,9 @@ describe("a node's life in a mirror", () => {
   test("a departed subtree is quiet while it waits for the commit", async () => {
     // A card leaves while rows arrive, so the commit that takes the card out
     // waits for the rows to be built, a frame each. Until then the card is
-    // drawn as it was. Nothing the panel hears in the meantime reaches it: a
-    // font arriving re-measures the panel, and not the card, which is no
-    // longer in the document to be measured.
+    // drawn as it was. Nothing the panel hears in the meantime reaches it,
+    // the removal itself included: a font arriving re-measures the panel,
+    // and not the card, which is no longer in the document to be measured.
     const { ctx } = countingManager();
     const root = document.createElement("div");
     root.getBoundingClientRect = () => clientRect(0, 0, 200, 100);
@@ -115,19 +115,6 @@ describe("a node's life in a mirror", () => {
     await settle(portal);
     const before = countObjects(scene);
 
-    card.remove();
-    for (let index = 0; index < 20; index++) {
-      root.appendChild(document.createElement("div"));
-    }
-    // The flush that reports both, and a few of the frames that build the
-    // rows: the card's reads are answered once for the removal itself.
-    await nextMacrotask();
-    for (let index = 0; index < 4; index++) {
-      flushFrame();
-      await nextMacrotask();
-    }
-    assert.equal(countObjects(scene), before, "the card is still drawn: no commit yet");
-
     let reads = 0;
     for (const element of [card, inner]) {
       element.getBoundingClientRect = () => {
@@ -135,6 +122,20 @@ describe("a node's life in a mirror", () => {
         return clientRect(0, 0, 50, 50);
       };
     }
+    card.remove();
+    for (let index = 0; index < 20; index++) {
+      root.appendChild(document.createElement("div"));
+    }
+    // The flush that reports both, and a few of the frames that build the
+    // rows.
+    await nextMacrotask();
+    for (let index = 0; index < 4; index++) {
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.equal(countObjects(scene), before, "the card is still drawn: no commit yet");
+    assert.equal(reads, 0, "nothing in the card is measured for the removal");
+
     dispatchFontsEvent("loadingdone");
     for (let index = 0; index < 4; index++) {
       flushFrame();

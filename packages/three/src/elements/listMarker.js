@@ -11,6 +11,7 @@ import {
   getParentElement,
   getScrollOffset,
   nodeCache,
+  nodeDerived,
 } from "./mirror.js";
 import {
   contentBox,
@@ -226,7 +227,7 @@ const listItemCache = nodeCache();
 function isListItem(element) {
   let signal = listItemCache.get(element);
   if (!signal) {
-    signal = new Derived(() => getComputedStyleCached(element).display === "list-item");
+    signal = nodeDerived(element, () => getComputedStyleCached(element).display === "list-item");
     listItemCache.set(element, signal);
   }
   return signal.get();
@@ -310,7 +311,7 @@ const ordinalCache = nodeCache();
 export function getListItemOrdinal(element) {
   let signal = ordinalCache.get(element);
   if (!signal) {
-    signal = new Derived(() => {
+    signal = nodeDerived(element, () => {
       getComputedStyleCached(element);
       const list = getParentElement(element);
       const reversed = list?.localName === "ol" && getAttributeCached(list, "reversed") !== null;

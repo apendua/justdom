@@ -14,6 +14,7 @@ import {
   getObjectPosition,
   getTextLayout,
   isTransformed,
+  isVisibilityHidden,
   resetMeasuringRangeForTests,
   trackCharacterEdges,
   tracksCharacterEdges,
@@ -4070,6 +4071,176 @@ describe("a checkbox's checked property", () => {
     secondSubscription.unsubscribe();
     assert.ok(!Object.hasOwn(box, "checked"), "and taken off after the last");
     box.remove();
+  });
+});
+
+describe("a read of a node the mirror let go of", () => {
+  /**
+   * A card in a panel with a label in it, each read for its width, and how
+   * to change what the page lays the two out at.
+   */
+  function readCard() {
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const card = document.createElement("div");
+    const label = document.createElement("div");
+    card.appendChild(label);
+    root.appendChild(card);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    for (const node of [root, card, label]) {
+      mirror.adopt(node);
+    }
+    let width = 50;
+    let labelWidth = 20;
+    layout(card, () => [0, 0, width, 10]);
+    layout(label, () => [0, 0, labelWidth, 10]);
+    /** @type {number[]} */
+    const seen = [];
+    /** @type {number[]} */
+    const labelSeen = [];
+    const subscriptions = [
+      toObservable(new Derived(() => getBorderBoxSize(card).width)).subscribe((read) =>
+        seen.push(read),
+      ),
+      toObservable(new Derived(() => getBorderBoxSize(label).width)).subscribe((read) =>
+        labelSeen.push(read),
+      ),
+    ];
+    return {
+      root,
+      card,
+      mirror,
+      seen,
+      labelSeen,
+      /** @param {number} next */
+      setWidth: (next) => {
+        width = next;
+      },
+      /** @param {number} next */
+      setLabelWidth: (next) => {
+        labelWidth = next;
+      },
+      done: () => {
+        subscriptions.forEach((subscription) => subscription.unsubscribe());
+        root.remove();
+      },
+    };
+  }
+
+  test("keeps what it said until the node is taken back", async () => {
+    // The card leaves the panel, and its objects are drawn until the commit.
+    // Out of the document it measures as nothing, and a read that ran again
+    // then, for the removal or for a font arriving, drew it as nothing.
+    const { root, card, mirror, seen, setWidth, done } = readCard();
+    card.remove();
+    setWidth(0);
+    mirror.release(card);
+    mirror.fontsLoaded();
+    await Promise.resolve();
+    assert.deepEqual(seen, [50], "the card is read as it was");
+
+    // Put back before the commit, it is read as the page has it now.
+    root.appendChild(card);
+    setWidth(30);
+    mirror.reclaim(card);
+    await Promise.resolve();
+    assert.deepEqual(seen, [50, 30], "taken back, it is read again");
+    mirror.fontsLoaded();
+    setWidth(40);
+    mirror.fontsLoaded();
+    assert.deepEqual(seen, [50, 30, 40], "and follows the panel again");
+    done();
+  });
+
+  test("of a node under it runs in full once the node is taken back", async () => {
+    // What `reclaim`'s walk is for: the label came back with the card, and
+    // what it kept while away is read again too. At once, not from a
+    // microtask: a pump tick that takes the flush in itself sweeps the
+    // channel before any microtask runs, and would draw the card as the page
+    // has it and the label as it was.
+    const { root, card, mirror, labelSeen, setLabelWidth, done } = readCard();
+    card.remove();
+    setLabelWidth(0);
+    mirror.release(card);
+    mirror.fontsLoaded();
+    await Promise.resolve();
+    assert.deepEqual(labelSeen, [20], "the label is read as it was");
+
+    root.appendChild(card);
+    setLabelWidth(30);
+    mirror.reclaim(card);
+    assert.deepEqual(labelSeen, [20, 30]);
+    done();
+  });
+
+  test("runs in full whichever way the node is taken back", async () => {
+    // A build adopts a node itself, and an item's first line adopts the
+    // children it walks: a node let go of is taken back by `adopt`, whoever
+    // calls it.
+    const { root, card, mirror, seen, setWidth, done } = readCard();
+    card.remove();
+    setWidth(0);
+    mirror.release(card);
+    mirror.fontsLoaded();
+    root.appendChild(card);
+    setWidth(30);
+    mirror.adopt(card);
+    await Promise.resolve();
+    assert.deepEqual(seen, [50, 30]);
+    done();
+  });
+
+  test("keeps what it said for good once the node is forgotten", async () => {
+    // The commit forgets the card while its objects wait for their
+    // teardowns, and another panel may adopt it before they run.
+    const { card, mirror, seen, setWidth, done } = readCard();
+    card.remove();
+    setWidth(0);
+    mirror.release(card);
+    mirror.forget(card);
+    mirror.fontsLoaded();
+    const other = createMirror();
+    other.adopt(card);
+    other.fontsLoaded();
+    await Promise.resolve();
+    assert.deepEqual(seen, [50]);
+    done();
+  });
+
+  test("of a node forgotten is not what another panel reads", () => {
+    // A second session claims the element while a reader the first left
+    // behind still holds what it read. The second reads it afresh.
+    const { card, mirror, done } = readCard();
+    const leftBehind = toObservable(new Derived(() => isVisibilityHidden(card))).subscribe(
+      () => {},
+    );
+    mirror.release(card);
+    mirror.forget(card);
+    const other = createMirror();
+    other.adopt(card);
+    card.style.visibility = "hidden";
+    other.attributeChanged(card);
+    assert.equal(isVisibilityHidden(card), true);
+    leftBehind.unsubscribe();
+    done();
+  });
+
+  test("of a node's style tells its readers nothing", () => {
+    // The computed style is a live object that tells its readers on every
+    // run, and a reader that ran again read a node out of the document.
+    const { card, mirror, done } = readCard();
+    let runs = 0;
+    const reader = new Effect(() => {
+      runs += 1;
+      getComputedStyleCached(card);
+    });
+    card.remove();
+    mirror.release(card);
+    mirror.fontsLoaded();
+    assert.equal(runs, 1);
+    reader.dispose();
+    done();
   });
 });
 

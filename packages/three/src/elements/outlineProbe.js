@@ -260,7 +260,7 @@ export function sameData(a, b) {
  *
  * @template T
  * @param {Node} node
- * @param {() => T} evaluate
+ * @param {(ctx: { hasValue: () => boolean, getValue: () => T }) => T} evaluate
  * @param {(a: T, b: T) => boolean} [isEqual]
  * @returns {Derived<T>}
  */

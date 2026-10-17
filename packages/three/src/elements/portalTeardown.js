@@ -40,7 +40,7 @@ import { batch, withChannel } from "@apendua/signal";
  *    under nothing, and `disconnect` hides it as well. The rows that left
  *    an open panel wait under a hidden group of their own rather than each
  *    hidden in its own right: that panel's channel still runs, and a row's
- *    own effect that writes `visible` from its style could show it again.
+ *    own effect writes `visible` from its style whenever it runs.
  *    Nor has that portal stopped, but nothing it does reaches a held
  *    object: `unlink` took the row and everything under it out of the
  *    portal's maps, so no commit can place one of them anywhere, and a

@@ -1,7 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createMirror } from "../elements/mirror.js";
+import { batch } from "@apendua/signal";
+import { createMirror, getComputedStyleCached } from "../elements/mirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText, layoutScale, measuringScale } from "./text.js";
@@ -502,5 +503,38 @@ describe("svg text", () => {
       order < level + BOX_BUCKET_BIAS,
       `drawn at ${order}, not before ${level + BOX_BUCKET_BIAS}`,
     );
+  });
+});
+
+describe("a <text> the panel let go of", () => {
+  test("is not measured against a copy the page has changed since", async () => {
+    // A board dealt again, in one flush: the page takes the count's text
+    // out of its `<text>` and restyles it, then takes the `<text>` out of
+    // the panel. The panel heard the first two while the `<text>` was in
+    // it, and lays it out again only after letting go of it.
+    const text = svg("text", { x: "5", y: "20" }, ["1"]);
+    const s = scene([text], text);
+    const before = s.meshes.length;
+    // What an effect fails with is reported from a task of its own.
+    /** @type {unknown[]} */
+    const thrown = [];
+    const report = (/** @type {unknown} */ error) => thrown.push(error);
+    process.on("uncaughtException", report);
+    batch(() => {
+      /** @type {ChildNode} */ (text.firstChild).remove();
+      s.mirror.childListChanged(text);
+      /** @type {SVGTextElement} */ (text).style.fontSize = "12px";
+      s.mirror.attributeChanged(text);
+      // A panel's budget ends between two reads: the style is read again
+      // while the `<text>` is in the panel, and its runs after.
+      getComputedStyleCached(text);
+      text.remove();
+      s.mirror.release(text);
+    });
+    await new Promise((done) => setTimeout(done, 10));
+    process.off("uncaughtException", report);
+    assert.deepEqual(thrown, []);
+    assert.equal(s.meshes.length, before, "drawn as it was until the commit");
+    s.teardown();
   });
 });

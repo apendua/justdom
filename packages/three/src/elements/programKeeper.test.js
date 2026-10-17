@@ -101,7 +101,7 @@ describe("programKeeper", () => {
   });
 
   test("a box panel with a depth bias, after the last one closed, links nothing", () => {
-    for (const depthRank of /** @type {const} */ (["constant", "slope"])) {
+    for (const depthRank of /** @type {const} */ (["constant", "slope", "max"])) {
       const { scene, counts, draw } = stage();
       const first = boxPanel(depthRank);
       scene.add(first.container);

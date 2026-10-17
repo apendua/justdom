@@ -8,6 +8,8 @@ import {
   DEPTH_RANK_EPSILON,
   DEPTH_RANK_FLOOR,
   DEPTH_RANK_GLSL,
+  DEPTH_RANK_MAX_FACTOR,
+  DEPTH_RANK_MAX_FLOOR,
   DEPTH_RANK_SLOPE_FACTOR,
   depthRankDefines,
   readDepthRankViewport,
@@ -108,7 +110,19 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-/** @typedef {"constant" | "slope"} Formula */
+/** @typedef {"constant" | "slope" | "max"} Formula */
+
+/**
+ * Which formulas the sweep runs, `?formulas=max` or `?formulas=slope,max`
+ * for some of them; all three by default.
+ *
+ * @type {Formula[]}
+ */
+const FORMULAS = /** @type {Formula[]} */ (
+  (query.get("formulas") ?? "constant,slope,max")
+    .split(",")
+    .filter((name) => name === "constant" || name === "slope" || name === "max")
+);
 
 const shared = {
   uEps: { value: 0 },
@@ -123,6 +137,7 @@ function definesFor(formula) {
     ...depthRankDefines(formula),
     DEPTH_RANK_EPSILON: "uEps",
     DEPTH_RANK_SLOPE_FACTOR: "uK",
+    DEPTH_RANK_MAX_FACTOR: "uK",
   };
 }
 
@@ -201,8 +216,9 @@ function placePile(distance, tilt, yaw, px = PX) {
 // ---------------------------------------------------------------------------
 // 1. The session, and the pile in it.
 
-/** What the trigger steps through: the two formulas at freedom's numbers. */
+/** What the trigger steps through: the three formulas at freedom's numbers. */
 const VISUAL = [
+  { formula: "max", eps: 0, k: DEPTH_RANK_MAX_FACTOR },
   { formula: "slope", eps: DEPTH_RANK_EPSILON, k: DEPTH_RANK_SLOPE_FACTOR },
   { formula: "constant", eps: DEPTH_RANK_EPSILON, k: 0 },
   { formula: "constant", eps: 0, k: 0 },
@@ -237,7 +253,13 @@ function useVisual({ formula, eps, k }) {
   context.textAlign = "center";
   context.textBaseline = "middle";
   const text =
-    formula === "slope" ? `slope, k = ${fmt(k)}` : eps === 0 ? "ε = 0" : `ε = ${fmt(eps)}`;
+    formula === "max"
+      ? `max, k = ${fmt(k)}`
+      : formula === "slope"
+        ? `slope, k = ${fmt(k)}`
+        : eps === 0
+          ? "ε = 0"
+          : `ε = ${fmt(eps)}`;
   context.fillText(text, labelCanvas.width / 2, labelCanvas.height / 2);
   labelTexture.needsUpdate = true;
 }
@@ -407,6 +429,8 @@ function windowDepth(ranks, step, distance) {
 
 const EPS = [2 ** -24, 2 ** -22, 2 ** -20, 2 ** -18, 2 ** -16, 2 ** -14, 2 ** -12];
 const K = [2 ** -8, 2 ** -6, 2 ** -4, 2 ** -3, 2 ** -2, 2 ** -1, 1, 2, 4];
+/** For `"max"`, whose floor clears a shallow pile at any `k`. */
+const K_MAX = [2 ** -12, 2 ** -10, 2 ** -8, 2 ** -6, 2 ** -4, 2 ** -2];
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 /** The desk's panels, as the eye sees them when it looks straight at one. */
@@ -453,7 +477,7 @@ async function least(config, formula, values) {
   const cells = [];
   let found = null;
   for (const value of values) {
-    const bias = formula === "slope" ? { eps: 0, k: value } : { eps: value, k: 0 };
+    const bias = formula === "constant" ? { eps: value, k: 0 } : { eps: 0, k: value };
     const result = pileTest(config, bias);
     results.sweep.push({ ...config, formula, value, ...result });
     cells.push(`${fmt(value)}:${result.wrong}`);
@@ -479,41 +503,67 @@ document.getElementById("sweep").addEventListener("click", async () => {
   results.windows = [];
   show(
     `GPU: ${glRendererName()}\nTargets: ${JSON.stringify(results.targets)}\n` +
-      `Least clean value per pile, ${SIZE} px: ε for the constant, k for the slope ` +
-      `with a floor of ${fmt(DEPTH_RANK_FLOOR)}; each cell is wrong pixels:`,
+      `Formulas: ${FORMULAS.join(", ")}. Least clean value per pile, ${SIZE} px: ε for the ` +
+      `constant, k for the slope with a floor of ${fmt(DEPTH_RANK_FLOOR)}, k for max with a ` +
+      `floor of ${fmt(DEPTH_RANK_MAX_FLOOR)}, then wrong pixels under max at freedom's ` +
+      `k = ${fmt(DEPTH_RANK_MAX_FACTOR)}; each cell is wrong pixels:`,
   );
+  const shown = (found) => (found === null ? "none" : fmt(found));
   for (const config of configs()) {
-    useFormula("constant");
-    const constant = await least(config, "constant", EPS);
-    useFormula("slope");
-    const slope = await least(config, "slope", K);
     const perPixel = slopeOf(config);
-    const row = {
-      name: config.name,
-      slope: perPixel,
-      epsilon: constant.found === null ? "none" : fmt(constant.found),
-      k: slope.found === null ? "none" : fmt(slope.found),
-    };
+    /** @type {Record<string, unknown>} */
+    const row = { name: config.name, slope: perPixel };
+    const cells = [];
+    if (FORMULAS.includes("constant")) {
+      useFormula("constant");
+      const constant = await least(config, "constant", EPS);
+      row.epsilon = shown(constant.found);
+      cells.push(constant.cells.join(" "));
+    }
+    if (FORMULAS.includes("slope")) {
+      useFormula("slope");
+      const slope = await least(config, "slope", K);
+      row.k = shown(slope.found);
+      cells.push(slope.cells.join(" "));
+    }
+    if (FORMULAS.includes("max")) {
+      useFormula("max");
+      const max = await least(config, "max", K_MAX);
+      row.kMax = shown(max.found);
+      // Freedom's own `k`, run as it stands rather than read off the sweep.
+      const own = pileTest(config, { eps: 0, k: DEPTH_RANK_MAX_FACTOR });
+      results.sweep.push({ ...config, formula: "max", value: DEPTH_RANK_MAX_FACTOR, ...own });
+      row.maxWrong = own.wrong;
+      cells.push(`${max.cells.join(" ")} own:${own.wrong}`);
+      await nextFrame();
+    }
     results.summary.push(row);
     append(
-      `${config.name}: slope ${perPixel.toExponential(2)} ε ${row.epsilon} k ${row.k}` +
-        `   ${constant.cells.join(" ")} | ${slope.cells.join(" ")}`,
+      `${config.name}: slope ${perPixel.toExponential(2)}` +
+        (row.epsilon === undefined ? "" : ` ε ${row.epsilon}`) +
+        (row.k === undefined ? "" : ` k ${row.k}`) +
+        (row.kMax === undefined ? "" : ` max k ${row.kMax}, ${row.maxWrong} wrong at freedom's`) +
+        `   ${cells.join(" | ")}`,
     );
   }
   // What 200 ranks take up under freedom's two numbers, for each pile the
   // perspective camera sees.
-  append("\n200 ranks, in mm: constant at freedom's ε, slope at freedom's k");
+  append("\n200 ranks, in mm: constant at freedom's ε, slope and max at freedom's k");
   for (const config of configs()) {
     if (config.target !== "rt" || config.camera !== "persp") continue;
     const perPixel = slopeOf(config);
     const slopeStep = DEPTH_RANK_SLOPE_FACTOR * perPixel + DEPTH_RANK_FLOOR;
+    const maxStep = Math.max(DEPTH_RANK_MAX_FLOOR, DEPTH_RANK_MAX_FACTOR * perPixel);
     const row = {
       name: config.name,
       constant: windowDepth(CARDS, DEPTH_RANK_EPSILON, config.distance) * 1000,
       slope: windowDepth(CARDS, slopeStep, config.distance) * 1000,
+      max: windowDepth(CARDS, maxStep, config.distance) * 1000,
     };
     results.windows.push(row);
-    append(`${row.name}: ${row.constant.toFixed(2)} | ${row.slope.toFixed(2)}`);
+    append(
+      `${row.name}: ${row.constant.toFixed(2)} | ${row.slope.toFixed(2)} | ${row.max.toFixed(2)}`,
+    );
   }
   append("Done.");
 });

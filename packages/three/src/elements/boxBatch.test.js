@@ -1,7 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { createBoxBatch, DEPTH_RANK_EPSILON } from "./boxBatch.js";
+import {
+  createBoxBatch,
+  DEPTH_RANK_EPSILON,
+  DEPTH_RANK_MAX_FACTOR,
+  DEPTH_RANK_MAX_FLOOR,
+} from "./boxBatch.js";
 import {
   batchedBoxMaterial,
   createRectMaterial,
@@ -529,6 +534,17 @@ describe("box batch depth bias", () => {
     assert.equal(Number(material.defines.DEPTH_RANK_EPSILON), DEPTH_RANK_EPSILON);
     // Packed with the box's opacity, 1.
     assert.equal(bucket.geometry.getAttribute("aSize").array[3], 2 * 7 + 1);
+    batch.dispose();
+  });
+
+  test("a max bias compiles max alone, and follows the viewport too", () => {
+    const { batch, bucket, material } = ranked("max");
+    assert.equal(material.defines.DEPTH_RANK_MAX, "");
+    assert.equal(material.defines.DEPTH_RANK_SLOPE, undefined);
+    assert.equal(Number(material.defines.DEPTH_RANK_MAX_FLOOR), DEPTH_RANK_MAX_FLOOR);
+    assert.equal(Number(material.defines.DEPTH_RANK_MAX_FACTOR), DEPTH_RANK_MAX_FACTOR);
+    assert.equal(bucket.onBeforeRender.name, "followViewport");
+    assert.ok(material.uniforms.uDepthRankViewport, "it reads the slope, so the viewport");
     batch.dispose();
   });
 

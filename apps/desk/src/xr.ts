@@ -17,17 +17,18 @@ import type { Readable } from "./session.js";
  * can be driven by hand without one; `?emulator=bare` installs it without
  * the panels that drive it, for a harness photographing the scene.
  *
- * `?depthRank=constant` or `?depthRank=slope` draws every panel's boxes with
- * freedom's depth bias by paint rank, a prototype of item 10.2 in
- * `docs/freedom-architecture-plan.md`, and `?gpuTime` logs the GPU time of
- * the scene's frames (`gpuTime.ts`), to measure what the bias costs.
+ * `?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every
+ * panel's boxes with freedom's depth bias by paint rank, a prototype of item
+ * 10.2 in `docs/freedom-architecture-plan.md`, and `?gpuTime` logs the GPU
+ * time of the scene's frames (`gpuTime.ts`), to measure what the bias costs.
  */
 export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
   const asked = query.get("depthRank");
-  const depthRank = asked === "constant" || asked === "slope" ? asked : undefined;
+  const depthRank =
+    asked === "constant" || asked === "slope" || asked === "max" ? asked : undefined;
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");

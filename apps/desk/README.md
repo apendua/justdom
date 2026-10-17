@@ -34,8 +34,8 @@ On a laptop there is no session to offer, so there is no button and no renderer.
 installs a headset in the browser (IWER, with its dev panels, from `@apendua.dev/headset`) and an
 Enter button appears at the bottom; `?emulator=bare` installs the runtime without the panels.
 
-`?depthRank=constant` or `?depthRank=slope` draws every panel's boxes with freedom's depth bias by
-paint rank, a prototype for item 10.2 of
+`?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every panel's boxes with
+freedom's depth bias by paint rank, a prototype for item 10.2 of
 [`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md), and `?gpuTime` logs
 the GPU time of the session's frames to the console every 300 frames, where the headset's browser
 exposes `EXT_disjoint_timer_query_webgl2`. Night Ops, `?look=ops`, is the look with the most panels,

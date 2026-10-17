@@ -1460,17 +1460,17 @@ Not followed:
   ordinary elements: `dropdown(props)`, whose `root` is the positioning context and `menu` the
   layer, and `keyboard(props)`.
 
-A panel's `depthRank` option, `"constant"` or `"slope"`, is a prototype and off by default. It draws
-the panel's boxes a little nearer the viewer by their paint rank, the number of content steps each
-box sits in front of the panel's root, on top of the steps above, so that the bias can be measured
-on a headset before it replaces them (item 10 of
+A panel's `depthRank` option, `"constant"`, `"slope"` or `"max"`, is a prototype and off by default.
+It draws the panel's boxes a little nearer the viewer by their paint rank, the number of content
+steps each box sits in front of the panel's root, on top of the steps above, so that the bias can be
+measured on a headset before it replaces them (item 10 of
 [`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md)). `"constant"` moves
 a box the same amount in depth a rank whatever the panel's angle; `"slope"` moves it by how steeply
-depth changes across the panel on screen, so a panel facing the viewer moves least. `false` turns it
-off for a panel under a scene that set it. It moves only the batched boxes, so neither the text nor
-an `<img>`, which draws itself: on a panel far enough away a box high in a pile can cover its own
-text, and a card can cover the picture on the card under it. `boxBatch.js` has the formula and its
-numbers.
+depth changes across the panel on screen, so a panel facing the viewer moves least; `"max"` takes
+the larger of a small constant and a smaller share of that slope. `false` turns it off for a panel
+under a scene that set it. It moves only the batched boxes, so neither the text nor an `<img>`,
+which draws itself: on a panel far enough away a box high in a pile can cover its own text, and a
+card can cover the picture on the card under it. `boxBatch.js` has the formula and its numbers.
 
 ## Images
 

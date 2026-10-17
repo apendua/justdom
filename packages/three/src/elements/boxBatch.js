@@ -77,15 +77,17 @@ export const BoxBatchContext = createProperty(
  * - `"constant"`: `DEPTH_RANK_EPSILON` a rank, whatever the panel's angle.
  * - `"slope"`: `DEPTH_RANK_SLOPE_FACTOR` times how much NDC depth changes
  *   from one pixel to the next across the panel, plus `DEPTH_RANK_FLOOR`.
+ * - `"max"`: the larger of `DEPTH_RANK_MAX_FLOOR` and `DEPTH_RANK_MAX_FACTOR`
+ *   times the same slope.
  *
- * Either is on top of the geometric lift, which stays until item 10.3, and
+ * Each is on top of the geometric lift, which stays until item 10.3, and
  * moves only the batched boxes. Text and the other marks are not biased
  * yet, so a box can cover its own marks where its rank times the step
  * reaches the 1 px they stand in front of it. Nor is an `<img>`, which is
  * not batched (`div.js`), so a card can cover the picture on the card
  * under it once its rank's lead passes the `CONTENT_STEP` between them.
  *
- * @typedef {"constant" | "slope"} DepthRankBias
+ * @typedef {"constant" | "slope" | "max"} DepthRankBias
  */
 
 /**
@@ -110,7 +112,23 @@ export const DEPTH_RANK_FLOOR = 2 ** -22;
 export const DEPTH_RANK_SLOPE_FACTOR = 2 ** -3;
 
 /**
- * The most one rank moves a box under `"slope"`, in NDC depth, so a panel
+ * The least step a rank under `"max"`, in NDC depth: what the Quest 3's
+ * sweep in item 10.2 found any pile needs that does not face the viewer.
+ * One facing the viewer needs a quarter of it, and is given this.
+ */
+export const DEPTH_RANK_MAX_FLOOR = 2 ** -20;
+
+/**
+ * `k` in `rank · max(floor, k · slope)`: what the Quest 3's sweep in item
+ * 10.2 found the steepest piles need, the keyboard and the memo among them.
+ * Under the plain slope one `k` has to be set by the shallow piles, which
+ * need four to sixteen times more of their slope; here the floor covers
+ * them.
+ */
+export const DEPTH_RANK_MAX_FACTOR = 2 ** -8;
+
+/**
+ * The most one rank moves a box under `"slope"` or `"max"`, in NDC depth, so a panel
  * seen nearly edge on, whose slope runs to infinity, does not throw its
  * boxes past the near plane. The step item 10.1's steepest pile needed in
  * the emulator.
@@ -120,7 +138,8 @@ export const DEPTH_RANK_STEP_LIMIT = 2 ** -12;
 /**
  * The bias as GLSL, for the batch's vertex shader and for a probe that has
  * to draw with the same formula. Compiled only under `DEPTH_RANK`, and
- * under `DEPTH_RANK_SLOPE` for the slope.
+ * under `DEPTH_RANK_SLOPE` or `DEPTH_RANK_MAX` for the two that read the
+ * slope.
  *
  * The slope is taken from the plane rather than from the pixels, so it
  * costs a few operations a vertex, adds no draw and writes no
@@ -138,8 +157,8 @@ export const DEPTH_RANK_STEP_LIMIT = 2 ** -12;
 export const DEPTH_RANK_GLSL = /* glsl */ `
 #ifdef DEPTH_RANK
 uniform vec2 uDepthRankViewport;
-float depthRankStep(mat4 modelView, vec4 clip) {
-  #ifdef DEPTH_RANK_SLOPE
+#if defined(DEPTH_RANK_SLOPE) || defined(DEPTH_RANK_MAX)
+float depthRankSlope(mat4 modelView, vec4 clip) {
   vec4 along = projectionMatrix * vec4(modelView[0].xyz, 0.0);
   vec4 across = projectionMatrix * vec4(modelView[1].xyz, 0.0);
   // The change in NDC along each edge, times clip.w squared, which the
@@ -147,13 +166,22 @@ float depthRankStep(mat4 modelView, vec4 clip) {
   vec3 a = along.xyz * clip.w - clip.xyz * along.w;
   vec3 b = across.xyz * clip.w - clip.xyz * across.w;
   float det = a.x * b.y - a.y * b.x;
+  // Seen edge on: a slope past any limit, which the step limit then holds.
   if (abs(det) < 1e-30) {
-    return DEPTH_RANK_STEP_LIMIT;
+    return 1e30;
   }
   vec2 gradient = vec2(a.z * b.y - b.z * a.y, a.x * b.z - b.x * a.z) / det;
   vec2 perPixel = abs(gradient) * 2.0 / uDepthRankViewport;
-  float slope = max(perPixel.x, perPixel.y);
+  return max(perPixel.x, perPixel.y);
+}
+#endif
+float depthRankStep(mat4 modelView, vec4 clip) {
+  #if defined(DEPTH_RANK_SLOPE)
+  float slope = depthRankSlope(modelView, clip);
   return min(DEPTH_RANK_SLOPE_FACTOR * slope + DEPTH_RANK_FLOOR, DEPTH_RANK_STEP_LIMIT);
+  #elif defined(DEPTH_RANK_MAX)
+  float slope = depthRankSlope(modelView, clip);
+  return min(max(DEPTH_RANK_MAX_FLOOR, DEPTH_RANK_MAX_FACTOR * slope), DEPTH_RANK_STEP_LIMIT);
   #else
   return DEPTH_RANK_EPSILON;
   #endif
@@ -174,10 +202,14 @@ export function depthRankDefines(bias) {
     DEPTH_RANK_EPSILON: glslFloat(DEPTH_RANK_EPSILON),
     DEPTH_RANK_FLOOR: glslFloat(DEPTH_RANK_FLOOR),
     DEPTH_RANK_SLOPE_FACTOR: glslFloat(DEPTH_RANK_SLOPE_FACTOR),
+    DEPTH_RANK_MAX_FLOOR: glslFloat(DEPTH_RANK_MAX_FLOOR),
+    DEPTH_RANK_MAX_FACTOR: glslFloat(DEPTH_RANK_MAX_FACTOR),
     DEPTH_RANK_STEP_LIMIT: glslFloat(DEPTH_RANK_STEP_LIMIT),
   };
   if (bias === "slope") {
     defines.DEPTH_RANK_SLOPE = "";
+  } else if (bias === "max") {
+    defines.DEPTH_RANK_MAX = "";
   }
   return defines;
 }
@@ -339,7 +371,7 @@ function batchMaterial(depthRank) {
     uniforms: {
       uRamp: rampUniforms.uRamp,
       uRampHeight: rampUniforms.uRampHeight,
-      ...(depthRank === "slope" ? { uDepthRankViewport: { value: new THREE.Vector2(1, 1) } } : {}),
+      ...(readsSlope(depthRank) ? { uDepthRankViewport: { value: new THREE.Vector2(1, 1) } } : {}),
     },
   });
 }
@@ -354,7 +386,20 @@ function biasOf(material) {
   if ("DEPTH_RANK_SLOPE" in material.defines) {
     return "slope";
   }
+  if ("DEPTH_RANK_MAX" in material.defines) {
+    return "max";
+  }
   return "DEPTH_RANK" in material.defines ? "constant" : undefined;
+}
+
+/**
+ * Whether a bias reads the panel's slope, and so the eye's viewport.
+ *
+ * @param {DepthRankBias | undefined} bias
+ * @returns {boolean}
+ */
+function readsSlope(bias) {
+  return bias === "slope" || bias === "max";
 }
 
 /**
@@ -392,7 +437,8 @@ export function readDepthRankViewport(renderer, size) {
 }
 
 /**
- * Keep a slope-biased material's `uDepthRankViewport` at the viewport it is
+ * Keep the `uDepthRankViewport` of a material whose bias reads the slope at
+ * the viewport it is
  * drawn into. Uploaded only when it changes, since the program keeps the
  * last value it was given: when a session starts or ends, and twice for
  * each drag ghost, whose snapshot (`takeSnapshot` in `ghostSnapshot.js`)
@@ -538,7 +584,7 @@ class Bucket {
     // up as text that scrolls into view being missing rather than as nothing
     // working at all.
     mesh.matrixWorldNeedsUpdate = true;
-    if ("DEPTH_RANK_SLOPE" in this.material.defines) {
+    if (readsSlope(biasOf(this.material))) {
       mesh.onBeforeRender = followViewport;
     }
     this.mesh = mesh;

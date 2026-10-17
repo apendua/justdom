@@ -275,9 +275,9 @@ function claimRoot(root) {
  *   mount is held back until it is whole either way.
  * @property {DepthRankBias | false} [depthRank] A prototype, off by
  *   default: draw the panel's batched boxes with a depth bias by paint rank
- *   on top of the lift, `"constant"` or `"slope"` (see `DepthRankBias` in
- *   `boxBatch.js`), and `false` for none whatever the scene's
- *   `PanelOptions` say. It is there to measure the bias on a headset for
+ *   on top of the lift, `"constant"`, `"slope"` or `"max"` (see
+ *   `DepthRankBias` in `boxBatch.js`), and `false` for none whatever the
+ *   scene's `PanelOptions` say. It is there to measure the bias on a headset for
  *   item 10 of `docs/freedom-architecture-plan.md`. It moves neither the
  *   panel's text nor its pictures, so a box far enough up a pile can cover
  *   its own text and the picture of the card under it.

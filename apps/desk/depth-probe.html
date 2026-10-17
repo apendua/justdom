@@ -11,7 +11,8 @@
   then open http://localhost:5173/apps/desk/depth-probe.html in the
   headset's browser. localhost is a secure context, so WebXR works without
   a certificate. `?emulator` runs it under IWER on a desktop instead, and
-  `?size=1024` renders the sweep's piles at 1024 px instead of 512.
+  `?size=1024` renders the sweep's piles at 1024 px instead of 512, and
+  `?formulas=max` sweeps only the formulas named, of constant, slope and max.
 -->
 <html>
   <head>
@@ -49,12 +50,14 @@
   <body>
     <p>
       <b>1.</b> Enter VR shows a 200-card pile 1 m ahead, tipped 75°, drawn top card first with
-      freedom's depth bias: the slope at freedom's k, then the constant at freedom's epsilon, then no
-      bias; the trigger steps through them and the label above the pile says which. Speckle in
-      another card's colour is a fight. <b>2.</b> Run sweep renders the piles off screen on this GPU
-      and finds, for each, the least epsilon the constant needs and the least k the slope needs,
-      then what 200 ranks take up in depth under freedom's numbers. Copy JSON copies all of it, and
-      Upload JSON sends it to the dev server, which writes it under <code>apps/desk/probe-results/</code>.
+      freedom's depth bias: max at freedom's k, the slope at freedom's k, the constant at freedom's
+      epsilon, then no bias; the trigger steps through them and the label above the pile says which.
+      Speckle in another card's colour is a fight. <b>2.</b> Run sweep renders the piles off screen on
+      this GPU and finds, for each, the least epsilon the constant needs, the least k the slope
+      needs and the least k max needs, and runs max at freedom's own numbers. It ends with what 200
+      ranks take up in depth under freedom's numbers. <code>?formulas=max</code> sweeps max alone,
+      which is quicker. Copy JSON copies all of it, and Upload JSON sends it to the dev server, which
+      writes it under <code>apps/desk/probe-results/</code>.
     </p>
     <button id="start" disabled>Enter VR</button>
     <button id="sweep" disabled>Run sweep</button>

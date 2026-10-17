@@ -119,27 +119,28 @@ export const DEPTH_RANK_SLOPE_FACTOR = 2 ** -3;
 export const DEPTH_RANK_MAX_FLOOR = 2 ** -20;
 
 /**
- * `k` in `rank · max(floor, k · slope)`: what the Quest 3's sweep in item
- * 10.2 found the steepest piles need, the keyboard and the memo among them.
- * Under the plain slope one `k` has to be set by the shallow piles, which
- * need four to sixteen times more of their slope; here the floor covers
- * them.
+ * `k` in `rank · max(floor, k · slope)`: the least power of two that left
+ * no pixel of any pile wrong in the Quest 3's sweep in item 10.2, set by
+ * the pile tipped 45° at 1 m. The keyboard, the memo and the 75° pile
+ * clear at half of it. Under the plain slope one `k` has to be set by the
+ * shallow piles, which need four to sixteen times more of their slope;
+ * here the floor covers them. SwiftShader needs up to `2^-2`, so the
+ * emulator still shows some wrong pixels on a sloped panel.
  */
-export const DEPTH_RANK_MAX_FACTOR = 2 ** -8;
+export const DEPTH_RANK_MAX_FACTOR = 2 ** -7;
 
 /**
- * The most one rank moves a box under `"slope"` or `"max"`, in NDC depth, so a panel
- * seen nearly edge on, whose slope runs to infinity, does not throw its
- * boxes past the near plane. The step item 10.1's steepest pile needed in
- * the emulator.
+ * The most one rank moves a box under `"slope"` or `"max"`, in NDC depth,
+ * so a panel seen nearly edge on, whose slope runs to infinity, does not
+ * throw its boxes past the near plane. The step item 10.1's steepest pile
+ * needed in the emulator.
  */
 export const DEPTH_RANK_STEP_LIMIT = 2 ** -12;
 
 /**
- * The bias as GLSL, for the batch's vertex shader and for a probe that has
- * to draw with the same formula. Compiled only under `DEPTH_RANK`, and
- * under `DEPTH_RANK_SLOPE` or `DEPTH_RANK_MAX` for the two that read the
- * slope.
+ * The bias as GLSL, for the batch's vertex shader. Compiled only under
+ * `DEPTH_RANK`, and under `DEPTH_RANK_SLOPE` or `DEPTH_RANK_MAX` for the
+ * two that read the slope.
  *
  * The slope is taken from the plane rather than from the pixels, so it
  * costs a few operations a vertex, adds no draw and writes no
@@ -154,7 +155,7 @@ export const DEPTH_RANK_STEP_LIMIT = 2 ** -12;
  * the change from one pixel to the next; the larger of the two directions
  * is the slope, as `glPolygonOffset` takes it.
  */
-export const DEPTH_RANK_GLSL = /* glsl */ `
+const DEPTH_RANK_GLSL = /* glsl */ `
 #ifdef DEPTH_RANK
 uniform vec2 uDepthRankViewport;
 #if defined(DEPTH_RANK_SLOPE) || defined(DEPTH_RANK_MAX)
@@ -420,14 +421,13 @@ const viewport = new THREE.Vector4();
 /**
  * Set `size`, a `uDepthRankViewport` value, to the viewport `renderer` is
  * drawing into now: the eye's, in a session, which three sets before each
- * eye's draws, or a render target's. Exported for a probe that draws with
- * `DEPTH_RANK_GLSL` outside a batch.
+ * eye's draws, or a render target's.
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {THREE.Vector2} size
  * @returns {boolean} Whether it changed.
  */
-export function readDepthRankViewport(renderer, size) {
+function readDepthRankViewport(renderer, size) {
   renderer.getCurrentViewport(viewport);
   if (size.x === viewport.z && size.y === viewport.w) {
     return false;

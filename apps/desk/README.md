@@ -36,14 +36,8 @@ Enter button appears at the bottom; `?emulator=bare` installs the runtime withou
 
 `?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every panel's boxes with
 freedom's depth bias by paint rank, a prototype for item 10.2 of
-[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md), and `?gpuTime` logs
-the GPU time of the session's frames to the console every 300 frames, where the headset's browser
-exposes `EXT_disjoint_timer_query_webgl2`. Night Ops, `?look=ops`, is the look with the most panels,
-so it is the one to time. `depth-probe.html`, beside `index.html`, is the item's probe; its comment
-says how to run it on a Quest. Its Upload JSON button posts the results to the dev server
-(`vite/probeResults.js`, only while `npx vite` runs), which writes them to
-`probe-results/depth-probe-<time>.json`, a directory git ignores. The probe, its route and
-`?gpuTime` are temporary, there until the headset's numbers are in.
+[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md). The plan's record of
+the item says what each one measured, and where the probe that measured them last stood.
 
 `node tests/xr-check.mjs` puts each look up in turn in a session on the emulated headset in headless
 Chromium. It fails unless every zone the look places becomes a panel and loads, the ray aimed at the

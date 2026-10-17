@@ -19,8 +19,7 @@ import type { Readable } from "./session.js";
  *
  * `?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every
  * panel's boxes with freedom's depth bias by paint rank, a prototype of item
- * 10.2 in `docs/freedom-architecture-plan.md`, and `?gpuTime` logs the GPU
- * time of the scene's frames (`gpuTime.ts`), to measure what the bias costs.
+ * 10.2 in `docs/freedom-architecture-plan.md`.
  */
 export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
@@ -79,11 +78,6 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       canvas.style.display = "none";
       canvas.style.zIndex = "60";
       document.body.appendChild(canvas);
-      if (query.has("gpuTime")) {
-        void import("./gpuTime.js").then(({ timeGpu }) => {
-          timeGpu(renderer, `depthRank ${depthRank ?? "off"}`);
-        });
-      }
       renderer.xr.addEventListener("sessionstart", () => {
         canvas.style.display = "block";
       });

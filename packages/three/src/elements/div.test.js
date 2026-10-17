@@ -476,6 +476,9 @@ describe("div elevation", () => {
     // viewer. A one-sided mesh is not raycast from behind, so a blocker that
     // is not two-sided blocks nothing whatsoever.
     assert.equal(blocker.material.side, THREE.DoubleSide);
+    // Drawn by nothing, as it changes no pixel, and still a ray target.
+    assert.equal(blocker.material.visible, false);
+    assert.equal(blocker.visible, true);
 
     restyleWith("");
     assert.deepEqual(registered, []);

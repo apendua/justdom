@@ -682,7 +682,10 @@ function byDistance(a, b) {
  * the raycast, and its subtree with it — which is what `div()` already
  * promises when it drops a hidden row's registration. The manager's
  * `#castsOwnWalk` is the other half of the same contract, for what hangs
- * over a registered object rather than under it.
+ * over a registered object rather than under it. The contract is the
+ * object's own `visible` alone: a mesh whose material is not visible is
+ * left out of the draw and stays a ray target, which is how a blocker and a
+ * batched box are drawn by nothing, or by their batch, and still hit.
  *
  * @param {THREE.Raycaster} raycaster
  * @param {THREE.Object3D<XREventMap>} object

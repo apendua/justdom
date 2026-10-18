@@ -41,12 +41,13 @@ the item says what each one measured, and where the probe that measured them las
 
 `node tests/xr-check.mjs` puts each look up in turn in a session on the emulated headset in headless
 Chromium. It fails unless every zone the look places becomes a panel and loads, the ray aimed at the
-power control is on it, and the trigger there ends the session, or if the page throws. It takes
-about two minutes. `SHOTS=<dir>` also photographs each session, and `STACKS=1` prints a stack for
-anything the page throws. It drives the browser and the controller through
-`@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr` and launches the
-Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
-installed elsewhere. A pull request that changes this app or a package it imports, other than in
+power control is on it, and the trigger there ends the session, or if the page throws. For the first
+look it then starts a second session and fails if ending it leaves more geometries on the GPU than
+the first did. It takes about two minutes. `SHOTS=<dir>` also photographs each session, and
+`STACKS=1` prints a stack for anything the page throws. It drives the browser and the controller
+through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr` and launches
+the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at
+one installed elsewhere. A pull request that changes this app or a package it imports, other than in
 docs, unit tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights', from
 `.github/workflows/driven.yml`.
 

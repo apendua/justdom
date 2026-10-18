@@ -107,6 +107,10 @@ describe("createPortal", () => {
       THREE.DoubleSide,
       "the blocker is two-sided",
     );
+    // It writes neither colour nor depth, so it is left out of the draw,
+    // and the mesh stays visible, so a ray still meets it.
+    assert.equal(/** @type {THREE.Material} */ (blocker.material).visible, false, "and not drawn");
+    assert.equal(blocker.visible, true, "while it stays a ray target");
 
     subscription.unsubscribe();
     portal.disconnect();
@@ -343,7 +347,7 @@ describe("createPortal", () => {
         planes.push(object);
       }
     });
-    assert.equal(planes.length, 0, "no blocker plane is drawn either");
+    assert.equal(planes.length, 0, "no blocker plane in the scene either");
 
     subscription.unsubscribe();
     portal.disconnect();

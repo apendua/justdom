@@ -16,6 +16,13 @@ const geometry = new THREE.PlaneGeometry(1, 1);
 const material = new THREE.MeshBasicMaterial({
   colorWrite: false,
   depthWrite: false,
+  // Out of the draw altogether. A plane that writes neither colour nor depth
+  // changes no pixel, so drawing it was a draw call per blocker per eye for
+  // nothing. Three leaves a mesh out of its render list when its material is
+  // not visible, and a ray still meets it, since the hit test reads the
+  // mesh's own `visible` (`intersectVisible`); a batched box is kept out of
+  // the draw the same way (`batchedBoxMaterial`).
+  visible: false,
   // Two-sided, and not as a nicety. A portal flips its container half a turn
   // about x to put the CSS y axis the right way round, which turns every
   // plane in it away from the viewer — and a one-sided mesh is not raycast

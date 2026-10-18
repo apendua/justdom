@@ -69,6 +69,28 @@ export async function frames(page, count) {
   );
 }
 
+/**
+ * Keep what three makes in the page, for a check of what is drawn: three
+ * tells a devtools hook of every scene and every renderer it makes, if one
+ * is there. This puts one there before the page loads, which keeps them in
+ * `window.threeScenes` and `window.threeRenderers`.
+ *
+ * @param {import("playwright-core").Page} page
+ */
+export async function observeThree(page) {
+  await page.addInitScript(() => {
+    const w = /** @type {any} */ (window);
+    w.threeScenes = [];
+    w.threeRenderers = [];
+    const hook = new EventTarget();
+    hook.addEventListener("observe", (/** @type {any} */ event) => {
+      if (event.detail?.isScene) w.threeScenes.push(event.detail);
+      if (event.detail?.isWebGLRenderer) w.threeRenderers.push(event.detail);
+    });
+    w.__THREE_DEVTOOLS__ = hook;
+  });
+}
+
 /** @type {string[]} */
 const failures = [];
 

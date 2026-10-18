@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { xrSession } from "@apendua.dev/headset/session";
 import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "@apendua/freedom";
 import { createDiagnostics, useDiagnostics } from "@apendua/justui";
-import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
+import { component, effects, effectsOnly, onCleanup, Stream, useEffects } from "@apendua/signal";
 import type { MountedDesk } from "../desk.js";
 import { DESK_TOP, PX, type Placement, type Room } from "../looks.js";
 import type { Readable } from "../session.js";
@@ -20,7 +20,10 @@ const NOTHING = new Stream<never>(() => {});
  */
 function room(colors: Room): THREE.Object3D {
   const group = new THREE.Group();
-  const matte = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+  // Lambert: the wall and the floor fill most of the view, and at this
+  // roughness the specular term `MeshStandardMaterial` adds is a faint
+  // highlight under the point light.
+  const matte = (color: string) => new THREE.MeshLambertMaterial({ color });
 
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(10, 32, 16),
@@ -35,9 +38,10 @@ function room(colors: Room): THREE.Object3D {
 
   const top = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.03, 0.85), matte(colors.top));
   top.position.set(0, DESK_TOP - 0.015, -0.6);
+  const legMaterial = matte(colors.legs);
   const legs = [-0.8, 0.8].flatMap((x) =>
     [-0.22, -0.98].map((z) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), matte(colors.legs));
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.05), legMaterial);
       leg.position.set(x, DESK_TOP - 0.38, z);
       return leg;
     }),
@@ -78,6 +82,26 @@ function mug(): THREE.Object3D {
   group.position.set(0.56, DESK_TOP + 0.0475, -0.33);
   return group;
 }
+
+/**
+ * Frees, when its object is taken down, what the meshes under it hold on the
+ * GPU. three keeps a geometry's buffers and a material's program until
+ * `dispose`, and the room and the mug are built anew for every session, so
+ * without this each session left the last one's behind. A material or
+ * geometry two meshes share is disposed twice, which three takes as once.
+ */
+const disposedWithIt = effects((root: THREE.Object3D) => {
+  onCleanup(() => {
+    root.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose();
+        for (const material of [object.material].flat()) {
+          material.dispose();
+        }
+      }
+    });
+  });
+});
 
 /**
  * A group posed where `placement` says, scaled so that its panel is drawn at
@@ -141,8 +165,8 @@ export const Scene = (desk: Readable<MountedDesk>) =>
               getScene(ctx).background = new THREE.Color(look.room.backdrop);
             }),
             children(
-              $(room(look.room)),
-              ...(look.mug ? [$(mug())] : []),
+              $(room(look.room), [disposedWithIt]),
+              ...(look.mug ? [$(mug(), [disposedWithIt])] : []),
               ...look.placements.flatMap((placement) => {
                 const element = elements.get(placement.id);
                 if (!element) {

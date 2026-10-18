@@ -1,6 +1,23 @@
 # Change Log - @apendua/signal
 
-This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+This log was last generated on Sun, 18 Oct 2026 19:57:45 GMT and should not be manually modified.
+
+## 1.0.0
+Sun, 18 Oct 2026 19:57:45 GMT
+
+### Breaking changes
+
+- trackWrites(store) records the data keys the program writes or deletes, and reshape() keeps those on a hot reload while every other key follows the definition, values included. volatileStore(), isVolatile() and reconfigure() are removed: a store nobody writes to is reshaped in full, which is what a volatileStore was for, and reconfigure() was reshape() with nothing recorded.
+
+### Minor changes
+
+- An array in a store is a store: its mutating methods are reactive and a hot reload reconciles it. A store assigned to a key is held as itself, and Object.hasOwn() on a store is reactive
+- A write to a store key whose getter has no setter now does nothing, and a key with a getter or a setter stays for the store's life. The new reconfigure() makes a store what a definition defines: its getters, setters, data values and keys, with no setter run. store() now reads accessors from the enumerable keys only, as a spread does, keeps a nested store's getters and setters, and makes a store of a plain object at a symbol key. Building a store is faster
+- reshape(store, definition) gives a kept store the definition's getters, setters and keys and keeps what the program wrote to the data keys both have; a hot reload of an ordinary store reshapes it, so a getter added or edited in source takes effect
+
+### Patches
+
+- Make a store about twice as fast to build, and a read outside any computation cheaper
 
 ## 0.10.0
 Sat, 26 Sep 2026 15:05:41 GMT

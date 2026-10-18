@@ -2,6 +2,29 @@
   "name": "@apendua/justdom",
   "entries": [
     {
+      "version": "0.3.7",
+      "tag": "@apendua/justdom_v0.3.7",
+      "date": "Sun, 18 Oct 2026 19:57:45 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Docs: the suspend comment says the fallback is unsubscribed once the content is swapped in"
+          },
+          {
+            "comment": "Rewrap the README at 100 columns with Prettier's proseWrap."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `1.0.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.5.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.6",
       "tag": "@apendua/justdom_v0.3.6",
       "date": "Sun, 04 Oct 2026 19:35:47 GMT",

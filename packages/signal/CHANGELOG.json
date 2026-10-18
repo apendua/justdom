@@ -2,6 +2,48 @@
   "name": "@apendua/signal",
   "entries": [
     {
+      "version": "1.0.0",
+      "tag": "@apendua/signal_v1.0.0",
+      "date": "Sun, 18 Oct 2026 19:57:45 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "READMEs and changelogs no longer feed the build cache key, so a docs edit does not rebuild every dependent project"
+          },
+          {
+            "comment": "Rewrap the README at 100 columns with Prettier's proseWrap."
+          },
+          {
+            "comment": "The build now checks that every file under src parses as native JavaScript"
+          },
+          {
+            "comment": "The package no longer ships a compiled lib directory, which nothing imported; main points at src like the exports do"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "An array in a store is a store: its mutating methods are reactive and a hot reload reconciles it. A store assigned to a key is held as itself, and Object.hasOwn() on a store is reactive"
+          },
+          {
+            "comment": "A write to a store key whose getter has no setter now does nothing, and a key with a getter or a setter stays for the store's life. The new reconfigure() makes a store what a definition defines: its getters, setters, data values and keys, with no setter run. store() now reads accessors from the enumerable keys only, as a spread does, keeps a nested store's getters and setters, and makes a store of a plain object at a symbol key. Building a store is faster"
+          },
+          {
+            "comment": "reshape(store, definition) gives a kept store the definition's getters, setters and keys and keeps what the program wrote to the data keys both have; a hot reload of an ordinary store reshapes it, so a getter added or edited in source takes effect"
+          }
+        ],
+        "major": [
+          {
+            "comment": "trackWrites(store) records the data keys the program writes or deletes, and reshape() keeps those on a hot reload while every other key follows the definition, values included. volatileStore(), isVolatile() and reconfigure() are removed: a store nobody writes to is reshaped in full, which is what a volatileStore was for, and reconfigure() was reshape() with nothing recorded."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Make a store about twice as fast to build, and a read outside any computation cheaper"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.10.0",
       "tag": "@apendua/signal_v0.10.0",
       "date": "Sat, 26 Sep 2026 15:05:41 GMT",

@@ -20,7 +20,11 @@ const NOTHING = new Stream<never>(() => {});
  */
 function room(colors: Room): THREE.Object3D {
   const group = new THREE.Group();
-  const matte = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+  // Lambert rather than physically based: the wall and the floor fill most
+  // of the view, and a rough flat colour under one point light loses only
+  // a faint highlight. In the emulator the room's shading took half the time
+  // it did under `MeshStandardMaterial`.
+  const matte = (color: string) => new THREE.MeshLambertMaterial({ color });
 
   const sky = new THREE.Mesh(
     new THREE.SphereGeometry(10, 32, 16),

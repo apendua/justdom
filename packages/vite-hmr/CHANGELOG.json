@@ -2,6 +2,46 @@
   "name": "@apendua/vite-hmr",
   "entries": [
     {
+      "version": "0.5.0",
+      "tag": "@apendua/vite-hmr_v0.5.0",
+      "date": "Sun, 18 Oct 2026 19:57:45 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "READMEs and changelogs no longer feed the build cache key, so a docs edit does not rebuild every dependent project"
+          },
+          {
+            "comment": "Rewrap the README at 100 columns with Prettier's proseWrap."
+          },
+          {
+            "comment": "The build now checks that every file under src parses as native JavaScript"
+          },
+          {
+            "comment": "The package no longer ships a compiled lib directory, which nothing imported; main points at src like the exports do"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "An exported store made of an array is kept and reshaped on a reload, and a store export that changes between an object and an array is not taken in place"
+          },
+          {
+            "comment": "A hot reload of a volatileStore now reconfigures it with the new definition, so an edited getter takes effect"
+          },
+          {
+            "comment": "reshape(store, definition) gives a kept store the definition's getters, setters and keys and keeps what the program wrote to the data keys both have; a hot reload of an ordinary store reshapes it, so a getter added or edited in source takes effect"
+          },
+          {
+            "comment": "A kept store records the keys the program writes once its export's initialiser has evaluated, and is reshaped on every reload: the program's keys stay, every other key follows the source, an edited initial value included. The constants kind is gone with volatileStore."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `1.0.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.4.3",
       "tag": "@apendua/vite-hmr_v0.4.3",
       "date": "Sat, 26 Sep 2026 15:05:41 GMT",

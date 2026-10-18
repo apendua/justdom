@@ -1,6 +1,6 @@
 {
   "name": "@apendua/justui",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "The widgets a panel is made of -- dropdown, keyboard, scrollable and a frame rate readout -- built out of ordinary DOM so they work on a page and inside a @apendua/freedom portal alike",
   "keywords": [
     "ui",

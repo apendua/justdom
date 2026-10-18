@@ -2,6 +2,47 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.3.4",
+      "tag": "@apendua/justui_v0.3.4",
+      "date": "Sun, 18 Oct 2026 19:57:45 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "The README and the source comments no longer say a portal only restyles on an attribute change, since freedom now re-measures the layout for one."
+          },
+          {
+            "comment": "Docs: the freedom README is a reference, with its reasoning pointed at from docs/freedom-design-notes.md; the elevation header's first limit and justui's scrollable comment corrected"
+          },
+          {
+            "comment": "The comment on scrollable says that no wheel scrolls it, now that freedom can take a thumbstick as a wheel."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.29.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.7`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `1.0.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.5.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.29.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/justdom\" to `0.3.7`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/signal\" to `1.0.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.3",
       "tag": "@apendua/justui_v0.3.3",
       "date": "Tue, 06 Oct 2026 21:11:09 GMT",

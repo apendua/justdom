@@ -1,6 +1,16 @@
 # Change Log - @apendua/vite-hmr
 
-This log was last generated on Sat, 26 Sep 2026 15:05:41 GMT and should not be manually modified.
+This log was last generated on Sun, 18 Oct 2026 19:57:45 GMT and should not be manually modified.
+
+## 0.5.0
+Sun, 18 Oct 2026 19:57:45 GMT
+
+### Minor changes
+
+- An exported store made of an array is kept and reshaped on a reload, and a store export that changes between an object and an array is not taken in place
+- A hot reload of a volatileStore now reconfigures it with the new definition, so an edited getter takes effect
+- reshape(store, definition) gives a kept store the definition's getters, setters and keys and keeps what the program wrote to the data keys both have; a hot reload of an ordinary store reshapes it, so a getter added or edited in source takes effect
+- A kept store records the keys the program writes once its export's initialiser has evaluated, and is reshaped on every reload: the program's keys stay, every other key follows the source, an edited initial value included. The constants kind is gone with volatileStore.
 
 ## 0.4.3
 Sat, 26 Sep 2026 15:05:41 GMT

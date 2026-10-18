@@ -1,6 +1,62 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Tue, 06 Oct 2026 21:11:09 GMT and should not be manually modified.
+This log was last generated on Sun, 18 Oct 2026 19:57:45 GMT and should not be manually modified.
+
+## 0.29.0
+Sun, 18 Oct 2026 19:57:45 GMT
+
+### Minor changes
+
+- A `fill` or `stroke` naming a paint server with a fallback colour, `url(#hatch) black`, is drawn in that colour in an SVG panel instead of as nothing
+- A change to a list's children restyles the list's siblings only when `:empty` may have flipped: when the list holds no element or text that it held before the observer flush. A log that drops its oldest row no longer restyles the rest of its panel, and an append after a framework's comment anchor stays narrow, while the first row into a list holding only a comment anchor now restyles the list's neighbours.
+- A ray now sends the pointer model a page expects: buttons on every event, the boundary events, pointercancel when a press becomes a scroll or a drag, the capture events with the Element.prototype wrap held only while a panel is up, a captured hand's moves off the panel's controls, and mouse events from one primary hand. In development, a press on content no ray targets is named once.
+- A captured hand's release takes its point from where the ray crosses the captor's panel, as its moves do, in place of 0, 0 off the panel
+- An `<svg>`'s content now draws in the first half of its content level, before the boxes drawn at that level, so a translucent box in front of the `<svg>` shows all of it rather than its earlier elements only.
+- Panel handles stay out of the scene until the panel or its loading frame is drawn, and draw after every panel so one behind them no longer covers them
+- The rows that leave an open panel are taken out of the scene at the commit and, under render(), taken down over the frames after it instead of in the commit's frame
+- A closed panel leaves the scene, the rays and the page at once, and under render() its objects are taken down over the following frames in the scheduler's leftover budget instead of in one long task
+- A row that leaves an open panel keeps what its reads said until its objects are taken down, so the panel no longer draws it again from DOM out of the document before the commit
+- A hand that disconnects, as every hand does when a session ends, lets go of what it held: the manager ends its presses as lost misses and leaves at once, so drag() and carry() let go and a panel cancels the pointer. A panel's data-xr-hover and data-xr-active are counted per hand, and the hover follows a captured pointer to its captor. The scene's keyboard goes when the session ends, the session button gives up focus once the session starts, and casting a ray, carrying and dragging make nothing per frame. carriedPose takes an optional pose to write into.
+- An author's attribute change now climbs the layout walk, so a class swap or `hidden` that resizes an element moves the boxes after it and resizes the panel. An inline style write that changes only properties that move no box, such as `transform`, `opacity` or a colour, still re-measures only the element's own subtree. The animation clock now treats the background properties and `outline` as paint, so an animated `background-image`, `background-position` or `background-size` restyles its element instead of re-measuring the panel.
+- A press on a field's label gives the field the keyboard, as a page focuses it, and such a label is a ray target whatever its cursor. The portal's own flag names come from one set of constants in portalRoot.js, and FOCUS_ATTRIBUTE is exported from @apendua/freedom and @apendua/freedom/page.
+- A panel option, depthRank, draws its batched boxes with a depth bias by paint rank, a prototype of item 10.2 of the architecture plan; off by default.
+- Keep each text run's raster at the step below the one its panel shows, so leaning back out of a step draws and uploads nothing
+- Keep a picture's texture idle after its last element lets go of it, within a 16 MiB budget, so a picture that comes back is drawn at once instead of loading again
+- Add outlines mode: enableOutlinesMode() outlines each panel element that changed at a commit, solid for a change the page made, dashed for one it caused elsewhere, dotted for an element the mirror measured again for nothing and grey for a write of what was already there, coloured by how often, and outlinesReport() lists what it counted
+- Draw a panel's text at the step above before the panel reaches it, and send its arrays to the GPU ahead of the crossing
+- SVG: draw a clip-path that names a <clipPath> of one <rect>, on the clip box a nested <svg> already uses
+- Geometry attributes inside an `<svg>` (`x`, `y`, `width`, `height`, `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `d`, `points`, `dx`, `dy`, `rotate`, `transform`) now restyle only the element and its subtree, not its siblings, so a drawing that moves no longer restyles every shape for each one that changed.
+- SVG shapes other than <path> are built into a ShapePath directly instead of being written out as markup for SVGLoader to parse, so a shape whose numbers change every frame no longer parses a document every frame. A polyline's or polygon's points are read by SVG's grammar, so a list written `0, 0 10, 0` is no longer drawn with its pairs shifted. readShapeMarkup is now readShapeGeometry, returning the numbers.
+- SVG text in a font smaller than 64 units is laid out and drawn at a power-of-two multiple of its size, so its glyphs sit on the baseline the layout gave it on a high-DPR display such as a headset
+- A panel can take a hand's thumbstick as a mouse wheel: the thumbstickWheel option sends wheel to the element under the ray while the hand holds no button, for a page that zooms or pans on the wheel. Off by default.
+- playHapticAll plays one haptic effect on every input source of an XR session, and does nothing outside one, for a rumble that belongs to the scene rather than to one hand.
+- Keep every shader program freedom draws with linked for the life of the renderer, so that a panel mounted after the last of its kind has closed, a text bucket that grows, a loading frame and a panel's handle bars no longer link a program again after three deleted it
+- A stylesheet whose rules all start from classes, such as every sheet justdom's className writes, restyles only the panels those classes can reach instead of every panel on the page, so a keyboard opening no longer restyles and re-measures the whole scene
+- Add `enableThemingMode()`, which follows rule edits made through the CSSOM or the browser's developer tools by reading the document's rules on a timer
+- A ControllerHandle now carries ray, the line drawn down its target ray, so an app can hide the line while the hand is busy without taking the hand out of the raycast.
+- Upload a text or box batch's instance buffers only when a rebuild changed what they hold, rather than every buffer of every bucket on every rebuild
+- Draw a stepped box that is not opaque after everything the sibling it clears draws, so a box behind text, a caret, a list marker or a field's value never draws after it
+
+### Patches
+
+- Text in an inline element under a CSS transform wraps as it does on the page: the measurement clone is taken of the box its lines are laid out in, not of the inline parent, which has no width to wrap against
+- A press swallowed on an element that had gone is silent to its end: no release or click goes to a live control around it, and it ends the last press's say over didDrag.
+- A captured hand's gotpointercapture and lostpointercapture, and the crossings a release brings with its ray off the panel, say where the pointer is instead of 0, 0
+- Leave a panel's blockers out of the draw: they write neither colour nor depth, so each cost a draw call per eye for nothing
+- pointercancel, the leaves after it, the leaves of a lost hand and the crossings after a press that sent no pointerup say where the page last heard the pointer instead of 0, 0
+- A ray that leaves a panel, onto nothing or onto another panel, now sends its pointerout, pointerleave and the mouse's at the point the page last heard the pointer, instead of 0, 0; so do the crossings that bring a panel up to date for a hand over nothing on it.
+- Texts under a transform in one line box are measured in one shared copy of the box, kept until something it was copied from changes, rather than a copy each, so measuring a paragraph is linear in its size rather than quadratic, a portal mount included
+- A drag or a carry swallows a release only when it took the press the release ends, whatever enabled says in between; drag() and carry() share that release through createHold.
+- An inline style write of the offsets, sizes or margins of an element positioned absolute or fixed re-measures that element alone, since its box is out of the flow, so a scrollbar thumb moved on every scroll no longer re-measures the boxes around it.
+- A subtree that leaves a panel is let go of by the mirror at once, so nothing the panel hears before the commit measures it again; a checkbox's checked accessor is taken off when the last panel stops reading it; the SVG plugin no longer adopts templates itself
+- The interaction manager sends a press's end, completion and miss no further along its path than the start went, so a drag() or carry() taken out of the scene mid-press no longer leaks its release to what is behind it; createHold drops its set of taken starts.
+- An <img> whose picture is an SVG is drawn on a canvas at its natural size before it is uploaded, since Chrome refuses to upload an SVG with no size of its own as a texture
+- Read the width and height attributes of a <use> or a nested <svg> when the browser computes them as auto, as Chromium 152 does, so a symbol is fitted to the size the <use> names
+- anchorToViewer leaves three on the reference space it requested when the runtime offsets spaces by NaN, as the Immersive Web Emulator extension's IWER does
+- anchorToViewer builds the anchor from the transform's matrix on a runtime that offsets by NaN otherwise, so it runs in full in the Immersive Web Emulator extension
+- An SVG element writes its matrix and its clip uniforms in one effect, so a panel that is not atomic no longer draws a moved element through the clip it had before the move
+- A box writes its place and its clip in one effect, so a panel that is not atomic no longer draws a moved box through the clip it had before the move; and an object the portal attaches to a new parent has its world matrix recomputed, so one that keeps its offset in its new parent is not drawn and hit where the old one put it
+- SVG shapes resolve percentage lengths against their viewport, and SVG text measures through the mirror's measurement clone and its one shared Range
 
 ## 0.28.0
 Tue, 06 Oct 2026 21:11:09 GMT

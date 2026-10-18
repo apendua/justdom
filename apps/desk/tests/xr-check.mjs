@@ -15,8 +15,8 @@
  * - the right controller's ray, aimed at the power control from the figures
  *   the scene poses the monitor by, is on that control;
  * - the trigger there ends the session and takes the panels down;
- * - for the first look, a second session leaves as many geometries on the
- *   GPU when it ends as the first did, so the room built for each session
+ * - for the first look, a second session leaves no more geometries on the
+ *   GPU when it ends than the first did, so the room built for each session
  *   is freed with it;
  * - the page throws nothing along the way.
  *
@@ -37,6 +37,7 @@ import {
   frames,
   headPosition,
   launch,
+  observeThree,
   press,
 } from "@apendua.dev/headset/driver";
 
@@ -74,16 +75,8 @@ async function main() {
       const zones = look.placements.map((placement) => placement.id);
 
       const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
-      // three announces each renderer it makes to its devtools hook, which
-      // is how the check reads the GPU memory three keeps count of.
-      await page.addInitScript(() => {
-        const w = /** @type {any} */ (window);
-        w.renderers = [];
-        w.__THREE_DEVTOOLS__ = new EventTarget();
-        w.__THREE_DEVTOOLS__.addEventListener("observe", (/** @type {any} */ e) => {
-          if (e.detail?.isWebGLRenderer) w.renderers.push(e.detail);
-        });
-      });
+      // The renderer, for the GPU memory three keeps count of.
+      await observeThree(page);
       /** @type {string[]} */
       const errors = [];
       page.on("pageerror", (error) => {
@@ -183,37 +176,56 @@ async function main() {
 
       if (ended && look === looks.LOOKS[0]) {
         const geometries = () =>
-          page.evaluate(() => /** @type {any} */ (window).renderers.at(-1).info.memory.geometries);
-        const first = await geometries();
+          page.evaluate(
+            () => /** @type {any} */ (window).threeRenderers.at(-1).info.memory.geometries,
+          );
+        // The panels go a frame or two after the session does, so the count
+        // is read once it holds still across ten frames.
+        const settledGeometries = async () => {
+          let count = await geometries();
+          for (let tries = 0; tries < 20; tries++) {
+            await frames(page, 10);
+            const next = await geometries();
+            if (next === count) break;
+            count = next;
+          }
+          return count;
+        };
+        const first = await settledGeometries();
         await page.click("#ARButton, #VRButton");
-        await page.waitForFunction(
-          (ids) =>
-            ids.every((zone) => document.getElementById(zone)?.hasAttribute("data-xr-portal")) &&
-            !document.querySelector("[data-xr-loading]"),
-          zones,
-          { timeout: LOAD_TIMEOUT, polling: 1000 },
-        );
-        await frames(page, 10);
-        await page.evaluate(() =>
-          /** @type {any} */ (window).renderers.at(-1).xr.getSession().end(),
-        );
-        await page.waitForFunction(() => !document.querySelector("[data-xr-portal]"), undefined, {
-          timeout: 10_000,
-        });
-        // The panels go a frame or two after the session does, so give the
-        // count time to come back down before reading it.
-        await page
+        const reloaded = await page
           .waitForFunction(
-            (count) => /** @type {any} */ (window).renderers.at(-1).info.memory.geometries <= count,
-            first,
-            { timeout: 10_000 },
+            (ids) =>
+              ids.every((zone) => document.getElementById(zone)?.hasAttribute("data-xr-portal")) &&
+              !document.querySelector("[data-xr-loading]"),
+            zones,
+            { timeout: LOAD_TIMEOUT, polling: 1000 },
           )
-          .catch(() => {});
-        const second = await geometries();
-        check(
-          second === first,
-          `a second session freed what it built (${first} geometries after the first, ${second} after the second)`,
-        );
+          .then(
+            () => true,
+            () => false,
+          );
+        check(reloaded, "a second session put every panel up again");
+        if (reloaded) {
+          await frames(page, 10);
+          await page.evaluate(() =>
+            /** @type {any} */ (window).threeRenderers.at(-1).xr.getSession().end(),
+          );
+          const left = await page
+            .waitForFunction(() => !document.querySelector("[data-xr-portal]"), undefined, {
+              timeout: 10_000,
+            })
+            .then(
+              () => true,
+              () => false,
+            );
+          check(left, "ending the second session took the panels down");
+          const second = await settledGeometries();
+          check(
+            second <= first,
+            `a second session freed what it built (${first} geometries after the first, ${second} after the second)`,
+          );
+        }
       }
       check(errors.length === 0, `the page threw nothing (${errors.length} errors)`);
       await page.close();

@@ -84,29 +84,22 @@ function mug(): THREE.Object3D {
 }
 
 /**
- * Free what the meshes under `root` hold on the GPU. three keeps a
- * geometry's buffers and a material's program until `dispose`, and the room
- * and the mug are built anew for every session, so without this each
- * session left the last one's behind. A material or geometry two meshes
- * share is disposed twice, which three takes as once.
+ * Frees, when its object is taken down, what the meshes under it hold on the
+ * GPU. three keeps a geometry's buffers and a material's program until
+ * `dispose`, and the room and the mug are built anew for every session, so
+ * without this each session left the last one's behind. A material or
+ * geometry two meshes share is disposed twice, which three takes as once.
  */
-function disposeMeshes(root: THREE.Object3D): void {
-  root.traverse((object) => {
-    if (object instanceof THREE.Mesh) {
-      object.geometry.dispose();
-      for (const material of [object.material].flat()) {
-        material.dispose();
-      }
-    }
-  });
-}
-
-/**
- * Takes down with its mesh whatever it holds on the GPU (`disposeMeshes`).
- */
-const disposedWithIt = effects((object: THREE.Object3D) => {
+const disposedWithIt = effects((root: THREE.Object3D) => {
   onCleanup(() => {
-    disposeMeshes(object);
+    root.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose();
+        for (const material of [object.material].flat()) {
+          material.dispose();
+        }
+      }
+    });
   });
 });
 

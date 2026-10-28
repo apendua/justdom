@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { Signal } from "@apendua/signal";
 import {
   getBorderBoxSize,
   getBoxOffset,
@@ -6,6 +7,7 @@ import {
   getComputedStyleCached,
   getOpacity,
   getParentElement,
+  getTextDataCached,
   hasTransform,
   isTransformed,
   movesAgainstScroll,
@@ -13,9 +15,11 @@ import {
   nodeDerived,
 } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { composeTransform, getOwnTransform } from "./cssTransform.js";
+import { composeTransform, getOwnTransform, hasDepthTransform } from "./cssTransform.js";
 import { isSvgElement } from "./plugins.js";
 import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
+import { getShadowBleed, parseTextShadow } from "./textHelpers.js";
+import { isTextInput } from "./typing.js";
 
 /**
  * @import {Derived} from '@apendua/signal';
@@ -64,6 +68,30 @@ import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
  * `<svg>` are drawn level with it (`getReach` gives it none) and their
  * materials, in `svg/`, write no depth and take no polygon offset, so draw
  * order alone keeps them over the box behind them.
+ *
+ * A panel can be drawn in paint order instead (`drawInPaintOrder`,
+ * `isPaintOrdered`), the model that is to replace the step
+ * (`docs/freedom-paint-order-default-plan.md`). Every element belongs to a
+ * layer (`getLayer`): the root, an overlay or an element transformed out of
+ * its parent's plane. The draw level counts from the layer's root, with no
+ * exception for an opaque box: what a page paints later draws later, so
+ * nothing has to hide anything by depth. Each layer draws from a base
+ * (`getLayerBase`), which a walk of the panel's layers in their tree
+ * (`layerTree.js`) writes, ordering them by their planes. The limits below
+ * that speak of steps or of opaque boxes do not apply to such a panel; the
+ * rest do, and it has four of its own:
+ *
+ * - A piece of a layer cut by other layers' planes is drawn with its first
+ *   `MAX_HALF_PLANES` half-planes (`halfPlanes.js`), and no more.
+ * - Two layers in one plane are ordered as siblings are, by the sign of
+ *   `z-index` (`comparePaintOrder` in `layerTree.js`).
+ * - A `z-index` inside a box that forms no stacking context is read where
+ *   the box is, among its siblings, and not let out of it as a page does.
+ * - An element's painted bounds take in its own text's shadow but not the
+ *   2 px a run's glyphs, drawn one by one, can come out wider than their
+ *   box (`TEXT_RENDER_BLEED` in `textHelpers.js`). Where they do, the
+ *   overhang is ink, and an item it overlaps can share its level and draw
+ *   over or under it.
  *
  * The model's limits, each a place where the scene and the page can
  * disagree:
@@ -164,6 +192,84 @@ export function isOverlay(element) {
 }
 
 /**
+ * The roots of the panels drawn in paint order. A root goes here before
+ * anything in it is mirrored, and an element asks through
+ * `isPaintOrdered`. A node cache, so that the mark goes with the portal
+ * that made it: a root mirrored again by a portal that does not ask for
+ * paint order starts clean (`nodeCache` in `mirror.js`).
+ *
+ * @type {WeakMap<Element, true>}
+ */
+const paintOrderRoots = nodeCache();
+
+/**
+ * Draw the panel under `root` in paint order: the draw level counted from
+ * the root of the element's layer (`getLayer`), and each layer at the base
+ * the panel's walk gives it (`getLayerBase`).
+ *
+ * @param {Element} root
+ */
+export function drawInPaintOrder(root) {
+  paintOrderRoots.set(root, true);
+}
+
+/** @type {WeakMap<Element, Derived<boolean>>} */
+const paintOrderedCache = nodeCache();
+
+/**
+ * Whether the panel the element is in draws in paint order
+ * (`drawInPaintOrder`).
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+export function isPaintOrdered(element) {
+  let signal = paintOrderedCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(element, () => {
+      const parent = getPanelParent(element);
+      return parent ? isPaintOrdered(parent) : paintOrderRoots.has(element);
+    });
+    paintOrderedCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<Element, Derived<Element>>} */
+const layerCache = nodeCache();
+
+/**
+ * The root of the layer the element is drawn in, under paint order: the
+ * element itself when it is the panel's root, an overlay (`isOverlay`) or
+ * transformed out of its parent's plane (`hasDepthTransform`), and its
+ * parent's layer otherwise. What is inside an `<svg>` is drawn within the
+ * `<svg>`'s content level, so an SVG element is never a layer of its own.
+ * Gated by identity, so a restyle that leaves an element in its layer
+ * stops here.
+ *
+ * @param {Element} element
+ * @returns {Element}
+ */
+export function getLayer(element) {
+  let signal = layerCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(element, () => {
+      const parent = getPanelParent(element);
+      if (!parent) {
+        return element;
+      }
+      const html = /** @type {HTMLElement} */ (element);
+      if (!isSvgElement(element) && (isOverlay(html) || hasDepthTransform(html))) {
+        return element;
+      }
+      return getLayer(parent);
+    });
+    layerCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/**
  * How far apart in the draw order two elevations are. An overlay is drawn
  * after everything below it however shallow the overlay is, so each
  * elevation takes a band of draw levels of its own, wide enough that no
@@ -189,7 +295,84 @@ export const ELEVATION_BAND = 100_000;
  * @returns {number}
  */
 export function getContentRenderOrder(element) {
-  return getElevation(element) * ELEVATION_BAND + getDrawLevel(element) + 1;
+  return getRenderBand(element) + getDrawLevel(element) + 1;
+}
+
+/**
+ * How many draw levels a piece of a layer drawn in paint order has to itself
+ * (`getLayerBase`): more than the deepest pile of cards a layer climbs
+ * through, a level a card. A box's content and a box bucket's bias stay
+ * within its level's place, so a piece's draws never reach the next's.
+ */
+export const PIECE_BAND = 4096;
+
+/**
+ * The first order of the band `order` is in: the base of the piece that
+ * draws at it.
+ *
+ * @param {number} order
+ * @returns {number}
+ */
+export function bandBase(order) {
+  return Math.floor(order / PIECE_BAND) * PIECE_BAND;
+}
+
+/** @type {WeakMap<Element, Signal<number | null>>} */
+const layerBases = new WeakMap();
+
+/**
+ * @param {Element} layer
+ * @returns {Signal<number | null>}
+ */
+function layerBaseSignal(layer) {
+  let signal = layerBases.get(layer);
+  if (!signal) {
+    signal = Signal.of(/** @type {number | null} */ (null));
+    layerBases.set(layer, signal);
+  }
+  return signal;
+}
+
+/**
+ * Where the first piece of a layer of a panel drawn in paint order starts in
+ * the scene's draw order: what the panel's walk last wrote (`setLayerBase`),
+ * which is the piece's place in the walk, or, before any walk, a
+ * `PIECE_BAND` for each layer it is nested in. Reactive, so a layer the
+ * walk moves takes its boxes and marks with it.
+ *
+ * @param {Element} layer
+ * @returns {number}
+ */
+export function getLayerBase(layer) {
+  return (
+    layerBaseSignal(layer).get() ?? getElevation(/** @type {HTMLElement} */ (layer)) * PIECE_BAND
+  );
+}
+
+/**
+ * Put a layer's first piece where the panel's walk puts it.
+ *
+ * @param {Element} layer
+ * @param {number} base A whole number of `PIECE_BAND`s.
+ */
+export function setLayerBase(layer, base) {
+  const signal = layerBaseSignal(layer);
+  if (signal.get() !== base) {
+    signal.set(base);
+  }
+}
+
+/**
+ * Where the element's draw level counts from in the scene's draw order: its
+ * elevation band, or in paint order its layer's base.
+ *
+ * @param {HTMLElement} element
+ * @returns {number}
+ */
+export function getRenderBand(element) {
+  return isPaintOrdered(element)
+    ? getLayerBase(getLayer(element))
+    : getElevation(element) * ELEVATION_BAND;
 }
 
 /** @type {WeakMap<HTMLElement, Derived<number>>} */
@@ -198,7 +381,9 @@ const elevationCache = nodeCache();
 /**
  * How many overlays this element sits inside, counting itself. Nothing in a
  * plain panel is elevated at all; a dropdown menu is at 1, and a dropdown
- * inside a modal is at 2.
+ * inside a modal is at 2. In a panel drawn in paint order it counts layers
+ * instead (`getLayer`): the root is at 0, and each overlay or element
+ * transformed out of its parent's plane one past the layer it is in.
  *
  * Unlike the offset each layer contributes to its own position, this is an
  * absolute figure: `renderOrder` is compared across the whole scene rather
@@ -215,6 +400,10 @@ export function getElevation(element) {
   let signal = elevationCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
+      if (isPaintOrdered(element)) {
+        const parent = getPanelParent(element);
+        return parent ? (getLayer(element) === element ? 1 : 0) + getElevation(parent) : 0;
+      }
       const parent = getParentElement(element);
       return (isOverlay(element) ? 1 : 0) + (parent ? getElevation(parent) : 0);
     });
@@ -287,7 +476,7 @@ const paintLayerCache = nodeCache();
  * @param {Element} element
  * @returns {PaintLayer}
  */
-function getPaintLayer(element) {
+export function getPaintLayer(element) {
   let signal = paintLayerCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
@@ -302,6 +491,49 @@ function getPaintLayer(element) {
     paintLayerCache.set(element, signal);
   }
   return signal.get();
+}
+
+/** What an element without a shadowed text of its own adds to its box. */
+const NO_BLEED = Object.freeze({ right: 0, bottom: 0 });
+
+/**
+ * How far the shadow of `element`'s own text reaches past its box: none
+ * when it has no text of its own, since `text-shadow` is inherited by
+ * every descendant and inked only where there are glyphs.
+ *
+ * @param {HTMLElement} element
+ * @returns {{ right: number, bottom: number }}
+ */
+function ownShadowBleed(element) {
+  // The shadow first: nearly every element has text and no shadow, and its
+  // bounds then need not follow its children.
+  const shadow = parseTextShadow(getComputedStyleCached(element).textShadow);
+  if (!shadow || !drawsOwnText(element)) {
+    return NO_BLEED;
+  }
+  return getShadowBleed(shadow);
+}
+
+/**
+ * Whether `element` draws text of its own: a text child with characters
+ * in it, read through its character data so that text filled in later
+ * counts, or a field, whose value or placeholder `textInput.js` draws as
+ * a run styled by the field itself. The portal picks fields by the same
+ * test (`isTextInput`).
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function drawsOwnText(element) {
+  if (isTextInput(element)) {
+    return true;
+  }
+  for (const node of getChildNodes(element)) {
+    if (node.nodeType === Node.TEXT_NODE && getTextDataCached(/** @type {Text} */ (node)).trim()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Scratch for transforming an element's corners into its parent's frame. */
@@ -319,7 +551,8 @@ const paintedBoundsCache = nodeCache();
  * corners span, which can be more than it does. A perspective that puts a
  * corner at or behind the eye gives no such box, and the element is taken
  * to cover everything. Descendants that overflow the border box are not
- * counted.
+ * counted. On a panel drawn in paint order the box takes in the shadow of
+ * the element's own text, which is ink past it (`getShadowBleed`).
  *
  * @param {HTMLElement} element
  * @returns {PaintedBounds}
@@ -337,7 +570,10 @@ function getPaintedBounds(element) {
         if (!isTransformed(element) && movesAgainstScroll(element)) {
           return EVERYWHERE;
         }
-        const { width, height } = getBorderBoxSize(element);
+        const size = getBorderBoxSize(element);
+        const bleed = isPaintOrdered(element) ? ownShadowBleed(element) : NO_BLEED;
+        const width = size.width + bleed.right;
+        const height = size.height + bleed.bottom;
         const offset = getBoxOffset(element);
         const own = getOwnTransform(element);
         if (!own) {
@@ -534,6 +770,17 @@ export function getLift(element) {
   return signal.get();
 }
 
+/**
+ * The element's parent within its panel, or null for the panel's root,
+ * above which everything is the page's.
+ *
+ * @param {Element} element
+ * @returns {HTMLElement | null}
+ */
+function getPanelParent(element) {
+  return element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
+}
+
 /** @type {WeakMap<Element, Derived<number>>} */
 const paintRankCache = nodeCache();
 
@@ -559,7 +806,7 @@ export function getPaintRank(element) {
   let signal = paintRankCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
-      const parent = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
+      const parent = getPanelParent(element);
       const own = getLift(element) / CONTENT_STEP;
       return parent ? getPaintRank(parent) + own : own;
     });
@@ -637,6 +884,9 @@ const drawLevelCache = nodeCache();
  * what `ELEVATION_BAND` is sized for. A hover or a transition that takes a
  * card's opacity across 1 moves it, and what it carries, between buckets.
  *
+ * In a panel drawn in paint order the level counts from the element's
+ * layer instead, with no exception for an opaque box (`getLayerLevel`).
+ *
  * @param {Element} element
  * @returns {number}
  */
@@ -644,8 +894,11 @@ export function getDrawLevel(element) {
   let signal = drawLevelCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
-      const parent = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
+      const parent = getPanelParent(element);
       if (!parent) {
+        if (isPaintOrdered(element)) {
+          return 0;
+        }
         // The root of a panel: everything above it is the page's, and only
         // its depth in the document counts.
         let level = 0;
@@ -653,6 +906,9 @@ export function getDrawLevel(element) {
           level += 1;
         }
         return level;
+      }
+      if (isPaintOrdered(element)) {
+        return getLayerLevel(element, parent);
       }
       let level = getDrawLevel(parent) + 1;
       const cleared = getClearedSiblings(element);
@@ -672,6 +928,33 @@ export function getDrawLevel(element) {
   return signal.get();
 }
 
+/**
+ * `getDrawLevel` under paint order, for an element that is not the panel's
+ * root. A layer's root is level 0 and the rest of the layer counts from it,
+ * a level past the parent, so its levels are the order a page paints it in
+ * and no quad has to hide anything by depth: every element that clears a
+ * sibling draws after everything that sibling draws, opaque or not, at
+ * `getDrawLevel(sibling) + getDrawReach(sibling) + 1`, counting only the
+ * siblings in its layer: the panel's walk places the rest, sibling layers
+ * included.
+ *
+ * @param {Element} element
+ * @param {Element} parent
+ * @returns {number}
+ */
+function getLayerLevel(element, parent) {
+  if (getLayer(element) === element) {
+    return 0;
+  }
+  let level = getDrawLevel(parent) + 1;
+  for (const { sibling } of getClearedSiblings(element)) {
+    if (getLayer(sibling) !== sibling) {
+      level = Math.max(level, getDrawLevel(sibling) + getDrawReach(sibling) + 1);
+    }
+  }
+  return level;
+}
+
 /** @type {WeakMap<Element, Derived<number>>} */
 const drawReachCache = nodeCache();
 
@@ -679,7 +962,8 @@ const drawReachCache = nodeCache();
  * How many levels past its own draw level an element's subtree draws: 1 for
  * its own content alone, and more for each descendant whose box or content
  * draws later. An overlay inside it is left out, since its band draws after
- * this one whatever its level. So is what is inside an `<svg>`, which is
+ * this one whatever its level, and in paint order any layer inside it, for
+ * the same reason. So is what is inside an `<svg>`, which is
  * drawn within the `<svg>`'s content level (`paintSlot` in `svg/shape.js`).
  * Counted like `getReach`, in levels rather than px.
  *
@@ -700,7 +984,7 @@ function getDrawReach(element) {
           continue;
         }
         const child = /** @type {HTMLElement} */ (node);
-        if (isOverlay(child)) {
+        if (isPaintOrdered(child) ? getLayer(child) === child : isOverlay(child)) {
           continue;
         }
         reach = Math.max(reach, getDrawLevel(child) - level + getDrawReach(child));

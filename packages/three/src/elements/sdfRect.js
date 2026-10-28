@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import {
+  createHalfPlaneUniforms,
+  HALF_PLANES_FRAGMENT_GLSL,
+  HALF_PLANES_VERTEX_GLSL,
+  passHalfPlaneWorld,
+} from "./halfPlanes.js";
 import { RAMP_WIDTH, rampUniforms } from "./gradient.js";
 import { keepProgram } from "./programKeeper.js";
 
@@ -202,10 +208,12 @@ vec4 withGradient(vec4 fill, vec2 q, vec4 gradient, vec4 geometry, vec4 tile, ve
 `;
 
 const vertexShader = /* glsl */ `
+${HALF_PLANES_VERTEX_GLSL}
 varying vec2 vUnit;
 void main() {
   vUnit = position.xy;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  ${passHalfPlaneWorld("modelMatrix * vec4(position, 1.0)")}
 }
 `;
 
@@ -288,9 +296,11 @@ uniform vec4 uGradient;
 uniform vec4 uGradientGeometry;
 uniform vec4 uGradientTile;
 uniform vec2 uGradientRamp;
+${HALF_PLANES_FRAGMENT_GLSL}
 ${SDF_GLSL}
 ${GRADIENT_GLSL}
 void main() {
+  clipHalfPlanes();
   vec2 coverages = sdfCoverages(vUnit, uSize, uRadii, uBorder, uClip, uClipRadii);
   float fillCoverage = coverages.x;
   float borderCoverage = coverages.y;
@@ -366,6 +376,9 @@ export function createRectUniforms() {
     uGradientRamp: { value: new THREE.Vector2(0, 1) },
     uRamp: rampUniforms.uRamp,
     uRampHeight: rampUniforms.uRampHeight,
+    // Which piece of its layer the box is drawn as, in a panel drawn in
+    // paint order (`halfPlanes.js`).
+    ...createHalfPlaneUniforms(),
   };
 }
 

@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import {
+  carryHalfPlanes,
+  HALF_PLANES_FRAGMENT_GLSL,
+  HALF_PLANES_VERTEX_GLSL,
+  passHalfPlaneWorld,
+} from "./halfPlanes.js";
 
 /**
  * @import {Raycaster, Intersection, Object3D} from 'three';
@@ -211,8 +217,15 @@ export const IDENTITY_CLIP_MATRIX = Object.freeze({ value: new THREE.Matrix3() }
  * @returns {void}
  */
 export function applyClip(material, uniform, matrix = IDENTITY_CLIP_MATRIX) {
-  material.onBeforeCompile = (shader) => {
-    patchClip(shader, uniform, matrix);
+  carryHalfPlanes(material);
+  // A function and not an arrow: three calls it on the material it compiles
+  // for, and that material's half-planes are the ones to hand the shader.
+  /**
+   * @this {THREE.Material}
+   * @param {import('three').WebGLProgramParametersWithUniforms} shader
+   */
+  material.onBeforeCompile = function (shader) {
+    patchClip(shader, uniform, matrix, this);
   };
   // Programs are cached by material type and defines, neither of which the
   // patch above changes. Without a distinct key a clipped material can be
@@ -227,22 +240,34 @@ export function applyClip(material, uniform, matrix = IDENTITY_CLIP_MATRIX) {
  * @param {import('three').WebGLProgramParametersWithUniforms} shader
  * @param {{ value: THREE.Vector4 }} uniform
  * @param {{ value: THREE.Matrix3 }} matrix
+ * @param {THREE.Material} material The material compiled for, whose
+ *   half-planes (`carryHalfPlanes`) the shader tests.
  * @returns {void}
  */
-function patchClip(shader, uniform, matrix) {
+function patchClip(shader, uniform, matrix, material) {
   shader.uniforms.clipBox = uniform;
   shader.uniforms.clipMatrix = matrix;
+  Object.assign(shader.uniforms, carryHalfPlanes(material));
   shader.vertexShader = shader.vertexShader
     .replace(
       "void main() {",
-      "uniform mat3 clipMatrix;\nvarying vec2 vClipPosition;\nvoid main() {",
+      `${HALF_PLANES_VERTEX_GLSL}\n` +
+        "uniform mat3 clipMatrix;\nvarying vec2 vClipPosition;\nvoid main() {",
     )
     .replace(
       "#include <begin_vertex>",
       "#include <begin_vertex>\n\tvClipPosition = (clipMatrix * vec3(position.xy, 1.0)).xy;",
+    )
+    .replace(
+      "#include <project_vertex>",
+      `#include <project_vertex>\n\t${passHalfPlaneWorld("modelMatrix * vec4(transformed, 1.0)")}`,
     );
   shader.fragmentShader = shader.fragmentShader
-    .replace("void main() {", "uniform vec4 clipBox;\nvarying vec2 vClipPosition;\nvoid main() {")
+    .replace(
+      "void main() {",
+      `${HALF_PLANES_FRAGMENT_GLSL}\nuniform vec4 clipBox;\nvarying vec2 vClipPosition;\n` +
+        "void main() {\n\tclipHalfPlanes();",
+    )
     .replace(
       "#include <alphatest_fragment>",
       "#include <alphatest_fragment>\n" +
@@ -280,8 +305,13 @@ function patchClip(shader, uniform, matrix) {
  * @returns {void}
  */
 export function applyReveal(material, clip, cut) {
-  material.onBeforeCompile = (shader) => {
-    patchClip(shader, clip, IDENTITY_CLIP_MATRIX);
+  carryHalfPlanes(material);
+  /**
+   * @this {THREE.Material}
+   * @param {import('three').WebGLProgramParametersWithUniforms} shader
+   */
+  material.onBeforeCompile = function (shader) {
+    patchClip(shader, clip, IDENTITY_CLIP_MATRIX, this);
     shader.uniforms.revealCut = cut;
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", "uniform vec4 revealCut;\nvoid main() {")

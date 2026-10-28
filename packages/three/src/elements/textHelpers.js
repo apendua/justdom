@@ -564,15 +564,30 @@ export function parseTextShadow(textShadow) {
  * @returns {{ right: number, bottom: number }}
  */
 export function getRenderBleed(shadow) {
+  const { right, bottom } = getShadowBleed(shadow);
+  return {
+    right: TEXT_RENDER_BLEED + right,
+    bottom: TEXT_RENDER_BLEED + bottom,
+  };
+}
+
+/**
+ * How far a run's shadow reaches past its layout box, to the right and to
+ * the bottom: the part of the bleed that is ink a page paints, where the
+ * kerning bleed (`TEXT_RENDER_BLEED`) is room for glyphs drawn one by one.
+ * A shadow offset up or to the left is cut at the texture's edge, so it
+ * reaches no further than the box.
+ *
+ * @param {TextShadow | null} shadow
+ * @returns {{ right: number, bottom: number }}
+ */
+export function getShadowBleed(shadow) {
   if (!shadow) {
-    return {
-      right: TEXT_RENDER_BLEED,
-      bottom: TEXT_RENDER_BLEED,
-    };
+    return { right: 0, bottom: 0 };
   }
   return {
-    right: TEXT_RENDER_BLEED + Math.max(0, shadow.offsetX) + shadow.blur,
-    bottom: TEXT_RENDER_BLEED + Math.max(0, shadow.offsetY) + shadow.blur,
+    right: Math.max(0, shadow.offsetX) + shadow.blur,
+    bottom: Math.max(0, shadow.offsetY) + shadow.blur,
   };
 }
 

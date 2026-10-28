@@ -116,11 +116,10 @@ export const InputFocusContext = createProperty(
 const CARET_WIDTH = 1;
 
 /**
- * How far past its field's content order the caret draws on a panel in
- * paint order, so the bar is drawn over the glyphs it stands among. Both
- * are level with the field and write no depth, so the order alone says
- * which is on top. Its place in the level is in the table at
- * `BOX_BUCKET_BIAS` in `boxBatch.js`.
+ * How far past its field's content order the caret draws, so the bar is
+ * drawn over the glyphs it stands among. Both are level with the field and
+ * write no depth, so the order alone says which is on top. Its place in the
+ * level is in the table at `BOX_BUCKET_BIAS` in `boxBatch.js`.
  */
 export const CARET_ORDER_BIAS = 0.125;
 
@@ -538,9 +537,7 @@ function fieldContent(ctx, element, surface, focus, locator) {
   const caret = () => {
     const caretMesh = new THREE.Mesh(rectGeometry);
     surface.clipMesh(caretMesh);
-    if (surface.paintOrdered) {
-      registerDrawOrder(caretMesh);
-    }
+    registerDrawOrder(caretMesh);
     const caretClipUniform = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
     return $(caretMesh, [
       set("material", () => {
@@ -566,8 +563,7 @@ function fieldContent(ctx, element, surface, focus, locator) {
         placeAndScale(obj, x, y, -0.02, CARET_WIDTH, Math.max(height, 1), 1);
         const clip = toLocalClipBox(contentClip.get(), x, y);
         caretClipUniform.value.set(clip.left, clip.top, clip.right, clip.bottom);
-        obj.renderOrder =
-          surface.contentRenderOrder() + (surface.paintOrdered ? CARET_ORDER_BIAS : 0);
+        obj.renderOrder = surface.contentRenderOrder() + CARET_ORDER_BIAS;
       }),
       effects((obj) => {
         obj.visible = !surface.hidden();

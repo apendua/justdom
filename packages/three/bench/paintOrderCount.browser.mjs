@@ -45,14 +45,11 @@ function countPage(page, base) {
 /** @type {[string, PanelCount][]} */
 const rows = [];
 for (const app of chosenApps(Object.keys(APPS))) {
-  await APPS[app](
-    async (page, base, label) => {
-      for (const [name, count] of await countPage(page, base)) {
-        rows.push([`${label}: ${name}`, count]);
-      }
-    },
-    [""],
-  );
+  await APPS[app](async (page, base, label) => {
+    for (const [name, count] of await countPage(page, base)) {
+      rows.push([`${label}: ${name}`, count]);
+    }
+  });
 }
 console.log(formatCounts(rows));
 

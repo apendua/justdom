@@ -3,14 +3,14 @@
  * them.
  *
  * A rebuild walks the whole panel and writes every box or run into its
- * bucket again, moved or not, and the buckets used to mark every buffer they
+ * draw again, moved or not, and the draws used to mark every buffer they
  * hold for upload afterwards. So one label changing on a panel, a clock that
- * counts tenths of a second, re-sent every bucket the panel has: five
- * buffers a text bucket and ten a box bucket, each a `bufferSubData` and
- * so a round trip to the GPU process, however few bytes it carries.
+ * counts tenths of a second, re-sent every draw the panel has: ten buffers
+ * a draw, each a `bufferSubData` and so a round trip to the GPU process,
+ * however few bytes it carries.
  *
  * Each buffer is compared instead with a copy of what it held when it was
- * last marked, over the instances the bucket draws, and marked only when the
+ * last marked, over the instances the draw draws, and marked only when the
  * two differ. Past the drawn instances nothing is compared: a rebuild writes
  * only the instances it draws, so the rest still hold what they held the
  * last time they were drawn, and the copy has that too.
@@ -22,7 +22,7 @@
 
 /**
  * What each buffer held when it was last marked, keyed by the attribute so
- * the copy goes when the bucket does.
+ * the copy goes when the draw does.
  *
  * @type {WeakMap<BufferAttribute, TypedArray>}
  */
@@ -33,7 +33,7 @@ const marked = new WeakMap();
  * what it held the last time it was marked, or if it has never been marked.
  *
  * @param {BufferAttribute} attribute
- * @param {number} count How many of its instances the bucket draws.
+ * @param {number} count How many of its instances the draw draws.
  * @returns {void}
  */
 export function markChanged(attribute, count) {

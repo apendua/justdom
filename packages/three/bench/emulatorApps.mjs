@@ -23,10 +23,10 @@ const LOAD_TIMEOUT = 240_000;
 
 /**
  * @typedef {import("playwright-core").Page} Page
- * @typedef {(page: Page, base: string, label: string, query: string) => Promise<void>} Visit
+ * @typedef {(page: Page, base: string, label: string) => Promise<void>} Visit
  *   Measure a page in a session, every panel loaded. `base` is the app's
- *   served URL, its Vite `base` included, `label` names the look or app,
- *   and `query` is the one of the queries the page was opened with.
+ *   served URL, its Vite `base` included, and `label` names the look or
+ *   app.
  */
 
 /**
@@ -71,100 +71,90 @@ async function enter(page, url, shown, ready, ids = []) {
 }
 
 /**
- * Each app, opened once for each of `queries`, each added to its URL, and
- * each page handed to `visit`: one server and one browser an app, and a
- * page a look and a query.
+ * Each app, each page of it handed to `visit`: one server and one browser
+ * an app, and a page a look.
  *
- * @type {Record<string, (visit: Visit, queries: string[]) => Promise<void>>}
+ * @type {Record<string, (visit: Visit) => Promise<void>>}
  */
 export const APPS = {
-  async desk(visit, queries) {
+  async desk(visit) {
     const { url, server } = await serve("desk");
     /** @type {typeof import("../../../apps/desk/src/looks.ts")} */
     const looks = /** @type {any} */ (await server.ssrLoadModule("/src/looks.ts"));
     const browser = await launch();
     try {
       for (const look of looks.LOOKS) {
-        for (const query of queries) {
-          const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
-          await enter(
-            page,
-            `${url}?look=${look.id}&emulator=bare${query}`,
-            "body",
-            (zones) =>
-              zones.every((zone) =>
-                document.getElementById(zone)?.hasAttribute("data-xr-portal"),
-              ) && !document.querySelector("[data-xr-loading]"),
-            look.placements.map((placement) => placement.id),
-          );
-          await visit(page, url, `desk, ${look.name}`, query);
-          await page.close();
-        }
+        const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
+        await enter(
+          page,
+          `${url}?look=${look.id}&emulator=bare`,
+          "body",
+          (zones) =>
+            zones.every((zone) => document.getElementById(zone)?.hasAttribute("data-xr-portal")) &&
+            !document.querySelector("[data-xr-loading]"),
+          look.placements.map((placement) => placement.id),
+        );
+        await visit(page, url, `desk, ${look.name}`);
+        await page.close();
       }
     } finally {
       await closeAll(browser, server);
     }
   },
 
-  async showcase(visit, queries) {
+  async showcase(visit) {
     /** @type {typeof import("../../../apps/showcase-xr/tests/harness.js")} */
     const harness = await import(join(REPO, "apps/showcase-xr/tests/harness.js"));
     const { url, server } = await serve("showcase-xr");
     const browser = await launch();
     try {
-      for (const query of queries) {
-        const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: harness.VIEWPORT });
-        await page.goto(`${url}?emulator=bare${query}`, { waitUntil: "load" });
-        await page.waitForSelector("#ARButton");
-        await harness.enterSession(page, { freeze: false });
-        await visit(page, url, "showcase", query);
-        await page.close();
-      }
+      const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: harness.VIEWPORT });
+      await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
+      await page.waitForSelector("#ARButton");
+      await harness.enterSession(page, { freeze: false });
+      await visit(page, url, "showcase");
+      await page.close();
     } finally {
       await closeAll(browser, server);
     }
   },
 
-  async knights(visit, queries) {
+  async knights(visit) {
     const { url, server } = await serve("knights");
     const browser = await launch();
     try {
-      for (const query of queries) {
-        const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
-        await enter(
-          page,
-          `${url}?emulator=bare${query}`,
-          "#root svg polygon",
-          () =>
-            !!document.querySelector("#root[data-xr-portal]") &&
-            !document.querySelector("[data-xr-loading]"),
-        );
-        await visit(page, url, "knights", query);
-        await page.close();
-      }
+      const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
+      await enter(
+        page,
+        `${url}?emulator=bare`,
+        "#root svg polygon",
+        () =>
+          !!document.querySelector("#root[data-xr-portal]") &&
+          !document.querySelector("[data-xr-loading]"),
+      );
+      await visit(page, url, "knights");
+      await page.close();
     } finally {
       await closeAll(browser, server);
     }
   },
 
-  async euclid(visit, queries) {
+  async euclid(visit) {
     const { url, server } = await serve("euclid");
     const browser = await launch();
     try {
-      for (const query of queries) {
-        const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
-        await enter(
-          page,
-          `${url}?emulator=bare${query}`,
-          "#canvas svg circle",
-          (ids) =>
-            ids.every((id) => document.querySelector(`#${id}[data-xr-portal]`)) &&
-            !document.querySelector("[data-xr-loading]"),
-          ["toolbar", "editor", "canvas"],
-        );
-        await visit(page, url, "euclid", query);
-        await page.close();
-      }
+      const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
+      await enter(
+        page,
+        `${url}?emulator=bare`,
+        "#canvas svg circle",
+        (ids) =>
+          ids.every((id) => document.querySelector(`#${id}[data-xr-portal]`)) &&
+          !document.querySelector("[data-xr-loading]"),
+        ["toolbar", "editor", "canvas"],
+      );
+      await visit(page, url, "euclid");
+      await page.close();
     } finally {
       await closeAll(browser, server);
     }

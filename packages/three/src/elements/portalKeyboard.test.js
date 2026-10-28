@@ -5,7 +5,6 @@ import { $, attr, children } from "@apendua/justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";
-import { isPaintOrdered } from "./elevation.js";
 import {
   createKeyboardSlot,
   dismissKeyboardAtSessionEnd,
@@ -290,27 +289,6 @@ describe("the portal's keyboard", () => {
     assert.equal(panel.parent.children.length, 1);
 
     panel.cleanup();
-  });
-
-  test("is drawn in paint order when the panel it types for is", async () => {
-    // `paintOrder` is the one panel option besides haptics the board takes
-    // from its panel, so that a measurement of one build is not partly the
-    // other.
-    const panel = keyboardPanel((create) => ({
-      options: { keyboard: { gap: 20, create }, paintOrder: true },
-    }));
-    try {
-      await settle();
-      panel.press(panel.fieldObject());
-      await settle();
-      const board = [...document.querySelectorAll("[data-xr-portal]")].find(
-        (root) => root !== panel.root,
-      );
-      assert.ok(board, "the board is up");
-      assert.ok(isPaintOrdered(board), "the board is drawn in paint order");
-    } finally {
-      panel.cleanup();
-    }
   });
 
   test("is placed below the panel's bottom edge, reclined", async () => {
@@ -606,13 +584,9 @@ describe("the portal's keyboard", () => {
   /**
    * The caret and the run of the field's value, once the field has the
    * focus.
-   *
-   * @param {boolean} paintOrder
    */
-  async function caretAndRun(paintOrder) {
-    const panel = keyboardPanel((create) => ({
-      options: { keyboard: { gap: 20, create }, paintOrder },
-    }));
+  async function caretAndRun() {
+    const panel = keyboardPanel();
     await settle();
     panel.press(panel.fieldObject());
     await settle();
@@ -633,29 +607,17 @@ describe("the portal's keyboard", () => {
     return { panel, caret, run };
   }
 
-  test("the caret on a panel in paint order is drawn after the value", async () => {
+  test("the caret is drawn after the value", async () => {
     // Neither writes depth, and the caret's hair of a lead puts it in front
     // of the glyphs by distance only from in front, so the order alone says
     // which is on top. Goes red without `CARET_ORDER_BIAS`, which leaves the
     // two to three's sort by distance, and with the caret left out of the
     // hit test's draw order (`registerDrawOrder`).
-    const { panel, caret, run } = await caretAndRun(true);
+    const { panel, caret, run } = await caretAndRun();
     try {
       assert.ok(caret && run, "a caret and the value's run");
       assert.equal(caret.renderOrder, run.renderOrder + CARET_ORDER_BIAS, "drawn after the glyphs");
       assert.equal(getObjectDrawOrder(caret), caret.renderOrder, "and so for the hit test");
-    } finally {
-      panel.cleanup();
-    }
-  });
-
-  test("the caret on a lifted panel draws at the value's order, a guard", async () => {
-    // What the option must not change: the lift's caret takes no rung.
-    const { panel, caret, run } = await caretAndRun(false);
-    try {
-      assert.ok(caret && run, "a caret and the value's run");
-      assert.equal(caret.renderOrder, run.renderOrder);
-      assert.equal(getObjectDrawOrder(caret), -Infinity, "nor a place in the hit test's order");
     } finally {
       panel.cleanup();
     }

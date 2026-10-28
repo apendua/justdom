@@ -1,9 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
-import {
-  followOutlinesQuery,
-  followThemingQuery,
-  paintOrderQuery,
-} from "@apendua.dev/headset/theming";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 import createScene from "./components/Scene";
 import "./index.css";
 
@@ -23,13 +19,6 @@ followOutlinesQuery(query);
  * panels do not move. Anything else, or nothing, keeps the panel in.
  */
 const vectors = query.get("svg") !== "off";
-
-/**
- * `?paintOrder=off` draws every panel by the lift rather than in paint order
- * (`paintOrder` in freedom's panel options), to compare with paint order
- * (`docs/freedom-paint-order-plan.md`).
- */
-const paintOrder = paintOrderQuery(query);
 
 // The panel is inline SVG, which a portal does not draw on its own: the
 // plugin that does is a separate entry point, so that a scene without an SVG
@@ -69,7 +58,7 @@ Promise.resolve(
   .then((portalPlugins) => {
     // Registered once, for every panel in the scene.
     const scene = createScene({ vectors: portalPlugins !== null && vectors });
-    render(scene, { portalPlugins: portalPlugins ?? [], panelOptions: { paintOrder } }).subscribe({
+    render(scene, { portalPlugins: portalPlugins ?? [] }).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },

@@ -2,9 +2,8 @@ import * as THREE from "three";
 
 /*
  * What the panel's batches share about drawing instances: the matrices a
- * walk of the panel accumulates down the tree with, how a bucket, a text
- * array or a draw grows, and how its mesh goes (`boxBatch.js`,
- * `textBatch.js`, `paintBatch.js`).
+ * walk of the panel accumulates down the tree with, how a text array or a
+ * draw grows, and how a draw's mesh goes (`textBatch.js`, `paintBatch.js`).
  */
 
 /**
@@ -29,7 +28,7 @@ export function stackAt(depth) {
 }
 
 /**
- * The capacity a bucket, a text array or a draw grows to for `needed`
+ * The capacity a text array or a draw grows to for `needed`
  * instances or layers: double what it had, from `minimum`, until they fit.
  *
  * @param {number} capacity What it has now, 0 for none.
@@ -47,7 +46,7 @@ export function grownCapacity(capacity, needed, minimum) {
 
 /**
  * Take an instanced mesh out of the panel and free what it holds on the
- * device, but not its material, which a bucket that grows keeps.
+ * device, but not its material, which a draw that grows keeps.
  *
  * An instanced mesh has one buffer that its geometry does not own.
  * `instanceMatrix` is not a geometry attribute — the renderer uploads it
@@ -56,7 +55,7 @@ export function grownCapacity(capacity, needed, minimum) {
  * allocated on the device with nothing referring to it: the renderer's own
  * record of it is weakly keyed, so collecting the attribute drops the key
  * and the `deleteBuffer` that would have followed it. That is once per
- * growth — a bucket is rebuilt at double capacity every time it fills — and
+ * growth — a draw is rebuilt at double capacity every time it fills — and
  * once more per panel closed.
  *
  * @param {THREE.InstancedMesh} mesh

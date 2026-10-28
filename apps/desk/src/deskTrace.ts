@@ -20,7 +20,7 @@ import type { Readable } from "./session.js";
  *
  * Saved through the probe's route (`vite/probeResults.js`), so it is there
  * only under the dev server, as
- * `probe-results/paint-order-probe-desk-<look>-<build>-<time>.json`. The
+ * `probe-results/paint-order-probe-desk-<look>-<time>.json`. The
  * console says where, or why not.
  */
 
@@ -34,7 +34,6 @@ const MAX_ROWS = 30000;
 export function traceSessions(
   renderer: THREE.WebGLRenderer,
   desk: Readable<MountedDesk>,
-  build: string,
   pageReads: boolean,
 ): void {
   renderer.xr.addEventListener("sessionstart", () => {
@@ -76,7 +75,6 @@ export function traceSessions(
         void save({
           probe: "desk-trace",
           scene: `desk-${look.id}`,
-          build,
           userAgent: navigator.userAgent,
           board: boardId ?? null,
           runs: [{ action: "session", trace: rows }],

@@ -6,7 +6,7 @@ import { InteractionContext } from "../interactions.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { div } from "./div.js";
-import { getContentRenderOrder, getPaintRank } from "./elevation.js";
+import { getClearedSiblings, getContentRenderOrder } from "./elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "./gradient.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { getContentGroup } from "./contentGroup.js";
@@ -23,7 +23,8 @@ import { markedBox } from "./listMarker.js";
 import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
-import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
+import { BOX_BUCKET_BIAS, BoxBatchContext } from "./boxBatch.js";
+import { paintBatch } from "../test/textRuns.js";
 import { shape } from "../svg/shape.js";
 import { drawText } from "../svg/text.js";
 import { installSvgTextLayout } from "../test/svgTextLayout.js";
@@ -366,20 +367,20 @@ describe("div rendering", () => {
 });
 
 /**
- * That the object carries no CSS transform: its matrix moves every point by
- * the content step alone, leaving x and y where they were. Read off the
- * committed matrix rather than off `matrixAutoUpdate`, which is false for
- * every box a portal draws — transformed or not, they all write their own.
+ * That the object carries no CSS transform: its matrix leaves every point
+ * where it was. Read off the committed matrix rather than off
+ * `matrixAutoUpdate`, which is false for every box a portal draws —
+ * transformed or not, they all write their own.
  *
- * Layout offsets are all zero under jsdom, so the step in z is the whole of
- * what an untransformed box does.
+ * Layout offsets are all zero under jsdom, and a box sits in its parent's
+ * plane, so an untransformed box moves nothing.
  *
  * @param {THREE.Object3D} object
  * @param {string} message
  */
 function assertPlainTranslation(object, message) {
   const point = new THREE.Vector3(1, 1, 0).applyMatrix4(object.matrix);
-  assert.deepEqual([point.x, point.y, point.z], [1, 1, -2], message);
+  assert.deepEqual([point.x, point.y, point.z], [1, 1, 0], message);
 }
 
 describe("div transforms", () => {
@@ -393,12 +394,12 @@ describe("div transforms", () => {
     // untouched position/quaternion/scale on the next frame.
     assert.equal(object.matrixAutoUpdate, false);
 
-    // Layout offsets are all zero under jsdom, so the matrix is the CSS one
-    // plus the content step in z.
+    // Layout offsets are all zero under jsdom, so the matrix is the CSS one,
+    // in the parent's plane.
     const point = new THREE.Vector3(1, 1, 0).applyMatrix4(object.matrix);
     assert.equal(point.x, 2 * 1 + 10);
     assert.equal(point.y, 2 * 1 + 20);
-    assert.equal(point.z, -2);
+    assert.equal(point.z, 0);
 
     subscription.unsubscribe();
   });
@@ -414,7 +415,7 @@ describe("div transforms", () => {
     const { object, hoverWith, subscription } = setup("pointer");
     // Every box commits its own matrix, transformed or not, so the flag no
     // longer distinguishes the two. What does is the matrix: an untransformed
-    // box translates by the content step and nothing else.
+    // box here moves nothing.
     assertPlainTranslation(object, "untransformed to begin with");
 
     hoverWith("cursor: pointer; transform: matrix(1, 0, 0, 1, 4, 6)");
@@ -439,16 +440,16 @@ describe("div transforms", () => {
 
     restyleWith("");
     assertPlainTranslation(object, "back to ordinary positioning");
-    assert.equal(object.position.z, -2);
+    assert.equal(object.position.z, 0);
 
     subscription.unsubscribe();
   });
 });
 
 describe("div elevation", () => {
-  test("an ordinary box sits one content step in front of its parent", () => {
+  test("an ordinary box sits in its parent's plane", () => {
     const { object, subscription } = setup("default");
-    assert.equal(object.position.z, -2);
+    assert.equal(object.position.z, 0);
     subscription.unsubscribe();
   });
 
@@ -708,50 +709,16 @@ describe("div sibling stacking", () => {
     }
     clock.mirror.reflowed([hand]);
 
-    // The hand's quad is 1 px behind its origin, and has to be in front of
-    // the dial's own content, which sits at the dial's origin.
+    // The hand's box has to draw after the dial's own content.
     assert.ok(
-      clock.z(hand) + 1 < clock.z(dial),
-      `hand at ${clock.z(hand)} is not in front of the dial at ${clock.z(dial)}`,
+      clock.boxOrder(hand) > getContentRenderOrder(dial),
+      `hand at ${clock.boxOrder(hand)} draws before the dial's content at ` +
+        `${getContentRenderOrder(dial)}`,
     );
     clock.teardown();
   });
 
-  test("a later card covers the pin an earlier card floats over itself", () => {
-    const board = setupSiblings();
-    // `z-index: 0` makes the card a stacking context, as the desk's tilted
-    // cards are, so a page paints the pin with the card, under the next one.
-    const first = board.add("position: absolute; z-index: 0", [0, 0, 100, 100]);
-    const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
-    const second = board.add("position: absolute", [50, 50, 150, 150]);
-
-    // The pin's origin, where its text is drawn, against the second card's
-    // quad, both in the board's frame.
-    const pinZ = board.z(first) + board.z(pin);
-    assert.ok(
-      board.z(second) + 1 < pinZ,
-      `the second card's quad at ${board.z(second) + 1} is behind the pin at ${pinZ}`,
-    );
-    board.teardown();
-  });
-
-  test("a pin escapes a card that is no stacking context and stays over the next", () => {
-    const board = setupSiblings();
-    // No `z-index` and no transform: the pin's `z-index: 1` is compared with
-    // the second card's, and a page paints it over the second card.
-    const first = board.add("position: absolute", [0, 0, 100, 100]);
-    const pin = board.add("position: absolute; z-index: 1", [45, -5, 55, 5], first);
-    const second = board.add("position: absolute", [50, 50, 150, 150]);
-
-    const pinZ = board.z(first) + board.z(pin);
-    assert.ok(
-      pinZ + 1 < board.z(second),
-      `the pin's quad at ${pinZ + 1} is behind the second card at ${board.z(second)}`,
-    );
-    board.teardown();
-  });
-
-  test("a box held still while its siblings scroll past keeps every lift", () => {
+  test("a box held still while its siblings scroll past keeps its order", () => {
     const panel = setupSiblings();
     let scrollTop = 0;
     const scroller = panel.add("overflow: auto", [0, 0, 400, 200]);
@@ -762,12 +729,12 @@ describe("div sibling stacking", () => {
     const row = panel.add("position: relative", [0, 0, 0, 0], scroller);
     row.getBoundingClientRect = () => clientRect(0, 100 - scrollTop, 400, 40);
     panel.mirror.reflowed([row]);
-    const before = panel.z(row);
+    const before = panel.boxOrder(row);
 
     scrollTop = 80;
     panel.mirror.scrolled(scroller);
 
-    assert.equal(panel.z(row), before, "the row's lift followed the scroll");
+    assert.equal(panel.boxOrder(row), before, "the row's order followed the scroll");
     panel.teardown();
   });
 
@@ -780,14 +747,12 @@ describe("div sibling stacking", () => {
     const first = panel.add("position: absolute", [0, 0, 100, 100], wrapper);
     const second = panel.add("position: absolute", [300, 0, 400, 100], wrapper);
 
-    assert.deepEqual([panel.z(first), panel.z(second)], [-2, -2]);
+    assert.equal(panel.boxOrder(second), panel.boxOrder(first));
     panel.teardown();
   });
 
   test("a translucent card stepped over a label is drawn after it", () => {
-    // The card's quad writes depth in front of the label. Drawn first, it
-    // would keep the label out where it covers it; drawn after, it blends
-    // over the label as a page tints it.
+    // Drawn after the label, the card blends over it as a page tints it.
     const board = setupSiblings();
     const first = board.add("position: absolute", [0, 0, 100, 100]);
     const label = board.add("", [10, 10, 90, 30], first);
@@ -796,8 +761,6 @@ describe("div sibling stacking", () => {
       [50, 0, 150, 100],
     );
 
-    const labelZ = board.z(first) + board.z(label);
-    assert.ok(board.z(second) + 1 < labelZ, "the translucent card is stepped over the label");
     assert.ok(
       board.boxOrder(second) > board.boxOrder(label),
       "the label's box is drawn after the card that covers it",
@@ -856,12 +819,12 @@ describe("div sibling stacking", () => {
     board.teardown();
   });
 
-  test("an opaque card stepped over a label keeps the order of its siblings", () => {
-    // An opaque card hides the label wherever it is drawn, so it needs no
-    // later order, and a pile of them shares one bucket.
+  test("an opaque card stepped over a label draws after it all the same", () => {
+    // Nothing on a panel but its depth quad writes depth, so an opaque card
+    // hides the label only by drawing after it.
     const board = setupSiblings();
     const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
-    board.add("", [10, 10, 90, 30], first);
+    const label = board.add("", [10, 10, 90, 30], first);
     const second = board.add("position: absolute; background: white", [50, 0, 150, 100]);
     // A border is drawn in the same quad; an opaque one changes nothing.
     const third = board.add(
@@ -869,16 +832,15 @@ describe("div sibling stacking", () => {
       [60, 0, 160, 100],
     );
 
-    assert.equal(board.boxOrder(second), board.boxOrder(first));
-    assert.equal(board.boxOrder(third), board.boxOrder(first));
+    assert.ok(board.boxOrder(second) > getContentRenderOrder(label));
+    assert.ok(board.boxOrder(third) > getContentRenderOrder(second));
     board.teardown();
   });
 
   test("an empty positioned wrapper draws after what it is stepped over", () => {
-    // A fragment with nothing to paint is discarded, writing no depth, so a
-    // wrapper with no background or border hides nothing it is stepped over,
-    // and what that holds would draw over the wrapper's text, which writes
-    // no depth either, if it drew later.
+    // A wrapper with no background or border hides nothing it is stepped
+    // over, and what that holds would draw over the wrapper's text if it
+    // drew later.
     const board = setupSiblings();
     const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
     const label = board.add("", [10, 10, 90, 30], first);
@@ -891,7 +853,7 @@ describe("div sibling stacking", () => {
   test("a translucent card in an empty wrapper is drawn after the label it covers", () => {
     // The wrapper is what clears the sibling, and has nothing to paint. It
     // still waits for the sibling, so the card inside it blends over the
-    // label rather than keeping it out of the depth test.
+    // label.
     const board = setupSiblings();
     const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
     const label = board.add("", [10, 10, 90, 30], first);
@@ -928,7 +890,6 @@ describe("div sibling stacking", () => {
     );
     const label = board.add("position: absolute", [100, 10, 140, 30]);
 
-    assert.ok(board.z(label) < board.z(second), "the label is stepped over the card");
     assert.ok(
       getContentRenderOrder(label) > board.boxOrder(second),
       `the label's text at ${getContentRenderOrder(label)} draws before the card at ` +
@@ -975,17 +936,17 @@ describe("div sibling stacking", () => {
     board.teardown();
   });
 
-  test("an opaque card over a card that climbed keeps the order of its siblings", () => {
-    // Its own quad hides the climbed card wherever it covers it, so it can
-    // draw first, and a pile of opaque cards on a translucent one adds no
-    // bucket.
+  test("an opaque card over a card that climbed draws after it", () => {
     const board = setupSiblings();
     const first = board.add("position: absolute; background: white", [0, 0, 100, 100]);
     board.add("", [10, 10, 90, 30], first);
-    board.add("position: absolute; background: rgba(255, 255, 255, 0.5)", [50, 0, 150, 100]);
+    const second = board.add(
+      "position: absolute; background: rgba(255, 255, 255, 0.5)",
+      [50, 0, 150, 100],
+    );
     const third = board.add("position: absolute; background: white", [60, 0, 160, 100]);
 
-    assert.equal(board.boxOrder(third), board.boxOrder(first));
+    assert.ok(board.boxOrder(third) > getContentRenderOrder(second));
     board.teardown();
   });
 
@@ -1031,11 +992,10 @@ describe("div sibling stacking", () => {
     // flow over every negative `z-index`.
     const paragraph = page.add("", [150, 50, 250, 100]);
 
-    // The paragraph's text sits level with its origin; the backdrop's quad
-    // is 1 px behind the backdrop's.
     assert.ok(
-      page.z(paragraph) < page.z(backdrop) + 1,
-      `the text at ${page.z(paragraph)} is behind the backdrop at ${page.z(backdrop) + 1}`,
+      getContentRenderOrder(paragraph) > page.boxOrder(backdrop),
+      `the text at ${getContentRenderOrder(paragraph)} draws before the backdrop at ` +
+        `${page.boxOrder(backdrop)}`,
     );
     page.teardown();
   });
@@ -1057,8 +1017,8 @@ describe("div sibling stacking", () => {
     board.mirror.reflowed([cards[2]]);
 
     assert.deepEqual(
-      cards.map((card) => board.z(card)),
-      [-2, -2, -2, -2],
+      cards.map((card) => board.boxOrder(card)),
+      cards.map(() => board.boxOrder(cards[0])),
     );
     board.teardown();
   });
@@ -1067,7 +1027,10 @@ describe("div sibling stacking", () => {
     const board = setupSiblings();
     const first = board.add("position: absolute", [0, 0, 100, 100]);
     const second = board.add("position: absolute", [50, 50, 150, 150]);
-    assert.ok(board.z(second) < board.z(first), "the later card starts in front");
+    assert.ok(
+      board.boxOrder(second) > getContentRenderOrder(first),
+      "the later card starts in front",
+    );
 
     // The records a portal's observer would hand the mirror. jsdom-env does
     // not expose `MutationObserver` as a global.
@@ -1078,31 +1041,11 @@ describe("div sibling stacking", () => {
     observer.disconnect();
 
     assert.ok(
-      board.z(first) + 1 < board.z(second),
-      `the re-appended card at ${board.z(first)} is not in front of ${board.z(second)}`,
+      board.boxOrder(first) > getContentRenderOrder(second),
+      `the re-appended card at ${board.boxOrder(first)} draws before ` +
+        `${getContentRenderOrder(second)}`,
     );
     board.teardown();
-  });
-
-  test("an earlier overlay stays in front of a later sibling that covers it", () => {
-    const page = setupSiblings();
-    const modal = page.add("position: fixed; z-index: 10", [100, 100, 300, 300]);
-    const main = page.add("position: relative", [0, 0, 400, 400]);
-    // A pile inside `main` that reaches farther out than the modal's own
-    // lift, so leaving `main` where it is would not be enough.
-    let card = page.add("position: absolute", [150, 150, 250, 250], main);
-    for (let i = 1; i < 5; i += 1) {
-      card = page.add("position: absolute", [150 + i, 150, 250 + i, 250], main);
-    }
-
-    // The modal's quad, 1 px behind its origin, against the farthest thing
-    // `main` draws: its top card's origin, in the page's frame.
-    const cardZ = page.z(main) + page.z(card);
-    assert.ok(
-      page.z(modal) + 1 < cardZ,
-      `the modal's quad at ${page.z(modal) + 1} is behind main's card at ${cardZ}`,
-    );
-    page.teardown();
   });
 
   test("a transformed card that moves onto another without resizing is stepped", () => {
@@ -1129,7 +1072,7 @@ describe("div sibling stacking", () => {
     const first = card(0);
     const second = card(200);
     column.mirror.reflowed([first, second]);
-    assert.equal(column.z(second), column.z(first), "the cards start apart");
+    assert.equal(column.boxOrder(second), column.boxOrder(first), "the cards start apart");
 
     // Text above wraps onto one more line and the second card slides up
     // onto the first, the same size as before.
@@ -1137,8 +1080,8 @@ describe("div sibling stacking", () => {
     column.mirror.reflowed([second]);
 
     assert.ok(
-      column.z(second) + 1 < column.z(first),
-      `the moved card at ${column.z(second)} is not in front of ${column.z(first)}`,
+      column.boxOrder(second) > getContentRenderOrder(first),
+      `the moved card at ${column.boxOrder(second)} draws before ${getContentRenderOrder(first)}`,
     );
     column.teardown();
   });
@@ -1162,9 +1105,9 @@ describe("div sibling stacking", () => {
     // corners behind the eye by w would mirror away from it.
     const later = board.add("position: absolute", [150, 0, 250, 100]);
 
-    // The card's own matrix scales its origin by w, so it is the later
-    // card's lift that says whether it was stepped: past the plain step.
-    assert.ok(board.z(later) < -2, `the later card at ${board.z(later)} was not stepped`);
+    // The card is a layer of its own, which the panel's walk places, so it
+    // is what the later card clears that says it covers everything.
+    assert.deepEqual(getClearedSiblings(later), [card]);
     board.teardown();
   });
 
@@ -1180,8 +1123,9 @@ describe("div sibling stacking", () => {
     observer.disconnect();
 
     assert.ok(
-      page.z(card) + 1 < page.z(backdrop),
-      `the card's quad at ${page.z(card) + 1} is behind the backdrop at ${page.z(backdrop)}`,
+      page.boxOrder(card) > getContentRenderOrder(backdrop),
+      `the card at ${page.boxOrder(card)} draws before the backdrop's content at ` +
+        `${getContentRenderOrder(backdrop)}`,
     );
     page.teardown();
   });
@@ -1189,8 +1133,8 @@ describe("div sibling stacking", () => {
 
 // Night Ops' gauges: a caption is a positioned box with no background laid
 // over the dial, and the dial's face is a box inside the dial. The caption
-// is stepped in front of the face, and its marks write no depth, so the
-// face has to draw before them or it paints over them.
+// is stepped in front of the face, so the face has to draw before its marks
+// or it paints over them.
 
 /**
  * A dial with a face inside it, as Night Ops' gauges have, a tick on the
@@ -1245,10 +1189,10 @@ describe("marks stepped over a box", () => {
     const gauge = setupSiblings();
     try {
       const parts = dialWithCaption(gauge);
-      const { dial, face, caption } = parts;
+      const { dial, caption } = parts;
       const run = gauge.write(caption, "LOAD");
 
-      assert.ok(gauge.z(caption) < gauge.z(dial) + gauge.z(face) + 1, "the face is behind");
+      assert.deepEqual(getClearedSiblings(caption), [dial], "the caption is stepped over the dial");
       assertDrawsAfterDial(gauge, run, parts);
     } finally {
       gauge.teardown();
@@ -1280,7 +1224,7 @@ describe("marks stepped over a box", () => {
       gauge.mirror.reflowed([caption]);
       const run = gauge.write(caption, "LOAD");
 
-      assert.ok(gauge.z(caption) < gauge.z(dial), "the caption is stepped over the dial");
+      assert.deepEqual(getClearedSiblings(caption), [dial], "the caption is stepped over the dial");
       assertDrawsAfter(gauge, run, face);
     } finally {
       gauge.teardown();
@@ -1447,85 +1391,11 @@ describe("marks stepped over a box", () => {
   });
 });
 
-describe("an <svg> over a translucent flow box", () => {
-  test("draws all of itself before the box's bucket, a text after a shape too", () => {
-    // Night Ops' whiteboard: the DONE column, a flow box with a faint tint,
-    // and the scribble, an `<svg>` positioned over it that holds an arrow
-    // and then "deploy!". The column's bucket writes depth in front of the
-    // `<svg>`, so any of the `<svg>` that draws after the bucket is lost.
-    const svgText = installSvgTextLayout();
-    const board = setupSiblings();
-    const container = new THREE.Group();
-    const batch = createBoxBatch(container);
-    try {
-      const columns = board.place("", [0, 0, 400, 400]);
-      const column = board.place(
-        "background: rgba(29, 79, 184, 0.04)",
-        [200, 0, 400, 400],
-        columns,
-      );
-      container.add(board.drawWith(column, (ctx) => div(BoxBatchContext.set(ctx, batch), column)));
-
-      const ns = "http://www.w3.org/2000/svg";
-      const scribble = document.createElementNS(ns, "svg");
-      scribble.setAttribute("viewBox", "0 0 110 70");
-      scribble.setAttribute("style", "position: absolute");
-      board.adopt(scribble, [250, 300, 360, 370]);
-      const arrow = document.createElementNS(ns, "rect");
-      arrow.setAttribute("width", "90");
-      arrow.setAttribute("height", "4");
-      arrow.setAttribute("fill", "red");
-      const label = document.createElementNS(ns, "text");
-      label.setAttribute("x", "6");
-      label.setAttribute("y", "24");
-      label.setAttribute("fill", "red");
-      label.append("deploy!");
-      scribble.append(arrow, label);
-      for (const node of [arrow, label, ...label.childNodes]) {
-        board.mirror.adopt(node);
-      }
-      board.mirror.childListChanged(scribble);
-
-      /** @type {THREE.Mesh[]} */
-      const meshes = [];
-      const drawn = [
-        board.drawWith(arrow, (ctx) => shape(ctx, arrow)),
-        board.drawWith(label, (ctx) => drawText(ctx, label)),
-      ];
-      for (const object of drawn) {
-        object.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            meshes.push(child);
-          }
-        });
-      }
-      assert.equal(meshes.length, 2, "the arrow's fill and the label's run");
-
-      batch.flush();
-      const buckets = container.children.filter(
-        (child) => child instanceof THREE.InstancedMesh && child.count > 0,
-      );
-      assert.equal(buckets.length, 1, "the column's bucket alone");
-      const [bucket] = buckets;
-      for (const mesh of meshes) {
-        assert.ok(
-          mesh.renderOrder < bucket.renderOrder,
-          `drawn at ${mesh.renderOrder}, after the column's bucket at ${bucket.renderOrder}`,
-        );
-      }
-    } finally {
-      board.teardown();
-      batch.dispose();
-      svgText.restore();
-    }
-  });
-});
-
 describe("an <svg> and a translucent stepped card", () => {
   /**
    * Two positioned cards on a board, the second translucent and stepped over
-   * the first, each drawn into one box batch, and an `<svg>` holding a shape
-   * and then a text, in `holder`'s choice of card.
+   * the first, each drawn by the panel's one batch, and an `<svg>` holding a
+   * shape and then a text, in `holder`'s choice of card.
    *
    * @param {"first" | "second"} holder
    */
@@ -1533,9 +1403,11 @@ describe("an <svg> and a translucent stepped card", () => {
     const svgText = installSvgTextLayout();
     const board = setupSiblings();
     const container = new THREE.Group();
-    const batch = createBoxBatch(container);
+    const draws = paintBatch(container);
+    const batch = draws.boxes;
     const teardown = () => {
       board.teardown();
+      draws.dispose();
       batch.dispose();
       svgText.restore();
     };
@@ -1587,16 +1459,14 @@ describe("an <svg> and a translucent stepped card", () => {
       }
       assert.equal(meshes.length, 2, "the dot's fill and the label's run");
 
-      batch.flush();
-      const buckets = container.children
-        .filter((child) => child instanceof THREE.InstancedMesh && child.count > 0)
-        .map((bucket) => bucket.renderOrder)
-        .sort((a, b) => a - b);
-      assert.equal(buckets.length, 2, "the opaque card's bucket and the translucent card's");
+      draws.flush();
       return {
         meshes,
-        /** The opaque card's bucket and the translucent card's, in that order. */
-        buckets,
+        /**
+         * Where the one batch lays the opaque card's box and the translucent
+         * card's, half a level past each box's own order.
+         */
+        boxes: [first, second].map((each) => board.boxOrder(each) + BOX_BUCKET_BIAS),
         teardown,
       };
     } catch (error) {
@@ -1607,11 +1477,11 @@ describe("an <svg> and a translucent stepped card", () => {
 
   test("an <svg> in the translucent card draws over the card, after what it covers", () => {
     // The card blends over the first card, so it draws after it, and the
-    // `<svg>` on it is in front of both: drawn before the card's bucket, it
+    // `<svg>` on it is in front of both: drawn before the card's box, it
     // would be tinted by the card it sits on.
     const drawn = cardsWithSvg("second");
     try {
-      const [under, card] = drawn.buckets;
+      const [under, card] = drawn.boxes;
       assert.ok(card > under, "the translucent card draws after the card it covers");
       for (const mesh of drawn.meshes) {
         assert.ok(
@@ -1625,11 +1495,11 @@ describe("an <svg> and a translucent stepped card", () => {
   });
 
   test("an <svg> under the translucent card draws before it, so the card tints it", () => {
-    // The translucent card writes depth in front of the `<svg>`, so any of
-    // the `<svg>` drawn after it is lost where a page shows it tinted.
+    // The translucent card is painted over the `<svg>`, which a page shows
+    // tinted by it.
     const drawn = cardsWithSvg("first");
     try {
-      const [under, card] = drawn.buckets;
+      const [under, card] = drawn.boxes;
       for (const mesh of drawn.meshes) {
         assert.ok(mesh.renderOrder > under, `drawn at ${mesh.renderOrder}, under its own card`);
         assert.ok(
@@ -2188,131 +2058,5 @@ describe("div gradients", () => {
     assert.equal(rampAtlas.size, before + 1);
     box.subscription.unsubscribe();
     assert.equal(rampAtlas.size, before, "teardown releases the row");
-  });
-});
-
-describe("a box's paint rank in a batch with a depth bias", () => {
-  /**
-   * A board of three opaque cards, each overlapping the one before, with a
-   * label box inside the second, and a fourth card apart from the rest, all
-   * drawn into one box batch.
-   *
-   * @param {import("./boxBatch.js").DepthRankBias} [depthRank]
-   */
-  function pile(depthRank) {
-    const board = setupSiblings();
-    const container = new THREE.Group();
-    const batch = createBoxBatch(container, depthRank);
-    /** @param {HTMLElement} element */
-    const draw = (element) =>
-      container.add(
-        board.drawWith(element, (ctx) => div(BoxBatchContext.set(ctx, batch), element)),
-      );
-    const card = "position: absolute; background: white";
-    const first = board.place(card, [0, 0, 100, 100]);
-    const second = board.place(card, [50, 50, 150, 150]);
-    const label = board.place("background: navy", [60, 60, 140, 80], second);
-    const third = board.place(card, [100, 100, 200, 200]);
-    const apart = board.place(card, [300, 300, 350, 350]);
-    for (const element of [first, second, third, apart]) {
-      draw(element);
-    }
-    // The label hangs inside its card's object, as the portal nests it.
-    const labelObject = board.drawWith(label, (ctx) => div(BoxBatchContext.set(ctx, batch), label));
-    getContentGroup(/** @type {THREE.Object3D} */ (container.children[1]))?.add(labelObject);
-    batch.flush();
-    return {
-      board,
-      batch,
-      container,
-      cards: { first, second, label, third, apart },
-      /** Each instance's rank, bucket by bucket, in the order drawn. */
-      ranks() {
-        return container.children
-          .filter((child) => child instanceof THREE.InstancedMesh && child.count > 0)
-          .flatMap((bucket) => {
-            const mesh = /** @type {THREE.InstancedMesh} */ (bucket);
-            // Packed with the opacity, as the vertex shader unpacks it.
-            const size = mesh.geometry.getAttribute("aSize").array;
-            return Array.from({ length: mesh.count }, (_, i) => Math.floor(size[i * 4 + 3] / 2));
-          });
-      },
-      teardown() {
-        board.teardown();
-        batch.dispose();
-      },
-    };
-  }
-
-  test("a card is one rank in front of each card it clears, and a box in it one more", () => {
-    const { board, cards, teardown } = pile("slope");
-    try {
-      const base = getPaintRank(board.parent);
-      assert.deepEqual(
-        [cards.first, cards.second, cards.label, cards.third, cards.apart].map(
-          (element) => getPaintRank(element) - base,
-        ),
-        [1, 2, 3, 4, 1],
-        "first, second, the second's label, third, and the card apart",
-      );
-    } finally {
-      teardown();
-    }
-  });
-
-  test("each box is drawn with its own rank", () => {
-    const { cards, ranks, teardown } = pile("slope");
-    try {
-      const expected = [cards.first, cards.second, cards.label, cards.third, cards.apart].map(
-        (element) => getPaintRank(element),
-      );
-      assert.deepEqual(
-        ranks().sort((a, b) => a - b),
-        expected.sort((a, b) => a - b),
-      );
-    } finally {
-      teardown();
-    }
-  });
-
-  test("a card moved off the pile is drawn with its new rank", () => {
-    const { board, batch, cards, ranks, teardown } = pile("constant");
-    try {
-      const base = getPaintRank(board.parent);
-      const drawn = () => ranks().map((rank) => rank - base);
-      assert.deepEqual(
-        drawn().sort((a, b) => a - b),
-        [1, 1, 2, 3, 4],
-      );
-      layout(cards.third, () => [200, 0, 280, 80]);
-      board.mirror.reflowed([cards.third]);
-      batch.flush();
-      assert.deepEqual(
-        drawn().sort((a, b) => a - b),
-        [1, 1, 1, 2, 3],
-        "the third card, now apart, is drawn at the rank of a card that clears nothing",
-      );
-    } finally {
-      teardown();
-    }
-  });
-
-  test("a panel without a bias draws no rank and compiles none", () => {
-    const { container, batch, teardown } = pile();
-    try {
-      assert.equal(batch.depthRank, undefined);
-      for (const child of container.children) {
-        if (child instanceof THREE.InstancedMesh) {
-          const size = child.geometry.getAttribute("aSize").array;
-          for (let i = 0; i < child.count; i++) {
-            assert.equal(size[i * 4 + 3], 1, "the opacity alone, with no rank packed in");
-          }
-          const material = /** @type {THREE.ShaderMaterial} */ (child.material);
-          assert.equal(material.defines.DEPTH_RANK, undefined);
-        }
-      }
-    } finally {
-      teardown();
-    }
   });
 });

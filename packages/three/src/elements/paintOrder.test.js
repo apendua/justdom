@@ -1,9 +1,8 @@
 /**
- * A panel drawn in paint order, the `paintOrder` option
- * (`docs/freedom-paint-order.md`): the order within a layer and between
- * layers. Each test names the piece of the mechanism it goes red without,
- * or says it is a guard. A guard that compares the two builds passes on
- * the lift too, and says what paint order must not change.
+ * A panel drawn in paint order (`docs/freedom-paint-order.md`): the order
+ * within a layer and between layers. Each test names the piece of the
+ * mechanism it goes red without, or says it is a guard: a test of what
+ * the page asks for that no one piece of the mechanism gives.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,7 +23,6 @@ import {
   getElevation,
   getLayer,
   getLayerBase,
-  isPaintOrdered,
   PIECE_BAND,
 } from "./elevation.js";
 import { isBlocker } from "./blocker.js";
@@ -57,18 +55,14 @@ const CARD = `position: absolute; background: rgb(255, 255, 255); ${POINTER}`;
  *
  * @param {PageSpec[]} children
  * @param {object} [options]
- * @param {boolean} [options.paintOrder]
  * @param {string} [options.rootStyle]
  * @param {boolean} [options.opaqueToRays] The panel option of that name.
  * @param {InteractionManager} [options.manager] Another page's, for a test
  *   with two panels in one hand's reach.
  */
-async function page(
-  children,
-  { paintOrder = true, rootStyle = "", opaqueToRays = true, manager: shared } = {},
-) {
+async function page(children, { rootStyle = "", opaqueToRays = true, manager: shared } = {}) {
   const { root, manager, portal, scene, panel, get } = await pagePanel(children, {
-    portal: { paintOrder, opaqueToRays },
+    portal: { opaqueToRays },
     rootStyle,
     manager: shared,
   });
@@ -284,22 +278,11 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
-  test("leaves depth to every box on the lift, a guard", async () => {
-    const g = await page([{ id: "card", style: CARD, at: [20, 20, 100, 100] }], {
-      paintOrder: false,
-    });
-    const writers = drawn(g.panel).filter(
-      (mesh) => /** @type {THREE.Material} */ (mesh.material).depthWrite,
-    );
-    assert.ok(writers.length > 0);
-    g.teardown();
-  });
-
   test("puts each box's quad in its object's plane", async () => {
     // A quad behind its object would be behind its parent's text, which the
     // hit test would then meet first though the box draws over it, and off
-    // the plane the panel's walk cuts its layer at. Goes red with the
-    // lift's quad, 1 px behind its object.
+    // the plane the panel's walk cuts its layer at. Goes red with the quad
+    // 1 px behind its object.
     const g = await page([
       {
         id: "card",
@@ -328,7 +311,7 @@ describe("a panel drawn in paint order", () => {
   });
 
   test("climbs a level a card through a pile of opaque cards", async () => {
-    // Goes red with the `isOpaqueQuad` shortcut left in: an opaque card
+    // Goes red with an opaque card let off clearing what it covers: it
     // would keep its tree depth.
     const g = await page(
       [0, 1, 2, 3].map((i) => ({ id: `card${i}`, style: CARD, at: [i * 20, i * 20, 100, 100] })),
@@ -341,8 +324,8 @@ describe("a panel drawn in paint order", () => {
   });
 
   test("puts a later card's text past an earlier card's box, and its press on top", async () => {
-    // A guard for the press, which the lift gives the top card too; the
-    // levels go red with the opaque shortcut.
+    // A guard for the press, which the nearest hit gives the top card too;
+    // the levels go red with the opaque shortcut.
     const g = await page([
       { id: "under", style: CARD, at: [0, 0, 100, 100] },
       {
@@ -495,8 +478,8 @@ describe("a panel drawn in paint order", () => {
   test("lets a press past a scroller's clip through a lifted card to the footer, a guard", async () => {
     // A card lifted out of a clipped scroller hangs below its clip, over a
     // footer button. The part past the clip is not drawn and takes no
-    // press, so the footer does. A guard, as the lift does the same: goes
-    // red with the lift's ray target untrimmed by its clip.
+    // press, so the footer does. A guard: goes red with the card's ray
+    // target untrimmed by its clip.
     const g = await page([
       {
         id: "scroller",
@@ -520,8 +503,8 @@ describe("a panel drawn in paint order", () => {
 
   test("lets a scene mesh in front of the panel take the press, a guard", async () => {
     // A plane the scene registers, between the hand and a button: the ray
-    // meets it first, and the button hears nothing. A guard, as the lift
-    // does the same: goes red with the nearest hit not the one taken.
+    // meets it first, and the button hears nothing. A guard: goes red with
+    // the nearest hit not the one taken.
     const g = await page([{ id: "button", style: CARD, at: [100, 100, 100, 100] }]);
     await g.walk();
     const mesh = shield(g, 150, 150, 0.5);
@@ -539,8 +522,8 @@ describe("a panel drawn in paint order", () => {
   test("puts a scene mesh between a lifted overlay and the root, a guard", async () => {
     // The overlay floats clear of the root, and a scene plane sits between
     // the two: the overlay's button, in front of the plane, takes its press,
-    // and the root's button, behind it, is hidden. A guard, as the lift does
-    // the same: goes red with the nearest hit not the one taken.
+    // and the root's button, behind it, is hidden. A guard: goes red with
+    // the nearest hit not the one taken.
     const g = await page([
       { id: "under", style: CARD, at: [20, 20, 100, 100] },
       {
@@ -567,8 +550,7 @@ describe("a panel drawn in paint order", () => {
   test("gives a press on an overlay wrapper that paints nothing to the wrapper, a guard", async () => {
     // A fixed wrapper over the whole panel, a layer of its own with no
     // background, over a button in the root: the press is the wrapper's,
-    // as a page's is. A guard: what the option must not change, since the
-    // lift does the same.
+    // as a page's is. A guard.
     const g = await page([
       { id: "button", style: CARD, at: [100, 100, 100, 100] },
       {
@@ -585,8 +567,8 @@ describe("a panel drawn in paint order", () => {
   test("gives a press through a panel that takes no rays to the panel behind, a guard", async () => {
     // Two panels in one hand's reach, the nearer one transparent to rays
     // but for its one button: a press on the button is the button's, and
-    // one beside it the farther panel's row's. A guard, as the lift does
-    // the same: goes red with the nearest hit not the one taken.
+    // one beside it the farther panel's row's. A guard: goes red with the
+    // nearest hit not the one taken.
     const far = await page([{ id: "row", style: CARD, at: [0, 0, 400, 300] }]);
     const near = await page([{ id: "button", style: CARD, at: [100, 100, 100, 100] }], {
       opaqueToRays: false,
@@ -1210,8 +1192,8 @@ describe("a panel drawn in paint order", () => {
   test("orders a box the page restyles from its layer's base, past the panel's first slot", async () => {
     // The walk that moves a base gives each mesh its order itself, so only
     // an effect that runs after that walk reads the band `VisualProperties`
-    // gives a box. Goes red with that band at 0, or at the lift's
-    // `ELEVATION_BAND * getElevation(element)`: either puts the restyled
+    // gives a box. Goes red with that band at 0, or at a band counted from
+    // the element's elevation alone: either puts the restyled
     // card's box back in the first slot, behind the depth quad of the
     // panel's own.
     const g = await page([{ id: "card", style: CARD, at: [20, 20, 100, 100] }]);
@@ -1461,7 +1443,7 @@ describe("a panel drawn in paint order", () => {
   test("draws a layer's boxes and runs in one draw", async () => {
     // A card, a label in it and a box nested beside the label: one stretch
     // of the panel's order with nothing drawing itself in it. Goes red with
-    // a draw per render order, as the lift's buckets are.
+    // a draw per render order.
     const canvas = stubCanvas();
     const restoreRange = installRange();
     const g = await page([
@@ -1748,30 +1730,5 @@ describe("a panel drawn in paint order", () => {
     );
     near.teardown();
     far.teardown();
-  });
-
-  test("ends with the portal that asked for it", async () => {
-    // A root mirrored again by a portal that does not ask for paint order
-    // is drawn by the lift, whole. Goes red with the panel's mark kept for
-    // the element's life rather than the portal's.
-    const root = document.createElement("div");
-    root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
-    const card = document.createElement("div");
-    card.getBoundingClientRect = () => clientRect(20, 20, 100, 100);
-    root.appendChild(card);
-    document.body.appendChild(root);
-    const ctx = InteractionContext.set({}, new InteractionManager());
-    const first = createPortal(ctx, { root, budget: 0, paintOrder: true });
-    first.addTo(new THREE.Group());
-    await settle(first);
-    assert.equal(isPaintOrdered(card), true);
-    first.disconnect();
-    await settle(first);
-    const second = createPortal(ctx, { root, budget: 0, paintOrder: false });
-    second.addTo(new THREE.Group());
-    await settle(second);
-    assert.equal(isPaintOrdered(card), false);
-    second.disconnect();
-    root.remove();
   });
 });

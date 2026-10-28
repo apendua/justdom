@@ -69,17 +69,16 @@ function depthQuadMaterial() {
 const DEPTH_QUAD_PROGRAM = { name: "freedom-depth-quad", create: depthQuadMaterial };
 
 /**
- * A plane that draws no colour and writes depth: what a panel drawn in paint
- * order (`paintOrder` in `portal.js`) hides what is drawn after it with,
- * since nothing else in it writes depth. Stretched over the root by
- * `coverBox`, and no ray target.
+ * A plane that draws no colour and writes depth: what a panel hides what is
+ * drawn after it with, since nothing else in it writes depth. Stretched over
+ * the root by `coverBox`, and no ray target.
  *
  * Each panel's quad has a material of its own, which the panel disposes. A
  * shared one is one that code changing a material it finds under its own
  * panel changes for every panel: the frame meter's readout turning its
- * depth test off turned off every panel's, and panels drawn in paint order
- * stopped hiding what passes behind them. Its program outlives it
- * (`programKeeper.js`), as a box's does.
+ * depth test off turned off every panel's, and the panels stopped hiding
+ * what passes behind them. Its program outlives it (`programKeeper.js`), as
+ * a box's does.
  *
  * @returns {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>}
  */

@@ -16,9 +16,8 @@ import {
   settle,
 } from "../test/portalHarness.js";
 import { createFrameRequester } from "./frameRequester.js";
-import { BoxBatch } from "./boxBatch.js";
+import { PaintBatch } from "./paintBatch.js";
 import { createPortal } from "./portal.js";
-import { TextBatch } from "./textBatch.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import {
   FRAMELESS_SLICE,
@@ -389,9 +388,9 @@ describe("rows that leave an open panel under the scene's scheduler", () => {
   });
 
   test("rebuild no batch as they are taken down", async () => {
-    // The commit takes them out of what the batches walk and rebuilds both
-    // batches once; a box or a run leaving that is in no bucket has nothing
-    // to rebuild for.
+    // The commit takes them out of what the batch walks and rebuilds it
+    // once; a box or a run leaving that is in no draw has nothing to
+    // rebuild for.
     const { root, rows, portal, container, targets, rowTargets } = await list(3);
     for (const row of rows) {
       row.remove();
@@ -400,21 +399,15 @@ describe("rows that leave an open panel under the scene's scheduler", () => {
     await untilCommitted(rowTargets, container);
     await nextMacrotask();
     let rebuilds = 0;
-    const box = BoxBatch.prototype.rebuild;
-    const text = TextBatch.prototype.rebuild;
-    BoxBatch.prototype.rebuild = function () {
+    const rebuild = PaintBatch.prototype.rebuild;
+    PaintBatch.prototype.rebuild = function () {
       rebuilds += 1;
-      box.call(this);
-    };
-    TextBatch.prototype.rebuild = function () {
-      rebuilds += 1;
-      text.call(this);
+      rebuild.call(this);
     };
     try {
       await drain();
     } finally {
-      BoxBatch.prototype.rebuild = box;
-      TextBatch.prototype.rebuild = text;
+      PaintBatch.prototype.rebuild = rebuild;
     }
     assert.ok(!rowTargets.some((target) => targets.has(target)), "taken down");
     assert.equal(rebuilds, 0, "and no batch rebuilt for it");

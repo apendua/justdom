@@ -127,7 +127,7 @@ function every(ms: number, step: () => void): () => void {
 
 /**
  * The 100-card piled board, the GPU row's second scene: every card over the
- * one before, each a layer of draws in the lift build.
+ * one before, which the lift drew as a layer of draws each.
  */
 function pile(): ProbeScene {
   const board = root(900, 700);

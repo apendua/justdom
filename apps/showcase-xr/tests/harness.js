@@ -3,7 +3,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { createServer } from "vite";
-import { PAINT_ORDER_QUERY } from "@apendua.dev/headset/driver";
 
 /**
  * Driving the showcase the way a headset would, from a script.
@@ -150,10 +149,7 @@ export async function openShowcase({ freeze = true, init } = {}) {
     await page.addInitScript(init);
   }
 
-  await page.goto(`${server.url}?emulator=bare${PAINT_ORDER_QUERY}`, {
-    waitUntil: "load",
-    timeout: 60_000,
-  });
+  await page.goto(`${server.url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });
   await page.waitForSelector("#ARButton", { timeout: 30_000 });
 
   return {

@@ -28,8 +28,8 @@
  * layers in `layerUpdates` and no others.
  */
 import * as THREE from "three";
-import { createTextBatch } from "../src/elements/textBatch.js";
 import { place } from "../src/elements/place.js";
+import { paintBatch } from "../src/test/textRuns.js";
 
 /**
  * A rasterized run, as the batch reads one: a mask in the material's alpha
@@ -80,7 +80,8 @@ function retext(mesh, width, height) {
 function panel(count, width, height) {
   const container = new THREE.Group();
   place(container, 0, 0, 0);
-  const batch = createTextBatch(container);
+  const draws = paintBatch(container);
+  const batch = draws.runs;
   const meshes = [];
   for (let i = 0; i < count; i++) {
     const mesh = run(width, height);
@@ -88,16 +89,18 @@ function panel(count, width, height) {
     batch.add(mesh, { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) });
     meshes.push(mesh);
   }
-  return { container, batch, meshes };
+  return { container, draws, meshes };
 }
 
-/** Every array texture a bucket of this panel is currently sampling. */
+/** Every array texture a draw of this panel is currently sampling. */
 function arraysOf(container) {
   const found = new Set();
   for (const child of container.children) {
     const mesh = /** @type {THREE.InstancedMesh} */ (child);
-    if (mesh.isInstancedMesh && mesh.material.uniforms?.uRuns?.value) {
-      found.add(mesh.material.uniforms.uRuns.value);
+    for (const texture of (mesh.isInstancedMesh && mesh.material.uniforms?.uRuns?.value) || []) {
+      if (texture) {
+        found.add(texture);
+      }
     }
   }
   return found;
@@ -150,12 +153,12 @@ const KB = (bytes) => `${(bytes / 1024).toFixed(0)} kB`;
  * always going to agree on.
  */
 function measure(label, count, width, height, perFlush, flushes = 50) {
-  const { container, batch, meshes } = panel(count, width, height);
+  const { container, draws, meshes } = panel(count, width, height);
   const seen = new WeakSet();
   const versions = new WeakMap();
 
-  batch.invalidate();
-  batch.flush();
+  draws.invalidate();
+  draws.flush();
   const mounting = uploadedBytes(arraysOf(container), seen, versions).bytes;
 
   const startedAt = performance.now();
@@ -167,8 +170,8 @@ function measure(label, count, width, height, perFlush, flushes = 50) {
       retext(meshes[next % meshes.length], width, height);
       next += 1;
     }
-    batch.invalidate();
-    batch.flush();
+    draws.invalidate();
+    draws.flush();
     const flushed = uploadedBytes(arraysOf(container), seen, versions);
     bytes += flushed.bytes;
     fresh += flushed.fresh;

@@ -28,10 +28,6 @@
  *
  * and read the diff of the JSON file before committing it. A gesture with
  * no recording fails rather than recording one, unless that is asked for.
- *
- * They run on panels drawn in paint order, the default, and `PAINT_ORDER=0`
- * runs them by the lift (`paintOrder` in `portal.js`) against the same
- * recordings, which both builds match (`docs/freedom-paint-order.md`).
  */
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,7 +39,6 @@ import { describeScroller } from "../test/scroller.js";
 
 const GOLDENS = new URL("./pointerGoldens.json", import.meta.url);
 const UPDATE = process.env.UPDATE_GOLDENS === "1";
-const PAINT_ORDER = process.env.PAINT_ORDER !== "0";
 
 /** @type {Record<string, string[]>} */
 const goldens = JSON.parse(readFileSync(GOLDENS, "utf8"));
@@ -138,7 +133,6 @@ const RAY_TYPES = [
  */
 async function page(children, { accept = true, capture = false, cancel = false } = {}) {
   const { root, elements, places, manager, portal, scene, panel } = await pagePanel(children, {
-    portal: { paintOrder: PAINT_ORDER },
     decorate: (element, /** @type {Spec} */ spec) => {
       if (spec.draggable) {
         element.setAttribute("draggable", "true");

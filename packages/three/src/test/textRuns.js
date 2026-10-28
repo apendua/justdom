@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { place } from "../elements/place.js";
-import { createTextBatch } from "../elements/textBatch.js";
+import { PaintBatch } from "../elements/paintBatch.js";
+
+/** @import {LayerOrder} from "../elements/layerOrder.js"; */
 
 /**
  * A rasterized run, as the batch reads one: a mask in the material's alpha
@@ -9,7 +11,7 @@ import { createTextBatch } from "../elements/textBatch.js";
  * The canvas is a stand-in. The batch asks it for its size and for a 2d
  * context to copy pixels out of, and `SizeClass.write` is written to do
  * nothing when there is no context — which is what jsdom offers, and enough
- * for everything about layers and buckets.
+ * for everything about layers and draws.
  *
  * @param {number} width
  * @param {number} height
@@ -34,8 +36,22 @@ export function run(width, height) {
 }
 
 /**
+ * A panel's one batch over `container`, with an order that cuts no layer,
+ * as a panel's is when nothing in it crosses another layer's plane.
+ *
+ * @param {THREE.Object3D} container
+ * @returns {PaintBatch}
+ */
+export function paintBatch(container) {
+  const batch = new PaintBatch(container);
+  batch.orderBy(/** @type {LayerOrder} */ (/** @type {unknown} */ ({ isCut: () => false })));
+  return batch;
+}
+
+/**
  * A panel of `count` runs, all the same size and render order, so they share
- * one size class and one bucket.
+ * one size class and one draw. `draws` is the panel's one batch, and `batch`
+ * the text batch in it.
  *
  * @param {number} count
  */
@@ -43,7 +59,8 @@ export function panel(count) {
   const container = new THREE.Group();
   place(container, 0, 0, 0);
 
-  const batch = createTextBatch(container);
+  const draws = paintBatch(container);
+  const batch = draws.runs;
   for (let i = 0; i < count; i++) {
     const mesh = run(24, 12);
     container.add(mesh);
@@ -73,5 +90,5 @@ export function panel(count) {
     }
   };
 
-  return { container, batch, meshes, watch, grow };
+  return { container, draws, batch, meshes, watch, grow };
 }

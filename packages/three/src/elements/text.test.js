@@ -4,13 +4,15 @@ import * as THREE from "three";
 import { Signal, UpdateChannel, withChannel } from "@apendua/signal";
 import { createMirror } from "./mirror.js";
 import { text } from "./text.js";
-import { createTextBatch, TextBatchContext } from "./textBatch.js";
+import { TextBatchContext } from "./textBatch.js";
 import { holdsStep, stepBelow, TextScaleContext } from "./textScale.js";
 import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
 import { createPortalScheduler } from "./portalScheduler.js";
 import { installRange } from "../test/textRange.js";
+import { paintBatch } from "../test/textRuns.js";
 
 /**
+ * @import {PaintBatch} from './paintBatch.js';
  * @import {TextBatch} from './textBatch.js';
  * @import {TextPreparer} from './textPrepare.js';
  */
@@ -185,13 +187,13 @@ function handScale() {
  *
  * @param {ReturnType<typeof handScale>} scale
  * @param {{
- *   withBatch?: (container: THREE.Object3D) => TextBatch,
+ *   withBatch?: (container: THREE.Object3D) => PaintBatch,
  *   channel?: UpdateChannel,
  *   withPreparer?: (batch: TextBatch | null) => TextPreparer,
  *   textShadow?: string,
- * }} [options] A batch to draw it, the channel its effects run in, as a
- *   portal's do, the pump that prepares it, and a shadow, which bakes the
- *   run's colours in.
+ * }} [options] The panel's one batch, whose text batch it joins, the
+ *   channel its effects run in, as a portal's do, the pump that prepares
+ *   it, and a shadow, which bakes the run's colours in.
  */
 function steppedRun(scale, { withBatch, channel, withPreparer, textShadow = "" } = {}) {
   const restore = installRange();
@@ -204,7 +206,8 @@ function steppedRun(scale, { withBatch, channel, withPreparer, textShadow = "" }
   const node = /** @type {Text} */ (element.firstChild);
   mirror.adopt(node);
   const container = new THREE.Group();
-  const batch = withBatch?.(container) ?? null;
+  const draws = withBatch?.(container) ?? null;
+  const batch = draws?.runs ?? null;
   /** @type {WeakKey} */
   let ctx = TextScaleContext.set({}, scale);
   if (batch) {
@@ -242,6 +245,7 @@ function steppedRun(scale, { withBatch, channel, withPreparer, textShadow = "" }
     node,
     mirror,
     mesh,
+    draws,
     batch,
     preparer,
     container,
@@ -353,32 +357,32 @@ describe("text steps", () => {
     const run = steppedRun(scale, {
       withBatch: (container) => {
         panel = container;
-        return createTextBatch(container);
+        return paintBatch(container);
       },
     });
-    /** The array texture the run's bucket samples. */
+    /** The array texture the run's draw samples. */
     const array = () => {
-      const bucket = /** @type {THREE.InstancedMesh | undefined} */ (
+      const draw = /** @type {THREE.InstancedMesh | undefined} */ (
         /** @type {THREE.Object3D} */ (panel).children.find(
           (c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh && c.visible,
         )
       );
-      assert.ok(bucket);
-      return /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value;
+      assert.ok(draw);
+      return /** @type {THREE.ShaderMaterial} */ (draw.material).uniforms.uRuns.value[0];
     };
     try {
-      const batch = /** @type {TextBatch} */ (run.batch);
-      batch.flush();
+      const draws = /** @type {PaintBatch} */ (run.draws);
+      draws.flush();
       const first = array();
       let released = false;
       first.addEventListener("dispose", () => {
         released = true;
       });
       scale.show(Math.SQRT2);
-      batch.flush();
+      draws.flush();
       assert.equal(released, false, "the raster at 1 is held, and so is its layer");
       scale.show(2);
-      batch.flush();
+      draws.flush();
       assert.equal(released, true, "no run holds a raster at 1 any more");
     } finally {
       run.done();
@@ -416,7 +420,7 @@ function preparedRun(scale, { budget = Infinity, now = () => 0, textShadow } = {
   const uploaded = [];
   const run = steppedRun(scale, {
     textShadow,
-    withBatch: (container) => createTextBatch(container),
+    withBatch: (container) => paintBatch(container),
     withPreparer: (batch) =>
       createTextPreparer({
         scheduler,
@@ -428,28 +432,28 @@ function preparedRun(scale, { budget = Infinity, now = () => 0, textShadow } = {
         now,
       }),
   });
-  const batch = /** @type {TextBatch} */ (run.batch);
+  const draws = /** @type {PaintBatch} */ (run.draws);
   const preparer = /** @type {TextPreparer} */ (run.preparer);
-  batch.flush();
+  draws.flush();
   /** The panel's step `step` is prepared, and a frame runs the pump. */
   const prepare = (/** @type {number | null} */ step) => {
     scale.prepare(step);
     preparer.retarget(step);
     /** @type {(() => void) | null} */ (tick)?.();
   };
-  /** The array texture the run's visible bucket samples. */
+  /** The array texture the run's visible draw samples. */
   const array = () => {
-    const bucket = /** @type {THREE.InstancedMesh | undefined} */ (
+    const draw = /** @type {THREE.InstancedMesh | undefined} */ (
       run.container.children.find(
         (c) =>
           /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh &&
           /** @type {THREE.InstancedMesh} */ (c).count > 0,
       )
     );
-    assert.ok(bucket);
-    return /** @type {THREE.ShaderMaterial} */ (bucket.material).uniforms.uRuns.value;
+    assert.ok(draw);
+    return /** @type {THREE.ShaderMaterial} */ (draw.material).uniforms.uRuns.value[0];
   };
-  return { run, batch, preparer, prepare, uploaded, array, running: () => tick !== null };
+  return { run, draws, preparer, prepare, uploaded, array, running: () => tick !== null };
 }
 
 /**
@@ -492,7 +496,7 @@ describe("prepared text steps", () => {
       const drawn = canvasesMade(() => {
         scale.show(Math.SQRT2);
         p.preparer.retarget(null);
-        p.batch.flush();
+        p.draws.flush();
       });
       assert.equal(drawn, 0, "the run was drawn at 1.41 already");
       assert.equal(p.array(), ahead, "and drawn from the array that went up");
@@ -515,7 +519,7 @@ describe("prepared text steps", () => {
 
       scale.show(Math.SQRT2);
       p.preparer.retarget(null);
-      p.batch.flush();
+      p.draws.flush();
       const array = p.array();
       assert.ok(array, "the run is drawn from an array, not from nothing");
       assert.equal(
@@ -568,7 +572,7 @@ describe("prepared text steps", () => {
       });
 
       p.prepare(null);
-      p.batch.flush();
+      p.draws.flush();
       assert.equal(freed, true, "no run holds a layer at 1.41 any more");
       assert.equal(p.run.disposed.has(shown), false, "and the shown raster stays");
       const drawn = canvasesMade(() => {

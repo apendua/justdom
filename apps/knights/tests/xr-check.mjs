@@ -6,7 +6,6 @@
  *   node tests/xr-check.mjs
  *   SHOTS=out node tests/xr-check.mjs   # and photograph the page and the session
  *   STACKS=1 node tests/xr-check.mjs    # with a stack for anything the page throws
- *   PAINT_ORDER=0 node tests/xr-check.mjs  # on panels drawn by the lift
  *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * The right controller is aimed at a point on the panel from the figures
@@ -40,7 +39,6 @@ import {
   frames,
   headPosition,
   launch,
-  PAINT_ORDER_QUERY,
   press,
 } from "@apendua.dev/headset/driver";
 
@@ -207,7 +205,7 @@ async function main() {
       errors.push(error.message);
       console.log("[pageerror]", process.env.STACKS ? error.stack : error.message);
     });
-    await page.goto(`${url}?emulator=bare${PAINT_ORDER_QUERY}`, { waitUntil: "load" });
+    await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
     // The battle is dealt half a second after the page loads, and the board
     // is drawn once it is.
     await page.waitForSelector("#root svg polygon");

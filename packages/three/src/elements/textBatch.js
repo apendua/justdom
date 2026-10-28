@@ -1,18 +1,11 @@
 import * as THREE from "three";
 import { createProperty } from "@apendua/signal";
-import { MARK_MATERIAL_SETTINGS, TEXT_ANISOTROPY } from "./textHelpers.js";
-import { markChanged } from "./instanceUploads.js";
-import { keepProgram } from "./programKeeper.js";
-import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
+import { TEXT_ANISOTROPY } from "./textHelpers.js";
+import { grownCapacity } from "./instancing.js";
 
 /**
- * @import {Object3D} from 'three';
- * @import {ClipBox} from './clip.js';
- * @import {ProgramKind} from './programKeeper.js';
- */
-
-/**
- * Drawing a panel's text runs together instead of one at a time.
+ * A panel's text runs, as the panel's one batch draws them
+ * (`paintBatch.js`), together instead of one at a time.
  *
  * A run is rasterized to a canvas of its own, and that is the whole problem: a
  * texture is bound per draw, so a panel of eight hundred labels is eight
@@ -35,10 +28,9 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  * same fault back, in miniature, by averaging the run with its own padding —
  * so the classes are exact, and runs of a size share an array.
  *
- * What that costs is a draw per size per render order rather than one for
- * everything. It is the right trade by a wide margin: going from eight hundred
- * draws to a few dozen is where the win is, and going from a few dozen to one
- * is worth about a tenth of it.
+ * What that costs is an array per size, and a draw of the one batch samples
+ * at most `ARRAYS_PER_DRAW` of them (`paintBatch.js`). This batch keeps the
+ * arrays and its members' layers in them, and draws nothing of its own.
  *
  * Two things stay out. A run whose colours are baked into its texture — text
  * with a shadow or a decoration the mirror cannot tint — is sRGB where a mask
@@ -59,79 +51,6 @@ export const TextBatchContext = createProperty(
    */
   () => null,
 );
-
-const vertexShader = /* glsl */ `
-attribute vec2 aSize;
-attribute vec4 aColor;
-attribute float aLayer;
-attribute vec4 aClip;
-varying vec2 vUnit;
-varying vec2 vLocal;
-varying vec4 vColor;
-varying float vLayer;
-varying vec4 vClip;
-void main() {
-  vUnit = position.xy;
-  // The frame the clip box is given in: the run's own px, which is what the
-  // per-run material's patched shader compares against too.
-  vLocal = position.xy * aSize;
-  vColor = aColor;
-  vLayer = aLayer;
-  vClip = aClip;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(vLocal, 0.0, 1.0);
-}
-`;
-
-const fragmentShader = /* glsl */ `
-precision highp sampler2DArray;
-uniform sampler2DArray uRuns;
-varying vec2 vUnit;
-varying vec2 vLocal;
-varying vec4 vColor;
-varying float vLayer;
-varying vec4 vClip;
-void main() {
-  // A mask is coverage, not colour — the green channel, which is what three's
-  // own alphaMap path reads, so a batched run and a drawn one agree.
-  float coverage = texture(uRuns, vec3(vUnit, vLayer)).g;
-  float alpha = vColor.a * coverage;
-  if (alpha < 0.001) {
-    discard;
-  }
-  // The same trim applyClip patches into the per-run material, in the same
-  // frame and with the same falloff.
-  vec2 clipHalf = 0.5 * (vClip.zw - vClip.xy);
-  vec2 clipD = abs(vLocal - 0.5 * (vClip.xy + vClip.zw)) - clipHalf;
-  float clipDist = max(clipD.x, clipD.y);
-  alpha *= 1.0 - smoothstep(-fwidth(clipDist), fwidth(clipDist), clipDist);
-  if (alpha < 0.001) {
-    discard;
-  }
-  gl_FragColor = vec4(vColor.rgb, alpha);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}
-`;
-
-/**
- * The material a bucket draws its runs with, sampling `texture`.
- *
- * @param {THREE.DataArrayTexture | null} texture
- * @returns {THREE.ShaderMaterial}
- */
-function runsMaterial(texture) {
-  return new THREE.ShaderMaterial({
-    vertexShader,
-    fragmentShader,
-    uniforms: { uRuns: { value: texture } },
-    // Blended and depth-tested as every mark on a panel is, a run drawn by
-    // itself included; the reasons are with the settings.
-    ...MARK_MATERIAL_SETTINGS,
-  });
-}
-
-/** @type {ProgramKind<THREE.ShaderMaterial>} */
-const RUNS_PROGRAM = { name: "freedom-text-batch", create: () => runsMaterial(null) };
 
 /** How many runs of a size an array has room for before it is grown. */
 const MINIMUM_LAYERS = 8;
@@ -176,7 +95,7 @@ class SizeClass {
   /** @type {number[]} */
   free = [];
   next = 0;
-  /** Bumped when the texture object is replaced, so buckets rebind. */
+  /** Bumped when the texture object is replaced, so the draws rebind. */
   generation = 0;
   /** Whether a shown run changed the mirror since the texture was built. */
   stale = false;
@@ -250,10 +169,10 @@ class SizeClass {
   }
 
   /**
-   * The texture the buckets sample, rebuilt from the mirror whenever any of
-   * it changed since the last rebuild -- a new `DataArrayTexture` over the
-   * same bytes, and the old one disposed -- rather than the old texture told
-   * which layer to re-upload.
+   * The texture the one batch's draws sample, rebuilt from the mirror whenever
+   * any of it changed since the last rebuild -- a new `DataArrayTexture` over
+   * the same bytes, and the old one disposed -- rather than the old texture
+   * told which layer to re-upload.
    *
    * That was the first design, and three does the right thing with it: one
    * `texSubImage3D` for the layer, then `generateMipmap` over the array. A
@@ -280,8 +199,8 @@ class SizeClass {
    * panel's labels change on a press or a tick of a clock, which is a
    * handful a second and not a frame.
    *
-   * Called between the writes of a rebuild and the buckets' rebind, which is
-   * the one order that works: a bucket reads the texture off its class when
+   * Called between the writes of a rebuild and the draws' rebind, which is
+   * the one order that works: a draw reads the texture off its class when
    * its generation moves, so the texture has to be the new one by then.
    *
    * @returns {void}
@@ -391,12 +310,12 @@ class SizeClass {
    * open. At a layer per label and `width * height * 4` bytes a layer, twice,
    * that is worth tens of megabytes on a panel that has since moved on.
    *
-   * The instance stays in the map. Buckets hold their size class directly, so
-   * a class dropped and made again under the same key would leave a bucket
-   * pointing at a dead one; keeping it means identity holds still, `#reserve`
-   * builds a fresh array from `MINIMUM_LAYERS` the next time a run of this
-   * size appears, and the generation bump makes the buckets rebind to the new
-   * texture before anything draws with it. What is left behind is an object
+   * The instance stays in the map. A draw holds the size classes it samples
+   * directly, so a class dropped and made again under the same key would leave
+   * a draw pointing at a dead one; keeping it means identity holds still,
+   * `#reserve` builds a fresh array from `MINIMUM_LAYERS` the next time a run
+   * of this size appears, and the generation bump makes the draws rebind to the
+   * new texture before anything draws with it. What is left behind is an object
    * with two numbers in it.
    *
    * @returns {boolean} Whether there was anything to give back.
@@ -448,196 +367,6 @@ class SizeClass {
 }
 
 /**
- * One instanced draw: the runs of a single size that share a single render
- * order, which is what lets them take the place their meshes held among the
- * boxes and the text of other depths.
- */
-class Bucket {
-  /** @type {THREE.InstancedMesh | null} */
-  mesh = null;
-  /**
-   * What the bucket draws with, kept across a growth. Only the capacity
-   * changes when a bucket grows, and a material made again for it is a
-   * program three may link again (`programKeeper.js`).
-   *
-   * @type {THREE.ShaderMaterial | null}
-   */
-  material = null;
-  capacity = 0;
-  count = 0;
-  generation = -1;
-  /** @type {Record<string, Float32Array>} */
-  data = {};
-
-  /**
-   * @param {SizeClass} sizeClass
-   * @param {number} renderOrder
-   * @param {Object3D} parent
-   */
-  constructor(sizeClass, renderOrder, parent) {
-    this.sizeClass = sizeClass;
-    this.renderOrder = renderOrder;
-    this.parent = parent;
-  }
-
-  /**
-   * @param {number} needed
-   * @returns {void}
-   */
-  reserve(needed) {
-    if (needed > this.capacity) {
-      this.#build(grownCapacity(this.capacity, needed, MINIMUM_LAYERS));
-    }
-    this.rebind();
-  }
-
-  /**
-   * Draw from the texture the size class holds now, if it has built a new one,
-   * and the first time, whatever it holds: `#build` binds no texture itself.
-   *
-   * @returns {void}
-   */
-  rebind() {
-    if (this.material && this.generation !== this.sizeClass.generation) {
-      this.material.uniforms.uRuns.value = this.sizeClass.texture;
-      this.generation = this.sizeClass.generation;
-    }
-  }
-
-  /**
-   * @param {number} capacity
-   * @returns {void}
-   */
-  #build(capacity) {
-    this.#disposeMesh();
-    this.capacity = capacity;
-    const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]), 3),
-    );
-    geometry.setIndex([0, 1, 2, 2, 1, 3]);
-    /** @type {[string, number][]} */
-    const attributes = [
-      ["aSize", 2],
-      ["aColor", 4],
-      ["aLayer", 1],
-      ["aClip", 4],
-    ];
-    this.data = {};
-    for (const [name, size] of attributes) {
-      const array = new Float32Array(capacity * size);
-      this.data[name] = array;
-      geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
-    }
-    // Which texture it samples is `rebind`'s to say, and `reserve` asks it
-    // next.
-    this.material ??= keepProgram(runsMaterial(null), RUNS_PROGRAM);
-    const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
-    // The integer itself, unbiased, which is the half of the arrangement
-    // `boxBatch`'s `BOX_BUCKET_BIAS` explains: a run of text and the box of
-    // anything nested inside the element it belongs to share a `renderOrder`,
-    // and text is the one that goes first. Two buckets kept apart by nothing
-    // but the ids of the meshes they happen to hold is not an order, and stops
-    // being the same non-order the moment one of them grows.
-    //
-    // Two text buckets of one order — two sizes of run in the same element —
-    // are still separated only by id. Overlapping runs of different pixel
-    // sizes at one depth is not a thing a panel does, and it is left alone
-    // rather than given a second epsilon to reason about.
-    mesh.renderOrder = this.renderOrder;
-    mesh.frustumCulled = false;
-    mesh.matrixAutoUpdate = false;
-    mesh.matrix.identity();
-    // And the world matrix has to be asked for once, which is easy to miss and
-    // invisible when missed. Three recomputes a world matrix for an object
-    // that either recomposed its own or was told to; this one does neither,
-    // and a freshly built object starts out believing its world matrix is up
-    // to date when it is still the identity. A bucket built while the panel
-    // sat still — the size class that appears when a row scrolls into view —
-    // would draw its instances at panel coordinates in world space, which is
-    // to say somewhere off in the distance. The buckets built during the
-    // panel's first layout were spared only because the container's own
-    // placement forced an update through them, which is what made this show
-    // up as text that scrolls into view being missing rather than as nothing
-    // working at all.
-    mesh.matrixWorldNeedsUpdate = true;
-    this.mesh = mesh;
-    this.parent.add(mesh);
-  }
-
-  /**
-   * @param {number} index
-   * @param {Member} member
-   * @param {Slot} slot The layer the run is drawn from.
-   * @param {THREE.Matrix4} matrix
-   * @returns {void}
-   */
-  write(index, member, slot, matrix) {
-    const mesh = this.mesh;
-    if (!mesh) {
-      return;
-    }
-    mesh.setMatrixAt(index, matrix);
-    const material = /** @type {THREE.MeshBasicMaterial} */ (member.mesh.material);
-    this.data.aSize[index * 2] = member.width;
-    this.data.aSize[index * 2 + 1] = member.height;
-    this.data.aColor[index * 4] = material.color.r;
-    this.data.aColor[index * 4 + 1] = material.color.g;
-    this.data.aColor[index * 4 + 2] = material.color.b;
-    this.data.aColor[index * 4 + 3] = material.opacity;
-    this.data.aLayer[index] = slot.layer;
-    const clip = member.clip.value;
-    this.data.aClip[index * 4] = clip.x;
-    this.data.aClip[index * 4 + 1] = clip.y;
-    this.data.aClip[index * 4 + 2] = clip.z;
-    this.data.aClip[index * 4 + 3] = clip.w;
-  }
-
-  /**
-   * @param {number} count
-   * @returns {void}
-   */
-  finish(count) {
-    this.count = count;
-    const mesh = this.mesh;
-    if (!mesh) {
-      return;
-    }
-    mesh.count = count;
-    mesh.visible = count > 0;
-    markChanged(mesh.instanceMatrix, count);
-    for (const name of Object.keys(this.data)) {
-      markChanged(
-        /** @type {THREE.InstancedBufferAttribute} */ (mesh.geometry.getAttribute(name)),
-        count,
-      );
-    }
-  }
-
-  /** @returns {void} */
-  dispose() {
-    this.#disposeMesh();
-    // Unlike the boxes', this material is the bucket's own: it carries the
-    // size class's array texture, so there is one per size per render order
-    // rather than one per panel.
-    this.material?.dispose();
-    this.material = null;
-    this.generation = -1;
-  }
-
-  /** @returns {void} */
-  #disposeMesh() {
-    if (!this.mesh) {
-      return;
-    }
-    disposeInstancedMesh(this.mesh);
-    this.mesh = null;
-    this.capacity = 0;
-  }
-}
-
-/**
  * Which layer of which array holds the pixels of one of a run's rasters.
  *
  * @typedef {object} Slot
@@ -672,47 +401,18 @@ export class TextBatch {
   #members = new Map();
   /** @type {Map<string, SizeClass>} */
   #classes = new Map();
-  /** @type {Map<string, Bucket>} */
-  #buckets = new Map();
-
   /**
-   * What draws the runs of a panel drawn in paint order, with its boxes
-   * (`paintBatch.js`): such a panel's runs are taken from this batch, which
-   * lays out no buckets of its own. Null on any other panel.
+   * What draws the runs, with the panel's boxes.
    *
-   * @type {import('./paintBatch.js').PaintBatch | null}
+   * @type {import('./paintBatch.js').PaintBatch}
    */
-  #draw = null;
+  #draw;
   /**
-   * The batch's own meshes, which its walk of the panel has to step over. A
-   * set rather than a lookup through the buckets because a bucket is keyed by
-   * size and render order and the walk has an object in hand — there can be
-   * dozens of buckets, and this is asked once per object per rebuild.
-   *
-   * Derived from the buckets at the top of every rebuild rather than added to
-   * as buckets are made. A bucket that fills is rebuilt at double capacity and
-   * its old mesh is discarded; a set that only ever grew would hold every mesh
-   * the panel had ever outgrown, and there is nothing left to notice them by.
-   * Rebuilding it is a walk of the buckets, which the rebuild does anyway.
-   *
-   * @type {Set<Object3D>}
-   */
-  #bucketMeshes = new Set();
-  /** @type {Object3D} */
-  #container;
-  #dirty = false;
-  #disposed = false;
-  /** @type {Member[]} */
-  #found = [];
-  /** @type {THREE.Matrix4[]} */
-  #matrices = [];
-  /**
-   * The runs the last rebuild laid into buckets, so that a run leaving the
-   * batch, or letting go of a raster, asks for a rebuild only when the
-   * buckets hold it or a run is waiting for a layer (`#declined`); see
-   * `#drawn` in `boxBatch.js`. What such a run gives back is given back all
-   * the same, and a class it leaves with no layers is dropped by whichever
-   * rebuild comes next.
+   * The runs the last walk took, so that a run leaving the batch, or letting go
+   * of a raster, asks for a rebuild only when the one batch draws it or a run
+   * is waiting for a layer (`#declined`); see `#drawn` in `boxBatch.js`. What
+   * such a run gives back is given back all the same, and a class it leaves
+   * with no layers is dropped by whichever rebuild comes next.
    *
    * @type {Set<THREE.Mesh>}
    */
@@ -725,13 +425,10 @@ export class TextBatch {
   #declined = false;
 
   /**
-   * @param {Object3D} container
-   * @param {{ draw?: import('./paintBatch.js').PaintBatch }} [options] What
-   *   draws the runs instead, on a panel drawn in paint order.
+   * @param {import('./paintBatch.js').PaintBatch} draw What draws the runs.
    */
-  constructor(container, { draw } = {}) {
-    this.#container = container;
-    this.#draw = draw ?? null;
+  constructor(draw) {
+    this.#draw = draw;
   }
 
   /**
@@ -802,8 +499,8 @@ export class TextBatch {
    * Take this run into the batch. Idempotent.
    *
    * Two kinds of run are never offered at all, and for the same reason: a
-   * batched run is described entirely by what the bucket copied out of it, so
-   * anything private to the run has nowhere to go. A run whose colours are
+   * batched run is described entirely by what the one batch copied out of it,
+   * so anything private to the run has nowhere to go. A run whose colours are
    * baked into its texture is declined below, by `#settle`, because one array
    * texture cannot hold both coverage and colour. A run that is *revealed* is
    * not offered by `textRun.js` in the first place, because it carries a cut
@@ -922,10 +619,10 @@ export class TextBatch {
 
   /**
    * Build and upload the arrays of the classes `stage` wrote into: at most
-   * `bytes` of them, and at least one class whatever its size. Each class's
-   * buckets are rebound to its new array here, in the same call that
-   * disposed the old one, so nothing samples a disposed texture until the
-   * next rebuild.
+   * `bytes` of them, and at least one class whatever its size. The draws
+   * that sample a class are rebound to its new array here, in the same call
+   * that disposed the old one, so nothing samples a disposed texture until
+   * the next rebuild.
    *
    * @param {number} bytes
    * @param {(texture: THREE.Texture) => void} upload Send a texture to the
@@ -948,12 +645,7 @@ export class TextBatch {
         continue;
       }
       upload(sizeClass.texture);
-      for (const bucket of this.#buckets.values()) {
-        if (bucket.sizeClass === sizeClass) {
-          bucket.rebind();
-        }
-      }
-      this.#draw?.rebind(sizeClass);
+      this.#draw.rebind(sizeClass);
       spent += size;
     }
     return false;
@@ -976,39 +668,14 @@ export class TextBatch {
   }
 
   /**
-   * Coalesced to one rebuild for the same reason the boxes' is: a single
-   * mutation reaches a great many runs, and the rebuild is a walk of the panel
-   * either way. Collected on the same two schedules, and for the same reason —
-   * `boxBatch`'s `invalidate` says why at length.
+   * Something about a run the batch has copied down has changed. The one
+   * batch coalesces it with everything else the panel changed (`invalidate`
+   * in `paintBatch.js`).
    *
    * @returns {void}
    */
   invalidate() {
-    if (this.#draw) {
-      this.#draw.invalidate();
-      return;
-    }
-    if (this.#dirty || this.#disposed) {
-      return;
-    }
-    this.#dirty = true;
-    queueMicrotask(() => {
-      this.flush();
-    });
-  }
-
-  /**
-   * Pay off a pending rebuild now, if there is one. Whichever of the microtask
-   * and the late frame hook gets here first does the work.
-   *
-   * @returns {void}
-   */
-  flush() {
-    if (!this.#dirty || this.#disposed) {
-      return;
-    }
-    this.#dirty = false;
-    this.rebuild();
+    this.#draw.invalidate();
   }
 
   /**
@@ -1058,132 +725,13 @@ export class TextBatch {
     return slot;
   }
 
-  /**
-   * Walk the panel and lay its runs into buckets — the same walk, over the
-   * same `visible` flag, that the renderer and the box batch make, so a
-   * batched panel agrees with an unbatched one about what is drawn and in
-   * what order.
-   *
-   * @returns {void}
-   */
-  rebuild() {
-    if (this.#disposed) {
-      return;
-    }
-    // Which of the container's children are the batch's own, as of now. Taken
-    // from the buckets rather than remembered, so a mesh a bucket has grown
-    // out of cannot linger here.
-    this.#bucketMeshes.clear();
-    for (const bucket of this.#buckets.values()) {
-      if (bucket.mesh) {
-        this.#bucketMeshes.add(bucket.mesh);
-      }
-    }
-    const found = this.#found;
-    const matrices = this.#matrices;
-    found.length = 0;
-    this.beginWalk();
-    let count = 0;
-
-    /**
-     * @param {Object3D} object
-     * @param {THREE.Matrix4} parentMatrix
-     * @param {number} depth
-     */
-    const walk = (object, parentMatrix, depth) => {
-      if (!object.visible || this.#bucketMeshes.has(object)) {
-        return;
-      }
-      const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
-      const member = this.take(/** @type {THREE.Mesh} */ (object));
-      if (member) {
-        found.push(member);
-        if (!matrices[count]) {
-          matrices[count] = new THREE.Matrix4();
-        }
-        matrices[count].copy(matrix);
-        count += 1;
-      }
-      const children = object.children;
-      for (let i = 0; i < children.length; i++) {
-        walk(children[i], matrix, depth + 1);
-      }
-    };
-
-    const root = stackAt(0).identity();
-    const children = this.#container.children;
-    for (let i = 0; i < children.length; i++) {
-      walk(children[i], root, 1);
-    }
-
-    // Every run is settled, so every class that changed builds its texture
-    // now, before a bucket below reads it.
-    this.commitClasses();
-
-    /** @type {Map<string, number>} */
-    const wanted = new Map();
-    /** @type {string[]} */
-    const keys = [];
-    for (let i = 0; i < count; i++) {
-      const member = found[i];
-      const sizeClass = /** @type {Slot} */ (member.shown).sizeClass;
-      const key = `${sizeClass.width}x${sizeClass.height}|${member.mesh.renderOrder}`;
-      keys.push(key);
-      wanted.set(key, (wanted.get(key) ?? 0) + 1);
-    }
-    for (const [key, needed] of wanted) {
-      let bucket = this.#buckets.get(key);
-      if (!bucket) {
-        const index = keys.indexOf(key);
-        bucket = new Bucket(
-          /** @type {Slot} */ (found[index].shown).sizeClass,
-          found[index].mesh.renderOrder,
-          this.#container,
-        );
-        this.#buckets.set(key, bucket);
-      }
-      bucket.reserve(needed);
-      bucket.count = 0;
-    }
-    for (const [key, bucket] of this.#buckets) {
-      if (!wanted.has(key)) {
-        bucket.count = 0;
-      }
-    }
-    for (let i = 0; i < count; i++) {
-      const bucket = this.#buckets.get(keys[i]);
-      if (bucket) {
-        bucket.write(bucket.count, found[i], /** @type {Slot} */ (found[i].shown), matrices[i]);
-        bucket.count += 1;
-      }
-    }
-    for (const bucket of this.#buckets.values()) {
-      bucket.finish(bucket.count);
-    }
-    this.releaseEmptyClasses();
-  }
-
   /** @returns {void} */
   dispose() {
-    this.#disposed = true;
-    for (const bucket of this.#buckets.values()) {
-      bucket.dispose();
-    }
     for (const sizeClass of this.#classes.values()) {
       sizeClass.dispose();
     }
-    this.#buckets.clear();
     this.#classes.clear();
     this.#members.clear();
-    this.#bucketMeshes.clear();
     this.#drawn.clear();
   }
-}
-
-/**
- * @param {Object3D} container
- * @returns {TextBatch}
- */
-export function createTextBatch(container) {
-  return new TextBatch(container);
 }

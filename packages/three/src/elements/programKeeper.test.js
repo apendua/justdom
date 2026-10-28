@@ -4,9 +4,8 @@ import * as THREE from "three";
 import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
 import { stubGlRenderer } from "../test/stubGl.js";
-import { panel } from "../test/textRuns.js";
+import { paintBatch, panel } from "../test/textRuns.js";
 import { createDepthQuad } from "./blocker.js";
-import { createBoxBatch } from "./boxBatch.js";
 import { applyClip, applyReveal } from "./clip.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPanelHandles } from "./panelHandles.js";
@@ -56,31 +55,29 @@ function mark(patch = (material) => applyClip(material, { value: new THREE.Vecto
 }
 
 /**
- * A panel's batch of text, `count` runs of one size, settled.
+ * A panel's one batch, drawing `count` runs of text of one size, settled.
  *
  * @param {number} count
  */
 function textPanel(count) {
   const p = panel(count);
-  p.batch.flush();
+  p.draws.flush();
   return p;
 }
 
 /**
- * A panel's batch of boxes, with one box in it.
- *
- * @param {import("./boxBatch.js").DepthRankBias} [depthRank]
+ * A panel's one batch, drawing one box.
  */
-function boxPanel(depthRank) {
+function boxPanel() {
   const container = new THREE.Group();
   place(container, 0, 0, 0);
   const box = new THREE.Mesh(rectGeometry, batchedBoxMaterial());
   place(box, 0, 0, 0);
   container.add(box);
-  const batch = createBoxBatch(container, depthRank);
-  batch.add(box, createRectUniforms());
-  batch.flush();
-  return { container, batch };
+  const draws = paintBatch(container);
+  draws.boxes.add(box, createRectUniforms());
+  draws.flush();
+  return { container, draws };
 }
 
 describe("programKeeper", () => {
@@ -101,57 +98,32 @@ describe("programKeeper", () => {
     assert.deepEqual([counts.programs, counts.programsFreed], [1, 0]);
   });
 
-  test("a box panel with a depth bias, after the last one closed, links nothing", () => {
-    for (const depthRank of /** @type {const} */ (["constant", "slope", "max"])) {
-      const { scene, counts, draw } = stage();
-      const first = boxPanel(depthRank);
-      scene.add(first.container);
-      draw();
-      assert.equal(counts.programs, 1, `${depthRank}: the keeper is the panel's own program`);
+  test("a panel's batch, after the last one closed, links nothing", () => {
+    const { scene, counts, draw } = stage();
+    const first = boxPanel();
+    scene.add(first.container);
+    draw();
+    assert.equal(counts.programs, 1, "the keeper is the panel's own program");
 
-      first.batch.dispose();
-      scene.remove(first.container);
-      draw();
-      const second = boxPanel(depthRank);
-      scene.add(second.container);
-      draw();
-      assert.deepEqual([counts.programs, counts.programsFreed], [1, 0], depthRank);
-    }
+    first.draws.dispose();
+    scene.remove(first.container);
+    draw();
+    const second = boxPanel();
+    scene.add(second.container);
+    draw();
+    assert.deepEqual([counts.programs, counts.programsFreed], [1, 0]);
   });
 
-  test("box panels of every bias, after the last ones closed, link nothing", () => {
+  test("a draw that grows links nothing", () => {
     const { scene, counts, draw } = stage();
-    const biases = /** @type {const} */ ([undefined, "constant", "slope", "max"]);
-    const open = () =>
-      biases.map((depthRank) => {
-        const p = boxPanel(depthRank);
-        scene.add(p.container);
-        return p;
-      });
-    const first = open();
-    draw();
-    assert.equal(counts.programs, biases.length, "a program for each bias, and one for none");
-
-    for (const p of first) {
-      p.batch.dispose();
-      scene.remove(p.container);
-    }
-    draw();
-    open();
-    draw();
-    assert.deepEqual([counts.programs, counts.programsFreed], [biases.length, 0]);
-  });
-
-  test("a text bucket that grows links nothing", () => {
-    const { scene, counts, draw } = stage();
-    const p = textPanel(6);
+    const p = textPanel(12);
     scene.add(p.container);
     draw();
     const linked = counts.programs;
 
-    // A bucket starts with room for 8 runs, so this rebuilds it at 16.
-    p.grow(6);
-    p.batch.flush();
+    // A draw starts with room for 16 instances, so this rebuilds it at 32.
+    p.grow(12);
+    p.draws.flush();
     draw();
     assert.deepEqual([counts.programs, counts.programsFreed], [linked, 0]);
   });
@@ -164,8 +136,8 @@ describe("programKeeper", () => {
     draw();
     const linked = counts.programs;
 
-    text.batch.dispose();
-    boxes.batch.dispose();
+    text.draws.dispose();
+    boxes.draws.dispose();
     scene.remove(text.container, boxes.container);
     draw();
     const again = [textPanel(2).container, boxPanel().container];

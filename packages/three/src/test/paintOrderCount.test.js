@@ -92,9 +92,8 @@ describe("the tree over a panel's layers", () => {
 describe("size classes", () => {
   test("a text draw per class, and fifteen arrays to a draw in one batch", async () => {
     // Twenty labels of twenty lengths side by side, each its own size
-    // class at one level: twenty text buckets under the lift and twenty
-    // text draws in two batches, two draws in one batch, which samples
-    // fifteen arrays at most.
+    // class at one level: twenty text draws in two batches, and two draws
+    // in one batch, which samples fifteen arrays at most.
     const count = await countScene((root) => {
       for (let i = 0; i < 20; i += 1) {
         const label = document.createElement("span");
@@ -103,13 +102,8 @@ describe("size classes", () => {
       }
     });
     assert.deepEqual(
-      {
-        classes: count.classes,
-        lift: count.lift,
-        twoBatches: count.twoBatches,
-        oneBatch: count.oneBatch,
-      },
-      { classes: 20, lift: 20, twoBatches: 20, oneBatch: 2 },
+      { classes: count.classes, twoBatches: count.twoBatches, oneBatch: count.oneBatch },
+      { classes: 20, twoBatches: 20, oneBatch: 2 },
     );
   });
 });
@@ -132,9 +126,8 @@ describe("text fields", () => {
 
 describe("runs the text batch declines", () => {
   test("a shadowed label draws itself", async () => {
-    // Two labels of one text, the second with a shadow: one class, one
-    // bucket and one draw of quads for the first, a draw of its own for
-    // the second.
+    // Two labels of one text, the second with a shadow: one class and one
+    // draw of quads for the first, a draw of its own for the second.
     const count = await countScene((root) => {
       for (const shadow of ["none", "1px 1px red"]) {
         const label = document.createElement("span");
@@ -144,8 +137,8 @@ describe("runs the text batch declines", () => {
       }
     });
     assert.deepEqual(
-      { runs: count.runs, classes: count.classes, lift: count.lift, oneBatch: count.oneBatch },
-      { runs: 2, classes: 1, lift: 2, oneBatch: 2 },
+      { runs: count.runs, classes: count.classes, oneBatch: count.oneBatch },
+      { runs: 2, classes: 1, oneBatch: 2 },
     );
   });
 });

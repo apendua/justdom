@@ -22,11 +22,8 @@ const SVG = "http://www.w3.org/2000/svg";
  * @returns {string}
  */
 function kindOf(object, material) {
-  if (object.geometry.getAttribute("aLayer")) {
-    return "text batch";
-  }
   if (object.geometry.getAttribute("aSize")) {
-    return "box batch";
+    return "batch";
   }
   if (material === batchedBoxMaterial()) {
     return "box";
@@ -83,11 +80,10 @@ function everyKind() {
  * Mount `everyKind` and hand each mesh that draws colour, other than a
  * batch's own, to `visit`, with its kind.
  *
- * @param {boolean} paintOrder
  * @param {(object: THREE.Mesh, kind: string) => void} visit
  * @returns {Promise<Set<string>>} The kinds walked, batches included.
  */
-async function walkEveryKind(paintOrder, visit) {
+async function walkEveryKind(visit) {
   const root = everyKind();
   const ctx = InteractionContext.set({}, new InteractionManager());
   const portal = createPortal(ctx, {
@@ -95,7 +91,6 @@ async function walkEveryKind(paintOrder, visit) {
     budget: Infinity,
     loadingFrame: { delay: 0, minimumTime: 0 },
     plugins: [svgElements()],
-    paintOrder,
   });
   const scene = new THREE.Group();
   portal.addTo(scene);
@@ -140,13 +135,13 @@ describe("the hit test's draw order on every panel mesh", () => {
     }
   });
 
-  test("a panel in paint order registers every mesh a ray can meet, at the order it draws", async () => {
+  test("a panel registers every mesh a ray can meet, at the order it draws", async () => {
     /** @type {string[]} */
     const misordered = [];
-    const kinds = await walkEveryKind(true, (object, kind) => {
-      // A ray meets the element's own mesh, never a batch's bucket, so that
-      // mesh carries the order the hit test reads. A batched box is drawn by
-      // its bucket, half a level after its own order. A box that draws
+    const kinds = await walkEveryKind((object, kind) => {
+      // A ray meets the element's own mesh, never one of the batch's draws,
+      // so that mesh carries the order the hit test reads. A batched box is
+      // drawn by the panel's one batch, half a level after its own order. A box that draws
       // itself, a picture's, draws a quarter level after the order of its
       // element, and carries that in its own. Goes red with any kind left
       // unregistered, and with the picture's rung left out.
@@ -163,32 +158,12 @@ describe("the hit test's draw order on every panel mesh", () => {
     assert.deepEqual(misordered, []);
     // A field's caret is a mark too, built only under the panel's own
     // focus; `portalKeyboard.test.js` holds it.
-    // The batches are left out: a panel in paint order draws its boxes and
-    // its runs in one (`paintBatch.js`).
+    // The batch is left out: a panel draws its boxes and its runs in one
+    // (`paintBatch.js`).
     assert.deepEqual(
       [...kinds].filter((kind) => !kind.endsWith("batch")).sort(),
       ["box", "picture", "run", "shape", "tick"],
       "every kind was walked",
     );
-  });
-
-  test("a lifted panel registers none, and its picture draws at its element's order", async () => {
-    // Such a panel keeps what it draws apart in depth, so the hit test takes
-    // the nearest as it was found. A guard: what the option must not change.
-    /** @type {string[]} */
-    const registered = [];
-    /** @type {number[]} */
-    const pictures = [];
-    await walkEveryKind(false, (object, kind) => {
-      if (getObjectDrawOrder(object) !== -Infinity) {
-        registered.push(kind);
-      }
-      if (kind === "picture") {
-        pictures.push(object.renderOrder);
-      }
-    });
-    assert.deepEqual(registered, []);
-    assert.equal(pictures.length, 1);
-    assert.ok(Number.isInteger(pictures[0]), `the picture at ${pictures[0]}`);
   });
 });

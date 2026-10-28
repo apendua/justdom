@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import { Effect } from "@apendua/signal";
 import {
   bandBase,
-  drawInPaintOrder,
-  ELEVATION_BAND,
   getContentRenderOrder,
   getDrawLevel,
   getElevation,
@@ -12,7 +10,6 @@ import {
   getLayerBase,
   getRenderBand,
   isOverlay,
-  isPaintOrdered,
   PIECE_BAND,
   setLayerBase,
 } from "./elevation.js";
@@ -124,7 +121,7 @@ describe("getContentRenderOrder", () => {
     const panel = element("");
     const button = element("", panel);
 
-    // The box's own figure is elevation·ELEVATION_BAND + draw level, which
+    // The box's own figure is its layer's base plus its draw level, which
     // is the ancestor count here. Content is one deeper, counted from the
     // element itself.
     assert.equal(getContentRenderOrder(button), getContentRenderOrder(panel) + 1);
@@ -135,8 +132,11 @@ describe("getContentRenderOrder", () => {
     const panel = element("");
     const menu = element("position: absolute; z-index: 1", panel);
 
-    assert.ok(getContentRenderOrder(menu) >= ELEVATION_BAND);
-    assert.ok(getContentRenderOrder(menu) - getContentRenderOrder(panel) >= ELEVATION_BAND);
+    assert.ok(getContentRenderOrder(menu) >= PIECE_BAND);
+    assert.ok(
+      bandBase(getContentRenderOrder(menu)) > bandBase(getContentRenderOrder(panel)),
+      "in a band past the panel's",
+    );
   });
 });
 
@@ -153,14 +153,11 @@ describe("getContentRenderOrder", () => {
  */
 
 /**
- * A panel's page under a 400 by 300 root, mirrored, and drawn in paint
- * order unless `lifted`.
+ * A panel's page under a 400 by 300 root, mirrored.
  *
  * @param {Spec[]} children
- * @param {object} [options]
- * @param {boolean} [options.lifted] Leave the panel to the step.
  */
-function page(children, { lifted = false } = {}) {
+function page(children) {
   const root = document.createElement("div");
   root.setAttribute(PORTAL_ATTRIBUTE, "");
   root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
@@ -187,9 +184,6 @@ function page(children, { lifted = false } = {}) {
     build(root, child);
   }
   document.body.appendChild(root);
-  if (!lifted) {
-    drawInPaintOrder(root);
-  }
   const mirror = createMirror();
   mirror.adopt(root);
   for (const el of elements.values()) {
@@ -208,21 +202,7 @@ function page(children, { lifted = false } = {}) {
 const SWUNG = "matrix3d(0.866, 0, -0.5, 0, 0, 1, 0, 0, 0.5, 0, 0.866, 0, 0, 0, 0, 1)";
 const OPAQUE_CARD = "position: absolute; background-color: rgb(255, 255, 255)";
 
-describe("a panel drawn in paint order", () => {
-  test("is the one whose root asked, and every element in it", () => {
-    const ordered = page([{ id: "card", at: [0, 0, 100, 100] }]);
-    const lifted = page([{ id: "card", at: [0, 0, 100, 100] }], { lifted: true });
-    try {
-      assert.equal(isPaintOrdered(ordered.root), true);
-      assert.equal(isPaintOrdered(ordered.get("card")), true);
-      assert.equal(isPaintOrdered(lifted.root), false);
-      assert.equal(isPaintOrdered(lifted.get("card")), false);
-    } finally {
-      ordered.remove();
-      lifted.remove();
-    }
-  });
-
+describe("a panel's layers and levels", () => {
   test("makes a layer of its root, an overlay and a box swung out of its plane", () => {
     const { root, get, remove } = page([
       {
@@ -292,34 +272,24 @@ describe("a panel drawn in paint order", () => {
   });
 
   test("draws a later opaque card after everything an earlier one draws", () => {
-    /** @param {boolean} lifted */
-    const pile = (lifted) =>
-      page(
-        [
-          {
-            id: "under",
-            style: OPAQUE_CARD,
-            at: [0, 0, 100, 100],
-            children: [{ id: "label", at: [10, 10, 80, 20] }],
-          },
-          { id: "over", style: OPAQUE_CARD, at: [50, 50, 100, 100] },
-        ],
-        { lifted },
-      );
-    const ordered = pile(false);
-    const lifted = pile(true);
+    const ordered = page([
+      {
+        id: "under",
+        style: OPAQUE_CARD,
+        at: [0, 0, 100, 100],
+        children: [{ id: "label", at: [10, 10, 80, 20] }],
+      },
+      { id: "over", style: OPAQUE_CARD, at: [50, 50, 100, 100] },
+    ]);
     try {
-      // The step hides the card under by the opaque card's depth, so the
-      // card keeps its tree depth. Paint order writes no depth: the card
-      // over has to draw after the label it covers.
-      assert.equal(getDrawLevel(lifted.get("over")), getDrawLevel(lifted.get("under")));
+      // Nothing but the depth quad writes depth: the card over has to draw
+      // after the label it covers, opaque or not.
       assert.equal(getDrawLevel(ordered.root), 0);
       assert.equal(getDrawLevel(ordered.get("under")), 1);
       assert.equal(getDrawLevel(ordered.get("label")), 2);
       assert.equal(getDrawLevel(ordered.get("over")), 4);
     } finally {
       ordered.remove();
-      lifted.remove();
     }
   });
 
@@ -402,29 +372,20 @@ describe("a panel drawn in paint order", () => {
 
   test("counts the shadow of an element's own text in what it covers", () => {
     const shadow = "text-shadow: 30px 30px 0px rgb(0, 0, 0)";
-    /**
-     * @param {string} text
-     * @param {boolean} lifted
-     */
-    const shadowed = (text, lifted) =>
-      page(
-        [
-          { id: "label", style: `position: absolute; ${shadow}`, text, at: [0, 0, 100, 20] },
-          { id: "card", style: "position: absolute", at: [0, 40, 100, 40] },
-        ],
-        { lifted },
-      );
-    const ordered = shadowed("Score", false);
-    const blank = shadowed("", false);
-    const lifted = shadowed("Score", true);
+    /** @param {string} text */
+    const shadowed = (text) =>
+      page([
+        { id: "label", style: `position: absolute; ${shadow}`, text, at: [0, 0, 100, 20] },
+        { id: "card", style: "position: absolute", at: [0, 40, 100, 40] },
+      ]);
+    const ordered = shadowed("Score");
+    const blank = shadowed("");
     try {
       assert.equal(getDrawLevel(ordered.get("card")), getDrawLevel(ordered.get("label")) + 2);
       assert.equal(getDrawLevel(blank.get("card")), 1, "no text of its own, no shadow to cover");
-      assert.equal(getDrawLevel(lifted.get("card")), getDrawLevel(lifted.get("label")));
     } finally {
       ordered.remove();
       blank.remove();
-      lifted.remove();
     }
   });
 

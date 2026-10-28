@@ -1,7 +1,7 @@
 /**
  * The panel against the draw count (`test/paintOrderCount.js`), on the
- * count's scenes: a panel drawn in paint order cuts each scene into the
- * pieces the count does, and orders every overlap in it in paint order.
+ * count's scenes: a panel cuts each scene into the pieces the count does,
+ * and orders every overlap in it in paint order.
  * Apart from `paintOrder.test.js` because the scenes install
  * `benchLayout.js`'s stand-ins, which that file's tests do not mount under.
  */
@@ -64,7 +64,7 @@ function levelBreaks(root) {
       breaks.push(`${name(element)} at ${level} is not past its parent`);
     }
     if (parent && !isRoot) {
-      for (const { sibling } of getClearedSiblings(element)) {
+      for (const sibling of getClearedSiblings(element)) {
         if (getLayer(sibling) === sibling) {
           continue;
         }
@@ -87,7 +87,7 @@ function levelBreaks(root) {
   return breaks;
 }
 
-describe("a panel drawn in paint order, on the count's scenes", () => {
+describe("a panel, on the count's scenes", () => {
   for (const scene of LAYER_SCENES) {
     test(`cuts ${scene.name} into the pieces the count does`, async () => {
       // The count reads the same tree (`layerTree.js`) off the page; the
@@ -96,7 +96,7 @@ describe("a panel drawn in paint order, on the count's scenes", () => {
       // cards in an X by each other's, and three tilted about one centre,
       // which overlap in a cycle, take the extra cut that orders them. Goes
       // red with a nested layer the panel does not place.
-      const { root, dispose } = await mountScene(scene.build, { paintOrder: true });
+      const { root, dispose } = await mountScene(scene.build);
       const counted = countPanel(root);
       const order = /** @type {import("./layerOrder.js").LayerOrder} */ (getLayerOrder(root));
       order.walk(new THREE.Vector3(0, 0, 2000));
@@ -119,7 +119,7 @@ describe("a panel drawn in paint order, on the count's scenes", () => {
 
   for (const scene of [...BENCH_SCENES, ...LAYER_SCENES]) {
     test(`orders every overlap of ${scene.name} in paint order`, async () => {
-      const { root, dispose } = await mountScene(scene.build, { paintOrder: true });
+      const { root, dispose } = await mountScene(scene.build);
       assert.deepEqual(levelBreaks(root), []);
       dispose();
     });

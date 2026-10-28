@@ -17,10 +17,9 @@ import { getBorderBoxSize } from "./mirror.js";
  */
 
 /*
- * The order a panel drawn in paint order (`paintOrder` in `portal.js`)
- * draws its layers in, from where the viewer stands. Within a layer the
- * draw level orders everything (`getDrawLevel`); between layers the panel's
- * tree does (`layerTree.js`), walked from the viewpoint every frame.
+ * The order a panel draws its layers in, from where the viewer stands. Within a
+ * layer the draw level orders everything (`getDrawLevel`); between layers the
+ * panel's tree does (`layerTree.js`), walked from the viewpoint every frame.
  *
  * - The tree is built when a layer appears or goes, or when a layer's plane
  *   moves: its object's matrix in the panel's frame, or its border box's
@@ -77,8 +76,8 @@ const OVERFLOW = PANEL_PIECES - 2;
 const FIRST_BASE = -1;
 
 /**
- * The panel's order, for the boxes of a panel drawn in paint order to tell
- * it which elements are layers. Null on any other panel.
+ * The panel's order, for its boxes to tell it which elements are layers.
+ * Null outside a portal.
  */
 export const LayerOrderContext = createProperty(
   /**
@@ -92,7 +91,7 @@ export const LayerOrderContext = createProperty(
 const orders = new WeakMap();
 
 /**
- * The order of the panel under `root`, if it is drawn in paint order.
+ * The order of the panel under `root`, if a portal draws it.
  *
  * @param {Element} root
  * @returns {LayerOrder | undefined}
@@ -102,7 +101,7 @@ export function getLayerOrder(root) {
 }
 
 /**
- * The panels drawn in paint order under one renderer, the frame they were
+ * The panels under one renderer, the frame they were
  * last sorted in, and the array they are sorted in, kept.
  *
  * @typedef {object} Scene

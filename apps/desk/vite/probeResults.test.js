@@ -106,17 +106,17 @@ describe("the probe-results route", () => {
     expect(await send(route(dir), "//", "GET")).toBe("next");
   });
 
-  it("names the file by the body's scene and build", async () => {
+  it("names the file by the body's scene", async () => {
     const reply = await send(
       route(dir),
       "/apps/desk/api/probe-results",
       "POST",
-      JSON.stringify({ scene: "hover", build: "paint order", runs: [] }),
+      JSON.stringify({ scene: "hover", runs: [] }),
     );
     expect(reply).toMatchObject({ status: 201 });
     const files = await readdir(dir);
     expect(files).toHaveLength(1);
-    expect(files[0]).toMatch(/^probe-hover-paint-order-\d{4}-.*\.json$/);
+    expect(files[0]).toMatch(/^probe-hover-\d{4}-.*\.json$/);
   });
 
   it("answers 500 when the file cannot be written", async () => {

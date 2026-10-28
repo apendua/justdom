@@ -65,10 +65,10 @@ export const HANDLE_OPACITY_NEAR = 0.25;
 export const HANDLE_OPACITY_ACTIVE = 0.9;
 
 /**
- * Where the bars go in the draw: past the bands every panel draws in
- * (`elevation * ELEVATION_BAND + level`, see elevation.js), and short of
- * the cursor and a drag's ghost at `OVERLAY_RENDER_ORDER`, which go over
- * everything.
+ * Where the bars go in the draw: past the slots the panels draw in, each
+ * `PANEL_PIECES` bands of `PIECE_BAND` (`layerOrder.js`), of which 95 fit
+ * below it, and short of the cursor and a drag's ghost at
+ * `OVERLAY_RENDER_ORDER`, which go over everything.
  */
 export const HANDLE_RENDER_ORDER = 1e8;
 

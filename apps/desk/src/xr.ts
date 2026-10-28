@@ -1,9 +1,5 @@
 import { render, createXRButton } from "@apendua/freedom";
-import {
-  followOutlinesQuery,
-  followThemingQuery,
-  paintOrderQuery,
-} from "@apendua.dev/headset/theming";
+import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
 import { canPresent } from "@apendua.dev/headset/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
@@ -21,13 +17,6 @@ import type { Readable } from "./session.js";
  * can be driven by hand without one; `?emulator=bare` installs it without
  * the panels that drive it, for a harness photographing the scene.
  *
- * `?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every
- * panel's boxes with freedom's depth bias by paint rank, a prototype of item
- * 10.2 in `docs/freedom-architecture-plan.md`.
- *
- * `?paintOrder=off` draws every panel by the lift rather than in paint order
- * (`paintOrder` in freedom's panel options), for the paint-order tooling to
- * compare with (`docs/freedom-paint-order-plan.md`), and
  * `?trace` records each session's frames and saves them as it ends
  * (`deskTrace.ts`), under the dev server.
  */
@@ -35,9 +24,6 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
-  const asked = query.get("depthRank");
-  const depthRank =
-    asked === "constant" || asked === "slope" || asked === "max" ? asked : undefined;
   if (query.has("emulator")) {
     try {
       const { install } = await import("@apendua.dev/headset/emulator");
@@ -76,8 +62,6 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       // key, on the desk's keyboard too, which is a panel like any other.
       keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
       haptics: { flavor: "key" },
-      ...(depthRank ? { depthRank } : {}),
-      paintOrder: paintOrderQuery(query),
     },
   }).subscribe({
     next: (renderer) => {
@@ -97,9 +81,8 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       });
 
       if (query.has("trace")) {
-        const build = paintOrderQuery(query) ? "paint order" : "lift";
         void import("./deskTrace.js").then(({ traceSessions }) =>
-          traceSessions(renderer, desk, build, query.get("trace") === "page"),
+          traceSessions(renderer, desk, query.get("trace") === "page"),
         );
       }
 

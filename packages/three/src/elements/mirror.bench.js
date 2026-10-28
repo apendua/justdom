@@ -27,11 +27,9 @@
  * Run with:
  *   node --import ./src/test/setup-jsdom.js src/elements/mirror.bench.js
  *
- * and with `--lift` after it for the same tables on panels drawn by the lift
- * (`paintOrder: false` in `portal.js`), measured against paint order.
  * Its "insert top" column on the list and "slide off" and "slide on" on
  * the boards are the two bench cases of phase 3 of
- * `docs/freedom-paint-order-plan.md`, read on both builds.
+ * `docs/freedom-paint-order-plan.md`.
  *
  * `bench/mirror.baseline.txt` is what it printed on `develop` when the
  * architecture plan's regression net landed. Its counts are exact and can be
@@ -52,13 +50,6 @@ import { LOADING_ATTRIBUTE } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { makeReveal } from "./reveal.js";
 import { forgetStyle, makeCard, makeRow, pxOf, reads, relayout } from "../test/benchLayout.js";
-
-/** Whether the panels are drawn in paint order rather than by the lift. */
-const paintOrder = !(
-  /** @type {{ process: { argv: string[] } }} */ (
-    /** @type {unknown} */ (globalThis)
-  ).process.argv.includes("--lift")
-);
 
 // Every reactive evaluation in the process, counted. The wall-clock below is
 // jsdom's; this number is the library's own and is what scales.
@@ -130,7 +121,7 @@ async function sample(fn) {
 async function measure({ rows, clipped = false, perFlush = false }) {
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
-  const portal = createPortal(ctx, { paintOrder });
+  const portal = createPortal(ctx);
   portal.addTo(new THREE.Group());
   const containers = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
   const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);
@@ -174,9 +165,9 @@ async function measure({ rows, clipped = false, perFlush = false }) {
     appendRow(rows);
   });
 
-  // And one at the top, which moves every row after it: in paint order a
-  // row's place in the walk is what its draw holds, so this re-packs the
-  // list where "+1 row" re-packs nothing.
+  // And one at the top, which moves every row after it: a row's place in the
+  // walk is what its draw holds, so this re-packs the list where "+1 row"
+  // re-packs nothing.
   const insert = await sample(() => {
     list.insertBefore(makeRow(-1), list.firstChild);
     relayout(containerElement);
@@ -262,10 +253,10 @@ for (const rows of SIZES) {
  * between neighbours, so no card covers another and the scan finds nothing.
  * "piled" puts every card within a few px of the first, so each covers all
  * the cards before it. That is the worst case, where every comparison finds
- * an overlap. Its cards have no background, so none is opaque and each one
- * also draws after every card under it (`getDrawLevel` in elevation.js), a
- * bucket of its own per card. "translucent" is the same pile with a
- * half-transparent background on every card, which draws in the same order.
+ * an overlap. Each card also draws after every card under it
+ * (`getDrawLevel` in elevation.js), a level of its own per card.
+ * "translucent" is the same pile with a half-transparent background on
+ * every card, which draws in the same order.
  *
  * The columns are one more card appended on top; the first card moved by a
  * pixel, which every later card's scan has read; the first card slid off
@@ -287,7 +278,7 @@ for (const rows of SIZES) {
 async function measureBoard({ cards, piled, translucent = false }) {
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
-  const portal = createPortal(ctx, { paintOrder });
+  const portal = createPortal(ctx);
   portal.addTo(new THREE.Group());
   const containers = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
   const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);
@@ -408,7 +399,7 @@ for (const [title, options] of /** @type {const} */ ([
 async function measureTyping({ characters }) {
   const manager = new InteractionManager();
   const ctx = InteractionContext.set({}, manager);
-  const portal = createPortal(ctx, { paintOrder });
+  const portal = createPortal(ctx);
   portal.addTo(new THREE.Group());
   const containers = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
   const containerElement = /** @type {HTMLElement} */ (containers[containers.length - 1]);

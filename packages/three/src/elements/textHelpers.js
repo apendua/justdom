@@ -672,21 +672,16 @@ function getMeasuringContext() {
  * a mark drawn one way and its neighbour another is a mark that z-fights
  * differently from an angle.
  *
- * Two-sided, because the container's half turn faces every plane away from
- * the viewer. One pass: the back pass three adds for a two-sided transparent
- * material orders a closed shape's own surfaces, and a quad has only the one
- * — the pass would be a second draw and, the expensive half, a second
- * program invalidation per mark per frame. No depth write: an antialiased
- * edge pixel that wrote depth would keep out whatever renders after it, and
- * with the draw order a panel uses nothing that belongs in front of text
- * renders before it. But still depth-tested against the box it sits on, one
- * local pixel behind — a fraction of a millimetre in the room once a panel
- * is scaled down, which a headset's depth buffer cannot always tell from
- * the box itself, so seen from an angle the glyphs would lose the test pixel
- * by pixel and sink into the surface. The polygon offset pulls the mark
- * toward the viewer by a couple of units and a slope, which is what a decal
- * is drawn with, and costs nothing anywhere else: nothing in front of text
- * is anywhere near that close.
+ * Two-sided, because the container's half turn faces every plane away from the
+ * viewer. One pass: the back pass three adds for a two-sided transparent
+ * material orders a closed shape's own surfaces, and a quad has only the one —
+ * the pass would be a second draw and, the expensive half, a second program
+ * invalidation per mark per frame. No depth write: an antialiased edge pixel
+ * that wrote depth would keep out whatever renders after it, and with the draw
+ * order a panel uses nothing that belongs in front of text renders before it.
+ * Still depth-tested, against what the scene drew before the panel. Nothing of
+ * its own panel is in the depth buffer yet: the panel's depth quad draws after
+ * all of its content (`createDepthQuad` in `blocker.js`).
  *
  * Spread into a `ShaderMaterial` as readily as into a `MeshBasicMaterial`;
  * `createMarkMaterial` is the latter.
@@ -696,9 +691,6 @@ export const MARK_MATERIAL_SETTINGS = Object.freeze({
   forceSinglePass: true,
   transparent: true,
   depthWrite: false,
-  polygonOffset: true,
-  polygonOffsetFactor: -2,
-  polygonOffsetUnits: -4,
 });
 
 /**

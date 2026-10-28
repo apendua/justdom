@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { cursors, DEFAULT_RAY_LENGTH, fitRayToHit, pointers } from "./pointers.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
-import { ELEVATION_BAND } from "./elements/elevation.js";
+import { HANDLE_RENDER_ORDER } from "./elements/panelHandles.js";
 
 /**
  * @import { Component } from './core.js';
@@ -306,10 +306,9 @@ describe("cursors", () => {
     assert.equal(material.depthTest, false);
     assert.equal(material.depthWrite, false);
     assert.equal(material.transparent, true);
-    // Panels order their quads at elevation * ELEVATION_BAND + level; the
-    // cursor must sort after every figure a panel can produce, a thousand
-    // nested overlays included.
-    assert.ok(widget.renderOrder > 1000 * ELEVATION_BAND);
+    // The cursor must sort after every figure a panel can produce, and the
+    // handle bars sort after every panel's slot.
+    assert.ok(widget.renderOrder > HANDLE_RENDER_ORDER);
   });
 
   test("dresses a custom widget as chrome on its own materials, not the template's", () => {

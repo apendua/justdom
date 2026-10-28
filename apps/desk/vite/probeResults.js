@@ -6,12 +6,11 @@
  *
  *     POST <base>api/probe-results   the probe's JSON, as its body
  *
- * The body is written to `probe-results/<prefix>-<scene>-<build>-<time>.json`
+ * The body is written to `probe-results/<prefix>-<scene>-<time>.json`
  * beside this app's `vite.config.mts`, a directory `.gitignore` leaves out,
- * and the reply names the file. The scene and build are the body's own
- * `scene` and `build`, so a file's name says what is in it, cut down to what
- * a name can safely hold (`resultsFileName`); a body without them gives a
- * name without them. It runs only while `npm run dev` (`npx vite`) does:
+ * and the reply names the file. The scene is the body's own `scene`, so a
+ * file's name says what is in it, cut down to what a name can safely hold
+ * (`resultsFileName`); a body without one gives a name without it. It runs only while `npm run dev` (`npx vite`) does:
  * `apply: "serve"` keeps it out of the build, so nothing deployed carries a
  * route that writes to disk. Within dev it writes one directory, under a
  * name it makes itself, from a body that has to parse as JSON and is capped.
@@ -141,8 +140,7 @@ export default function ProbeResultsPlugin({ dir, base, prefix }) {
 }
 
 /**
- * Which run `results` are, from their `scene` and `build`, or null if they
- * name neither.
+ * Which run `results` are, from their `scene`, or null if they name none.
  *
  * @param {unknown} results
  * @returns {string | null}
@@ -151,7 +149,6 @@ function runOf(results) {
   if (typeof results !== "object" || results === null) {
     return null;
   }
-  const { scene, build } = /** @type {{ scene?: unknown, build?: unknown }} */ (results);
-  const parts = [scene, build].filter((part) => typeof part === "string");
-  return parts.length ? parts.join("-") : null;
+  const { scene } = /** @type {{ scene?: unknown }} */ (results);
+  return typeof scene === "string" ? scene : null;
 }

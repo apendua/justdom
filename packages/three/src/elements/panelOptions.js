@@ -1,7 +1,6 @@
 import { createProperty } from "@apendua/signal";
 
 /**
- * @import {DepthRankBias} from './boxBatch.js';
  * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
@@ -38,13 +37,11 @@ import { createProperty } from "@apendua/signal";
  *   `false`, at either level, is no haptics. There is no `true` (see
  *   `PortalOptions.haptics`).
  * @property {boolean} [thumbstickWheel]
- * @property {DepthRankBias | false} [depthRank]
  * @property {number} [maxTextScale]
  * @property {boolean} [atomic]
  * @property {boolean} [opaqueToRays]
  * @property {number} [priority]
  * @property {number | (() => number)} [budget]
- * @property {boolean} [paintOrder]
  */
 
 /**

@@ -1,34 +1,27 @@
 /**
- * Phase 1 of `docs/freedom-paint-order-plan.md`: what a mounted panel would
- * draw under paint order, counted against what it draws under the lift,
- * from one list. The count was written against the stack's depth bias,
- * which buckets a panel as the lift does.
+ * What a mounted panel draws in paint order, counted from one list. Phase 1
+ * of `docs/freedom-paint-order-plan.md` wrote it to weigh paint order
+ * against the lift, which freedom no longer has.
  *
  * `listPaintOrder` walks a panel's mirrored tree and lists what it draws:
  * each entry a kind (a box, a run, a picture or a shape), its element, its
- * layer, the draw level the candidate gives it and the one the lift gives
- * it today. `countPanel` builds the panel's BSP tree over its layers'
- * planes and adds up the draws under each way of getting the order to the
- * GPU. It counts one panel for one eye. The whole frame, both builds drawn,
- * is phase 4's.
+ * layer and its draw level. `countPanel` builds the panel's BSP tree over
+ * its layers' planes and adds up the draws under each way of getting the
+ * order to the GPU. It counts one panel for one eye.
  *
- * The candidate's rules, as the plan states them and as this applies them:
+ * The rules are freedom's own:
  *
- * - A layer is the portal's root, an overlay (`isOverlay`) or an element
- *   transformed out of its parent's plane (`hasDepthTransform`). A box that
- *   clears a sibling with real height in it is not one: that is the page's
- *   answer to the plan's first open question.
- * - Within a layer, a box is one level past its parent and its content one
- *   past the box, and an element that clears earlier siblings
- *   (`getClearedSiblings`) is one level past everything those siblings
- *   draw. That is `getDrawLevel` without the `isOpaqueQuad` shortcut, and
- *   with a nested layer left out of its ancestor's levels.
+ * - A layer is what `getLayer` says: the portal's root, an overlay or an
+ *   element transformed out of its parent's plane. A box that clears a
+ *   sibling with real height in it is not one.
+ * - Within a layer, an element is at `getDrawLevel` and its content one
+ *   level later.
  * - A layer's plane is its root's border box, placed by the offsets and
  *   own transforms from the panel's root down, with an overlay at
  *   `OVERLAY_LIFT`. Splitters are taken parent first and then by fewest
  *   splits; planes within `COPLANAR` of each other share a node.
  *
- * What a draw is, in both builds alike:
+ * What a draw is:
  *
  * - Nothing counts under `display: none`, or at an opacity of 0
  *   (`getOpacity`, an ancestor's included; in a `<use>`'s or a marker's
@@ -37,9 +30,6 @@
  *   says `visible` is drawn (`isVisibilityHidden`). A hidden SVG shape
  *   draws no markers either.
  * - A box counts only when it paints: a background, a border or a shadow.
- *   The lift build also buckets the boxes that paint nothing, and draws
- *   what is at an opacity of 0, so its figure here is a floor, never more
- *   than it draws.
  * - A run is a text node with something to show, a field's value or a list
  *   item's marker, at its box's content level. A field's own child nodes,
  *   a `<textarea>`'s text or a `<select>`'s options, are its value and
@@ -56,10 +46,8 @@
  *   style, not the one the `<use>` passes down. Each picture and shape is a
  *   draw of its own.
  * - A run's size class is the array its raster goes in (`sizeClass`). The
- *   text batch binds one array a draw, so every build draws text a class
- *   at a time unless it says otherwise.
- * - Lift: a box bucket per (elevation, draw level) and a text bucket per
- *   (elevation, content level, size class), plus every picture and shape.
+ *   text batch binds one array a draw, so two batches draw text a class at
+ *   a time.
  * - Two batches: in each layer, a box draw per level with boxes and a text
  *   draw per level and size class with runs, plus its pictures and shapes,
  *   all of it once per piece of the layer.
@@ -79,9 +67,9 @@
  *   instances in paint order across the layer. At most, a break is a draw
  *   in each batch: the two-batch total plus twice the breaks, the one-batch
  *   total plus the breaks.
- * - Runs past the 256 one array holds draw themselves, in every build
- *   alike (`MAXIMUM_LAYERS` in `textBatch.js`), so no build is charged for
- *   them here.
+ * - Runs past the 256 one array holds draw themselves
+ *   (`MAXIMUM_LAYERS` in `textBatch.js`), in every way of drawing alike, so
+ *   none is charged for them here.
  *
  * Plain JavaScript over freedom's own derivations, so it runs wherever a
  * portal does: in jsdom over `paintOrderScenes.js`, under
@@ -95,13 +83,7 @@ import * as THREE from "three";
  * @import {TextLine} from "../elements/textLines.js";
  * @import {Polygon} from "../elements/layerTree.js";
  */
-import {
-  getClearedSiblings,
-  getDrawLevel,
-  getElevation,
-  isOverlay,
-  OVERLAY_LIFT,
-} from "../elements/elevation.js";
+import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
 import {
   getBorderBoxSize,
@@ -143,8 +125,7 @@ import { findReferenced, GROUP_TAGS } from "../svg/template.js";
  * @property {Kind} kind
  * @property {Element} element
  * @property {Element} layer The root of the layer it is drawn in.
- * @property {number} level The candidate's draw level, within its layer.
- * @property {string} lift The lift build's bucket: elevation and level.
+ * @property {number} level Its draw level, within its layer.
  * @property {string | null} size A run's size class, the array its raster
  *   goes in; null for a run that draws itself, empty for any other kind.
  */
@@ -161,15 +142,6 @@ function isRoot(element) {
  * @param {Element} element
  * @returns {boolean}
  */
-function isLayerRoot(element) {
-  const html = /** @type {HTMLElement} */ (element);
-  return isRoot(element) || isOverlay(html) || hasDepthTransform(html);
-}
-
-/**
- * @param {Element} element
- * @returns {boolean}
- */
 function paints(element) {
   const style = getComputedStyleCached(element);
   return (
@@ -178,86 +150,6 @@ function paints(element) {
     parseAlpha(getDrawnBorderColor(style)) > 0 ||
     (style.boxShadow || "none") !== "none"
   );
-}
-
-/**
- * The candidate's levels and layers, worked out once for one count. A
- * snapshot, not a derivation: it reads freedom's derived values and keeps
- * nothing past the call.
- */
-class Levels {
-  /** @type {Map<Element, Element>} */
-  #layers = new Map();
-  /** @type {Map<Element, number>} */
-  #levels = new Map();
-  /** @type {Map<Element, number>} */
-  #reaches = new Map();
-
-  /**
-   * @param {Element} element
-   * @returns {Element}
-   */
-  layerOf(element) {
-    let layer = this.#layers.get(element);
-    if (!layer) {
-      const parent = isRoot(element) ? null : getParentElement(element);
-      layer = !parent || isLayerRoot(element) ? element : this.layerOf(parent);
-      this.#layers.set(element, layer);
-    }
-    return layer;
-  }
-
-  /**
-   * @param {Element} element
-   * @returns {number}
-   */
-  level(element) {
-    let level = this.#levels.get(element);
-    if (level === undefined) {
-      if (this.layerOf(element) === element) {
-        level = 0;
-      } else {
-        const parent = /** @type {Element} */ (getParentElement(element));
-        level = this.level(parent) + 1;
-        for (const { sibling } of getClearedSiblings(element)) {
-          if (this.layerOf(sibling) === this.layerOf(element)) {
-            level = Math.max(level, this.level(sibling) + this.reach(sibling) + 1);
-          }
-        }
-      }
-      this.#levels.set(element, level);
-    }
-    return level;
-  }
-
-  /**
-   * How many levels past its own an element's subtree draws, within its
-   * layer: `getDrawReach` over the candidate's levels.
-   *
-   * @param {Element} element
-   * @returns {number}
-   */
-  reach(element) {
-    let reach = this.#reaches.get(element);
-    if (reach === undefined) {
-      reach = 1;
-      if (!isSvgElement(element)) {
-        const level = this.level(element);
-        for (const node of getChildNodes(element)) {
-          if (node.nodeType !== Node.ELEMENT_NODE) {
-            continue;
-          }
-          const child = /** @type {Element} */ (node);
-          if (this.layerOf(child) === child) {
-            continue;
-          }
-          reach = Math.max(reach, this.level(child) - level + this.reach(child));
-        }
-      }
-      this.#reaches.set(element, reach);
-    }
-    return reach;
-  }
 }
 
 /**
@@ -414,17 +306,16 @@ function markersOf(shape) {
 }
 
 /**
- * What a panel draws, in tree order, with each entry's layer and its level
- * under each build, and every layer it has, drawing or not: a layer that
+ * What a panel draws, in tree order, with each entry's layer and its level,
+ * and every layer it has, drawing or not: a layer that
  * draws nothing still has a plane that splits the others. A layer under
  * `display: none` or at an opacity of 0 has no plane in the tree.
  *
  * @param {Element} root The panel's root, the element carrying
  *   `data-xr-portal`.
- * @returns {{ entries: Entry[], levels: Levels, layers: Element[] }}
+ * @returns {{ entries: Entry[], layers: Element[] }}
  */
 export function listPaintOrder(root) {
-  const levels = new Levels();
   /** @type {Entry[]} */
   const entries = [];
   /** @type {Element[]} */
@@ -441,9 +332,8 @@ export function listPaintOrder(root) {
     entries.push({
       kind,
       element,
-      layer: levels.layerOf(element),
-      level: levels.level(element) + step,
-      lift: `${getElevation(/** @type {HTMLElement} */ (element))}:${getDrawLevel(element) + step}`,
+      layer: getLayer(element),
+      level: getDrawLevel(element) + step,
       size,
     });
   };
@@ -541,7 +431,7 @@ export function listPaintOrder(root) {
     if (getOpacity(element) <= 0) {
       return;
     }
-    if (levels.layerOf(element) === element) {
+    if (getLayer(element) === element) {
       layers.push(element);
     }
     // Hidden, an element draws nothing of its own, but a child that says
@@ -586,7 +476,7 @@ export function listPaintOrder(root) {
   };
 
   visit(root);
-  return { entries, levels, layers };
+  return { entries, layers };
 }
 
 /** Scratch for one element's step down from its parent. */
@@ -642,7 +532,6 @@ function frameOf(element, cache) {
  * @property {number} deepestLayer The most levels any one layer draws at.
  * @property {number} runs
  * @property {number} classes The runs' size classes, an array each.
- * @property {number} lift Draws under the lift, a bucket per level.
  * @property {number} twoBatches Draws under paint order, two batches.
  * @property {number} oneBatch Draws under paint order, one batch.
  * @property {number} oneBatchByNode The same, with the coplanar layers of
@@ -670,15 +559,12 @@ export function panelName(root, index) {
  * @returns {PanelCount}
  */
 export function countPanel(root) {
-  const { entries, levels, layers: layerRoots } = listPaintOrder(root);
+  const { entries, layers: layerRoots } = listPaintOrder(root);
 
   /** @type {Record<Kind, number>} */
   const kinds = { box: 0, run: 0, picture: 0, shape: 0 };
-  const liftBoxes = new Set();
-  const liftRuns = new Set();
   /** @type {Set<string>} */
   const classes = new Set();
-  let unbatched = 0;
   /**
    * @type {Map<Element, {
    *   boxLevels: Set<number>,
@@ -696,15 +582,12 @@ export function countPanel(root) {
       perLayer.set(entry.layer, layer);
     }
     if (entry.kind === "box") {
-      liftBoxes.add(entry.lift);
       layer.boxLevels.add(entry.level);
     } else if (entry.kind === "run" && entry.size !== null) {
-      liftRuns.add(`${entry.lift}|${entry.size}`);
       classes.add(entry.size);
       const sizes = layer.runLevels.get(entry.level) ?? new Set();
       layer.runLevels.set(entry.level, sizes.add(entry.size));
     } else {
-      unbatched += 1;
       layer.own += 1;
       layer.ownLevels.add(entry.level);
     }
@@ -719,7 +602,7 @@ export function countPanel(root) {
   for (const layer of layerRoots) {
     let depth = 0;
     for (let el = getParentElement(layer); el && !isRoot(layer); el = getParentElement(el)) {
-      if (levels.layerOf(el) === el) depth += 1;
+      if (getLayer(el) === el) depth += 1;
       if (isRoot(el)) break;
     }
     const { width, height } = getBorderBoxSize(/** @type {HTMLElement} */ (layer));
@@ -819,7 +702,6 @@ export function countPanel(root) {
     deepestLayer,
     runs: kinds.run,
     classes: classes.size,
-    lift: liftBoxes.size + liftRuns.size + unbatched,
     twoBatches,
     oneBatch,
     oneBatchByNode,
@@ -891,7 +773,6 @@ export function sumCounts(counts) {
     deepestLayer: 0,
     runs: 0,
     classes: 0,
-    lift: 0,
     twoBatches: 0,
     oneBatch: 0,
     oneBatchByNode: 0,
@@ -909,7 +790,6 @@ export function sumCounts(counts) {
     sum.deepestLayer = Math.max(sum.deepestLayer, count.deepestLayer);
     sum.runs += count.runs;
     sum.classes += count.classes;
-    sum.lift += count.lift;
     sum.twoBatches += count.twoBatches;
     sum.oneBatch += count.oneBatch;
     sum.oneBatchByNode += count.oneBatchByNode;
@@ -930,7 +810,6 @@ const COLUMNS = /** @type {const} */ ([
   ["max hp", (/** @type {PanelCount} */ c) => c.mostHalfPlanes],
   ["breaks", (/** @type {PanelCount} */ c) => c.breaks],
   ["levels", (/** @type {PanelCount} */ c) => c.deepestLayer],
-  ["lift", (/** @type {PanelCount} */ c) => c.lift],
   ["two", (/** @type {PanelCount} */ c) => c.twoBatches],
   ["one", (/** @type {PanelCount} */ c) => c.oneBatch],
   ["by node", (/** @type {PanelCount} */ c) => c.oneBatchByNode],
@@ -943,11 +822,10 @@ const COLUMNS = /** @type {const} */ ([
  * @returns {string}
  */
 export function formatCounts(rows) {
-  const head = ["panel", ...COLUMNS.map(([name]) => name), "two/lift"];
+  const head = ["panel", ...COLUMNS.map(([name]) => name)];
   const lines = [`| ${head.join(" | ")} |`, `|${head.map(() => " --- ").join("|")}|`];
   for (const [name, count] of rows) {
-    const ratio = count.lift > 0 ? (count.twoBatches / count.lift).toFixed(2) : "-";
-    const cells = [name, ...COLUMNS.map(([, read]) => String(read(count))), ratio];
+    const cells = [name, ...COLUMNS.map(([, read]) => String(read(count)))];
     lines.push(`| ${cells.join(" | ")} |`);
   }
   return lines.join("\n");

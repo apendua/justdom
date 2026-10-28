@@ -388,10 +388,9 @@ The options, each with the section that says what it does:
 | `maxTextScale`     | `4`         | The ceiling on how finely this panel's text is rasterized. **How sharp the text comes out**.         |
 | `draggable`        | `false`     | Whether the player can move the panel, or a `PanelDragOptions`. **Letting the player move a panel**. |
 | `plugins`          | none        | Element plugins for this panel alone, asked before the scene's. **Element plugins**.                 |
-| `paintOrder`       | `true`      | Draw the panel in paint order; `false` draws it by the lift, for now. **Paint order**.               |
 
 `keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority`, `budget` and `paintOrder` can also be set for the whole scene; see **Panel defaults**.
+`priority` and `budget` can also be set for the whole scene; see **Panel defaults**.
 
 ### What a ray sends the page
 
@@ -593,8 +592,8 @@ as it was. The portal marks the element `data-xr-portal` while it watches.
 
 A box is drawn from its computed style: background colour, a gradient (see **Gradients**), a border
 width per side, `border-radius`, `opacity`, `visibility`, `transform` (see **Transforms**),
-`overflow` (see **Clipping and scrolling**), and its place in the page's paint order (see
-**Layers**). Text is rasterized once as a mask and coloured by its material, so animating `color`
+`overflow` (see **Clipping and scrolling**), and its place in the page's paint order (see **Paint
+order**). Text is rasterized once as a mask and coloured by its material, so animating `color`
 re-draws nothing; text with a `text-shadow`, or a decoration coloured other than the text, keeps its
 colours baked into the texture and re-draws per change.
 
@@ -1194,10 +1193,10 @@ not baked into its geometry, so a `transform` written by a `[data-xr-hover]` rul
 with no re-layout and no re-rasterized text. Prefer it for motion, as on the flat web.
 
 - 3D is real depth: `rotateY` swings half the element _behind_ its own surface, up to half its width
-  deep, and the depth buffer clips it into the panel. Give anything 3D-rotated enough `translateZ`
-  to keep the swing in front.
+  deep, and the panel covers that half (see **Paint order**). Give anything 3D-rotated enough
+  `translateZ` to keep the swing in front.
 - A transformed element paints over the earlier siblings it overlaps, the way a positioned one does
-  (see **Layers**).
+  (see **Paint order**).
 - A panel laid flat has its y axis along the surface it lies on, so a key pressed with the page's
   `translateY(3px)` slides sideways across the desk. An effect that should move toward the viewer is
   `translateZ`, whatever the page uses for the same press.
@@ -1394,10 +1393,13 @@ Not followed:
   band in which the finished line's descenders and the next line's ascenders sit at the same y, and
   the cut keeps that band hidden until the next line is being typed.
 
-## Layers
+## Paint order
+
+A panel is drawn the way a page paints it.
+[`docs/freedom-paint-order.md`](../../docs/freedom-paint-order.md) has its rules.
 
 An element that is positioned and stacked above — `position` other than `static` plus a positive
-`z-index`, the same declaration the flat build needs anyway — becomes a layer of its own:
+`z-index`, the same declaration the flat build needs anyway — is an overlay, a layer of its own:
 
 ```css
 .menu {
@@ -1407,88 +1409,23 @@ An element that is positioned and stacked above — `position` other than `stati
 }
 ```
 
-This section is the lift, which draws a panel built with `paintOrder: false`. A panel is drawn in
-paint order by default (**Paint order**, below), and the lift is kept for one release to compare
-with.
-
-It is pushed clear of the surface it covers, so the depth buffer and stereo both agree that it
-floats; its whole subtree is drawn in a band above everything below it; and it is opaque to rays,
-through a blocker of its own, so the ray that lands between two menu rows does not carry through to
-a panel button a few millimetres behind. Layers stack by nesting, not by how big the number is: a
-menu inside a modal is two layers up, `z-index: 1000` is still one. `elevation.js` is the model in
-full, with every limit.
+It stands `OVERLAY_LIFT` (10 px) in front of its parent's content, so that stereo reads it as
+floating, and it is opaque to rays, through a blocker of its own, so the ray that lands between two
+menu rows does not carry through to a panel button a few millimetres behind. Overlays stack by
+nesting, not by how big the number is: a menu inside a modal is two overlays up, `z-index: 1000` is
+still one.
 
 Followed:
 
-- Siblings that a page paints over one another are stacked in depth in the same order. An element
-  that is positioned or has a `transform` of its own is drawn in front of every such sibling it
-  overlaps and a page paints under it, one content step (2 px) in front of the farthest thing that
-  sibling draws, its pins and badges included. Siblings that do not overlap stay at the ordinary
-  step, so a board of separate cards stays flat however many it holds. That keeps a clock's hands on
-  its dial, a card laid over another card in front of the first card's text and pin, and a modal in
-  front of a later `position: relative` page that covers it.
-- The page's order: a negative `z-index` under the rest, a positive one over it, and tree order
-  within each. To bring a card to the front, append it to the end of its parent again.
-- A pin with a positive `z-index` inside a card that is no stacking context (no `z-index`, no
-  transform of its own, `opacity` 1 and `position` other than `fixed` or `sticky`) stays over the
-  later card, as on a page.
-- A card that is not opaque, stepped over another, is drawn after everything the other card draws,
-  so the other card's content shows through it tinted, as on a page. A caption with no background
-  keeps its text, which writes no depth, in front of the boxes it is laid over, at any alpha. An
-  opaque card hides what it covers in either order.
-- A box anchored above a scroller that its siblings scroll in counts as covering all of them, so its
-  lift and theirs stay put while the list scrolls.
-
-Not followed:
-
-- **Flow siblings are not stepped.** Only an element that is positioned or transformed clears its
-  siblings, and only those that are too. A box pulled over a neighbour by a negative margin stays on
-  the plane of what it covers, and so does a positioned box over a flow sibling, which puts it
-  behind that sibling's descendants, a step per level of nesting: the positioned box's own text can
-  sit behind a child of the box it covers.
-- Only the sign of `z-index` counts, and boxes with a negative `z-index` stay on one plane.
-- A transformed element counts as covering the axis-aligned box around its corners, and a descendant
-  that overflows its parent's box does not count towards what the parent overlaps.
-- Text that overflows an opaque card is the one mark the card does not cover.
-- Only the stepped box itself is asked whether it is opaque, so a positioned wrapper with no
-  background around an opaque card draws after what it covers, and a board of such cards takes two
-  box buckets and a text bucket per card, each a draw call per eye, where opaque cards alone would
-  share them.
-- **A layer that hangs outside its panel's silhouette is drawn at that panel's depth.** A panel
-  placed in front of it hides it and takes its rays, however high the layer's `z-index`. Keep an
-  overlay within the silhouette of the panel it belongs to where you can, and keep it out of the
-  flow — a menu that grew the panel would re-centre it under the ray that opened it. Where an
-  overlay has to overhang, the remedy is the app's placement: Euclid's toolbar sits 18 cm nearer the
-  viewer than its drawing.
-- A native `<select>` cannot work here: `<option>` has no CSS box, and the list the browser pops up
-  is chrome. Nor can the system keyboard. Both are in [`@apendua/justui`](../justui), built out of
-  ordinary elements: `dropdown(props)`, whose `root` is the positioning context and `menu` the
-  layer, and `keyboard(props)`.
-
-A panel's `depthRank` option, `"constant"`, `"slope"` or `"max"`, is a prototype and off by default.
-It draws the panel's boxes a little nearer the viewer by their paint rank, the number of content
-steps each box sits in front of the panel's root, on top of the steps above, so that the bias can be
-measured on a headset before it replaces them (item 10 of
-[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md)). `"constant"` moves
-a box the same amount in depth a rank whatever the panel's angle; `"slope"` moves it by how steeply
-depth changes across the panel on screen, so a panel facing the viewer moves least; `"max"` takes
-the larger of a small constant and a share of that slope. `false` turns it off for a panel under a
-scene that set it. It moves only the batched boxes, so neither the text nor an `<img>`, which draws
-itself: on a panel far enough away a box high in a pile can cover its own text, and a card can cover
-the picture on the card under it. `boxBatch.js` has the formula and its numbers.
-
-### Paint order
-
-A panel is drawn the way a page paints it, without the lift, unless it is built with
-`paintOrder: false`. [`docs/freedom-paint-order.md`](../../docs/freedom-paint-order.md) has its
-rules. A panel in paint order ignores `depthRank`.
-
 - A panel is a set of layers: its root, every overlay, and every element whose transform takes it
-  out of its parent's plane (`getLayer` in `elevation.js`). An overlay keeps its lift, and a
-  transformed layer sits where its transform puts it; nothing else in the panel is lifted.
+  out of its parent's plane (`getLayer` in `elevation.js`). A transformed layer sits where its
+  transform puts it; nothing but an overlay is lifted.
 - Within a layer, the draw order is the paint order. Every element that a page paints over a sibling
   draws after everything that sibling draws, opaque or not, so a pile of cards climbs a draw level a
-  card, while a list of rows stays at one row's levels however long it is.
+  card, while a list of rows stays at one row's levels however long it is. A card that is not opaque
+  shows what it covers through it, tinted, as on a page.
+- The page's order: a negative `z-index` under the rest, a positive one over it, and tree order
+  within each. To bring a card to the front, append it to the end of its parent again.
 - Between layers, geometry decides. The panel orders its layers' planes in a tree (`layerTree.js`)
   and walks it from the viewer every frame (`layerOrder.js`): what is nearer draws over what is
   farther, and layers in one plane draw in paint order. A layer that crosses another's plane, a card
@@ -1497,14 +1434,25 @@ rules. A panel in paint order ignores `depthRank`.
   the paint order is one draw call, across layers, broken only where something draws itself (a
   picture, an `<svg>` shape, a caret, a run with its colours baked in), at a layer cut in pieces,
   and at a sixteenth size of run.
-- Panels in paint order draw whole, far to near.
+- Panels draw whole, far to near.
 - Nothing writes depth but one quad over the root, drawn after everything else in the panel, so the
   panel still hides what is drawn after it.
 - A ray that meets two things at one distance lands on the one drawn later. Between layers, distance
   decides.
 
-Not followed, beyond what the lift does not follow either:
+Not followed:
 
+- **Flow siblings are not ordered against each other.** Only an element that is positioned or
+  transformed clears its siblings, and only those that are too. A box pulled over a neighbour by a
+  negative margin keeps its level in the tree, and so does a positioned box over a flow sibling,
+  which then draws under that sibling's descendants: the positioned box's own text can sit behind a
+  child of the box it covers.
+- Only the sign of `z-index` counts. Two overlays stack in tree order, whatever their numbers, and
+  two layers in one plane are ordered by that sign, as siblings are. A `z-index` inside a box that
+  forms no stacking context is read where the box is, not let out of it.
+- A child that overflows its parent's box does not count towards what the parent overlaps.
+- A box anchored above a scroller that its siblings scroll in counts as covering all of them, at
+  every scroll position, rather than only those passing under it now.
 - A piece is cut by at most 8 planes, and one cut more often is drawn with its first 8.
 - A panel draws at most 254 pieces in places of their own. The rest share one, in no order among
   them, and a layer with a piece among them is drawn whole, uncut.
@@ -1513,19 +1461,24 @@ Not followed, beyond what the lift does not follow either:
   do, something the overhang overlaps can draw over or under it.
 - Both eyes draw one order, from the midpoint between them, so a layer seen edge-on, mid-flip, can
   be in the wrong order for one eye. It is a sliver then.
-- Two layers in one plane are ordered by the sign of their `z-index`, as siblings are, and a
-  `z-index` inside a box that forms no stacking context is read where the box is, not let out of it.
 - The depth quad covers the root's border box, so an overlay that hangs past the root's edge, a menu
   past the panel's, writes no depth, and what draws after the panel there, a draggable panel's
   strips included, draws over it.
+- **A layer that hangs outside its panel's silhouette is drawn with that panel.** A panel placed in
+  front of it hides it and takes its rays, however high the layer's `z-index`. Keep an overlay
+  within the silhouette of the panel it belongs to where you can, and keep it out of the flow — a
+  menu that grew the panel would re-centre it under the ray that opened it. Where an overlay has to
+  overhang, the remedy is the app's placement: Euclid's toolbar sits 18 cm nearer the viewer than
+  its drawing.
+- A native `<select>` cannot work here: `<option>` has no CSS box, and the list the browser pops up
+  is chrome. Nor can the system keyboard. Both are in [`@apendua/justui`](../justui), built out of
+  ordinary elements: `dropdown(props)`, whose `root` is the positioning context and `menu` the
+  layer, and `keyboard(props)`.
 
-The paint-order tooling compares the two builds. `bench/paintOrderCount.jsdom.mjs` counts what the
-jsdom scenes in `src/test/paintOrderScenes.js` draw under each, and
-`bench/paintOrderCount.browser.mjs` counts the same for the desk's looks, the showcase, Knights and
-Euclid under the emulator. `bench/paintOrderDraws.browser.mjs` counts the draw calls a frame each
-build makes in those apps, and `src/elements/mirror.bench.js` takes `--lift` for its tables by the
-lift. The apps that read `?paintOrder=off`, which draws them by the lift, are listed in
-`@apendua.dev/headset`'s README.
+The paint-order tooling counts what a panel draws. `bench/paintOrderCount.jsdom.mjs` counts what the
+jsdom scenes in `src/test/paintOrderScenes.js` draw, and `bench/paintOrderCount.browser.mjs` counts
+the same for the desk's looks, the showcase, Knights and Euclid under the emulator.
+`bench/paintOrderDraws.browser.mjs` counts the draw calls a frame makes in those apps.
 [`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md) is the record of the
 experiment these were written for.
 
@@ -1790,15 +1743,14 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `depthRank`, `maxTextScale`, `atomic`,
-`opaqueToRays`, `priority`, `budget` and `paintOrder` can be set this way. A panel's own options are
-laid over them: its value wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as
-an object is spread over the scene's, so a panel can change one thing about them without restating
-the rest; `false` at either level is none, for those three and for `depthRank`.
-`withPanelOptions(ctx, options)` does the same for a part of the scene, over whatever is in scope
-already. `plugins` is not among them — it has `portalPlugins`, whose list a panel's own is put in
-front of rather than in place of — and neither are `root`, `draggable` and `onLoadingChanged`, which
-are only ever one panel's.
+`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
+`priority` and `budget` can be set this way. A panel's own options are laid over them: its value
+wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over
+the scene's, so a panel can change one thing about them without restating the rest; `false` at
+either level is none, for those three. `withPanelOptions(ctx, options)` does the same for a part of
+the scene, over whatever is in scope already. `plugins` is not among them — it has `portalPlugins`,
+whose list a panel's own is put in front of rather than in place of — and neither are `root`,
+`draggable` and `onLoadingChanged`, which are only ever one panel's.
 
 ## SVG
 

@@ -15,14 +15,6 @@ import { registerDrawOrder } from "../drawOrder.js";
  */
 
 /**
- * How far in front of the background the tick is drawn, in the element's local
- * px. The background sits at +1 — see `div` — so this puts the mark just
- * short of the element's own origin, well inside the step the first child of
- * an ordinary box would take.
- */
-const MARK_STEP = 1;
-
-/**
  * The tick, as a polyline across the box it is drawn in: in from the left and
  * a little below the middle, down to the elbow, then up past the top right.
  * Fractions of the content box, so it follows whatever size the stylesheet
@@ -146,15 +138,13 @@ function makeTickGeometry(width, height, originX, originY) {
  * @param {BoxSurface} surface
  * @returns {import("@apendua/signal").Source<Component>}
  */
-function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden, paintOrdered }) {
+function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
   // Created here rather than inline, because `clipMesh` wraps `raycast` and
   // has to do so exactly once — the same reason `div` builds its own quad
   // outside the operators that dress it.
   const mesh = new THREE.Mesh();
   clipMesh(mesh);
-  if (paintOrdered) {
-    registerDrawOrder(mesh);
-  }
+  registerDrawOrder(mesh);
 
   // Shared with the material's compiled shader; the effect below writes the
   // current box into it as the element scrolls or the layout moves.
@@ -215,7 +205,8 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden, paint
       obj.visible = !hidden();
     }),
     effects((obj) => {
-      place(obj, 0, 0, 1 - MARK_STEP);
+      // Level with the box, which the draw order alone puts it in front of.
+      place(obj, 0, 0, 0);
       // The box's own draw order plus one: transparency is sorted rather than
       // depth-tested, so a mark that drew before the surface it sits on would
       // blend its edges with whatever is behind the panel.

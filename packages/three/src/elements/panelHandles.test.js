@@ -5,7 +5,8 @@ import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
 import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
 import { withStart } from "../test/rays.js";
-import { ELEVATION_BAND } from "./elevation.js";
+import { PIECE_BAND } from "./elevation.js";
+import { PANEL_PIECES } from "./layerOrder.js";
 import { createPanelHandles, DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 
 /**
@@ -80,8 +81,11 @@ describe("createPanelHandles", () => {
         handles.frame.getObjectByName(`panel-handle-${side}-bar`)
       );
       // Three sorts the transparent pass by `renderOrder` first, and a
-      // panel's boxes are in it at their elevation band and draw level.
-      assert.ok(bar.renderOrder > 100 * ELEVATION_BAND, `the ${side} bar after a panel's boxes`);
+      // panel's meshes are in it in the panel's slot.
+      assert.ok(
+        bar.renderOrder > 95 * PANEL_PIECES * PIECE_BAND,
+        `the ${side} bar after 95 panels' slots`,
+      );
       assert.ok(bar.renderOrder < OVERLAY_RENDER_ORDER, `and before the cursor`);
       assert.equal(bar.material.depthTest, true, "under what is in front of it");
     }

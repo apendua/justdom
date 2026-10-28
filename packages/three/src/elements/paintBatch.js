@@ -23,13 +23,13 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  */
 
 /*
- * The one batch of a panel drawn in paint order (`paintOrder` in
- * `portal.js`): its boxes and its runs of text in one stream of instances,
- * drawn with one shader (`docs/freedom-paint-order.md`, _The batch_).
+ * The one batch of a panel: its boxes and its runs of text in one stream of
+ * instances, drawn with one shader (`docs/freedom-paint-order.md`, _The
+ * batch_).
  *
- * The box batch and the text batch still take their members in and keep
- * what they know of them: a box's numbers, a run's layers in the arrays of
- * its size. What they no longer do on such a panel is draw. Each rebuild
+ * The box batch and the text batch take their members in and keep what
+ * they know of them: a box's numbers, a run's layers in the arrays of its
+ * size. They draw nothing themselves. Each rebuild
  * walks the panel once, takes every box and run it meets from its batch, in
  * the order of their render orders, and lays them into draws:
  *
@@ -51,8 +51,8 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  *   would need one more starts the next draw.
  *
  * The draws are kept from rebuild to rebuild, the first for the first
- * stretch and so on, each growing as a box bucket does; the ones a rebuild
- * does not use go.
+ * stretch and so on, each growing to the next power of two it needs
+ * (`grownCapacity`); the ones a rebuild does not use go.
  */
 
 /**
@@ -69,9 +69,19 @@ const MINIMUM_CAPACITY = 16;
  * Which array a run samples rides in `aSize.z`, as `-1 - slot`, where a
  * box has its gradient header, a whole number from 0 up; the sign tells the
  * two apart. A box's `aSize.w` is its opacity, a run's colour and alpha are
- * in `aFillColor`, and its layer in its array in `aGradientGeometry.x`. So
- * the attributes are the box batch's nine, and the slots three, four and
- * nine, sixteen (`instancedVertex` in `boxBatch.js`).
+ * in `aFillColor`, and its layer in its array in `aGradientGeometry.x`.
+ *
+ * Attribute slots are the budget here, not bytes. WebGL promises sixteen and
+ * a headset browser gives exactly that; the quad's position takes one and
+ * the instance matrix four, which leaves eleven for an instance. Chromium's
+ * WebGL runs on ANGLE, and ANGLE counts every attribute a shader declares,
+ * used or not, against the sixteen, while three declares `normal` and `uv`
+ * in front of every `ShaderMaterial`'s vertex shader. So the nine named here
+ * are all there is room for: the slots are three, four and nine, sixteen.
+ * The gradient's small numbers ride in the two lanes `aSize` would otherwise
+ * leave empty: `z` is a header packing the kind, three flags and the ramp
+ * row into one integer-valued float (exact far past any row count a page
+ * reaches), and `w` the box's opacity (`writeBoxInstance` in `boxBatch.js`).
  */
 const vertexShader = /* glsl */ `
 ${HALF_PLANES_VERTEX_GLSL}
@@ -213,8 +223,8 @@ ${sampleRuns}
 `;
 
 /**
- * A draw's material: its own, as a box bucket's is, since it carries the
- * arrays the draw samples and the half-planes of the piece it draws.
+ * A draw's material: its own, since it carries the arrays the draw samples
+ * and the half-planes of the piece it draws.
  *
  * @returns {THREE.ShaderMaterial}
  */
@@ -274,8 +284,9 @@ class Draw {
   /** @param {Object3D} parent */
   constructor(parent) {
     this.parent = parent;
-    // Kept across a growth, as a text bucket's is, and kept linked after the
-    // last draw goes (`programKeeper.js`).
+    // Kept across a growth, since a material made again for it is a program
+    // three may link again, and kept linked after the last draw goes
+    // (`programKeeper.js`).
     this.material = keepProgram(paintMaterial(), PAINT_PROGRAM);
   }
 
@@ -300,12 +311,22 @@ class Draw {
       geometry.setAttribute(name, new THREE.InstancedBufferAttribute(array, size));
     }
     const mesh = new THREE.InstancedMesh(geometry, this.material, capacity);
-    // As a box bucket's: its instances span the panel, in the container's
-    // frame, and its world matrix has to be asked for once (`Bucket.reserve`
-    // in `boxBatch.js`).
+    // The instances span the whole panel while the geometry is one unit
+    // quad, so three's bounding sphere would describe none of it. A panel is
+    // a single object to cull anyway, and its own container is what carries
+    // it in and out of view.
     mesh.frustumCulled = false;
+    // Instance matrices are already in the container's frame, which is this
+    // mesh's frame too.
     mesh.matrixAutoUpdate = false;
     mesh.matrix.identity();
+    // And the world matrix has to be asked for once. Three recomputes a world
+    // matrix for an object that either recomposed its own or was told to;
+    // this one does neither, and a freshly built object starts out believing
+    // its world matrix is up to date when it is still the identity. A draw
+    // built while the panel sat still, the run of a size that appears when a
+    // row scrolls into view, would draw its instances at panel coordinates in
+    // world space, somewhere off in the distance.
     mesh.matrixWorldNeedsUpdate = true;
     this.mesh = mesh;
     this.parent.add(mesh);
@@ -477,9 +498,9 @@ export class PaintBatch {
   constructor(container) {
     this.#container = container;
     /** The panel's boxes, which this batch draws. */
-    this.boxes = new BoxBatch(container, { draw: this });
+    this.boxes = new BoxBatch(this);
     /** And its runs. */
-    this.runs = new TextBatch(container, { draw: this });
+    this.runs = new TextBatch(this);
   }
 
   /**
@@ -522,8 +543,33 @@ export class PaintBatch {
 
   /**
    * Something either batch copied down changed, or the layers the order
-   * cuts did. Coalesced and collected as the box batch's is
-   * (`BoxBatch.invalidate`).
+   * cuts did: a box moved, was restyled, scrolled, appeared or went away, a
+   * run did the same.
+   *
+   * Coalesced to one rebuild, because a single mutation reaches a great many
+   * of these — every box in a re-laid-out panel writes its uniforms — and the
+   * rebuild is a walk of the whole panel either way.
+   *
+   * Two things collect the debt, and a panel needs both. A microtask is the
+   * right grain for anything that arrives as its own task, which is what a
+   * mutation is: signal effects run in batches, so a microtask lands once
+   * after the graph has settled and before the next frame can draw. It is
+   * the wrong grain for anything that arrives from inside a frame callback,
+   * because a microtask queued there does not run until that callback, and
+   * the `renderer.render` at the end of it, has returned. Two sources do
+   * exactly that: the animation clock, which samples a running CSS animation
+   * at the top of each frame, and a scroll drag in an immersive session,
+   * whose synthetic `scroll` event is dispatched from the same tick. Left to
+   * the microtask, a batched box under an animation draws where it was last
+   * frame while its unbatched neighbours, an `<img>` or a checkbox tick,
+   * draw where it is now, which is the panel shearing along the line between
+   * them. So `flush` runs late in the frame too (`portal.js`), and this stays
+   * as the backstop for portals that have no frames to run late in.
+   *
+   * What a rebuild reads are local matrices, which `place` keeps current at
+   * the moment of the write, and uniform values, written the same way, never
+   * anything the renderer computes. So it is correct whenever it runs, and
+   * only its timing decides whether it is also current.
    *
    * @returns {void}
    */
@@ -675,12 +721,10 @@ export class PaintBatch {
         }
         draw.writeRun(index, run, slot);
       } else {
-        // No paint rank: the bias is for a panel the lift orders.
         writeBoxInstance(
           draw.data,
           index,
           /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]),
-          0,
         );
       }
     }

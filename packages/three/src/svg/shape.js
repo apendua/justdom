@@ -56,7 +56,6 @@ import {
   viewportMatrix,
 } from "./geometry.js";
 import { dashRuns } from "./dash.js";
-import { LayerOrderContext } from "../elements/layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import {
   clipsViewport,
@@ -1431,22 +1430,12 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * @param {(layer: 0 | 1 | 2) => PaintSlot} slot The element's paint slot,
  *   which `options.layer` picks the mesh's render order from.
  * @param {ReturnType<typeof clipUniforms>} uniforms
- * @param {boolean} paintOrdered Whether the panel draws in paint order,
- *   where the mesh registers its draw order for the hit test
- *   (`registerDrawOrder`).
  * @returns {Source<Component>}
  */
-function paintedMesh(
-  { geometry, paints, paint, hidden, hit, layer },
-  slot,
-  uniforms,
-  paintOrdered,
-) {
+function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, uniforms) {
   const { clip, clipMatrix, clipBox } = uniforms;
   const mesh = new THREE.Mesh();
-  if (paintOrdered) {
-    registerDrawOrder(mesh);
-  }
+  registerDrawOrder(mesh);
   // Trimmed once, for the life of the mesh, to the part the clip patch
   // leaves drawn, with the same box, frame and matrix the shader uses. A
   // region no ray may hit skips the raycast entirely.
@@ -1664,7 +1653,6 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
     const root = new Derived(() => chain.get().root);
     const opacity = new Derived(() => drawnOpacity(chain.get()));
     const uniforms = clipUniforms(() => chain.get(), root);
-    const paintOrdered = LayerOrderContext.get(ctx) !== null;
     followClip = uniforms.follow;
     /** @param {0 | 1 | 2} layer */
     const slot = (layer) => paintSlot(element, root.get(), instance, layer);
@@ -1673,12 +1661,7 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
       opacity: () => opacity.get(),
       slot,
       mesh: (options) =>
-        paintedMesh(
-          { ...options, hit: () => instance === null && options.hit() },
-          slot,
-          uniforms,
-          paintOrdered,
-        ),
+        paintedMesh({ ...options, hit: () => instance === null && options.hit() }, slot, uniforms),
     });
     // Gated by value: the ray target's handlers are mounted while this is
     // true, and a region switching on beside one already hit must not

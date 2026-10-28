@@ -29,12 +29,11 @@ import { ELEMENT_FLAGS, PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";
 import { coverBox, createBlocker, createDepthQuad } from "./blocker.js";
-import { drawInPaintOrder } from "./elevation.js";
 import { LayerOrder, LayerOrderContext } from "./layerOrder.js";
 import { pressInit, registerPanel } from "./dragAndDrop.js";
 import { watchPageGeometry } from "./panelFrame.js";
-import { BoxBatchContext, createBoxBatch } from "./boxBatch.js";
-import { TextBatchContext, createTextBatch } from "./textBatch.js";
+import { BoxBatchContext } from "./boxBatch.js";
+import { TextBatchContext } from "./textBatch.js";
 import { PaintBatch } from "./paintBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
 import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
@@ -58,7 +57,6 @@ import { registerOutlineHost } from "./outlines.js";
  * @import {Mountable} from '../core.js';
  * @import {Object3D, Texture} from 'three';
  * @import {MutationBatch} from './animationClock.js';
- * @import {DepthRankBias} from './boxBatch.js';
  * @import {HapticOptions} from './haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
@@ -276,14 +274,6 @@ function claimRoot(root) {
  *   when the channel next empties. For a panel where responding to the
  *   hand matters more than never being seen half-updated. The initial
  *   mount is held back until it is whole either way.
- * @property {DepthRankBias | false} [depthRank] A prototype, off by
- *   default: draw the panel's batched boxes with a depth bias by paint rank
- *   on top of the lift, `"constant"`, `"slope"` or `"max"` (see
- *   `DepthRankBias` in `boxBatch.js`), and `false` for none whatever the
- *   scene's `PanelOptions` say. It is there to measure the bias on a
- *   headset for item 10 of `docs/freedom-architecture-plan.md`. It moves
- *   neither the panel's text nor its pictures, so a box far enough up a
- *   pile can cover its own text and the picture of the card under it.
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a
@@ -365,13 +355,6 @@ function claimRoot(root) {
  *   among the scene's `PanelOptions`, since each panel says for itself
  *   that it can be moved. The keyboard a field brings up has the same
  *   strips, always.
- * @property {boolean} [paintOrder] Draw the panel in paint order rather than
- *   by the lift, on by default (`docs/freedom-paint-order.md`). Nothing
- *   the panel draws writes depth, every element draws at its layer's draw
- *   level (`getLayer` in `elevation.js`), the layers in the order the
- *   panel's tree gives them from the viewer (`layerOrder.js`), and one quad
- *   over the root writes the panel's depth, after everything else in it.
- *   A panel in paint order has no use for `depthRank`, and ignores it.
  * @property {readonly PortalPlugin[]} [plugins] Element plugins for this
  *   panel alone, asked before the ones the scene registered through
  *   `render()`'s `portalPlugins` and before the portal's own dispatch. For
@@ -415,8 +398,6 @@ function buildPortal(ctx, ownOptions = {}) {
     haptics = {},
     thumbstickWheel = false,
     draggable = false,
-    depthRank,
-    paintOrder = true,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -458,28 +439,25 @@ function buildPortal(ctx, ownOptions = {}) {
   keepSubtreeMatrices(containerObject);
 
   /**
-   * On a panel drawn in paint order, one batch draws its boxes and its runs
-   * together (`paintBatch.js`), and the two batches below are what it takes
-   * them from. It keeps a layer cut in pieces apart, by the panel's order,
-   * made further down.
+   * The one batch that draws the panel's boxes and its runs together, in the
+   * order the page paints them (`paintBatch.js`). Its own, not shared with
+   * other portals: its draws hang off this container, so their instance
+   * matrices are in its frame, and a panel is the unit that comes and goes.
+   * It keeps a layer cut in pieces apart, by the panel's order, made further
+   * down.
    */
-  const paintBatch = paintOrder ? new PaintBatch(containerObject) : null;
+  const paintBatch = new PaintBatch(containerObject);
 
   /**
-   * The boxes of this panel, drawn together rather than one at a time. Its
-   * own, not shared with other portals: the buckets hang off this container,
-   * so their instance matrices are in its frame, and a panel is the unit that
-   * comes and goes.
+   * The boxes of this panel, which the one batch takes from. Kept apart from
+   * the runs because what they batch by is different — a box is described by
+   * numbers, a run by pixels, in arrays of exactly-sized runs rather than a
+   * texture apiece.
    */
-  const boxBatch = paintBatch?.boxes ?? createBoxBatch(containerObject, depthRank || undefined);
+  const boxBatch = paintBatch.boxes;
 
-  /**
-   * And its text, drawn from arrays of exactly-sized runs rather than a
-   * texture apiece. Kept separate from the boxes' batch because what they
-   * batch by is different — a box is described by numbers, a run by pixels —
-   * even though both hang off this container and both follow the same walk.
-   */
-  const textBatch = paintBatch?.runs ?? createTextBatch(containerObject);
+  /** And its text. */
+  const textBatch = paintBatch.runs;
 
   // Everything this portal projects is built with the batches in scope. The
   // context is derived rather than mutated, so a second portal built from the
@@ -567,12 +545,10 @@ function buildPortal(ctx, ownOptions = {}) {
   /** @param {number} time */
   const flushBatches = (time) => {
     // The layers' order first, which moves what the batches draw.
-    if (layerOrder) {
-      const renderer = RendererContext.get(ctx);
-      const camera = CameraContext.get(ctx);
-      if (renderer && camera) {
-        layerOrder.frame(time, renderer, camera);
-      }
+    const renderer = RendererContext.get(ctx);
+    const camera = CameraContext.get(ctx);
+    if (renderer && camera) {
+      layerOrder.frame(time, renderer, camera);
     }
     // First, so that a step the panel has just crossed is one the runs
     // re-rasterize against rather than one they find out about next frame.
@@ -581,11 +557,9 @@ function buildPortal(ctx, ownOptions = {}) {
     if (textScale) {
       textPreparer?.retarget(textScale.prepared());
     }
-    boxBatch.flush();
-    textBatch.flush();
-    paintBatch?.flush();
+    paintBatch.flush();
     // And the layers cut in pieces, once their draws are this frame's.
-    layerOrder?.cut();
+    layerOrder.cut();
   };
   /** @type {() => void} */
   let stopFlushing = () => {};
@@ -623,10 +597,6 @@ function buildPortal(ctx, ownOptions = {}) {
   // attribute is what the mirror walks up to, and nothing here asks who put
   // it there.
   const containerElement = root ? claimRoot(root) : createContainerElement();
-  // Before the mirror adopts it, so that nothing under it is lifted first.
-  if (paintOrder) {
-    drawInPaintOrder(containerElement);
-  }
   mirror.adopt(containerElement);
   nodeToObject.set(containerElement, containerObject);
   objectToNode.set(containerObject, containerElement);
@@ -654,33 +624,27 @@ function buildPortal(ctx, ownOptions = {}) {
   // panel's size.
   const blocker = opaqueToRays ? createBlocker() : null;
 
-  // In paint order nothing the panel draws writes depth, so the panel would
+  // Nothing the panel draws writes depth, so the panel would
   // hide nothing drawn after it. One quad over the root writes it, in the
   // root's plane, and after everything else in the panel: past every band
   // its elements draw in and short of the strips at `HANDLE_RENDER_ORDER`.
   // Last and not first, so that a layer behind the root's plane is not cut
   // by the root's own depth.
-  const depthQuad = paintOrder ? createDepthQuad() : null;
-  if (depthQuad) {
-    depthQuad.renderOrder = HANDLE_RENDER_ORDER - 1;
-    containerObject.add(depthQuad);
-  }
+  const depthQuad = createDepthQuad();
+  depthQuad.renderOrder = HANDLE_RENDER_ORDER - 1;
+  containerObject.add(depthQuad);
 
   // And the order its layers draw in from where the viewer stands, walked
   // each frame before the batches flush and cut after (`layerOrder.js`),
   // which moves the depth quad to the end of the panel's slot.
-  const layerOrder = paintBatch
-    ? new LayerOrder({
-        container: containerObject,
-        root: containerElement,
-        objectOf: (node) => nodeToObject.get(node),
-        batch: paintBatch,
-        depthQuad,
-      })
-    : null;
-  if (layerOrder) {
-    ctx = LayerOrderContext.set(ctx, layerOrder);
-  }
+  const layerOrder = new LayerOrder({
+    container: containerObject,
+    root: containerElement,
+    objectOf: (node) => nodeToObject.get(node),
+    batch: paintBatch,
+    depthQuad,
+  });
+  ctx = LayerOrderContext.set(ctx, layerOrder);
   if (blocker) {
     containerObject.add(blocker);
     // Not a ray target yet: the raycast set is flat, so the container being
@@ -988,12 +952,9 @@ function buildPortal(ctx, ownOptions = {}) {
           // pressing its keys is the hand pressing the panel's buttons, which
           // should feel the same. With the hover on unless the panel turned
           // it off by name: a keyboard is where aiming at one small target
-          // after another without looking wants it. And `paintOrder`, so
-          // that the board is drawn as the panel it types for is, and a
-          // measurement of one build is not partly the other.
+          // after another without looking wants it.
           ctx: PanelOptionsContext.set(baseCtx, {
             haptics: haptics === false ? false : { hover: true, ...haptics },
-            paintOrder,
           }),
           options: keyboard,
           containerObject,
@@ -1514,8 +1475,7 @@ function buildPortal(ctx, ownOptions = {}) {
         // found nothing where it now hangs. Without this the new boxes stayed
         // out of the draw until something unrelated restyled the panel, while
         // whatever draws itself appeared at once: text over no card.
-        boxBatch.invalidate();
-        textBatch.invalidate();
+        paintBatch.invalidate();
       }
     });
     outlines?.commit();
@@ -2241,9 +2201,9 @@ function buildPortal(ctx, ownOptions = {}) {
     animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.
     stopFlushing();
-    layerOrder?.dispose();
-    paintBatch?.dispose();
-    depthQuad?.material.dispose();
+    layerOrder.dispose();
+    paintBatch.dispose();
+    depthQuad.material.dispose();
     boxBatch.dispose();
     textBatch.dispose();
   }

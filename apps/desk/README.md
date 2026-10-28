@@ -34,13 +34,6 @@ On a laptop there is no session to offer, so there is no button and no renderer.
 installs a headset in the browser (IWER, with its dev panels, from `@apendua.dev/headset`) and an
 Enter button appears at the bottom; `?emulator=bare` installs the runtime without the panels.
 
-`?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every panel's boxes with
-freedom's depth bias by paint rank, a prototype for item 10.2 of
-[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md). The plan's record of
-the item says what each one measured, and where the probe that measured them last stood.
-
-`?paintOrder=off` draws every panel by the lift rather than in paint order, freedom's default, to
-compare the two ([`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md)).
 `?trace`, under the dev server, keeps a row for every frame of each session and saves them as the
 session ends (`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk:
 the frame's times, the panels with work for a coming frame, and how far each of the board's cards
@@ -52,13 +45,12 @@ Chromium. It fails unless every zone the look places becomes a panel and loads, 
 power control is on it, and the trigger there ends the session, or if the page throws. For the first
 look it then starts a second session and fails if ending it leaves more geometries on the GPU than
 the first did. It takes about two minutes. `SHOTS=<dir>` also photographs each session, and
-`STACKS=1` prints a stack for anything the page throws. `PAINT_ORDER=0` runs it on panels drawn by
-the lift (`?paintOrder=off`), for `docs/freedom-paint-order-plan.md`. It drives the browser and the
-controller through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`
-and launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
-points it at one installed elsewhere. A pull request that changes this app or a package it imports,
-other than in docs, unit tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights',
-from `.github/workflows/driven.yml`.
+`STACKS=1` prints a stack for anything the page throws. It drives the browser and the controller
+through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr` and launches
+the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at
+one installed elsewhere. A pull request that changes this app or a package it imports, other than in
+docs, unit tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights', from
+`.github/workflows/driven.yml`.
 
 ## The paint-order probe
 
@@ -72,10 +64,9 @@ npx vite                           # in apps/desk
 adb reverse tcp:5173 tcp:5173      # the headset's localhost:5173 is this machine's
 ```
 
-then open `http://localhost:5173/apps/desk/paint-order-probe.html?scene=pile` in the Quest Browser
-for the paint-order build, and the same with `&paintOrder=off` for the lift's. `localhost` is a
-secure context, so the session needs no certificate. `?emulator` runs it under IWER on a desktop
-instead.
+then open `http://localhost:5173/apps/desk/paint-order-probe.html?scene=pile` in the Quest Browser.
+`localhost` is a secure context, so the session needs no certificate. `?emulator` runs it under IWER
+on a desktop instead.
 
 `?scene=` picks one of nine scenes, so that what a measurement draws is that scene and nothing else:
 `pile`, the 100-card piled board; `mount`, a panel holding a swung card, mounted mid-session;
@@ -100,10 +91,9 @@ makes it update its styles every frame, which a page the Quest no longer renders
 `&trace=scene` leaves the page alone and records the scene's side only. Neither button takes a press
 while a run records, whichever button started it. Capture eyes reads both eyes' images back from one
 frame. Save JSON sends what the probe found to the dev server, which writes it to
-`probe-results/paint-order-probe-<scene>-<build>-<time>.json` in this app's directory, `<build>`
-being `lift` or `paint-order` (`vite/probeResults.js`, development only, and in `.gitignore`), so a
-run on the headset lands on the machine it is plugged into. A button that fails says why on the
-control panel's status line.
+`probe-results/paint-order-probe-<scene>-<time>.json` in this app's directory
+(`vite/probeResults.js`, development only, and in `.gitignore`), so a run on the headset lands on
+the machine it is plugged into. A button that fails says why on the control panel's status line.
 
 ## What you can do
 

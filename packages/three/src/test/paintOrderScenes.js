@@ -44,12 +44,11 @@ function nextMacrotask() {
  * Mount a portal and let `build` fill its root.
  *
  * @param {(root: HTMLElement) => void} build
- * @param {import("../elements/portal.js").PortalOptions} [options]
  * @returns {Promise<{ root: HTMLElement, dispose: () => void }>}
  */
-export async function mountScene(build, options) {
+export async function mountScene(build) {
   const manager = new InteractionManager();
-  const portal = createPortal(InteractionContext.set({}, manager), options);
+  const portal = createPortal(InteractionContext.set({}, manager));
   portal.addTo(new THREE.Group());
   const roots = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
   const root = /** @type {HTMLElement} */ (roots[roots.length - 1]);

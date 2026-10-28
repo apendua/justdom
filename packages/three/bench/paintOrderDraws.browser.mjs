@@ -1,7 +1,6 @@
 /**
  * Phase 4's draw calls a frame under the emulator: the desk's three looks
- * and the showcase, each in a session drawn by the lift (`?paintOrder=off`)
- * and again in paint order, every panel loaded.
+ * and the showcase, each in a session, every panel loaded.
  *
  *   node bench/paintOrderDraws.browser.mjs
  *   APPS=desk node bench/paintOrderDraws.browser.mjs   # one app
@@ -11,12 +10,10 @@
  * the panel that made them, and `paintOrderCount.js` counts each panel's
  * draws under one batch by node, the scheme phase 2 decided, one eye.
  *
- * Prints a table a row a panel: its content's draws from one eye in both
- * builds beside the count, its draws that write no colour in each, and the
- * instances it re-packs a frame in each. Then a table a row a look or app:
- * its frame's draws, both eyes and everything in the scene, in each build,
- * their ratio, which is what the plan's threshold reads, and its panels'
- * draws from one eye.
+ * Prints a table a row a panel: its content's draws from one eye beside
+ * the count, its draws that write no colour, and the instances it re-packs
+ * a frame. Then a table a row a look or app: its frame's draws, both eyes
+ * and everything in the scene, and its panels' draws from one eye.
  */
 import { join } from "node:path";
 import { APPS, REPO, chosenApps } from "./emulatorApps.mjs";
@@ -55,61 +52,34 @@ async function measurePage(page, base) {
   return { draws, counted: new Map(counted) };
 }
 
-/** @type {Map<string, { lift?: Measured, paint?: Measured }>} */
+/** @type {Map<string, Measured>} */
 const pages = new Map();
-/** The query the lift build is opened with; the paint-order build takes none. */
-const LIFT = "&paintOrder=off";
 for (const app of chosenApps(["desk", "showcase"])) {
-  await APPS[app](
-    async (page, base, label, query) => {
-      const entry = pages.get(label) ?? {};
-      entry[query === LIFT ? "lift" : "paint"] = await measurePage(page, base);
-      pages.set(label, entry);
-    },
-    [LIFT, ""],
-  );
+  await APPS[app](async (page, base, label) => {
+    pages.set(label, await measurePage(page, base));
+  });
 }
 
 /** @param {number} n */
 const fixed = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
-console.log(
-  "| Panel | Lift | Paint order | Counted, one batch by node | Blank, lift | Blank, paint order | Re-packed, lift | Re-packed, paint order |",
-);
-console.log(
-  "| ----- | ---- | ----------- | -------------------------- | ----------- | ------------------ | --------------- | ---------------------- |",
-);
-for (const [label, { lift, paint }] of pages) {
-  if (!lift || !paint) continue;
-  const liftPanels = new Map(lift.draws.panels);
-  const liftBlank = new Map(lift.draws.blank);
-  const paintBlank = new Map(paint.draws.blank);
-  const liftRepacked = new Map(lift.draws.repacked);
-  const paintRepacked = new Map(paint.draws.repacked);
-  for (const [name, draws] of paint.draws.panels) {
+console.log("| Panel | Draws | Counted, one batch by node | Blank | Re-packed |");
+console.log("| ----- | ----- | -------------------------- | ----- | --------- |");
+for (const [label, { draws, counted }] of pages) {
+  const blank = new Map(draws.blank);
+  const repacked = new Map(draws.repacked);
+  for (const [name, panel] of draws.panels) {
     console.log(
-      `| ${label}: ${name} | ${fixed(liftPanels.get(name) ?? 0)} | ${fixed(draws)} | ` +
-        `${paint.counted.get(name) ?? ""} | ${fixed(liftBlank.get(name) ?? 0)} | ` +
-        `${fixed(paintBlank.get(name) ?? 0)} | ${fixed(liftRepacked.get(name) ?? 0)} | ` +
-        `${fixed(paintRepacked.get(name) ?? 0)} |`,
+      `| ${label}: ${name} | ${fixed(panel)} | ${counted.get(name) ?? ""} | ` +
+        `${fixed(blank.get(name) ?? 0)} | ${fixed(repacked.get(name) ?? 0)} |`,
     );
   }
 }
 
 console.log("");
-console.log(
-  "| Look or app | Lift, a frame | Paint order, a frame | Ratio | Panels, one eye, lift | Panels, one eye, paint order |",
-);
-console.log(
-  "| ----------- | ------------- | -------------------- | ----- | --------------------- | ---------------------------- |",
-);
-for (const [label, { lift, paint }] of pages) {
-  if (!lift || !paint) continue;
-  /** @param {DrawCount} draws */
-  const panels = (draws) => [...draws.panels, ...draws.blank].reduce((sum, [, n]) => sum + n, 0);
-  console.log(
-    `| ${label} | ${fixed(lift.draws.total)} | ${fixed(paint.draws.total)} | ` +
-      `${(paint.draws.total / lift.draws.total).toFixed(2)} | ${fixed(panels(lift.draws))} | ` +
-      `${fixed(panels(paint.draws))} |`,
-  );
+console.log("| Look or app | A frame | Panels, one eye |");
+console.log("| ----------- | ------- | --------------- |");
+for (const [label, { draws }] of pages) {
+  const panels = [...draws.panels, ...draws.blank].reduce((sum, [, n]) => sum + n, 0);
+  console.log(`| ${label} | ${fixed(draws.total)} | ${fixed(panels)} |`);
 }

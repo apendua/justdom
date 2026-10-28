@@ -15,8 +15,8 @@ import { panelName } from "./paintOrderCount.js";
  * down to the panel's root element (`getPanel`); any other, the room, the
  * hands and the frame rate readout among them, to the scene. A panel's
  * draws with a material that writes no colour are counted apart: its
- * blockers (`blocker.js`), which stop rays and draw nothing, and in paint
- * order its depth quad. The rest are its content, what the count counts.
+ * blockers (`blocker.js`), which stop rays and draw nothing, and its depth
+ * quad. The rest are its content, what the count counts.
  *
  * A mesh of instances is re-packed in a frame its buffers changed in: its
  * instance matrices, or an instanced attribute of its geometry, marked for
@@ -26,8 +26,7 @@ import { panelName } from "./paintOrderCount.js";
  * shares its mesh's buffers and is not counted again, nor is a spare taken
  * back onto another mesh's, which uploads nothing. That is the figure the
  * plan's moving transform row reads: a clock whose hands move re-packs the
- * hands' bucket under the lift, and under paint order the draw the hands
- * share with the dial.
+ * draw the hands share with the dial.
  *
  * One eye is the camera that drew the most. In a session three draws each
  * eye from a camera of its own, and both draw the same; a page can draw

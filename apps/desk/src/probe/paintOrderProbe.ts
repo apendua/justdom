@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { render, createXRButton, children, cursors, $, dom, getScene } from "@apendua/freedom";
 import { inputModels } from "@apendua.dev/headset/scene";
 import { canPresent } from "@apendua.dev/headset/session";
-import { paintOrderQuery } from "@apendua.dev/headset/theming";
 import { effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
 import { captureEyes, countLinks, record, type EyeImage, type Run } from "./recorder.js";
 import { PROBE_CSS, SCENES, type Place, type ProbePanel } from "./scenes.js";
@@ -12,15 +11,12 @@ import { noteTracer, timeFrames } from "./trace.js";
  * The paint-order probe, `paint-order-probe.html`: the scenes of phase 4's
  * Quest half in `docs/freedom-paint-order-plan.md`, a control panel to work
  * them from inside the session, and the results, saved to disk by the dev
- * server (`vite/probeResults.js`). `?scene=` picks the scene, `?paintOrder=off`
- * draws its panels by the lift, `?trace=scene` keeps a run's trace off
- * the page's styles (`trace.ts`), and `?emulator` runs it under IWER on a
- * desktop.
+ * server (`vite/probeResults.js`). `?scene=` picks the scene, `?trace=scene`
+ * keeps a run's trace off the page's styles (`trace.ts`), and `?emulator`
+ * runs it under IWER on a desktop.
  */
 
 const query = new URLSearchParams(location.search);
-const paintOrder = paintOrderQuery(query);
-const build = paintOrder ? "paint order" : "lift";
 const sceneName = query.get("scene") ?? "pile";
 const makeScene = SCENES[sceneName];
 if (!makeScene) {
@@ -52,7 +48,7 @@ const results: { runs: Run[]; eyes: EyeImage[][] } = { runs: [], eyes: [] };
 
 const stage = find("[data-stage]");
 const status = find("[data-status]");
-find("[data-what]").textContent = `${scene.name}, ${build}: ${scene.what}`;
+find("[data-what]").textContent = `${scene.name}: ${scene.what}`;
 // A portal draws what is inside its root and not the root's own box, so
 // each panel's box, its opaque or translucent backdrop, goes in a root of
 // its own.
@@ -197,7 +193,7 @@ captureButton.addEventListener("click", () => {
 
 saveButton.addEventListener("click", () => {
   attempt("Save", async () => {
-    // The route names the file by the report's own scene and build.
+    // The route names the file by the report's own scene.
     const response = await fetch(`${import.meta.env.BASE_URL}api/probe-results`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -213,7 +209,6 @@ function report(): string {
   return JSON.stringify({
     probe: "paint-order",
     scene: scene.name,
-    build,
     userAgent: navigator.userAgent,
     ...results,
   });
@@ -309,7 +304,6 @@ async function start(): Promise<void> {
   render(probeScene, {
     ...inputModels(import.meta.env.BASE_URL),
     presentingOnly: true,
-    panelOptions: { paintOrder },
   }).subscribe({
     next: (drawing) => {
       renderer = drawing;

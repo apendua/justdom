@@ -6,15 +6,15 @@
  * Keeping the programs freedom draws with linked for the life of the
  * renderer.
  *
- * three.js keeps a compiled program only while a material holds it. A
- * material that compiles one counts itself in, `Material.dispose` counts it
- * out, and `WebGLPrograms.releaseProgram` deletes the program when the count
- * reaches nought. freedom makes and disposes its materials with the lives of
- * what they draw: a panel, a bucket of text, the frame shown while a panel
- * mounts. So the last of a kind to go took its program with it, and the next
- * one to come linked it again, at 15 to 19 ms a program on a Quest 3, inside
- * the frame that first drew it. A panel that mounted after the last one of
- * its kind had closed paid that, and so did every text bucket that grew.
+ * three.js keeps a compiled program only while a material holds it. A material
+ * that compiles one counts itself in, `Material.dispose` counts it out, and
+ * `WebGLPrograms.releaseProgram` deletes the program when the count reaches
+ * nought. freedom makes and disposes its materials with the lives of what they
+ * draw: a panel, a draw of its one batch, the frame shown while a panel mounts.
+ * So the last of a kind to go took its program with it, and the next one to
+ * come linked it again, at 15 to 19 ms a program on a Quest 3, inside the frame
+ * that first drew it. A panel that mounted after the last one of its kind had
+ * closed paid that, and so did every draw that grew.
  *
  * So each kind of material freedom draws gets a keeper per renderer. A keeper
  * is one more material of the same recipe, never disposed, and it holds the

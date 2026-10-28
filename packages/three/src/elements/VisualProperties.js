@@ -569,10 +569,7 @@ export default class VisualProperties {
    * paints over its parent, which is what the nesting already means, and a
    * box stepped over a sibling may draw after that sibling's subtree, by
    * the rule `getDrawLevel` gives. Between layers it does not decide
-   * anything: an overlay is above everything below it however shallow the
-   * overlay happens to be, so each layer takes a band of its own
-   * (`ELEVATION_BAND`), and in paint order the panel's walk places each
-   * layer (`getRenderBand`).
+   * anything: the panel's walk places each layer (`getRenderBand`).
    */
   get renderOrder() {
     return this.#props.band + this.drawLevel;

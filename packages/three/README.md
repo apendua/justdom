@@ -388,9 +388,10 @@ The options, each with the section that says what it does:
 | `maxTextScale`     | `4`         | The ceiling on how finely this panel's text is rasterized. **How sharp the text comes out**.         |
 | `draggable`        | `false`     | Whether the player can move the panel, or a `PanelDragOptions`. **Letting the player move a panel**. |
 | `plugins`          | none        | Element plugins for this panel alone, asked before the scene's. **Element plugins**.                 |
+| `paintOrder`       | `false`     | Draw the panel in paint order rather than by the lift, a prototype. **Paint order**.                 |
 
 `keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority` and `budget` can also be set for the whole scene; see **Panel defaults**.
+`priority`, `budget` and `paintOrder` can also be set for the whole scene; see **Panel defaults**.
 
 ### What a ray sends the page
 
@@ -1472,6 +1473,49 @@ scene that set it. It moves only the batched boxes, so neither the text nor an `
 itself: on a panel far enough away a box high in a pile can cover its own text, and a card can cover
 the picture on the card under it. `boxBatch.js` has the formula and its numbers.
 
+### Paint order
+
+`paintOrder: true` draws a panel the way a page paints it, without the lift. It is off by default
+while it is measured against the lift, and
+[`docs/freedom-paint-order.md`](../../docs/freedom-paint-order.md) has its rules. A panel in paint
+order ignores `depthRank`.
+
+- A panel is a set of layers: its root, every overlay, and every element whose transform takes it
+  out of its parent's plane (`getLayer` in `elevation.js`). An overlay keeps its lift, and a
+  transformed layer sits where its transform puts it; nothing else in the panel is lifted.
+- Within a layer, the draw order is the paint order. Every element that a page paints over a sibling
+  draws after everything that sibling draws, opaque or not, so a pile of cards climbs a draw level a
+  card, while a list of rows stays at one row's levels however long it is.
+- Between layers, geometry decides. The panel orders its layers' planes in a tree (`layerTree.js`)
+  and walks it from the viewer every frame (`layerOrder.js`): what is nearer draws over what is
+  farther, and layers in one plane draw in paint order. A layer that crosses another's plane, a card
+  swung about its centre, is cut there, and each piece draws on its own side.
+- A panel's boxes and runs of text draw together, with one shader (`paintBatch.js`): a stretch of
+  the paint order is one draw call, across layers, broken only where something draws itself (a
+  picture, an `<svg>` shape, a caret, a run with its colours baked in), at a layer cut in pieces,
+  and at a sixteenth size of run.
+- Panels in paint order draw whole, far to near.
+- Nothing writes depth but one quad over the root, drawn after everything else in the panel, so the
+  panel still hides what is drawn after it.
+- A ray that meets two things at one distance lands on the one drawn later. Between layers, distance
+  decides.
+
+Not followed, beyond what the lift does not follow either:
+
+- A piece is cut by at most 8 planes, and one cut more often is drawn with its first 8.
+- A panel draws at most 254 pieces in places of their own. The rest share one, in no order among
+  them, and a layer with a piece among them is drawn whole, uncut.
+- What an element covers takes in the shadow of its own text, a text child's or a field's value's,
+  but not the 2 px a run's glyphs, drawn one by one, can come out wider than their box. Where they
+  do, something the overhang overlaps can draw over or under it.
+- Both eyes draw one order, from the midpoint between them, so a layer seen edge-on, mid-flip, can
+  be in the wrong order for one eye. It is a sliver then.
+- Two layers in one plane are ordered by the sign of their `z-index`, as siblings are, and a
+  `z-index` inside a box that forms no stacking context is read where the box is, not let out of it.
+- The depth quad covers the root's border box, so an overlay that hangs past the root's edge, a menu
+  past the panel's, writes no depth, and what draws after the panel there, a draggable panel's
+  strips included, draws over it.
+
 ## Images
 
 An `<img>` in a panel is an ordinary CSS box that happens to have a picture in it: the picture is a
@@ -1734,10 +1778,10 @@ render(Scene, {
 ```
 
 `keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `depthRank`, `maxTextScale`, `atomic`,
-`opaqueToRays`, `priority` and `budget` can be set this way. A panel's own options are laid over
-them: its value wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object
-is spread over the scene's, so a panel can change one thing about them without restating the rest;
-`false` at either level is none, for those three and for `depthRank`.
+`opaqueToRays`, `priority`, `budget` and `paintOrder` can be set this way. A panel's own options are
+laid over them: its value wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as
+an object is spread over the scene's, so a panel can change one thing about them without restating
+the rest; `false` at either level is none, for those three and for `depthRank`.
 `withPanelOptions(ctx, options)` does the same for a part of the scene, over whatever is in scope
 already. `plugins` is not among them — it has `portalPlugins`, whose list a panel's own is put in
 front of rather than in place of — and neither are `root`, `draggable` and `onLoadingChanged`, which

@@ -6,6 +6,7 @@ import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
 import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
 import { applyClip } from "./clip.js";
 import { place } from "./place.js";
+import { registerDrawOrder } from "../drawOrder.js";
 
 /**
  * @import {Source} from '@apendua/signal';
@@ -145,12 +146,15 @@ function makeTickGeometry(width, height, originX, originY) {
  * @param {BoxSurface} surface
  * @returns {import("@apendua/signal").Source<Component>}
  */
-function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
+function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden, paintOrdered }) {
   // Created here rather than inline, because `clipMesh` wraps `raycast` and
   // has to do so exactly once — the same reason `div` builds its own quad
   // outside the operators that dress it.
   const mesh = new THREE.Mesh();
   clipMesh(mesh);
+  if (paintOrdered) {
+    registerDrawOrder(mesh);
+  }
 
   // Shared with the material's compiled shader; the effect below writes the
   // current box into it as the element scrolls or the layout moves.

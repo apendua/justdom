@@ -2,10 +2,12 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import {
+  BOX_BUCKET_BIAS,
   createBoxBatch,
   DEPTH_RANK_EPSILON,
   DEPTH_RANK_MAX_FACTOR,
   DEPTH_RANK_MAX_FLOOR,
+  UNBATCHED_BOX_BIAS,
 } from "./boxBatch.js";
 import {
   batchedBoxMaterial,
@@ -14,6 +16,7 @@ import {
   rectGeometry,
 } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
+import { CARET_ORDER_BIAS } from "./textInput.js";
 import { place } from "./place.js";
 import { instanceVersions } from "../test/instanceVersions.js";
 
@@ -107,6 +110,20 @@ function crowdedPanel(count) {
 
 /** Let queued microtasks run. */
 const microtasks = () => Promise.resolve();
+
+describe("the draw order within one level", () => {
+  test("keeps the rungs of the table at BOX_BUCKET_BIAS in order, under the next level", () => {
+    // Text at 0, then the caret, a picture's box, the box bucket, and the
+    // next level's text at 1.
+    const rungs = [0, CARET_ORDER_BIAS, UNBATCHED_BOX_BIAS, BOX_BUCKET_BIAS, 1];
+    assert.deepEqual(
+      [...rungs].sort((a, b) => a - b),
+      rungs,
+      `in order: ${rungs.join(", ")}`,
+    );
+    assert.equal(new Set(rungs).size, rungs.length, "no two rungs share a place");
+  });
+});
 
 describe("box batch rebuild scheduling", () => {
   test("a flush before the draw shows a box where this frame put it, not where the last one did", async () => {

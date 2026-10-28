@@ -28,20 +28,22 @@
  *
  * and read the diff of the JSON file before committing it. A gesture with
  * no recording fails rather than recording one, unless that is asked for.
+ *
+ * `PAINT_ORDER=1` runs them on panels drawn in paint order (`paintOrder` in
+ * `portal.js`) against the same recordings, which paint order has to match
+ * before it is the default (`docs/freedom-paint-order.md`).
  */
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { clientRect } from "../test/clientRect.js";
-import { drain, settle } from "../test/portalHarness.js";
+import { drain } from "../test/portalHarness.js";
+import { pagePanel } from "../test/pagePanel.js";
 import { rayHand } from "../test/rayHand.js";
 import { describeScroller } from "../test/scroller.js";
-import { createPortal } from "./portal.js";
 
 const GOLDENS = new URL("./pointerGoldens.json", import.meta.url);
 const UPDATE = process.env.UPDATE_GOLDENS === "1";
+const PAINT_ORDER = process.env.PAINT_ORDER === "1";
 
 /** @type {Record<string, string[]>} */
 const goldens = JSON.parse(readFileSync(GOLDENS, "utf8"));
@@ -54,20 +56,19 @@ after(() => {
   }
 });
 
-/** @typedef {readonly [number, number, number, number]} Rect */
+/**
+ * @import { PageSpec, Rect } from "../test/pagePanel.js";
+ */
 
 /**
- * An element of a page, laid out where `at` says: its left, top, width and
- * height on the page. jsdom lays nothing out, so every element says.
+ * An element of a page (`PageSpec`), and what a gesture needs of it.
  *
- * @typedef {object} Spec
- * @property {string} id
- * @property {string} [style]
- * @property {Rect} at
- * @property {boolean} [draggable] `draggable="true"`.
- * @property {number} [scroll] A scrolling list, with this much content in
- *   it; it shows its own height of it.
- * @property {Spec[]} [children]
+ * @typedef {PageSpec & {
+ *   draggable?: boolean,
+ *   scroll?: number,
+ *   children?: Spec[],
+ * }} Spec `draggable` is `draggable="true"`; `scroll` makes a scrolling
+ *   list, with this much content in it, of which it shows its own height.
  */
 
 /** The pointer, mouse and drag events a page can hear from a ray. */
@@ -136,42 +137,19 @@ const RAY_TYPES = [
  *   `pointerdown`, as a page that takes a press as a pointer does.
  */
 async function page(children, { accept = true, capture = false, cancel = false } = {}) {
-  const root = document.createElement("div");
-  root.id = "root";
-  /** @type {Map<string, HTMLElement>} */
-  const elements = new Map();
-  /** @type {Map<string, Rect>} */
-  const places = new Map();
-
-  /**
-   * @param {HTMLElement} parent
-   * @param {Spec} spec
-   */
-  const build = (parent, spec) => {
-    const element = document.createElement("div");
-    element.id = spec.id;
-    element.style.cssText = spec.style ?? "";
-    if (spec.draggable) {
-      element.setAttribute("draggable", "true");
-    }
-    if (spec.scroll !== undefined) {
-      element.style.overflow = "hidden";
-      describeScroller(element, { client: spec.at[3], scroll: spec.scroll });
-      sortable(element, accept);
-    }
-    element.getBoundingClientRect = () => clientRect(...spec.at);
-    elements.set(spec.id, element);
-    places.set(spec.id, spec.at);
-    parent.appendChild(element);
-    for (const child of spec.children ?? []) {
-      build(element, child);
-    }
-  };
-  root.getBoundingClientRect = () => clientRect(0, 0, 400, 300);
-  for (const child of children) {
-    build(root, child);
-  }
-  document.body.appendChild(root);
+  const { root, elements, places, manager, portal, scene, panel } = await pagePanel(children, {
+    portal: { paintOrder: PAINT_ORDER },
+    decorate: (element, /** @type {Spec} */ spec) => {
+      if (spec.draggable) {
+        element.setAttribute("draggable", "true");
+      }
+      if (spec.scroll !== undefined) {
+        element.style.overflow = "hidden";
+        describeScroller(element, { client: spec.at[3], scroll: spec.scroll });
+        sortable(element, accept);
+      }
+    },
+  });
   if (cancel) {
     root.addEventListener("pointerdown", (event) => event.preventDefault());
   }
@@ -182,14 +160,6 @@ async function page(children, { accept = true, capture = false, cancel = false }
       /** @type {Element} */ (captor).setPointerCapture(pointerId);
     });
   }
-
-  const manager = new InteractionManager();
-  const ctx = InteractionContext.set({}, manager);
-  const portal = createPortal(ctx, { root, budget: 0 });
-  const scene = new THREE.Group();
-  portal.addTo(scene);
-  await settle(portal);
-  const panel = scene.children[0];
 
   /** @type {string[]} */
   const lines = [];

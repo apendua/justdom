@@ -16,6 +16,7 @@ import { buildFillGeometry, buildShapePath, group, paintSlot, shape } from "./sh
 import { parsePoints } from "./style.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
+import { LayerOrderContext } from "../elements/layerOrder.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
@@ -1093,6 +1094,60 @@ describe("svg shape as a ray target", () => {
       getControlRoot(/** @type {HTMLElement} */ (/** @type {Element} */ (rect)), rectObject),
       rootObject,
     );
+    root.remove();
+  });
+
+  test("a ray through two overlapping shapes on a panel in paint order lands on the later", () => {
+    // Both are level with each other, and the later one in paint order is
+    // drawn over the earlier. Goes red with the shapes left out of the hit
+    // test's draw order (`registerDrawOrder`), which takes the first found.
+    const manager = new InteractionManager();
+    // A panel in paint order, as far as a shape asks: whether it has a
+    // layer order at all.
+    const inPaintOrder = LayerOrderContext.set(
+      InteractionContext.set({}, manager),
+      /** @type {never} */ ({}),
+    );
+    const { ctx, container: panel } = forwardedPanel(inPaintOrder);
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.getBoundingClientRect = () => clientRect(0, 0, 20, 20);
+    const [under, over] = [0, 1].map(() => {
+      const rect = document.createElementNS(SVG_NS, "rect");
+      const square = { x: "-5", y: "-5", width: "10", height: "10", fill: "red" };
+      for (const [name, value] of Object.entries(square)) {
+        rect.setAttribute(name, value);
+      }
+      rect.setAttribute("style", "cursor: pointer");
+      root.appendChild(rect);
+      return rect;
+    });
+    document.body.appendChild(root);
+    const { mirror, disconnect } = observedMirror(root);
+    for (const node of [root, under, over]) {
+      mirror.adopt(node);
+    }
+    /** @type {Map<Element, Object3D>} */
+    const objects = new Map();
+    const subscriptions = [under, over].map((rect) =>
+      shape(ctx, rect).subscribe((value) => {
+        objects.set(rect, value);
+        panel.add(value);
+      }),
+    );
+    panel.position.z = -5;
+    panel.updateMatrixWorld(true);
+
+    const controller = /** @type {THREE.XRTargetRaySpace} */ (
+      /** @type {unknown} */ (new THREE.Object3D())
+    );
+    const hit = manager.getIntersection(controller);
+    assert.ok(hit, "the ray meets the shapes");
+    assert.strictEqual(manager.getTarget(hit.object), objects.get(over));
+
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+    disconnect();
     root.remove();
   });
 

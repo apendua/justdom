@@ -13,12 +13,12 @@ import * as THREE from "three";
  * content group.
  *
  * The test is a fixed array with a count, so a new split never changes a
- * define and never links a program. A box's own material has it
- * (`sdfRect.js`), and so does every material a mark draws itself with
- * (`applyClip` and `applyReveal` in `clip.js`), on every panel, from its
- * build, at a count of 0 where nothing is cut. The box and text batches
- * draw only on panels the step orders, which nothing cuts, and carry
- * none.
+ * define and never links a program. The paint batch's material has it
+ * (`paintBatch.js`), a box's own does (`sdfRect.js`), and so does every
+ * material a mark draws itself with (`applyClip` and `applyReveal` in
+ * `clip.js`), on every panel, from its build, at a count of 0 where
+ * nothing is cut. The box and text batches draw only on panels the lift
+ * orders, which nothing cuts, and carry none.
  */
 
 /**

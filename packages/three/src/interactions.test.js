@@ -11,6 +11,8 @@ import {
   setWorldMatrix,
 } from "./interactions.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
+import { registerDrawOrder } from "./drawOrder.js";
+import { BOX_BUCKET_BIAS } from "./elements/boxBatch.js";
 
 /**
  * @import { XREventMap } from "./core.js";
@@ -823,6 +825,35 @@ describe("setLocalMatrix and setWorldMatrix", () => {
 });
 
 describe("getIntersection", () => {
+  test("of level hits on a panel in paint order, the one drawn last wins", () => {
+    // A nested box and its parent's text, level as a panel in paint order
+    // draws them, at one render order: the box's bucket draws half a level
+    // later, over the text. The cast finds the text first. Goes red with
+    // the nearest hit taken as it was found.
+    const manager = new InteractionManager();
+    const text = targetMesh(5);
+    const box = targetMesh(5);
+    text.renderOrder = 7;
+    box.renderOrder = 7;
+    registerDrawOrder(text);
+    registerDrawOrder(box, BOX_BUCKET_BIAS);
+    manager.add(text);
+    manager.add(box);
+    assert.equal(manager.getIntersection(fakeController())?.object, box);
+  });
+
+  test("of level hits no panel in paint order draws, the first found wins", () => {
+    // As a lifted panel's are taken, whatever their render order: such a
+    // panel keeps what it draws apart, and the draw order says nothing.
+    const manager = new InteractionManager();
+    const first = targetMesh(5);
+    const second = targetMesh(5);
+    second.renderOrder = 7;
+    manager.add(first);
+    manager.add(second);
+    assert.equal(manager.getIntersection(fakeController())?.object, first);
+  });
+
   test("a hidden subtree is not a ray target, exactly as it is not drawn", () => {
     // The raycaster three ships ignores `visible` by design; the manager
     // must not, or every row a scroller culled would still pay a ray test —

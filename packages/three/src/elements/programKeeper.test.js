@@ -5,6 +5,7 @@ import { RendererContext } from "../render.js";
 import { countingManager } from "../test/portalHarness.js";
 import { stubGlRenderer } from "../test/stubGl.js";
 import { panel } from "../test/textRuns.js";
+import { createDepthQuad } from "./blocker.js";
 import { createBoxBatch } from "./boxBatch.js";
 import { applyClip, applyReveal } from "./clip.js";
 import { createLoadingFrame } from "./loadingFrame.js";
@@ -171,6 +172,21 @@ describe("programKeeper", () => {
     scene.add(...again);
     draw();
     assert.deepEqual([counts.programs, counts.programsFreed], [linked, 0]);
+  });
+
+  test("a panel's depth quad, after the last one went, links nothing", () => {
+    const { scene, counts, draw } = stage();
+    const first = createDepthQuad();
+    scene.add(first);
+    draw();
+    assert.equal(counts.programs, 1);
+
+    first.removeFromParent();
+    first.material.dispose();
+    draw();
+    scene.add(createDepthQuad());
+    draw();
+    assert.deepEqual([counts.programs, counts.programsFreed], [1, 0]);
   });
 
   test("a box drawn by itself, after the last one went, links nothing", () => {

@@ -269,7 +269,8 @@ view — anything nearer in the same direction hides it, which is the honest ans
 room and the wrong one for an instrument. So the subtree stops testing itself against the depth
 buffer and is ordered after everything else. Only depth _testing_ goes: the order the panel draws
 itself in is `renderOrder`, and shifting the whole subtree by a constant leaves that exactly as it
-was.
+was. And only on what draws colour: a material that writes none, such as the depth quad `freedom`
+gives a panel drawn in paint order, shows nothing to keep legible and is left as it was made.
 
 **It measures whether or not it is being drawn.** Counting frames is a `+= 1` in a callback the
 renderer was making anyway; it is drawing the panel that costs something, and that is what the

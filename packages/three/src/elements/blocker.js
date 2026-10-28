@@ -1,15 +1,18 @@
 import * as THREE from "three";
 import { placeAndScale } from "./place.js";
+import { keepProgram } from "./programKeeper.js";
 
 /**
  * @import {XREventMap} from '../core.js';
+ * @import {ProgramKind} from './programKeeper.js';
  */
 
 /**
  * Blockers differ from one another only by transform, and neither a unit plane
  * nor a material that writes nothing carries per-instance state — so both are
  * made once and shared, and there is nothing to dispose when a portal or an
- * overlay goes away.
+ * overlay goes away. A depth quad (`createDepthQuad` below) shares the plane
+ * but not the material: each has its own, which the portal disposes.
  */
 const geometry = new THREE.PlaneGeometry(1, 1);
 
@@ -46,6 +49,42 @@ const material = new THREE.MeshBasicMaterial({
  */
 export function createBlocker() {
   return new THREE.Mesh(geometry, material);
+}
+
+/** @returns {THREE.MeshBasicMaterial} */
+function depthQuadMaterial() {
+  return new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    depthWrite: true,
+    // In the transparent list, which three draws after the opaque one, so
+    // that `renderOrder` can put it after the panel's content: every panel
+    // material is transparent.
+    transparent: true,
+    side: THREE.DoubleSide,
+    forceSinglePass: true,
+  });
+}
+
+/** @type {ProgramKind<THREE.MeshBasicMaterial>} */
+const DEPTH_QUAD_PROGRAM = { name: "freedom-depth-quad", create: depthQuadMaterial };
+
+/**
+ * A plane that draws no colour and writes depth: what a panel drawn in paint
+ * order (`paintOrder` in `portal.js`) hides what is drawn after it with,
+ * since nothing else in it writes depth. Stretched over the root by
+ * `coverBox`, and no ray target.
+ *
+ * Each panel's quad has a material of its own, which the panel disposes. A
+ * shared one is one that code changing a material it finds under its own
+ * panel changes for every panel: the frame meter's readout turning its
+ * depth test off turned off every panel's, and panels drawn in paint order
+ * stopped hiding what passes behind them. Its program outlives it
+ * (`programKeeper.js`), as a box's does.
+ *
+ * @returns {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>}
+ */
+export function createDepthQuad() {
+  return new THREE.Mesh(geometry, keepProgram(depthQuadMaterial(), DEPTH_QUAD_PROGRAM));
 }
 
 /**

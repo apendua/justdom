@@ -491,8 +491,39 @@ function followViewport(renderer) {
  * composites over batched content of the same order. That one is at least
  * stable, being a property of where the mesh is rather than of when it was
  * made.
+ *
+ * A panel drawn in paint order puts every origin level with the
+ * container's, so there it is not stable, and two more rungs order what
+ * draws itself. Everything such a panel draws within one integer level R,
+ * in the order it draws, is this table. A new rung goes into it, under 1,
+ * and into the test that holds the constants to it (`boxBatch.test.js`).
+ *
+ *   R            the text bucket, and a run that draws itself
+ *   [R, R + 1/2) an `<svg>`'s content, shared out by `paintSlot`
+ *   R + 1/8      a field's caret, over the glyphs (`CARET_ORDER_BIAS`)
+ *   R + 1/4      a picture's box, which has no bucket (`UNBATCHED_BOX_BIAS`)
+ *   R + 1/2      the box bucket (`BOX_BUCKET_BIAS`)
+ *   R + 1        the next level's text
+ *
+ * The `<svg>` range spans the caret's and the picture's rungs, which is
+ * safe because none of the three shares an element: an `<svg>` has no
+ * caret and is no `<img>`.
+ *
+ * A run of text whose colours are baked in draws itself at R and sorts
+ * against the text bucket of R on its own origin, which such a panel puts
+ * level with the container's, so of two texts of one order that overlap
+ * either may draw first.
  */
 export const BOX_BUCKET_BIAS = 0.5;
+
+/**
+ * How far behind its integer a box that draws itself, an `<img>`'s, draws on
+ * a panel in paint order. Its place in the level is in the table at
+ * `BOX_BUCKET_BIAS`. Its origin is no help, since such a panel puts it level
+ * with the container's, and which of it and the text three draws first would
+ * then turn on the angle the panel is seen at.
+ */
+export const UNBATCHED_BOX_BIAS = BOX_BUCKET_BIAS / 2;
 
 /** How many instances a freshly grown bucket has room for. */
 const MINIMUM_CAPACITY = 16;
@@ -605,27 +636,7 @@ class Bucket {
       return;
     }
     mesh.setMatrixAt(index, matrix);
-    const { uSize, uRadii, uBorder, uFillColor, uBorderColor, uClip, uClipRadii } = uniforms;
-    const { uGradient, uGradientGeometry, uGradientTile, uGradientRamp } = uniforms;
-    const gradient = uGradient.value;
-    const ramp = uGradientRamp.value;
-    const size = this.data.aSize;
-    size[index * 4] = uSize.value.x;
-    size[index * 4 + 1] = uSize.value.y;
-    // Unpacked by the vertex shader; see `instancedVertex`.
-    size[index * 4 + 2] =
-      gradient.x + 4 * gradient.y + 8 * gradient.z + 16 * gradient.w + 32 * ramp.x;
-    // The opacity, and under a depth bias the rank with it; see
-    // `instancedVertex`.
-    size[index * 4 + 3] = this.ranked ? 2 * rank + ramp.y : ramp.y;
-    writeVec4(this.data.aGradientGeometry, index, uGradientGeometry.value);
-    writeVec4(this.data.aGradientTile, index, uGradientTile.value);
-    writeVec4(this.data.aRadii, index, uRadii.value);
-    writeVec4(this.data.aBorder, index, uBorder.value);
-    writeVec4(this.data.aFillColor, index, uFillColor.value);
-    writeVec4(this.data.aBorderColor, index, uBorderColor.value);
-    writeVec4(this.data.aClip, index, uClip.value);
-    writeVec4(this.data.aClipRadii, index, uClipRadii.value);
+    writeBoxInstance(this.data, index, uniforms, this.ranked ? rank : 0);
   }
 
   /**
@@ -662,6 +673,41 @@ class Bucket {
     this.mesh = null;
     this.capacity = 0;
   }
+}
+
+/**
+ * Write a box's numbers into the arrays of an instance, as the shader wants
+ * them: a box bucket's, and a draw of a panel drawn in paint order
+ * (`paintBatch.js`).
+ *
+ * @param {Record<string, Float32Array>} data
+ * @param {number} index
+ * @param {Record<string, THREE.IUniform>} uniforms The box's numbers.
+ * @param {number} rank Its paint rank under a depth bias, and 0 without
+ *   one, which leaves the opacity alone in its slot.
+ * @returns {void}
+ */
+export function writeBoxInstance(data, index, uniforms, rank) {
+  const { uSize, uRadii, uBorder, uFillColor, uBorderColor, uClip, uClipRadii } = uniforms;
+  const { uGradient, uGradientGeometry, uGradientTile, uGradientRamp } = uniforms;
+  const gradient = uGradient.value;
+  const ramp = uGradientRamp.value;
+  const size = data.aSize;
+  size[index * 4] = uSize.value.x;
+  size[index * 4 + 1] = uSize.value.y;
+  // Unpacked by the vertex shader; see `instancedVertex`.
+  size[index * 4 + 2] =
+    gradient.x + 4 * gradient.y + 8 * gradient.z + 16 * gradient.w + 32 * ramp.x;
+  // The opacity, and the rank with it; see `instancedVertex`.
+  size[index * 4 + 3] = 2 * rank + ramp.y;
+  writeVec4(data.aGradientGeometry, index, uGradientGeometry.value);
+  writeVec4(data.aGradientTile, index, uGradientTile.value);
+  writeVec4(data.aRadii, index, uRadii.value);
+  writeVec4(data.aBorder, index, uBorder.value);
+  writeVec4(data.aFillColor, index, uFillColor.value);
+  writeVec4(data.aBorderColor, index, uBorderColor.value);
+  writeVec4(data.aClip, index, uClip.value);
+  writeVec4(data.aClipRadii, index, uClipRadii.value);
 }
 
 /**
@@ -712,6 +758,15 @@ export class BoxBatch {
   #material;
 
   /**
+   * What draws the boxes of a panel drawn in paint order, with its runs
+   * (`paintBatch.js`): such a panel's boxes are taken from this batch, and
+   * it lays out no buckets of its own. Null on any other panel.
+   *
+   * @type {import('./paintBatch.js').PaintBatch | null}
+   */
+  #draw = null;
+
+  /**
    * Each box's paint rank, under a depth bias: written by the box from
    * `getPaintRank` and copied into the bucket at the next rebuild.
    *
@@ -748,12 +803,43 @@ export class BoxBatch {
    * @param {Object3D} container The portal's container object. Buckets hang
    *   off it, so instance matrices are in its frame and it carries the whole
    *   panel as one.
-   * @param {DepthRankBias} [depthRank] The panel's `depthRank` option.
+   * @param {object} [options]
+   * @param {DepthRankBias} [options.depthRank] The panel's `depthRank`
+   *   option.
+   * @param {import('./paintBatch.js').PaintBatch} [options.draw] What draws
+   *   the boxes instead, on a panel drawn in paint order.
    */
-  constructor(container, depthRank) {
+  constructor(container, { depthRank, draw } = {}) {
     this.#container = container;
     this.depthRank = depthRank;
+    this.#draw = draw ?? null;
     this.#material = keepProgram(batchMaterial(depthRank), BOX_PROGRAM);
+  }
+
+  /**
+   * A walk of the panel starts, which takes the boxes it meets (`take`).
+   *
+   * @returns {void}
+   */
+  beginWalk() {
+    this.#drawn.clear();
+  }
+
+  /**
+   * If `mesh` is a box this batch has taken in, mark it drawn by the walk
+   * under way and hand back the numbers it is drawn from; null for any
+   * other mesh.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {Record<string, THREE.IUniform> | null}
+   */
+  take(mesh) {
+    const uniforms = this.#members.get(mesh);
+    if (!uniforms) {
+      return null;
+    }
+    this.#drawn.add(mesh);
+    return uniforms;
   }
 
   /**
@@ -856,6 +942,10 @@ export class BoxBatch {
    * @returns {void}
    */
   invalidate() {
+    if (this.#draw) {
+      this.#draw.invalidate();
+      return;
+    }
     if (this.#dirty || this.#disposed) {
       return;
     }
@@ -904,9 +994,8 @@ export class BoxBatch {
     }
     const found = this.#found;
     const matrices = this.#matrices;
-    const drawn = this.#drawn;
     found.length = 0;
-    drawn.clear();
+    this.beginWalk();
     let count = 0;
 
     /**
@@ -919,9 +1008,8 @@ export class BoxBatch {
         return;
       }
       const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
-      if (this.#members.has(/** @type {THREE.Mesh} */ (object))) {
+      if (this.take(/** @type {THREE.Mesh} */ (object))) {
         found.push(/** @type {THREE.Mesh} */ (object));
-        drawn.add(/** @type {THREE.Mesh} */ (object));
         if (!matrices[count]) {
           matrices[count] = new THREE.Matrix4();
         }
@@ -1022,5 +1110,5 @@ export class BoxBatch {
  * @returns {BoxBatch}
  */
 export function createBoxBatch(container, depthRank) {
-  return new BoxBatch(container, depthRank);
+  return new BoxBatch(container, { depthRank });
 }

@@ -661,6 +661,8 @@ class Bucket {
  * @property {THREE.Mesh} mesh
  * @property {{ value: THREE.Vector4 }} clip The run's clip uniform (`textRun.js`).
  * @property {Map<HTMLCanvasElement, Slot>} slots
+ * @property {Slot | null} shown The layer the run is drawn from, as the
+ *   last walk settled it (`take`); null while it draws itself.
  * @property {number} width
  * @property {number} height
  */
@@ -672,6 +674,15 @@ export class TextBatch {
   #classes = new Map();
   /** @type {Map<string, Bucket>} */
   #buckets = new Map();
+
+  /**
+   * What draws the runs of a panel drawn in paint order, with its boxes
+   * (`paintBatch.js`): such a panel's runs are taken from this batch, which
+   * lays out no buckets of its own. Null on any other panel.
+   *
+   * @type {import('./paintBatch.js').PaintBatch | null}
+   */
+  #draw = null;
   /**
    * The batch's own meshes, which its walk of the panel has to step over. A
    * set rather than a lookup through the buckets because a bucket is keyed by
@@ -693,12 +704,6 @@ export class TextBatch {
   #disposed = false;
   /** @type {Member[]} */
   #found = [];
-  /**
-   * The layer each of `#found` is drawn from, at the same index.
-   *
-   * @type {Slot[]}
-   */
-  #foundSlots = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
   /**
@@ -721,9 +726,76 @@ export class TextBatch {
 
   /**
    * @param {Object3D} container
+   * @param {{ draw?: import('./paintBatch.js').PaintBatch }} [options] What
+   *   draws the runs instead, on a panel drawn in paint order.
    */
-  constructor(container) {
+  constructor(container, { draw } = {}) {
     this.#container = container;
+    this.#draw = draw ?? null;
+  }
+
+  /**
+   * A walk of the panel starts, which takes the runs it meets (`take`).
+   *
+   * @returns {void}
+   */
+  beginWalk() {
+    this.#drawn.clear();
+    this.#declined = false;
+  }
+
+  /**
+   * If `mesh` is a run this batch has taken in, settle it (`#settle`),
+   * mark it drawn by the walk under way and hand it back, with where its
+   * pixels are in `shown`; null for a run the batch cannot draw, which
+   * draws itself, and for any other mesh. A run draws itself exactly when
+   * this says null, and this is the one place that decides, so a run that
+   * changes its mind, by gaining a decoration the mirror cannot tint, is
+   * handed back rather than lost.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {Member | null}
+   */
+  take(mesh) {
+    const member = this.#members.get(mesh);
+    if (!member) {
+      return null;
+    }
+    member.shown = this.#settle(member);
+    const batched = member.shown !== null;
+    /** @type {THREE.Material} */ (mesh.material).visible = !batched;
+    mesh.frustumCulled = !batched;
+    if (!batched) {
+      return null;
+    }
+    this.#drawn.add(mesh);
+    return member;
+  }
+
+  /**
+   * Build the texture of every class a walk changed, once every run it met
+   * is settled, before anything binds one.
+   *
+   * @returns {void}
+   */
+  commitClasses() {
+    for (const sizeClass of this.#classes.values()) {
+      sizeClass.commit();
+    }
+  }
+
+  /**
+   * Once a walk has settled and written everything, a class whose every
+   * layer has come back is one no run in the panel is in, at any step its
+   * panel holds. Give its array back rather than hold the panel's
+   * high-water mark until it closes.
+   *
+   * @returns {void}
+   */
+  releaseEmptyClasses() {
+    for (const sizeClass of this.#classes.values()) {
+      sizeClass.releaseStorageIfEmpty();
+    }
   }
 
   /**
@@ -752,6 +824,7 @@ export class TextBatch {
       mesh,
       clip,
       slots: new Map(),
+      shown: null,
       width: 0,
       height: 0,
     });
@@ -880,6 +953,7 @@ export class TextBatch {
           bucket.rebind();
         }
       }
+      this.#draw?.rebind(sizeClass);
       spent += size;
     }
     return false;
@@ -910,6 +984,10 @@ export class TextBatch {
    * @returns {void}
    */
   invalidate() {
+    if (this.#draw) {
+      this.#draw.invalidate();
+      return;
+    }
     if (this.#dirty || this.#disposed) {
       return;
     }
@@ -1002,13 +1080,9 @@ export class TextBatch {
       }
     }
     const found = this.#found;
-    const foundSlots = this.#foundSlots;
     const matrices = this.#matrices;
-    const drawn = this.#drawn;
     found.length = 0;
-    foundSlots.length = 0;
-    drawn.clear();
-    this.#declined = false;
+    this.beginWalk();
     let count = 0;
 
     /**
@@ -1021,26 +1095,14 @@ export class TextBatch {
         return;
       }
       const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
-      const member = this.#members.get(/** @type {THREE.Mesh} */ (object));
+      const member = this.take(/** @type {THREE.Mesh} */ (object));
       if (member) {
-        const slot = this.#settle(member);
-        const batched = slot !== null;
-        // A run draws itself exactly when the batch cannot draw it, and this
-        // is the one place that decides — so a run that changes its mind, by
-        // gaining a decoration the mirror cannot tint, is handed back rather
-        // than lost.
-        /** @type {THREE.Material} */ (member.mesh.material).visible = !batched;
-        member.mesh.frustumCulled = !batched;
-        if (slot) {
-          found.push(member);
-          foundSlots.push(slot);
-          drawn.add(member.mesh);
-          if (!matrices[count]) {
-            matrices[count] = new THREE.Matrix4();
-          }
-          matrices[count].copy(matrix);
-          count += 1;
+        found.push(member);
+        if (!matrices[count]) {
+          matrices[count] = new THREE.Matrix4();
         }
+        matrices[count].copy(matrix);
+        count += 1;
       }
       const children = object.children;
       for (let i = 0; i < children.length; i++) {
@@ -1056,9 +1118,7 @@ export class TextBatch {
 
     // Every run is settled, so every class that changed builds its texture
     // now, before a bucket below reads it.
-    for (const sizeClass of this.#classes.values()) {
-      sizeClass.commit();
-    }
+    this.commitClasses();
 
     /** @type {Map<string, number>} */
     const wanted = new Map();
@@ -1066,7 +1126,7 @@ export class TextBatch {
     const keys = [];
     for (let i = 0; i < count; i++) {
       const member = found[i];
-      const sizeClass = foundSlots[i].sizeClass;
+      const sizeClass = /** @type {Slot} */ (member.shown).sizeClass;
       const key = `${sizeClass.width}x${sizeClass.height}|${member.mesh.renderOrder}`;
       keys.push(key);
       wanted.set(key, (wanted.get(key) ?? 0) + 1);
@@ -1076,7 +1136,7 @@ export class TextBatch {
       if (!bucket) {
         const index = keys.indexOf(key);
         bucket = new Bucket(
-          foundSlots[index].sizeClass,
+          /** @type {Slot} */ (found[index].shown).sizeClass,
           found[index].mesh.renderOrder,
           this.#container,
         );
@@ -1093,20 +1153,14 @@ export class TextBatch {
     for (let i = 0; i < count; i++) {
       const bucket = this.#buckets.get(keys[i]);
       if (bucket) {
-        bucket.write(bucket.count, found[i], foundSlots[i], matrices[i]);
+        bucket.write(bucket.count, found[i], /** @type {Slot} */ (found[i].shown), matrices[i]);
         bucket.count += 1;
       }
     }
     for (const bucket of this.#buckets.values()) {
       bucket.finish(bucket.count);
     }
-    // Everything has been settled and written by now, so a class whose every
-    // layer has come back is one no run in the panel is in, at any step its
-    // panel holds. Give its array back rather than hold the panel's
-    // high-water mark until it closes.
-    for (const sizeClass of this.#classes.values()) {
-      sizeClass.releaseStorageIfEmpty();
-    }
+    this.releaseEmptyClasses();
   }
 
   /** @returns {void} */

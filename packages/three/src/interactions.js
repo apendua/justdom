@@ -9,6 +9,7 @@ import {
   Stream,
   withComputation,
 } from "@apendua/signal";
+import { getObjectDrawOrder } from "./drawOrder.js";
 
 /**
  * @import { Source, Subscribable } from "@apendua/signal";
@@ -584,7 +585,8 @@ export class InteractionManager {
 
   /**
    * What the controller's ray meets first, of everything registered and
-   * drawn, or nothing.
+   * drawn, or nothing; of what it meets at one distance, the one drawn on
+   * top (`onTop`).
    *
    * **A hand three is not tracking points at nothing**, wherever its space
    * was left. three hides the target ray space of a controller that has not
@@ -616,7 +618,7 @@ export class InteractionManager {
       intersectVisible(raycaster, object, intersections);
     }
     intersections.sort(byDistance);
-    const hit = intersections[0];
+    const hit = onTop(intersections);
     intersections.length = 0;
     return hit;
   }
@@ -669,6 +671,43 @@ const _intersections = [];
  */
 function byDistance(a, b) {
   return a.distance - b.distance;
+}
+
+/**
+ * How far apart two hits can be, in metres, and still be level: a ray
+ * meets two meshes on one plane at one distance, up to the rounding of two
+ * matrix inversions, far below any distance a panel puts between things it
+ * means to stack.
+ */
+const LEVEL = 1e-6;
+
+/**
+ * The hit drawn on top, among those sorted by distance: the nearest, unless
+ * hits level with it are drawn over it. A panel drawn in paint order puts
+ * its content level, and of level hits the later draw order
+ * (`getObjectDrawOrder`) is drawn over the earlier, since a mark writes no
+ * depth and a box of equal depth passes the depth test drawn second. The
+ * first of the latest, so hits drawn at one order, and hits no such panel
+ * draws, keep the order the cast found them in.
+ *
+ * @param {THREE.Intersection<THREE.Object3D<XREventMap>>[]} sorted
+ * @returns {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined}
+ */
+function onTop(sorted) {
+  let hit = sorted[0];
+  if (!hit) {
+    return undefined;
+  }
+  let order = getObjectDrawOrder(hit.object);
+  for (let i = 1; i < sorted.length && sorted[i].distance - sorted[0].distance <= LEVEL; i++) {
+    const next = sorted[i];
+    const nextOrder = getObjectDrawOrder(next.object);
+    if (nextOrder > order) {
+      hit = next;
+      order = nextOrder;
+    }
+  }
+  return hit;
 }
 
 /**

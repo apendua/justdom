@@ -2,8 +2,9 @@ import * as THREE from "three";
 
 /*
  * What the panel's batches share about drawing instances: the matrices a
- * walk of the panel accumulates down the tree with, how a bucket or a text
- * array grows, and how its mesh goes (`boxBatch.js`, `textBatch.js`).
+ * walk of the panel accumulates down the tree with, how a bucket, a text
+ * array or a draw grows, and how its mesh goes (`boxBatch.js`,
+ * `textBatch.js`, `paintBatch.js`).
  */
 
 /**
@@ -28,8 +29,8 @@ export function stackAt(depth) {
 }
 
 /**
- * The capacity a bucket or a text array grows to for `needed` instances or
- * layers: double what it had, from `minimum`, until they fit.
+ * The capacity a bucket, a text array or a draw grows to for `needed`
+ * instances or layers: double what it had, from `minimum`, until they fit.
  *
  * @param {number} capacity What it has now, 0 for none.
  * @param {number} needed

@@ -55,7 +55,13 @@ const HUD_RENDER_ORDER = 100000;
  *
  * Only depth *testing* goes. The order the panel draws itself in — background,
  * then border, then glyphs — is `renderOrder` rather than depth, and shifting
- * the whole subtree by a constant leaves it exactly as it was.
+ * the whole subtree by a constant leaves it exactly as it was. And only on
+ * what draws colour: a material that writes none, such as the depth quad of
+ * a panel freedom draws in paint order, shows nothing to keep legible, so
+ * the walk leaves it as its owner made it. The panel the readout sits in
+ * owns those, and a host is free to share one across panels, as freedom
+ * shares its blockers', where turning the test off would reach every other
+ * panel.
  *
  * This runs every frame, and the shift is written as "raise anything that is
  * not already raised" rather than as an addition, for two reasons. Meshes keep
@@ -70,7 +76,7 @@ const HUD_RENDER_ORDER = 100000;
  * @param {THREE.Object3D} root
  * @returns {() => void}
  */
-function drawOnTop(root) {
+export function drawOnTop(root) {
   return () => {
     root.traverse((object) => {
       if (object.renderOrder < HUD_RENDER_ORDER) {
@@ -81,7 +87,7 @@ function drawOnTop(root) {
         return;
       }
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-        if (material.depthTest) {
+        if (material.depthTest && material.colorWrite) {
           material.depthTest = false;
         }
       }

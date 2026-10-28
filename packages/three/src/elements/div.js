@@ -26,10 +26,19 @@ import {
 } from "./mirror.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
 import { composeTransform, getOwnTransform, isTransformed } from "./cssTransform.js";
-import { getContentRenderOrder, getLift, getPaintRank, isOverlay } from "./elevation.js";
+import {
+  getContentRenderOrder,
+  getLayer,
+  getLift,
+  getPaintRank,
+  isOverlay,
+  isPaintOrdered,
+} from "./elevation.js";
+import { LayerOrderContext } from "./layerOrder.js";
+import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
 import { place, placeAndScale } from "./place.js";
-import { BoxBatchContext } from "./boxBatch.js";
+import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { forwardListEvents, forwardPointerEvents, isRayTarget } from "./pointerForwarding.js";
 import { lazyPanel, pressInit } from "./dragAndDrop.js";
@@ -64,8 +73,9 @@ export const PortalReadyContext = createProperty(
 /**
  * Where an overlay's blocker sits, relative to the overlay's own origin. Local
  * z runs away from the viewer, so this has to land behind the overlay's own
- * background — which the meshes below put at +1 — and still in front of the
- * parent's, a whole elevation step further back.
+ * background — which the meshes below put at +1, or level with the origin
+ * in paint order — and still in front of the parent's, a whole elevation
+ * step further back.
  */
 const BLOCKER_OFFSET = 2;
 
@@ -118,6 +128,9 @@ function placementEqual(a, b) {
  *   hides it, read reactively. Content drawn inside the box is the box's
  *   own painting and goes with it — unlike the element's child nodes, which
  *   answer for themselves.
+ * @property {boolean} paintOrdered Whether the panel draws in paint order,
+ *   where a mesh the box draws registers its draw order for the hit test
+ *   (`registerDrawOrder`).
  */
 
 /**
@@ -298,6 +311,14 @@ export function box(ctx, element, options = {}) {
    * @type {import('./boxBatch.js').BoxBatch | null}
    */
   const batch = image ? null : BoxBatchContext.get(ctx);
+  /** The panel's order of its layers, in a panel drawn in paint order. */
+  const layerOrder = LayerOrderContext.get(ctx);
+  // Such a panel draws the box level with what it covers, so the hit test
+  // goes by the order it draws at: its bucket's, or its own for a box that
+  // draws itself.
+  if (layerOrder) {
+    registerDrawOrder(boxMesh, batch ? BOX_BUCKET_BIAS : 0);
+  }
 
   /**
    * The text of this panel, which has to hear about this element moving even
@@ -372,7 +393,8 @@ export function box(ctx, element, options = {}) {
     () => {
       // How far in front of the parent this box sits. An overlay's subtree
       // is positioned against the overlay, so it comes along with the lift.
-      const z = -getLift(element);
+      // (`|| 0` turns the -0 a level box would negate to back into 0.)
+      const z = -getLift(element) || 0;
       const offset = getBoxOffset(element);
       if (!isTransformed(element)) {
         return { x: offset.x, y: offset.y, z, matrix: null };
@@ -576,6 +598,9 @@ export function box(ctx, element, options = {}) {
           // binding and so a draw of its own, or a panel built outside a
           // portal. Those still draw themselves, from a material of their own.
           const material = createRectMaterial(uniforms);
+          // In paint order the panel's depth is one quad over its root's
+          // (`createDepthQuad`), and no box writes any.
+          material.depthWrite = !isPaintOrdered(element);
           onCleanup(() => {
             material.dispose();
           });
@@ -583,7 +608,7 @@ export function box(ctx, element, options = {}) {
         }),
         // After the material, which is what carries the flag that takes this
         // mesh out of the draw — and which is built once, since its factory
-        // reads nothing reactive.
+        // reads nothing that changes while the box is in its panel.
         effects(() => {
           if (!batch) {
             return;
@@ -602,6 +627,17 @@ export function box(ctx, element, options = {}) {
               }),
             ]
           : []),
+        // A box that is a layer's root is one of the planes the panel's walk
+        // orders (`layerOrder.js`), for as long as it is one.
+        effects(() => {
+          if (!layerOrder || getLayer(element) !== element) {
+            return;
+          }
+          layerOrder.addLayer(element);
+          onCleanup(() => {
+            layerOrder.removeLayer(element);
+          });
+        }),
         // The quad is the element's own painting, so it goes when the element
         // is hidden — out of the draw, out of the batch's walk and out of the
         // raycast, all three of which follow this flag — while the content
@@ -621,17 +657,24 @@ export function box(ctx, element, options = {}) {
           writeGradientUniforms(uniforms, properties, rampSlot);
           // A quad scaled to nothing has no surface to draw or hit, and a
           // zero scale is not invertible; an empty box is better described
-          // as very small — same convention as the blocker.
+          // as very small — same convention as the blocker. In paint order
+          // it is level with its object, and drawn in front of what it
+          // covers by the order alone.
           placeAndScale(
             obj,
             0,
             0,
-            1,
+            layerOrder ? 0 : 1,
             Math.max(properties.totalWidth, 1e-6),
             Math.max(properties.totalHeight, 1e-6),
             1,
           );
-          obj.renderOrder = properties.renderOrder;
+          // A batched box's order is its bucket's key, and the bucket adds
+          // the bias. One that draws itself on a panel in paint order takes
+          // its own, behind its integer, since its origin, level with the
+          // container's, cannot order it against the text.
+          obj.renderOrder =
+            properties.renderOrder + (layerOrder && !batch ? UNBATCHED_BOX_BIAS : 0);
           batchChanged();
         }),
         // Its own effect, and only where there is a picture: a texture
@@ -650,6 +693,7 @@ export function box(ctx, element, options = {}) {
         contentRenderOrder: () => getContentRenderOrder(element),
         clipBox: () => getLocalClipBox(element),
         hidden,
+        paintOrdered: layerOrder !== null,
         // The snapshot rather than the signal, and this element's frame rather
         // than the mesh's — the same two reasons the box's own quad is trimmed
         // this way: the filter runs inside three's traversal, and content is

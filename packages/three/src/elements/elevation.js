@@ -71,22 +71,27 @@ import { isTextInput } from "./typing.js";
  *
  * A panel can be drawn in paint order instead (`drawInPaintOrder`,
  * `isPaintOrdered`), the model that is to replace the step
- * (`docs/freedom-paint-order-default-plan.md`). Every element belongs to a
+ * (`docs/freedom-paint-order.md`). Every element belongs to a
  * layer (`getLayer`): the root, an overlay or an element transformed out of
  * its parent's plane. The draw level counts from the layer's root, with no
  * exception for an opaque box: what a page paints later draws later, so
  * nothing has to hide anything by depth. Each layer draws from a base
  * (`getLayerBase`), which a walk of the panel's layers in their tree
- * (`layerTree.js`) writes, ordering them by their planes. The limits below
- * that speak of steps or of opaque boxes do not apply to such a panel; the
- * rest do, and it has four of its own:
+ * (`layerTree.js`) writes, ordering them by their planes (`layerOrder.js`).
+ * The limits below that speak of steps or of opaque boxes do not apply to
+ * such a panel; the rest do, and it has six of its own:
  *
  * - A piece of a layer cut by other layers' planes is drawn with its first
  *   `MAX_HALF_PLANES` half-planes (`halfPlanes.js`), and no more.
+ * - Both eyes draw the order walked from the midpoint between them, so a
+ *   layer seen edge-on, mid-flip, can be out of order for one eye.
  * - Two layers in one plane are ordered as siblings are, by the sign of
  *   `z-index` (`comparePaintOrder` in `layerTree.js`).
  * - A `z-index` inside a box that forms no stacking context is read where
  *   the box is, among its siblings, and not let out of it as a page does.
+ * - The pieces past a panel's slot (`PANEL_PIECES` in `layerOrder.js`)
+ *   share one place, in no order among them, and a layer with a piece
+ *   there is drawn whole.
  * - An element's painted bounds take in its own text's shadow but not the
  *   2 px a run's glyphs, drawn one by one, can come out wider than their
  *   box (`TEXT_RENDER_BLEED` in `textHelpers.js`). Where they do, the
@@ -677,7 +682,7 @@ const clearedCache = nodeCache();
  * @param {Element} element
  * @returns {readonly Cleared[]}
  */
-function getClearedSiblings(element) {
+export function getClearedSiblings(element) {
   let signal = clearedCache.get(element);
   if (!signal) {
     signal = nodeDerived(
@@ -738,14 +743,21 @@ const liftCache = nodeCache();
 
 /**
  * How far in front of its parent's content the element's object sits, in
- * the container's local px. Its box quad is 1 px behind that and its text
- * is level with it.
+ * the container's local px. Its box quad is 1 px behind that, except in
+ * paint order, and its text is level with it.
  *
  * An ordinary box sits `CONTENT_STEP` in front, and an overlay another
  * `ELEVATION_STEP` on top of that. An element that clears siblings (see
  * `getClearedSiblings`) also goes `CONTENT_STEP` in front of the farthest
  * thing a page paints of each of them under it, which is the sibling's lift
  * plus the reach it is cleared by.
+ *
+ * In a panel drawn in paint order (`isPaintOrdered`) the panel's walk
+ * orders the layers, and only an overlay sits at a distance, the same
+ * `CONTENT_STEP` and `ELEVATION_STEP`, so a menu still floats in stereo.
+ * Everything else is level with its parent's content, its box quad too,
+ * and an element transformed out of its parent's plane is where its own
+ * matrix puts it.
  *
  * Reactive: it follows what the element clears and the lift and reach of
  * those siblings.
@@ -757,6 +769,9 @@ export function getLift(element) {
   let signal = liftCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
+      if (isPaintOrdered(element)) {
+        return isOverlay(/** @type {HTMLElement} */ (element)) ? CONTENT_STEP + ELEVATION_STEP : 0;
+      }
       let lift = isOverlay(/** @type {HTMLElement} */ (element))
         ? CONTENT_STEP + ELEVATION_STEP
         : CONTENT_STEP;

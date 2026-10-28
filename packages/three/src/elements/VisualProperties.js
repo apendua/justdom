@@ -15,7 +15,7 @@ import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.j
 import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
-import { ELEVATION_BAND, getDrawLevel, getElevation } from "./elevation.js";
+import { getDrawLevel, getRenderBand } from "./elevation.js";
 import { layoutGradient, parseBackground } from "./gradient.js";
 
 /**
@@ -53,7 +53,8 @@ import { layoutGradient, parseBackground } from "./gradient.js";
  * @property {string} borderColor
  * @property {string} textColor
  * @property {number} drawLevel
- * @property {number} elevation
+ * @property {number} band Where the draw level counts from
+ *   (`getRenderBand`).
  */
 
 /**
@@ -79,7 +80,8 @@ import { layoutGradient, parseBackground } from "./gradient.js";
  * @property {THREE.Color} textColor
  * @property {number} textAlpha
  * @property {number} drawLevel
- * @property {number} elevation
+ * @property {number} band Where the draw level counts from
+ *   (`getRenderBand`).
  */
 
 /**
@@ -342,7 +344,7 @@ export default class VisualProperties {
       borderColor: getDrawnBorderColor(style),
       textColor: style.color,
       drawLevel: getDrawLevel(element),
-      elevation: getElevation(element),
+      band: getRenderBand(element),
     };
     // For outlines mode: whether this run gave the box anything new. Read
     // untracked, since the store is what this run is about to write.
@@ -556,8 +558,8 @@ export default class VisualProperties {
     return this.#props.drawLevel;
   }
 
-  get elevation() {
-    return this.#props.elevation;
+  get band() {
+    return this.#props.band;
   }
 
   /**
@@ -569,10 +571,11 @@ export default class VisualProperties {
    * the rule `getDrawLevel` gives. Between layers it does not decide
    * anything: an overlay is above everything below it however shallow the
    * overlay happens to be, so each layer takes a band of its own
-   * (`ELEVATION_BAND`).
+   * (`ELEVATION_BAND`), and in paint order the panel's walk places each
+   * layer (`getRenderBand`).
    */
   get renderOrder() {
-    return this.elevation * ELEVATION_BAND + this.drawLevel;
+    return this.#props.band + this.drawLevel;
   }
 }
 

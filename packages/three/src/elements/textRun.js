@@ -5,6 +5,8 @@ import { createMarkMaterial, generateTextTexture, makeTextQuadGeometry } from ".
 import { parseColor } from "./VisualProperties.js";
 import { applyClip, applyReveal } from "./clip.js";
 import { TextBatchContext } from "./textBatch.js";
+import { LayerOrderContext } from "./layerOrder.js";
+import { registerDrawOrder } from "../drawOrder.js";
 import { readTextScale, TextScaleContext } from "./textScale.js";
 import { TextPrepareContext } from "./textPrepare.js";
 
@@ -62,6 +64,9 @@ import { TextPrepareContext } from "./textPrepare.js";
 export function textRun(ctx, source, extra = []) {
   const batch = TextBatchContext.get(ctx);
   const mesh = new Mesh();
+  if (LayerOrderContext.get(ctx)) {
+    registerDrawOrder(mesh);
+  }
 
   /**
    * How finely the run is rasterized, as the panel it is on measures it,

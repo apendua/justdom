@@ -44,6 +44,7 @@ import { createProperty } from "@apendua/signal";
  * @property {boolean} [opaqueToRays]
  * @property {number} [priority]
  * @property {number | (() => number)} [budget]
+ * @property {boolean} [paintOrder]
  */
 
 /**

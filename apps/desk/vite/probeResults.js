@@ -10,12 +10,13 @@
  * beside this app's `vite.config.mts`, a directory `.gitignore` leaves out,
  * and the reply names the file. The scene is the body's own `scene`, so a
  * file's name says what is in it, cut down to what a name can safely hold
- * (`resultsFileName`); a body without one gives a name without it. It runs only while `npm run dev` (`npx vite`) does:
- * `apply: "serve"` keeps it out of the build, so nothing deployed carries a
- * route that writes to disk. Within dev it writes one directory, under a
- * name it makes itself, from a body that has to parse as JSON and is capped.
- * A request it cannot answer, a write that fails among them, is answered
- * 500 with the error, and the dev server goes on.
+ * (`resultsFileName`); a body without one gives a name without it. It runs
+ * only while `npm run dev` (`npx vite`) does: `apply: "serve"` keeps it out
+ * of the build, so nothing deployed carries a route that writes to disk.
+ * Within dev it writes one directory, under a name it makes itself, from a
+ * body that has to parse as JSON and is capped. A request it cannot answer,
+ * a write that fails among them, is answered 500 with the error, and the
+ * dev server goes on.
  *
  * JavaScript with JSDoc types, like the repo's other Vite plugins.
  */

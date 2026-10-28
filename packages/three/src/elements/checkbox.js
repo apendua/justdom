@@ -6,6 +6,7 @@ import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
 import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
 import { applyClip } from "./clip.js";
 import { place } from "./place.js";
+import { MARK_MATERIAL_SETTINGS } from "./textHelpers.js";
 import { registerDrawOrder } from "../drawOrder.js";
 
 /**
@@ -152,19 +153,8 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
 
   return $(mesh, [
     set("material", () => {
-      const material = new THREE.MeshBasicMaterial({
-        // Two-sided, and not writing depth, for the same reasons everything
-        // else in a portal is: the container's flip turns every plane away
-        // from the viewer, and a mark that wrote depth would keep out
-        // whatever the draw order puts in front of it.
-        side: THREE.DoubleSide,
-        // One pass, as everywhere else in a portal: the tick is flat, so the
-        // back pass three adds for a two-sided transparent material redraws
-        // it at the same depth and invalidates its program to do so.
-        forceSinglePass: true,
-        transparent: true,
-        depthWrite: false,
-      });
+      // A mark, blended and depth-tested as every mark on a panel is.
+      const material = new THREE.MeshBasicMaterial(MARK_MATERIAL_SETTINGS);
       applyClip(material, clipUniform);
       onCleanup(() => {
         material.dispose();

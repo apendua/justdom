@@ -1450,7 +1450,10 @@ Not followed:
 - Only the sign of `z-index` counts. Two overlays stack in tree order, whatever their numbers, and
   two layers in one plane are ordered by that sign, as siblings are. A `z-index` inside a box that
   forms no stacking context is read where the box is, not let out of it.
-- A child that overflows its parent's box does not count towards what the parent overlaps.
+- A transformed element counts as covering the axis-aligned box around its corners, which can be
+  more than it covers, and one whose perspective puts a corner behind the eye counts as covering
+  everything. A child that overflows its parent's box does not count towards what the parent
+  overlaps.
 - A box anchored above a scroller that its siblings scroll in counts as covering all of them, at
   every scroll position, rather than only those passing under it now.
 - A piece is cut by at most 8 planes, and one cut more often is drawn with its first 8.

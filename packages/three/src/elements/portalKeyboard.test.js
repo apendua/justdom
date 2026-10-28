@@ -608,9 +608,8 @@ describe("the portal's keyboard", () => {
   }
 
   test("the caret is drawn after the value", async () => {
-    // Neither writes depth, and the caret's hair of a lead puts it in front
-    // of the glyphs by distance only from in front, so the order alone says
-    // which is on top. Goes red without `CARET_ORDER_BIAS`, which leaves the
+    // Neither writes depth, and the caret is level with the glyphs, so the
+    // order alone says which is on top. Goes red without `CARET_ORDER_BIAS`, which leaves the
     // two to three's sort by distance, and with the caret left out of the
     // hit test's draw order (`registerDrawOrder`).
     const { panel, caret, run } = await caretAndRun();

@@ -17,6 +17,7 @@ import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding
 import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
+import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
 import {
   getAttributeCached,
   getBorderBoxSize,
@@ -1451,17 +1452,10 @@ function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, unif
     set("material", () => {
       // One material for the life of the mesh, whatever it shows, so the
       // effects below that write to it are never undone by a new one. On
-      // the same terms as everything else a portal draws: two-sided,
-      // because the container's flip turns every plane away from the
-      // viewer; a single pass, because a flat mesh has no far surface to
-      // draw first; and no depth write, so the draw order and not the depth
-      // buffer decides what covers what on one plane.
-      const material = new THREE.MeshBasicMaterial({
-        side: THREE.DoubleSide,
-        forceSinglePass: true,
-        transparent: true,
-        depthWrite: false,
-      });
+      // the same terms as every mark a portal draws
+      // (`MARK_MATERIAL_SETTINGS`): no depth write, so the draw order and
+      // not the depth buffer decides what covers what on one plane.
+      const material = new THREE.MeshBasicMaterial(MARK_MATERIAL_SETTINGS);
       applyClip(material, clip, clipMatrix);
       onCleanup(() => {
         material.dispose();

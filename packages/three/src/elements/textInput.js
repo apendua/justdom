@@ -559,8 +559,9 @@ function fieldContent(ctx, element, surface, focus, locator) {
         const height = metrics.ascent + metrics.descent;
         const x = at.x + caretAdvance.width;
         const y = frame.y + (frame.height - height) / 2;
-        // A hair in front of the run, so the bar is never lost in a glyph.
-        placeAndScale(obj, x, y, -0.02, CARET_WIDTH, Math.max(height, 1), 1);
+        // Level with the run, and drawn after it (`CARET_ORDER_BIAS`), so
+        // the bar is never lost in a glyph.
+        placeAndScale(obj, x, y, 0, CARET_WIDTH, Math.max(height, 1), 1);
         const clip = toLocalClipBox(contentClip.get(), x, y);
         caretClipUniform.value.set(clip.left, clip.top, clip.right, clip.bottom);
         obj.renderOrder = surface.contentRenderOrder() + CARET_ORDER_BIAS;

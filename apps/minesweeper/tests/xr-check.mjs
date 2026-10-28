@@ -6,6 +6,7 @@
  *   node tests/xr-check.mjs
  *   SHOTS=out node tests/xr-check.mjs   # and photograph the page and the session
  *   STACKS=1 node tests/xr-check.mjs    # with a stack for anything the page throws
+ *   PAINT_ORDER=1 node tests/xr-check.mjs  # on panels drawn in paint order
  *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * The right controller is aimed at a point on a panel from the figures the
@@ -43,6 +44,7 @@ import {
   frames,
   headPosition,
   launch,
+  PAINT_ORDER_QUERY,
   precache,
   press,
   rotate,
@@ -180,7 +182,7 @@ async function main() {
     /** @type {URL[]} */
     const requested = [];
     page.on("request", (request) => requested.push(new URL(request.url())));
-    await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
+    await page.goto(`${url}?emulator=bare${PAINT_ORDER_QUERY}`, { waitUntil: "load" });
     await page.waitForSelector("#board svg path");
     await page.waitForSelector("#ARButton, #VRButton");
     if (SHOTS) {

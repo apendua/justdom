@@ -6,6 +6,7 @@
  *   node tests/xr-check.mjs
  *   SHOTS=out node tests/xr-check.mjs   # and photograph the page and the session
  *   STACKS=1 node tests/xr-check.mjs    # with a stack for anything the page throws
+ *   PAINT_ORDER=1 node tests/xr-check.mjs  # on panels drawn in paint order
  *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * The right controller is aimed at a point on a panel from the figures the
@@ -49,6 +50,7 @@ import {
   headPosition,
   hold,
   launch,
+  PAINT_ORDER_QUERY,
   press,
   rotate,
 } from "@apendua.dev/headset/driver";
@@ -152,7 +154,7 @@ async function main() {
       errors.push(error.message);
       console.log("[pageerror]", process.env.STACKS ? error.stack : error.message);
     });
-    await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
+    await page.goto(`${url}?emulator=bare${PAINT_ORDER_QUERY}`, { waitUntil: "load" });
     await page.waitForSelector("#canvas svg circle");
     await page.waitForSelector("#ARButton, #VRButton");
     if (SHOTS) {

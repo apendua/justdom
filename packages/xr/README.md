@@ -123,6 +123,12 @@ nothing from three.js. `paperwings-xr` calls it in its labs edition only.
 for nothing. "Outlines" in freedom's README says how to read them. Every app calls it on the line
 after `followThemingQuery`.
 
+`paintOrderQuery(query)` says whether the query has `?paintOrder`, which the desk, the showcase,
+minesweeper, Euclid and Knights pass to `render()` as the `paintOrder` panel option: their panels
+are then drawn in paint order rather than by the lift, for the paint-order tooling to measure
+against the lift (`docs/freedom-paint-order-plan.md`). The driver adds it to the address when
+`PAINT_ORDER=1` (`PAINT_ORDER_QUERY`).
+
 This entry imports `@apendua/freedom`, so import it only from a module that already does.
 
 ## `@apendua.dev/headset/session`
@@ -156,8 +162,11 @@ since it runs in Node and never in a page. It borrows Playwright from `apps/show
 launches the Chromium at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
 `precache(build, root)` builds an app with its own Vite and says which chunks its service worker
 precaches and which the page loads, for a check that holds the two equal; minesweeper's check and
-the todo app's drag check use it. Minesweeper's, the desk's, Euclid's and Knights' checks use the
-rest, and `.github/workflows/driven.yml` runs all four on pull requests.
+the todo app's drag check use it. `PAINT_ORDER_QUERY` is what a check adds to its app's address
+after `?emulator`: `&paintOrder` when `PAINT_ORDER=1`, for panels drawn in paint order, and nothing
+otherwise; the four checks named next add it, and so do the showcase's photographs. Minesweeper's,
+the desk's, Euclid's and Knights' checks use the rest, and `.github/workflows/driven.yml` runs all
+four on pull requests.
 
 ## Tests
 
@@ -166,5 +175,5 @@ session's rules, `canPresent` against a stubbed `navigator.xr`, the offer agains
 and service worker, the controller and hand models' addresses against a stubbed `fetch`,
 `clientRect` against a stand-in `ResizeObserver`, the clear-state shadow against a stand-in WebGL
 context, which queries `followThemingQuery` takes for `?theming` and `followOutlinesQuery` for
-`?outlines`, and that each hands back freedom's off switch. `install` itself needs a browser, and is
-exercised by the apps' own check scripts, as is the driver.
+`?outlines`, and that each hands back freedom's off switch, and which ask for paint order. `install`
+itself needs a browser, and is exercised by the apps' own check scripts, as is the driver.

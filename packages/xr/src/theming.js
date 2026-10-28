@@ -34,3 +34,19 @@ export function followThemingQuery(query) {
 export function followOutlinesQuery(query) {
   return query.has("outlines") ? enableOutlinesMode() : null;
 }
+
+/**
+ * Whether the page's address asks for panels drawn in paint order rather
+ * than by the lift, with `?paintOrder`: freedom's `paintOrder` panel
+ * option, which the paint-order tooling measures against the lift in the
+ * apps (`docs/freedom-paint-order-plan.md`).
+ *
+ * In this entry beside the other two because it is a switch of the same
+ * kind, read from the same query by the same apps.
+ *
+ * @param {URLSearchParams} query The page's query.
+ * @returns {boolean}
+ */
+export function paintOrderQuery(query) {
+  return query.has("paintOrder");
+}

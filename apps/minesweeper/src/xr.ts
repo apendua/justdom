@@ -1,5 +1,9 @@
 import { render, createXRButton } from "@apendua/freedom";
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import {
+  followOutlinesQuery,
+  followThemingQuery,
+  paintOrderQuery,
+} from "@apendua.dev/headset/theming";
 import { inputModels } from "@apendua.dev/headset/scene";
 import { svgElements } from "@apendua/freedom/svg";
 import Scene from "./components/Scene";
@@ -12,8 +16,9 @@ import Scene from "./components/Scene";
  * platform that can present.
  */
 export function offerXR(board: HTMLElement, menu: HTMLElement): void {
-  followThemingQuery(new URLSearchParams(location.search));
-  followOutlinesQuery(new URLSearchParams(location.search));
+  const query = new URLSearchParams(location.search);
+  followThemingQuery(query);
+  followOutlinesQuery(query);
 
   render(Scene(board, menu), {
     // From this app's own origin, where `vite.config.mts` serves them.
@@ -21,6 +26,9 @@ export function offerXR(board: HTMLElement, menu: HTMLElement): void {
     presentingOnly: true,
     // The board is an `<svg>`, which a panel draws only through this plugin.
     portalPlugins: [svgElements()],
+    // `?paintOrder` draws the panels in paint order, to compare with the
+    // lift (`docs/freedom-paint-order-plan.md`).
+    panelOptions: { paintOrder: paintOrderQuery(query) },
   }).subscribe({
     next: (renderer) => {
       // The canvas is the session's, not the page's: a headset shows the

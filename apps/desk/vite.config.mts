@@ -22,6 +22,11 @@ export default defineConfig({
         }
         warn(warning);
       },
+      output: {
+        // three.js in a chunk of its own, cached apart from the app and kept
+        // out of its main chunk, which grows with freedom.
+        manualChunks: (id) => (id.includes("/node_modules/three/") ? "three" : undefined),
+      },
     },
   },
   base: "/apps/desk/",

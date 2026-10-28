@@ -27,8 +27,8 @@
  * Run with:
  *   node --import ./src/test/setup-jsdom.js src/elements/mirror.bench.js
  *
- * and with `--paint-order` after it for the same tables on panels drawn in
- * paint order (`paintOrder` in `portal.js`), measured against the lift.
+ * and with `--lift` after it for the same tables on panels drawn by the lift
+ * (`paintOrder: false` in `portal.js`), measured against paint order.
  * Its "insert top" column on the list and "slide off" and "slide on" on
  * the boards are the two bench cases of phase 3 of
  * `docs/freedom-paint-order-plan.md`, read on both builds.
@@ -54,9 +54,11 @@ import { makeReveal } from "./reveal.js";
 import { forgetStyle, makeCard, makeRow, pxOf, reads, relayout } from "../test/benchLayout.js";
 
 /** Whether the panels are drawn in paint order rather than by the lift. */
-const paintOrder = /** @type {{ process: { argv: string[] } }} */ (
-  /** @type {unknown} */ (globalThis)
-).process.argv.includes("--paint-order");
+const paintOrder = !(
+  /** @type {{ process: { argv: string[] } }} */ (
+    /** @type {unknown} */ (globalThis)
+  ).process.argv.includes("--lift")
+);
 
 // Every reactive evaluation in the process, counted. The wall-clock below is
 // jsdom's; this number is the library's own and is what scales.

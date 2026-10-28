@@ -72,9 +72,10 @@ npx vite                           # in apps/desk
 adb reverse tcp:5173 tcp:5173      # the headset's localhost:5173 is this machine's
 ```
 
-then open `http://localhost:5173/apps/desk/paint-order-probe.html?scene=pile` in the Quest Browser,
-and the same with `&paintOrder` for the paint-order build. `localhost` is a secure context, so the
-session needs no certificate. `?emulator` runs it under IWER on a desktop instead.
+then open `http://localhost:5173/apps/desk/paint-order-probe.html?scene=pile` in the Quest Browser
+for the paint-order build, and the same with `&paintOrder=off` for the lift's. `localhost` is a
+secure context, so the session needs no certificate. `?emulator` runs it under IWER on a desktop
+instead.
 
 `?scene=` picks one of nine scenes, so that what a measurement draws is that scene and nothing else:
 `pile`, the 100-card piled board; `mount`, a panel holding a swung card, mounted mid-session;

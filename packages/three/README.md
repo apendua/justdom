@@ -1523,8 +1523,8 @@ The paint-order tooling compares the two builds. `bench/paintOrderCount.jsdom.mj
 jsdom scenes in `src/test/paintOrderScenes.js` draw under each, and
 `bench/paintOrderCount.browser.mjs` counts the same for the desk's looks, the showcase, Knights and
 Euclid under the emulator. `bench/paintOrderDraws.browser.mjs` counts the draw calls a frame each
-build makes in those apps, and `src/elements/mirror.bench.js` takes `--paint-order` for its tables
-in paint order. The apps that read `?paintOrder=off`, which draws them by the lift, are listed in
+build makes in those apps, and `src/elements/mirror.bench.js` takes `--lift` for its tables by the
+lift. The apps that read `?paintOrder=off`, which draws them by the lift, are listed in
 `@apendua.dev/headset`'s README.
 [`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md) is the record of the
 experiment these were written for.

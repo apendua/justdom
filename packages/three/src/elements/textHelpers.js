@@ -878,6 +878,64 @@ export function buildTextMipmaps(canvas) {
 }
 
 /**
+ * The canvas `generateTextTexture` draws a run on, worked out without
+ * drawing it: the lines as they will be drawn, the texture's bounds in CSS
+ * px with the bleed for kerning and shadow, the scale it is drawn at, and
+ * the canvas's size in texels. The size is what the text batch keys a run's
+ * array by (`SizeClass` in `textBatch.js`), so whatever needs to know which
+ * runs share an array asks here.
+ *
+ * @param {TextLine[]} lines
+ * @param {TextRenderStyle} style
+ * @param {TextBounds} bounds
+ * @param {number} renderScale As `generateTextTexture` takes it.
+ * @param {number} [unitScale] As `generateTextTexture` takes it.
+ * @returns {{
+ *   width: number,
+ *   height: number,
+ *   textureBounds: TextBounds,
+ *   effectiveDpr: number,
+ *   drawnLines: DrawnLine[],
+ *   shadow: TextShadow | null,
+ * }}
+ */
+export function measureTextCanvas(lines, style, bounds, renderScale, unitScale = 1) {
+  const measuring = getMeasuringContext();
+  measuring.font = style.font;
+  const ascent = measureFontExtent("Mg", measuring, style.fontSize * 0.8, "Ascent");
+  const descent = measureFontExtent("Mg", measuring, style.fontSize * 0.2, "Descent");
+
+  const drawnLines = layOutLines(lines, style, ascent, descent);
+  const normalizedBounds = {
+    width: Math.max(1, round(bounds.width)),
+    height: Math.max(1, round(bounds.height)),
+  };
+  // Drawing a line glyph by glyph loses the kerning the browser applied, so a
+  // line can come out a shade wider than the box it was measured in. Grow the
+  // texture to whatever was actually drawn rather than clipping the end of it.
+  for (const line of drawnLines) {
+    normalizedBounds.width = Math.max(normalizedBounds.width, round(line.left + line.width));
+    normalizedBounds.height = Math.max(normalizedBounds.height, round(line.baseline + descent));
+  }
+  const shadow = parseTextShadow(style.textShadow);
+  const renderBleed = getRenderBleed(shadow);
+  const textureBounds = getTextureBounds(normalizedBounds, renderBleed);
+  const dpr = getEffectiveScale(renderScale) * unitScale;
+  const maxDimension = Math.max(textureBounds.width, textureBounds.height, 1);
+  const textureScale = Math.min(1, MAX_TEXTURE_SIZE / (maxDimension * dpr));
+  const effectiveDpr = dpr * textureScale;
+
+  return {
+    width: Math.max(1, Math.ceil(textureBounds.width * effectiveDpr)),
+    height: Math.max(1, Math.ceil(textureBounds.height * effectiveDpr)),
+    textureBounds,
+    effectiveDpr,
+    drawnLines,
+    shadow,
+  };
+}
+
+/**
  * @param {TextLine[]} lines
  * @param {TextRenderStyle} style
  * @param {TextBounds} bounds
@@ -910,35 +968,14 @@ export const generateTextTexture = (
   mask = false,
   unitScale = 1,
 ) => {
-  const measuring = getMeasuringContext();
-  measuring.font = style.font;
-  const ascent = measureFontExtent("Mg", measuring, style.fontSize * 0.8, "Ascent");
-  const descent = measureFontExtent("Mg", measuring, style.fontSize * 0.2, "Descent");
-
-  const drawnLines = layOutLines(lines, style, ascent, descent);
-  const normalizedBounds = {
-    width: Math.max(1, round(bounds.width)),
-    height: Math.max(1, round(bounds.height)),
-  };
-  // Drawing a line glyph by glyph loses the kerning the browser applied, so a
-  // line can come out a shade wider than the box it was measured in. Grow the
-  // texture to whatever was actually drawn rather than clipping the end of it.
-  for (const line of drawnLines) {
-    normalizedBounds.width = Math.max(normalizedBounds.width, round(line.left + line.width));
-    normalizedBounds.height = Math.max(normalizedBounds.height, round(line.baseline + descent));
-  }
-  const shadow = parseTextShadow(style.textShadow);
-  const renderBleed = getRenderBleed(shadow);
-  const textureBounds = getTextureBounds(normalizedBounds, renderBleed);
-  const dpr = getEffectiveScale(renderScale) * unitScale;
-  const maxDimension = Math.max(textureBounds.width, textureBounds.height, 1);
-  const textureScale = Math.min(1, MAX_TEXTURE_SIZE / (maxDimension * dpr));
-  const effectiveDpr = dpr * textureScale;
-
-  const { canvas, context } = createTextCanvas(
-    Math.max(1, Math.ceil(textureBounds.width * effectiveDpr)),
-    Math.max(1, Math.ceil(textureBounds.height * effectiveDpr)),
+  const { width, height, textureBounds, effectiveDpr, drawnLines, shadow } = measureTextCanvas(
+    lines,
+    style,
+    bounds,
+    renderScale,
+    unitScale,
   );
+  const { canvas, context } = createTextCanvas(width, height);
 
   context.scale(effectiveDpr, effectiveDpr);
   if (mask) {

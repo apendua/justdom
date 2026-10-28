@@ -143,6 +143,37 @@ export function getOwnTransform(element) {
   return { matrix, origin };
 }
 
+/**
+ * Whether the element's own transform moves it out of its parent's plane: a
+ * `translateZ` other than 0, a `rotateX` or `rotateY`, a perspective. A
+ * computed style gives any 3D function as `matrix3d(...)`, planar ones such
+ * as `translateZ(0)` and `translate3d(x, y, 0)` included, so the matrix is
+ * read: out of the plane is a z row or column that is not the identity's,
+ * or a perspective term in the bottom row, which divides the box by a `w`
+ * that varies across it and can take part of it behind the eye.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+export function hasDepthTransform(element) {
+  const matrix = parseTransform(getComputedStyleCached(element).transform);
+  if (!matrix) {
+    return false;
+  }
+  const e = matrix.elements;
+  return (
+    e[2] !== 0 ||
+    e[3] !== 0 ||
+    e[6] !== 0 ||
+    e[7] !== 0 ||
+    e[8] !== 0 ||
+    e[9] !== 0 ||
+    e[11] !== 0 ||
+    e[14] !== 0 ||
+    e[10] !== 1
+  );
+}
+
 // The question belongs to whatever answers "what does a client rect of this
 // element mean", which is the cache — and the cache is where it has to live
 // anyway, since the rect it guards now depends on it. Re-exported here

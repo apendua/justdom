@@ -3,6 +3,7 @@ import { createProperty } from "@apendua/signal";
 import { MARK_MATERIAL_SETTINGS, TEXT_ANISOTROPY } from "./textHelpers.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
+import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
 
 /**
  * @import {Object3D} from 'three';
@@ -236,10 +237,7 @@ class SizeClass {
     if (needed <= this.capacity) {
       return;
     }
-    let capacity = Math.max(MINIMUM_LAYERS, this.capacity);
-    while (capacity < needed) {
-      capacity *= 2;
-    }
+    const capacity = grownCapacity(this.capacity, needed, MINIMUM_LAYERS);
     const data = new Uint8Array(this.layerBytes * capacity);
     if (this.data) {
       data.set(this.data);
@@ -488,11 +486,7 @@ class Bucket {
    */
   reserve(needed) {
     if (needed > this.capacity) {
-      let capacity = Math.max(MINIMUM_LAYERS, this.capacity);
-      while (capacity < needed) {
-        capacity *= 2;
-      }
-      this.#build(capacity);
+      this.#build(grownCapacity(this.capacity, needed, MINIMUM_LAYERS));
     }
     this.rebind();
   }
@@ -637,11 +631,7 @@ class Bucket {
     if (!this.mesh) {
       return;
     }
-    this.mesh.removeFromParent();
-    this.mesh.geometry.dispose();
-    // And the one buffer the geometry does not own — `boxBatch`'s bucket says
-    // why at length.
-    this.mesh.dispose();
+    disposeInstancedMesh(this.mesh);
     this.mesh = null;
     this.capacity = 0;
   }
@@ -674,19 +664,6 @@ class Bucket {
  * @property {number} width
  * @property {number} height
  */
-
-const matrixStack = [new THREE.Matrix4()];
-
-/**
- * @param {number} depth
- * @returns {THREE.Matrix4}
- */
-function stackAt(depth) {
-  while (matrixStack.length <= depth) {
-    matrixStack.push(new THREE.Matrix4());
-  }
-  return matrixStack[depth];
-}
 
 export class TextBatch {
   /** @type {Map<THREE.Mesh, Member>} */

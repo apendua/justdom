@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import {
   composeTransform,
+  hasDepthTransform,
   isTransformed,
   parseTransform,
   parseTransformOrigin,
@@ -150,5 +151,62 @@ describe("transform ancestry", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+describe("hasDepthTransform", () => {
+  /**
+   * An element under a portal-marked root with the computed transform given,
+   * as an engine serializes it; jsdom hands the author value back as is.
+   * @param {string} transform
+   */
+  function transformed(transform) {
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const element = document.createElement("div");
+    element.style.transform = transform;
+    root.appendChild(element);
+    document.body.appendChild(root);
+    return { element, cleanup: () => root.remove() };
+  }
+
+  /**
+   * @param {string} transform
+   * @param {boolean} expected
+   */
+  function check(transform, expected) {
+    const { element, cleanup } = transformed(transform);
+    try {
+      assert.equal(hasDepthTransform(element), expected, transform);
+    } finally {
+      cleanup();
+    }
+  }
+
+  test("takes a translateZ, a rotateX, a rotateY and a perspective out of the plane", () => {
+    // translateZ(10px)
+    check("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 10, 1)", true);
+    // rotateX(30deg)
+    check("matrix3d(1, 0, 0, 0, 0, 0.866, 0.5, 0, 0, -0.5, 0.866, 0, 0, 0, 0, 1)", true);
+    // rotateY(30deg)
+    check("matrix3d(0.866, 0, -0.5, 0, 0, 1, 0, 0, 0.5, 0, 0.866, 0, 0, 0, 0, 1)", true);
+    // perspective(500px)
+    check("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, -0.002, 0, 0, 0, 1)", true);
+  });
+
+  test("leaves a planar transform in the plane, even one written as matrix3d", () => {
+    // translateZ(0), which an engine gives as matrix3d like any 3D function.
+    check("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)", false);
+    // translate3d(5px, 6px, 0)
+    check("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 6, 0, 1)", false);
+    // rotateZ(90deg)
+    check("matrix3d(0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)", false);
+    // scale(2) and a translate
+    check("matrix(2, 0, 0, 2, 10, 20)", false);
+  });
+
+  test("leaves an element without a transform in the plane", () => {
+    check("", false);
+    check("none", false);
   });
 });

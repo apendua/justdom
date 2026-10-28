@@ -4,6 +4,7 @@ import { GRADIENT_GLSL, rectGeometry, SDF_GLSL } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
+import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
 
 /**
  * @import {Object3D} from 'three';
@@ -530,10 +531,7 @@ class Bucket {
     if (needed <= this.capacity) {
       return;
     }
-    let capacity = Math.max(MINIMUM_CAPACITY, this.capacity || 0);
-    while (capacity < needed) {
-      capacity *= 2;
-    }
+    const capacity = grownCapacity(this.capacity, needed, MINIMUM_CAPACITY);
     this.dispose();
     this.capacity = capacity;
     const geometry = new THREE.InstancedBufferGeometry();
@@ -658,21 +656,9 @@ class Bucket {
     if (!this.mesh) {
       return;
     }
-    this.mesh.removeFromParent();
-    this.mesh.geometry.dispose();
-    // An instanced mesh has one buffer that its geometry does not own.
-    // `instanceMatrix` is not a geometry attribute — the renderer uploads it
-    // separately and frees it only when the mesh says it is going, which is
-    // what this dispatches. Without it the buffer is left allocated on the
-    // device with nothing referring to it: the renderer's own record of it is
-    // weakly keyed, so collecting the attribute drops the key and the
-    // `deleteBuffer` that would have followed it. That is once per growth —
-    // a bucket is rebuilt at double capacity every time it fills — and once
-    // more per panel closed.
-    //
     // The material is not disposed here. It belongs to the panel and is
     // shared by every bucket in it, so it goes when the batch does.
-    this.mesh.dispose();
+    disposeInstancedMesh(this.mesh);
     this.mesh = null;
     this.capacity = 0;
   }
@@ -690,26 +676,6 @@ function writeVec4(array, index, value) {
   array[at + 1] = value.y;
   array[at + 2] = value.z;
   array[at + 3] = value.w;
-}
-
-/**
- * Matrices to accumulate down the tree with, one per level, grown as the tree
- * turns out to be deep. A rebuild is the hottest thing here and allocating a
- * matrix per node would be most of it.
- *
- * @type {THREE.Matrix4[]}
- */
-const matrixStack = [new THREE.Matrix4()];
-
-/**
- * @param {number} depth
- * @returns {THREE.Matrix4}
- */
-function stackAt(depth) {
-  while (matrixStack.length <= depth) {
-    matrixStack.push(new THREE.Matrix4());
-  }
-  return matrixStack[depth];
 }
 
 export class BoxBatch {

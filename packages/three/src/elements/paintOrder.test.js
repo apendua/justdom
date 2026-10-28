@@ -18,9 +18,7 @@ import { stubCanvas } from "../test/stubCanvas.js";
 import { installRange } from "../test/textRange.js";
 import "../test/layoutOffsets.js";
 import { matrix3d } from "../test/matrix3d.js";
-import { getChildNodes, getParentElement } from "./mirror.js";
 import {
-  getClearedSiblings,
   getDrawLevel,
   getElevation,
   getLayer,
@@ -33,7 +31,6 @@ import { halfPlanesOf } from "./halfPlanes.js";
 import { getLayerOrder, isProxy, PANEL_PIECES } from "./layerOrder.js";
 import { ARRAYS_PER_DRAW, PaintBatch } from "./paintBatch.js";
 import { LayerTree } from "./layerTree.js";
-import { isSvgElement } from "./plugins.js";
 import { createPortal } from "./portal.js";
 import { rectGeometry } from "./sdfRect.js";
 
@@ -260,78 +257,6 @@ function depthQuadOf(panel) {
   );
   assert.equal(writers.length, 1, "one mesh writes depth");
   return /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.Material>} */ (writers[0]);
-}
-
-/**
- * The elements of a layer under `element`, itself included, left in it:
- * not into a layer nested in it, and not into an `<svg>`, whose content
- * draws within its own content level.
- *
- * @param {Element} element
- * @returns {Element[]}
- */
-function layerSubtree(element) {
-  /** @type {Element[]} */
-  const found = [element];
-  if (isSvgElement(element)) {
-    return found;
-  }
-  for (const node of getChildNodes(element)) {
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      continue;
-    }
-    const child = /** @type {Element} */ (node);
-    if (getLayer(child) !== child) {
-      found.push(...layerSubtree(child));
-    }
-  }
-  return found;
-}
-
-/**
- * The plan's property of a panel's levels, over every element under
- * `root`: a box draws past its parent's, and an element that clears a
- * sibling in its layer draws past the content of everything that sibling's
- * layer subtree draws. Returns what breaks it.
- *
- * @param {Element} root
- * @returns {string[]}
- */
-function levelBreaks(root) {
-  /** @type {string[]} */
-  const breaks = [];
-  /** @param {Element} element */
-  const name = (element) => element.id || element.localName;
-  /** @param {Element} element */
-  const visit = (element) => {
-    const parent = element === root ? null : getParentElement(element);
-    const level = getDrawLevel(element);
-    const isRoot = getLayer(element) === element;
-    if (parent && !isRoot && level <= getDrawLevel(parent)) {
-      breaks.push(`${name(element)} at ${level} is not past its parent`);
-    }
-    if (parent && !isRoot) {
-      for (const { sibling } of getClearedSiblings(element)) {
-        if (getLayer(sibling) === sibling) {
-          continue;
-        }
-        const under = Math.max(...layerSubtree(sibling).map((each) => getDrawLevel(each) + 1));
-        if (level <= under) {
-          breaks.push(`${name(element)} at ${level} is not past ${name(sibling)}'s ${under}`);
-        }
-      }
-    }
-    if (isSvgElement(element)) {
-      return;
-    }
-    for (const node of getChildNodes(element)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        visit(/** @type {Element} */ (node));
-      }
-    }
-  };
-  visit(root);
-  return breaks;
 }
 
 describe("a panel drawn in paint order", () => {

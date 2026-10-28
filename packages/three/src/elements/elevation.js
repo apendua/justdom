@@ -682,7 +682,7 @@ const clearedCache = nodeCache();
  * @param {Element} element
  * @returns {readonly Cleared[]}
  */
-export function getClearedSiblings(element) {
+function getClearedSiblings(element) {
   let signal = clearedCache.get(element);
   if (!signal) {
     signal = nodeDerived(

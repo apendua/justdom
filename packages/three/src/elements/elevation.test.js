@@ -362,6 +362,44 @@ describe("a panel drawn in paint order", () => {
     }
   });
 
+  test("draws a box over a sibling layer at its parent's next level", () => {
+    // The swung door is a layer of its own, which the panel's walk places,
+    // so the box laid over it counts only its parent: it draws one level
+    // past the root, not past the door's deep subtree. Goes red with a
+    // cleared sibling layer counted toward the level.
+    const { root, get, remove } = page([
+      {
+        id: "door",
+        style: `${OPAQUE_CARD}; transform: ${SWUNG}`,
+        at: [0, 0, 100, 100],
+        children: [
+          {
+            id: "handle",
+            at: [10, 10, 10, 10],
+            children: [{ id: "knob", at: [12, 12, 6, 6] }],
+          },
+        ],
+      },
+      { id: "over", style: OPAQUE_CARD, at: [50, 50, 100, 100] },
+    ]);
+    // jsdom gives a box no layout offsets, which the bounds of a
+    // transformed box are measured off.
+    for (const [name, value] of Object.entries({
+      offsetLeft: 0,
+      offsetTop: 0,
+      offsetWidth: 100,
+      offsetHeight: 100,
+    })) {
+      Object.defineProperty(get("door"), name, { value });
+    }
+    try {
+      assert.equal(getLayer(get("door")), get("door"));
+      assert.equal(getDrawLevel(get("over")), getDrawLevel(root) + 1);
+    } finally {
+      remove();
+    }
+  });
+
   test("counts the shadow of an element's own text in what it covers", () => {
     const shadow = "text-shadow: 30px 30px 0px rgb(0, 0, 0)";
     /**

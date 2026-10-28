@@ -44,7 +44,10 @@ export class Polygon {
   index = 0;
   /** The node it ended in, once the tree is built. */
   node = -1;
-  /** Its place in the last walk that visited it (`layerOrder.js`). */
+  /**
+   * Its place in the last walk that visited it, for the panel's walk to
+   * keep. Nothing in the tree writes or reads it.
+   */
   place = -1;
   /** @type {THREE.Vector3[]} */
   points = [];

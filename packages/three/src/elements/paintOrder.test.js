@@ -19,6 +19,7 @@ import { installRange } from "../test/textRange.js";
 import "../test/layoutOffsets.js";
 import { matrix3d } from "../test/matrix3d.js";
 import {
+  bandBase,
   getDrawLevel,
   getElevation,
   getLayer,
@@ -1202,6 +1203,33 @@ describe("a panel drawn in paint order", () => {
     const slot = PANEL_PIECES * PIECE_BAND;
     for (const draw of draws(g.panel)) {
       assert.ok(draw.renderOrder >= slot, `a draw in the new slot, ${draw.renderOrder}`);
+    }
+    g.teardown();
+  });
+
+  test("orders a box the page restyles from its layer's base, past the panel's first slot", async () => {
+    // The walk that moves a base gives each mesh its order itself, so only
+    // an effect that runs after that walk reads the band `VisualProperties`
+    // gives a box. Goes red with that band at 0, or at the lift's
+    // `ELEVATION_BAND * getElevation(element)`: either puts the restyled
+    // card's box back in the first slot, behind the depth quad of the
+    // panel's own.
+    const g = await page([{ id: "card", style: CARD, at: [20, 20, 100, 100] }]);
+    const order = await g.walk();
+    order.setSlot(1);
+    await g.walk();
+    // The card's look changes, which runs the effect that orders its box.
+    g.get("card").style.background = "rgb(0, 0, 255)";
+    await g.settle();
+    const base = getLayerBase(g.root);
+    assert.ok(
+      base >= PANEL_PIECES * PIECE_BAND,
+      `the root's layer in the panel's slot, at ${base}`,
+    );
+    const meshes = colourMeshes(g.panel);
+    assert.ok(meshes.size > 0, "the card's box");
+    for (const [, renderOrder] of meshes) {
+      assert.equal(bandBase(renderOrder), base, `the box in the root's band, at ${renderOrder}`);
     }
     g.teardown();
   });

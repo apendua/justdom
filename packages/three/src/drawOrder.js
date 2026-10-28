@@ -20,8 +20,9 @@ const drawnAfter = new WeakMap();
  * it and something level with it picks the one drawn on top: such a panel
  * draws its content level, and only the order it draws in says which is on
  * top. `after` is how far past its own `renderOrder` it draws:
- * `BOX_BUCKET_BIAS` for a batched box, whose bucket draws half a level after
- * the text of its order, and 0 for anything that draws itself.
+ * `BOX_BUCKET_BIAS` for a batched box, which the panel's one batch lays at
+ * `renderOrder + BOX_BUCKET_BIAS`, half a level after the text of its
+ * order, and 0 for anything that draws itself.
  *
  * @param {import('three').Object3D} object
  * @param {number} [after]
@@ -33,7 +34,7 @@ export function registerDrawOrder(object, after = 0) {
 
 /**
  * The order `object` is drawn at, if a panel in paint order draws it: its
- * `renderOrder`, and for a batched box the half level its bucket draws later.
+ * `renderOrder`, and for a batched box the half level the batch lays it later.
  * Minus infinity for any other object, which every registered one is drawn
  * over where the two are level.
  *

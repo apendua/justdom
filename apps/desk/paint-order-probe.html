@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  Temporary, for the Quest's half of phase 4 in
+  docs/freedom-paint-order-plan.md, as 10.2's depth probe was for #607, and
+  to go once the headset's numbers are in. Not part of the desk: vite build
+  builds index.html alone.
+
+  On a Quest, over USB:
+    cd apps/desk && npx vite
+    adb reverse tcp:5173 tcp:5173
+  then open http://localhost:5173/apps/desk/paint-order-probe.html?scene=pile
+  in the headset's browser, and the same with &paintOrder for the paint-order
+  build. localhost is a secure context, so WebXR works without a
+  certificate. The scenes are pile, mount, flip, third, tilts, piles,
+  flip90, hover and cross; `?emulator` runs them under IWER on a desktop.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paint-order probe</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #111;
+        color: #ddd;
+        font:
+          16px/1.4 system-ui,
+          sans-serif;
+      }
+      [data-stage] {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        align-items: flex-start;
+        margin-top: 16px;
+      }
+      [data-controls] {
+        width: 640px;
+        padding: 16px;
+        background: #f4f5f8;
+        color: #1b1e27;
+        border-radius: 14px;
+        font:
+          22px/1.3 system-ui,
+          sans-serif;
+      }
+      /* cursor: pointer is what makes a button a ray target in the session
+         (isClickable in freedom's pointerForwarding.js). */
+      [data-controls] button {
+        cursor: pointer;
+        font: inherit;
+        padding: 10px 16px;
+        margin: 0 10px 10px 0;
+        background: #fff;
+        color: #1b1e27;
+        border: 2px solid #3a4152;
+        border-radius: 10px;
+      }
+      [data-controls] button:hover,
+      [data-controls] button[data-xr-hover] {
+        background: #dfe8ff;
+      }
+      [data-status] {
+        margin-top: 6px;
+        font-size: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div data-controls-root>
+      <div data-controls>
+        <p data-what></p>
+        <p data-status>Press the Enter button below the page.</p>
+      </div>
+    </div>
+    <div data-stage></div>
+    <script type="module" src="/src/probe/paintOrderProbe.ts"></script>
+  </body>
+</html>

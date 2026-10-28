@@ -120,6 +120,12 @@ function pose(group: THREE.Group, placement: Placement): void {
 }
 
 /**
+ * The group each placement of the session's look stands in, by its id, for
+ * what measures the scene from outside it: `?trace` (`deskTrace.ts`).
+ */
+export const placedGroups = new Map<string, THREE.Object3D>();
+
+/**
  * The scene: the page's desk, object by object, set out on a desk in a
  * room.
  *
@@ -174,7 +180,10 @@ export const Scene = (desk: Readable<MountedDesk>) =>
                 }
                 return [
                   $(new THREE.Group(), [
-                    effects((group) => pose(group, placement)),
+                    effects((group) => {
+                      pose(group, placement);
+                      placedGroups.set(placement.id, group);
+                    }),
                     children(dom(ctx, element, [], placement.options)),
                   ]),
                 ];

@@ -1,5 +1,9 @@
 import { render, createXRButton } from "@apendua/freedom";
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import {
+  followOutlinesQuery,
+  followThemingQuery,
+  paintOrderQuery,
+} from "@apendua.dev/headset/theming";
 import { canPresent } from "@apendua.dev/headset/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
@@ -20,6 +24,12 @@ import type { Readable } from "./session.js";
  * `?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every
  * panel's boxes with freedom's depth bias by paint rank, a prototype of item
  * 10.2 in `docs/freedom-architecture-plan.md`.
+ *
+ * `?paintOrder` draws every panel in paint order rather than by the lift
+ * (`paintOrder` in freedom's panel options), for the paint-order tooling to
+ * measure against the lift (`docs/freedom-paint-order-plan.md`), and
+ * `?trace` records each session's frames and saves them as it ends
+ * (`deskTrace.ts`), under the dev server.
  */
 export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const query = new URLSearchParams(location.search);
@@ -67,6 +77,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
       haptics: { flavor: "key" },
       ...(depthRank ? { depthRank } : {}),
+      paintOrder: paintOrderQuery(query),
     },
   }).subscribe({
     next: (renderer) => {
@@ -84,6 +95,13 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       renderer.xr.addEventListener("sessionend", () => {
         canvas.style.display = "none";
       });
+
+      if (query.has("trace")) {
+        const build = paintOrderQuery(query) ? "paint order" : "lift";
+        void import("./deskTrace.js").then(({ traceSessions }) =>
+          traceSessions(renderer, desk, build, query.get("trace") === "page"),
+        );
+      }
 
       createXRButton(renderer, {
         ar: { optionalFeatures: ["hand-tracking"] },

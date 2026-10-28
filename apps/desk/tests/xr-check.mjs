@@ -6,6 +6,7 @@
  *   node tests/xr-check.mjs
  *   SHOTS=out node tests/xr-check.mjs   # and photograph each look's session
  *   STACKS=1 node tests/xr-check.mjs    # with a stack for anything the page throws
+ *   PAINT_ORDER=1 node tests/xr-check.mjs  # on panels drawn in paint order
  *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * For each look in turn, it enters a session and checks that:
@@ -38,6 +39,7 @@ import {
   headPosition,
   launch,
   observeThree,
+  PAINT_ORDER_QUERY,
   press,
 } from "@apendua.dev/headset/driver";
 
@@ -83,7 +85,7 @@ async function main() {
         errors.push(error.message);
         console.log("[pageerror]", process.env.STACKS ? error.stack : error.message);
       });
-      await page.goto(`${url}?look=${id}&emulator=bare`, { waitUntil: "load" });
+      await page.goto(`${url}?look=${id}&emulator=bare${PAINT_ORDER_QUERY}`, { waitUntil: "load" });
       await page.waitForSelector("#ARButton, #VRButton");
       await page.click("#ARButton, #VRButton");
 

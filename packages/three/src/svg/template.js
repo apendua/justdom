@@ -66,8 +66,12 @@ import {
  * @import {Rect} from './geometry.js';
  */
 
-/** Elements that only group, inside a template as outside one. */
-const GROUP_TAGS = new Set(["g", "a", "switch", "svg"]);
+/**
+ * Elements that only group, inside a template as outside one. Exported for
+ * the paint-order experiment's count (`test/paintOrderCount.js`), which
+ * walks an `<svg>` the way it is drawn.
+ */
+export const GROUP_TAGS = new Set(["g", "a", "switch", "svg"]);
 
 /**
  * Keep `source`'s object a child of `parent` for as long as the surrounding

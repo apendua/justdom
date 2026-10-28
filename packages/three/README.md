@@ -1516,6 +1516,15 @@ Not followed, beyond what the lift does not follow either:
   past the panel's, writes no depth, and what draws after the panel there, a draggable panel's
   strips included, draws over it.
 
+The paint-order tooling compares the two builds. `bench/paintOrderCount.jsdom.mjs` counts what the
+jsdom scenes in `src/test/paintOrderScenes.js` draw under each, and
+`bench/paintOrderCount.browser.mjs` counts the same for the desk's looks, the showcase, Knights and
+Euclid under the emulator. `bench/paintOrderDraws.browser.mjs` counts the draw calls a frame each
+build makes in those apps, and `src/elements/mirror.bench.js` takes `--paint-order` for its tables
+in paint order. The apps that read `?paintOrder` are listed in `@apendua.dev/headset`'s README.
+[`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md) is the record of the
+experiment these were written for.
+
 ## Images
 
 An `<img>` in a panel is an ordinary CSS box that happens to have a picture in it: the picture is a

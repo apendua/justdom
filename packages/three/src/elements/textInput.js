@@ -149,7 +149,7 @@ const PLACEHOLDER_ALPHA = 0.54;
  * What a password field shows for each character of its value: the bullet
  * browsers draw.
  */
-const PASSWORD_BULLET = "•";
+export const PASSWORD_BULLET = "•";
 
 /**
  * Where an element's value is bumped from: the events a keystroke dispatches

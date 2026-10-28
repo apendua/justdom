@@ -167,6 +167,13 @@ const CONTENT_STEP = 2;
 const ELEVATION_STEP = 8;
 
 /**
+ * How far in front of its parent's content an overlay sits on a panel drawn
+ * in paint order, where it is the one element at a distance (`getLift`),
+ * and where an overlay sits at least on a lifted one.
+ */
+export const OVERLAY_LIFT = CONTENT_STEP + ELEVATION_STEP;
+
+/**
  * Whether an element asks to float above what it overlaps, rather than merely
  * sitting somewhere unusual. `position` other than `static` plus a positive
  * `z-index` is how the ordinary web says exactly that, so a menu, a popover or
@@ -682,7 +689,7 @@ const clearedCache = nodeCache();
  * @param {Element} element
  * @returns {readonly Cleared[]}
  */
-function getClearedSiblings(element) {
+export function getClearedSiblings(element) {
   let signal = clearedCache.get(element);
   if (!signal) {
     signal = nodeDerived(
@@ -770,11 +777,9 @@ export function getLift(element) {
   if (!signal) {
     signal = nodeDerived(element, () => {
       if (isPaintOrdered(element)) {
-        return isOverlay(/** @type {HTMLElement} */ (element)) ? CONTENT_STEP + ELEVATION_STEP : 0;
+        return isOverlay(/** @type {HTMLElement} */ (element)) ? OVERLAY_LIFT : 0;
       }
-      let lift = isOverlay(/** @type {HTMLElement} */ (element))
-        ? CONTENT_STEP + ELEVATION_STEP
-        : CONTENT_STEP;
+      let lift = isOverlay(/** @type {HTMLElement} */ (element)) ? OVERLAY_LIFT : CONTENT_STEP;
       for (const { sibling, reach } of getClearedSiblings(element)) {
         lift = Math.max(lift, getLift(sibling) + reach(sibling) + CONTENT_STEP);
       }

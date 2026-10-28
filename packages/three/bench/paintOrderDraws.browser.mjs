@@ -1,7 +1,7 @@
 /**
  * Phase 4's draw calls a frame under the emulator: the desk's three looks
- * and the showcase, each in a session drawn by the lift and again in
- * paint order (`?paintOrder`), every panel loaded.
+ * and the showcase, each in a session drawn by the lift (`?paintOrder=off`)
+ * and again in paint order, every panel loaded.
  *
  *   node bench/paintOrderDraws.browser.mjs
  *   APPS=desk node bench/paintOrderDraws.browser.mjs   # one app
@@ -57,16 +57,16 @@ async function measurePage(page, base) {
 
 /** @type {Map<string, { lift?: Measured, paint?: Measured }>} */
 const pages = new Map();
-/** The query the paint-order build is opened with; the lift build takes none. */
-const PAINT_ORDER = "&paintOrder";
+/** The query the lift build is opened with; the paint-order build takes none. */
+const LIFT = "&paintOrder=off";
 for (const app of chosenApps(["desk", "showcase"])) {
   await APPS[app](
     async (page, base, label, query) => {
       const entry = pages.get(label) ?? {};
-      entry[query === PAINT_ORDER ? "paint" : "lift"] = await measurePage(page, base);
+      entry[query === LIFT ? "lift" : "paint"] = await measurePage(page, base);
       pages.set(label, entry);
     },
-    ["", PAINT_ORDER],
+    [LIFT, ""],
   );
 }
 

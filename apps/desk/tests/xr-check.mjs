@@ -6,7 +6,7 @@
  *   node tests/xr-check.mjs
  *   SHOTS=out node tests/xr-check.mjs   # and photograph each look's session
  *   STACKS=1 node tests/xr-check.mjs    # with a stack for anything the page throws
- *   PAINT_ORDER=1 node tests/xr-check.mjs  # on panels drawn in paint order
+ *   PAINT_ORDER=0 node tests/xr-check.mjs  # on panels drawn by the lift
  *   CHROMIUM=<path> node tests/xr-check.mjs  # with a Chromium found elsewhere
  *
  * For each look in turn, it enters a session and checks that:

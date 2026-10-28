@@ -39,21 +39,21 @@ freedom's depth bias by paint rank, a prototype for item 10.2 of
 [`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md). The plan's record of
 the item says what each one measured, and where the probe that measured them last stood.
 
-`?paintOrder` draws every panel in paint order rather than by the lift, to compare the two
-([`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md)). `?trace`, under the
-dev server, keeps a row for every frame of each session and saves them as the session ends
-(`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk: the frame's
-times, the panels with work for a coming frame, and how far each of the board's cards has risen in
-the scene. `?trace=page` reads how far each has risen on the page as well, which can change what it
-measures. The console says where the file went.
+`?paintOrder=off` draws every panel by the lift rather than in paint order, freedom's default, to
+compare the two ([`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md)).
+`?trace`, under the dev server, keeps a row for every frame of each session and saves them as the
+session ends (`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk:
+the frame's times, the panels with work for a coming frame, and how far each of the board's cards
+has risen in the scene. `?trace=page` reads how far each has risen on the page as well, which can
+change what it measures. The console says where the file went.
 
 `node tests/xr-check.mjs` puts each look up in turn in a session on the emulated headset in headless
 Chromium. It fails unless every zone the look places becomes a panel and loads, the ray aimed at the
 power control is on it, and the trigger there ends the session, or if the page throws. For the first
 look it then starts a second session and fails if ending it leaves more geometries on the GPU than
 the first did. It takes about two minutes. `SHOTS=<dir>` also photographs each session, and
-`STACKS=1` prints a stack for anything the page throws. `PAINT_ORDER=1` runs it on panels drawn in
-paint order (`?paintOrder`), for `docs/freedom-paint-order-plan.md`. It drives the browser and the
+`STACKS=1` prints a stack for anything the page throws. `PAINT_ORDER=0` runs it on panels drawn by
+the lift (`?paintOrder=off`), for `docs/freedom-paint-order-plan.md`. It drives the browser and the
 controller through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`
 and launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
 points it at one installed elsewhere. A pull request that changes this app or a package it imports,

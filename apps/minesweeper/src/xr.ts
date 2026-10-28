@@ -26,8 +26,8 @@ export function offerXR(board: HTMLElement, menu: HTMLElement): void {
     presentingOnly: true,
     // The board is an `<svg>`, which a panel draws only through this plugin.
     portalPlugins: [svgElements()],
-    // `?paintOrder` draws the panels in paint order, to compare with the
-    // lift (`docs/freedom-paint-order-plan.md`).
+    // `?paintOrder=off` draws the panels by the lift, to compare with paint
+    // order (`docs/freedom-paint-order-plan.md`).
     panelOptions: { paintOrder: paintOrderQuery(query) },
   }).subscribe({
     next: (renderer) => {

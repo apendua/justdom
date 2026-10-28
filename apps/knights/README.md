@@ -65,21 +65,21 @@ toolbar. Then it plays on the emulated headset, which takes about a minute: it p
 field the white stack can reach and checks that the route is drawn, pulls the trigger and checks
 that the click reached the board at that place and the turn passed on, then turns the passthrough on
 and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
-a stack for anything the page throws. `PAINT_ORDER=1` runs it on panels drawn in paint order
-(`?paintOrder`), for `docs/freedom-paint-order-plan.md`. It drives the browser and the controller
-through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that
-project has to have been installed. It launches the Chromium at
+a stack for anything the page throws. `PAINT_ORDER=0` runs it on panels drawn by the lift
+(`?paintOrder=off`), for `docs/freedom-paint-order-plan.md`. It drives the browser and the
+controller through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`,
+so that project has to have been installed. It launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
 tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
 `.github/workflows/driven.yml`.
 
-| File                      | What it is                                                                                                                                                                                                       |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open.                                                       |
-| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, follows `?theming` and `?outlines`, draws in paint order under `?paintOrder`, and adds the Enter button. |
-| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                                                                      |
-| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                                       |
+| File                      | What it is                                                                                                                                                                                                        |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open.                                                        |
+| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, follows `?theming` and `?outlines`, draws by the lift under `?paintOrder=off`, and adds the Enter button. |
+| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                                                                       |
+| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                                        |
 
 ## How it is put together
 

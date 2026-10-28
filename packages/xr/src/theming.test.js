@@ -22,8 +22,10 @@ test("?outlines turns outlines mode on, and its absence does not", () => {
   assert.equal(followOutlinesQuery(new URLSearchParams("")), null);
 });
 
-test("?paintOrder asks for paint order, and its absence does not", () => {
+test("paint order unless ?paintOrder=off asks for the lift", () => {
+  assert.equal(paintOrderQuery(new URLSearchParams("")), true);
+  assert.equal(paintOrderQuery(new URLSearchParams("?emulator")), true);
   assert.equal(paintOrderQuery(new URLSearchParams("?paintOrder")), true);
-  assert.equal(paintOrderQuery(new URLSearchParams("?emulator=bare&paintOrder")), true);
-  assert.equal(paintOrderQuery(new URLSearchParams("?emulator")), false);
+  assert.equal(paintOrderQuery(new URLSearchParams("?paintOrder=off")), false);
+  assert.equal(paintOrderQuery(new URLSearchParams("?emulator=bare&paintOrder=off")), false);
 });

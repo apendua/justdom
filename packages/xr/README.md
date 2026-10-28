@@ -123,11 +123,12 @@ nothing from three.js. `paperwings-xr` calls it in its labs edition only.
 for nothing. "Outlines" in freedom's README says how to read them. Every app calls it on the line
 after `followThemingQuery`.
 
-`paintOrderQuery(query)` says whether the query has `?paintOrder`, which the desk, the showcase,
-minesweeper, Euclid and Knights pass to `render()` as the `paintOrder` panel option: their panels
-are then drawn in paint order rather than by the lift, for the paint-order tooling to measure
-against the lift (`docs/freedom-paint-order-plan.md`). The driver adds it to the address when
-`PAINT_ORDER=1` (`PAINT_ORDER_QUERY`).
+`paintOrderQuery(query)` says whether the query leaves the panels in paint order, freedom's default,
+which it does unless it says `?paintOrder=off`. The desk, the showcase, minesweeper, Euclid and
+Knights pass it to `render()` as the `paintOrder` panel option, so `?paintOrder=off` draws their
+panels by the lift, for the paint-order tooling to compare with
+(`docs/freedom-paint-order-plan.md`). The driver adds it to the address when `PAINT_ORDER=0`
+(`PAINT_ORDER_QUERY`).
 
 This entry imports `@apendua/freedom`, so import it only from a module that already does.
 
@@ -163,7 +164,7 @@ launches the Chromium at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM`
 `precache(build, root)` builds an app with its own Vite and says which chunks its service worker
 precaches and which the page loads, for a check that holds the two equal; minesweeper's check and
 the todo app's drag check use it. `PAINT_ORDER_QUERY` is what a check adds to its app's address
-after `?emulator`: `&paintOrder` when `PAINT_ORDER=1`, for panels drawn in paint order, and nothing
+after `?emulator`: `&paintOrder=off` when `PAINT_ORDER=0`, for panels drawn by the lift, and nothing
 otherwise; the four checks named next add it, and so do the showcase's photographs. Minesweeper's,
 the desk's, Euclid's and Knights' checks use the rest, and `.github/workflows/driven.yml` runs all
 four on pull requests.

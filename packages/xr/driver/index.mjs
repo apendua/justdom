@@ -27,10 +27,11 @@ const { chromium } = await import(
 
 /**
  * What a check adds to the app's address, after its `?emulator`, to run on
- * panels drawn in paint order: `&paintOrder` when `PAINT_ORDER=1`
- * (`paintOrderQuery` in `src/theming.js`), and nothing otherwise.
+ * panels drawn by the lift: `&paintOrder=off` when `PAINT_ORDER=0`
+ * (`paintOrderQuery` in `src/theming.js`), and nothing otherwise, which
+ * draws them in paint order.
  */
-export const PAINT_ORDER_QUERY = process.env.PAINT_ORDER === "1" ? "&paintOrder" : "";
+export const PAINT_ORDER_QUERY = process.env.PAINT_ORDER === "0" ? "&paintOrder=off" : "";
 
 /**
  * Chromium on SwiftShader, which is what draws a session with no GPU.

@@ -15,6 +15,7 @@ import {
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { getPortalRoot } from "./portalRoot.js";
+import { isBlocker } from "./blocker.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 import { RendererContext } from "../render.js";
@@ -339,11 +340,12 @@ describe("createPortal", () => {
     await settle(portal);
 
     assert.equal(added.length, 0, "a readout nobody presses is nothing for a ray to find");
-    // Not merely unregistered: there is no plane in the scene either, so the
-    // panel has nothing to keep the size of.
+    // Not merely unregistered: there is no blocker in the scene either, so
+    // the panel has nothing to keep the size of. The panel's depth quad
+    // shares the blocker's plane and takes no rays.
     const planes = [];
     parent.traverse((object) => {
-      if (object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry) {
+      if (isBlocker(object)) {
         planes.push(object);
       }
     });

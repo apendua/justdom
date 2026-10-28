@@ -51,7 +51,7 @@ draws a line with the trigger, drags a free point and pans the paper by holding 
 construction from the picker and leaves by the ×, and fails if any of that does not happen or the
 page throws. The whole check takes about half a minute under SwiftShader. `SHOTS=<dir>` also
 photographs the page and the session, and `STACKS=1` prints a stack for anything the page throws.
-`PAINT_ORDER=1` runs it on panels drawn in paint order (`?paintOrder`), for
+`PAINT_ORDER=0` runs it on panels drawn by the lift (`?paintOrder=off`), for
 `docs/freedom-paint-order-plan.md`. It drives the browser and the controller through
 `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has
 to have been installed. It launches the Chromium at

@@ -36,10 +36,11 @@ export function followOutlinesQuery(query) {
 }
 
 /**
- * Whether the page's address asks for panels drawn in paint order rather
- * than by the lift, with `?paintOrder`: freedom's `paintOrder` panel
- * option, which the paint-order tooling measures against the lift in the
- * apps (`docs/freedom-paint-order-plan.md`).
+ * Whether the page's panels are drawn in paint order: yes unless its
+ * address says `?paintOrder=off`, which draws them by the lift. It is
+ * freedom's `paintOrder` panel option, on by default, and the off switch
+ * is there for the paint-order tooling to measure the lift against
+ * (`docs/freedom-paint-order-plan.md`).
  *
  * In this entry beside the other two because it is a switch of the same
  * kind, read from the same query by the same apps.
@@ -48,5 +49,5 @@ export function followOutlinesQuery(query) {
  * @returns {boolean}
  */
 export function paintOrderQuery(query) {
-  return query.has("paintOrder");
+  return query.get("paintOrder") !== "off";
 }

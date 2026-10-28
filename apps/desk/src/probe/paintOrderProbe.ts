@@ -12,8 +12,8 @@ import { noteTracer, timeFrames } from "./trace.js";
  * The paint-order probe, `paint-order-probe.html`: the scenes of phase 4's
  * Quest half in `docs/freedom-paint-order-plan.md`, a control panel to work
  * them from inside the session, and the results, saved to disk by the dev
- * server (`vite/probeResults.js`). `?scene=` picks the scene, `?paintOrder`
- * draws its panels in paint order, `?trace=scene` keeps a run's trace off
+ * server (`vite/probeResults.js`). `?scene=` picks the scene, `?paintOrder=off`
+ * draws its panels by the lift, `?trace=scene` keeps a run's trace off
  * the page's styles (`trace.ts`), and `?emulator` runs it under IWER on a
  * desktop.
  */

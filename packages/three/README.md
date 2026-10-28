@@ -388,7 +388,7 @@ The options, each with the section that says what it does:
 | `maxTextScale`     | `4`         | The ceiling on how finely this panel's text is rasterized. **How sharp the text comes out**.         |
 | `draggable`        | `false`     | Whether the player can move the panel, or a `PanelDragOptions`. **Letting the player move a panel**. |
 | `plugins`          | none        | Element plugins for this panel alone, asked before the scene's. **Element plugins**.                 |
-| `paintOrder`       | `false`     | Draw the panel in paint order rather than by the lift, a prototype. **Paint order**.                 |
+| `paintOrder`       | `true`      | Draw the panel in paint order; `false` draws it by the lift, for now. **Paint order**.               |
 
 `keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
 `priority`, `budget` and `paintOrder` can also be set for the whole scene; see **Panel defaults**.
@@ -1407,6 +1407,10 @@ An element that is positioned and stacked above — `position` other than `stati
 }
 ```
 
+This section is the lift, which draws a panel built with `paintOrder: false`. A panel is drawn in
+paint order by default (**Paint order**, below), and the lift is kept for one release to compare
+with.
+
 It is pushed clear of the surface it covers, so the depth buffer and stereo both agree that it
 floats; its whole subtree is drawn in a band above everything below it; and it is opaque to rays,
 through a blocker of its own, so the ray that lands between two menu rows does not carry through to
@@ -1475,10 +1479,9 @@ the picture on the card under it. `boxBatch.js` has the formula and its numbers.
 
 ### Paint order
 
-`paintOrder: true` draws a panel the way a page paints it, without the lift. It is off by default
-while it is measured against the lift, and
-[`docs/freedom-paint-order.md`](../../docs/freedom-paint-order.md) has its rules. A panel in paint
-order ignores `depthRank`.
+A panel is drawn the way a page paints it, without the lift, unless it is built with
+`paintOrder: false`. [`docs/freedom-paint-order.md`](../../docs/freedom-paint-order.md) has its
+rules. A panel in paint order ignores `depthRank`.
 
 - A panel is a set of layers: its root, every overlay, and every element whose transform takes it
   out of its parent's plane (`getLayer` in `elevation.js`). An overlay keeps its lift, and a
@@ -1521,7 +1524,8 @@ jsdom scenes in `src/test/paintOrderScenes.js` draw under each, and
 `bench/paintOrderCount.browser.mjs` counts the same for the desk's looks, the showcase, Knights and
 Euclid under the emulator. `bench/paintOrderDraws.browser.mjs` counts the draw calls a frame each
 build makes in those apps, and `src/elements/mirror.bench.js` takes `--paint-order` for its tables
-in paint order. The apps that read `?paintOrder` are listed in `@apendua.dev/headset`'s README.
+in paint order. The apps that read `?paintOrder=off`, which draws them by the lift, are listed in
+`@apendua.dev/headset`'s README.
 [`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md) is the record of the
 experiment these were written for.
 

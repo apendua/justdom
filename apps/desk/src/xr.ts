@@ -25,9 +25,9 @@ import type { Readable } from "./session.js";
  * panel's boxes with freedom's depth bias by paint rank, a prototype of item
  * 10.2 in `docs/freedom-architecture-plan.md`.
  *
- * `?paintOrder` draws every panel in paint order rather than by the lift
+ * `?paintOrder=off` draws every panel by the lift rather than in paint order
  * (`paintOrder` in freedom's panel options), for the paint-order tooling to
- * measure against the lift (`docs/freedom-paint-order-plan.md`), and
+ * compare with (`docs/freedom-paint-order-plan.md`), and
  * `?trace` records each session's frames and saves them as it ends
  * (`deskTrace.ts`), under the dev server.
  */

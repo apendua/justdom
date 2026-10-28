@@ -29,9 +29,9 @@
  * and read the diff of the JSON file before committing it. A gesture with
  * no recording fails rather than recording one, unless that is asked for.
  *
- * `PAINT_ORDER=1` runs them on panels drawn in paint order (`paintOrder` in
- * `portal.js`) against the same recordings, which paint order has to match
- * before it is the default (`docs/freedom-paint-order.md`).
+ * They run on panels drawn in paint order, the default, and `PAINT_ORDER=0`
+ * runs them by the lift (`paintOrder` in `portal.js`) against the same
+ * recordings, which both builds match (`docs/freedom-paint-order.md`).
  */
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,7 +43,7 @@ import { describeScroller } from "../test/scroller.js";
 
 const GOLDENS = new URL("./pointerGoldens.json", import.meta.url);
 const UPDATE = process.env.UPDATE_GOLDENS === "1";
-const PAINT_ORDER = process.env.PAINT_ORDER === "1";
+const PAINT_ORDER = process.env.PAINT_ORDER !== "0";
 
 /** @type {Record<string, string[]>} */
 const goldens = JSON.parse(readFileSync(GOLDENS, "utf8"));

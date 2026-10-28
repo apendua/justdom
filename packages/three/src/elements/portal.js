@@ -366,7 +366,7 @@ function claimRoot(root) {
  *   that it can be moved. The keyboard a field brings up has the same
  *   strips, always.
  * @property {boolean} [paintOrder] Draw the panel in paint order rather than
- *   by the lift, off by default (`docs/freedom-paint-order.md`). Nothing
+ *   by the lift, on by default (`docs/freedom-paint-order.md`). Nothing
  *   the panel draws writes depth, every element draws at its layer's draw
  *   level (`getLayer` in `elevation.js`), the layers in the order the
  *   panel's tree gives them from the viewer (`layerOrder.js`), and one quad
@@ -416,7 +416,7 @@ function buildPortal(ctx, ownOptions = {}) {
     thumbstickWheel = false,
     draggable = false,
     depthRank,
-    paintOrder = false,
+    paintOrder = true,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);

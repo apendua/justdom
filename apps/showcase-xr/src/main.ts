@@ -25,8 +25,8 @@ followOutlinesQuery(query);
 const vectors = query.get("svg") !== "off";
 
 /**
- * `?paintOrder` draws every panel in paint order rather than by the lift
- * (`paintOrder` in freedom's panel options), to compare with the lift
+ * `?paintOrder=off` draws every panel by the lift rather than in paint order
+ * (`paintOrder` in freedom's panel options), to compare with paint order
  * (`docs/freedom-paint-order-plan.md`).
  */
 const paintOrder = paintOrderQuery(query);

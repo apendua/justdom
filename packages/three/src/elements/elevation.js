@@ -168,8 +168,8 @@ const ELEVATION_STEP = 8;
 
 /**
  * How far in front of its parent's content an overlay sits on a panel drawn
- * in paint order, where it is the one element at a distance (`getLift`),
- * and where an overlay sits at least on a lifted one.
+ * in paint order, where it is the one element at a distance. On a panel
+ * drawn by the lift it is the least an overlay sits at (`getLift`).
  */
 export const OVERLAY_LIFT = CONTENT_STEP + ELEVATION_STEP;
 

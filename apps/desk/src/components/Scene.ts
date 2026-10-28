@@ -121,7 +121,8 @@ function pose(group: THREE.Group, placement: Placement): void {
 
 /**
  * The group each placement of the session's look stands in, by its id, for
- * what measures the scene from outside it: `?trace` (`deskTrace.ts`).
+ * what measures the scene from outside it: `?trace` (`deskTrace.ts`). A
+ * group leaves it with the scene it stood in.
  */
 export const placedGroups = new Map<string, THREE.Object3D>();
 
@@ -183,6 +184,11 @@ export const Scene = (desk: Readable<MountedDesk>) =>
                     effects((group) => {
                       pose(group, placement);
                       placedGroups.set(placement.id, group);
+                      onCleanup(() => {
+                        if (placedGroups.get(placement.id) === group) {
+                          placedGroups.delete(placement.id);
+                        }
+                      });
                     }),
                     children(dom(ctx, element, [], placement.options)),
                   ]),

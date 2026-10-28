@@ -33,8 +33,14 @@ started with.
 On a laptop there is no session to offer, so there is no button and no renderer. `?emulator`
 installs a headset in the browser (IWER, with its dev panels, from `@apendua.dev/headset`) and an
 Enter button appears at the bottom; `?emulator=bare` installs the runtime without the panels.
-`?paintOrder` draws every panel in paint order rather than by the lift, freedom's prototype for
-[`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md). `?trace`, under the
+
+`?depthRank=constant`, `?depthRank=slope` or `?depthRank=max` draws every panel's boxes with
+freedom's depth bias by paint rank, a prototype for item 10.2 of
+[`docs/freedom-architecture-plan.md`](../../docs/freedom-architecture-plan.md). The plan's record of
+the item says what each one measured, and where the probe that measured them last stood.
+
+`?paintOrder` draws every panel in paint order rather than by the lift, to compare the two
+([`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md)). `?trace`, under the
 dev server, keeps a row for every frame of each session and saves them as the session ends
 (`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk: the frame's
 times, the panels with work for a coming frame, and how far each of the board's cards has risen in
@@ -57,8 +63,8 @@ from `.github/workflows/driven.yml`.
 ## The paint-order probe
 
 `paint-order-probe.html` is the page the Quest's half of phase 4 in
-[`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md) is measured on, and it
-goes once those numbers are in, as 10.2's depth probe did. It is served by the dev server alone:
+[`docs/freedom-paint-order-plan.md`](../../docs/freedom-paint-order-plan.md) was measured on, and it
+stays to measure a panel drawn in paint order on the headset. It is served by the dev server alone:
 `vite build` builds `index.html` and nothing else. On a Quest, over USB:
 
 ```

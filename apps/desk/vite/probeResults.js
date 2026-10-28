@@ -1,10 +1,8 @@
 /**
- * Temporary, for the Quest's half of phase 4 in
- * docs/freedom-paint-order-plan.md, and to go with the paint-order probe:
- * where `paint-order-probe.html`'s Save JSON button sends its results, so
- * that a run on the headset lands as a file in the repo rather than in a
- * download that has to be carried over by hand. 10.2's depth probe had the
- * same route, at `c860ef04` in #607.
+ * Where `paint-order-probe.html`'s Save JSON button sends its results, so
+ * that a run of the paint-order probe on the headset lands as a file in the
+ * repo rather than in a download that has to be carried over by hand.
+ * 10.2's depth probe had the same route, at `c860ef04` in #607.
  *
  *     POST <base>api/probe-results   the probe's JSON, as its body
  *

@@ -9,9 +9,9 @@ export default defineConfig({
   // served at `<base>profiles/`, where src/xr.ts points three's factory.
   plugins: [
     XRProfilesPlugin(),
-    // Where the paint-order probe saves its results, for phase 4 of
-    // docs/freedom-paint-order-plan.md. Development only, and temporary with
-    // the probe; see `vite/probeResults.js`.
+    // Where the paint-order probe saves its runs, so that one taken on the
+    // headset lands as a file under the dev server. Development only; see
+    // `vite/probeResults.js`.
     ProbeResultsPlugin({
       dir: fileURLToPath(new URL("probe-results", import.meta.url)),
       base: "/apps/desk/",

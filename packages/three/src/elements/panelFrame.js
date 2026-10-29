@@ -211,8 +211,7 @@ function transformScale(value) {
   }
   const m = matrixScratch;
   if (count === 6) {
-    const [a, b, c, d] = m;
-    return b === 0 && c === 0 ? scaleFactors(a, d) : null;
+    return m[1] === 0 && m[2] === 0 ? scaleFactors(m[0], m[3]) : null;
   }
   const flat =
     m[1] === 0 &&

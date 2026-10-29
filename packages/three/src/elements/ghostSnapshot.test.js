@@ -62,13 +62,54 @@ function recordingRenderer() {
      * @param {THREE.Object3D} scene
      * @param {THREE.Camera} camera
      */
-    compileAsync: (scene, camera) => {
+    compile: (scene, camera) => {
       calls.push(["compile", scene, camera, target, renderer.xr.enabled]);
-      return Promise.resolve(scene);
+      return materialsOf(scene);
     },
+    /**
+     * Three's own, as of 0.185 (`WebGLRenderer.js`): `compile`, then a
+     * poll every 10 ms of each material's program until all are linked. A
+     * material disposed before that has no program, and the poll throws
+     * from its timer, which no `catch` on the promise reaches; recorded in
+     * `thrown` here rather than thrown.
+     *
+     * @param {THREE.Object3D} scene
+     * @param {THREE.Camera} camera
+     */
+    compileAsync: (scene, camera) => {
+      const materials = renderer.compile(scene, camera);
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          for (const material of materials) {
+            if (disposed.has(material)) {
+              thrown.push(new TypeError("Cannot read properties of undefined (reading 'isReady')"));
+            }
+          }
+          resolve(scene);
+        }, 10);
+      });
+    },
+  };
+  /** @type {Set<THREE.Material>} */
+  const disposed = new Set();
+  /** @type {Error[]} */
+  const thrown = [];
+  /** @param {THREE.Object3D} scene */
+  const materialsOf = (scene) => {
+    /** @type {Set<THREE.Material>} */
+    const materials = new Set();
+    scene.traverse((object) => {
+      const material = /** @type {THREE.Mesh} */ (object).material;
+      if (material instanceof THREE.Material) {
+        materials.add(material);
+        material.addEventListener("dispose", () => disposed.add(material));
+      }
+    });
+    return materials;
   };
   return {
     renderer: /** @type {THREE.WebGLRenderer} */ (/** @type {unknown} */ (renderer)),
+    thrown,
     calls,
     previousTarget,
     state: () => ({ target, clearColor: clearColor.getHex(), clearAlpha, xr: renderer.xr.enabled }),
@@ -184,6 +225,20 @@ describe("snapshotsFor", () => {
     // At every press, for what the panel has come to draw since its last.
     snapshots.prepare(panel);
     assert.equal(calls.filter(([name]) => name === "compile").length, 2);
+  });
+
+  test("a material disposed while its programs link throws nothing", async () => {
+    // Desk, on the Beige Box: the keyboard open, a press on the corkboard
+    // prepares the panel's programs, and the keyboard closes and disposes
+    // its materials before they have linked.
+    const { renderer, thrown } = recordingRenderer();
+    const panel = new THREE.Group();
+    const key = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial());
+    panel.add(key);
+    snapshotsFor(renderer).prepare(panel);
+    key.material.dispose();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(thrown, []);
   });
 
   test("takes pictures with the renderer it was given", () => {

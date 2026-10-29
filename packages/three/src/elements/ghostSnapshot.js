@@ -149,7 +149,14 @@ const compileCamera = new THREE.OrthographicCamera();
  * things, and a target of its own is a different key from the headset's, so
  * the first snapshot of a panel would otherwise compile and link a second
  * copy of every program the panel uses, in the frame the drag starts.
- * `compileAsync` lets the driver link them in the background where it can.
+ *
+ * `compile` and not `compileAsync`: the two start the same compiles and
+ * links, which the driver runs in the background where it can, and three
+ * asks for no status until a program is first drawn with. What
+ * `compileAsync` adds is a promise, and the poll behind it reads each
+ * material's program every 10 ms until all are linked. A material
+ * disposed meanwhile, the keyboard's as it closes, has no program left to
+ * read, and the poll throws from a timer, out of reach of any `catch`.
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {THREE.Object3D} panel
@@ -158,7 +165,7 @@ const compileCamera = new THREE.OrthographicCamera();
 export function prepareSnapshot(renderer, panel) {
   compileTarget ??= new THREE.WebGLRenderTarget(1, 1);
   intoTarget(renderer, compileTarget, () => {
-    renderer.compileAsync(panel, compileCamera).catch(() => {});
+    renderer.compile(panel, compileCamera);
   });
 }
 

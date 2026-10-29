@@ -807,6 +807,16 @@ dom(ctx, menu, [set({ position })], {
   into a mount (`MAX_BUILD_WAIT`), one frame builds everything queued. A loading frame still up for
   its minimum time holds both. A drag whose reading fits the budget commits every frame on an atomic
   panel too; one whose reading overruns it on every frame wants `atomic: false`.
+- **A transform animating on its own does not wait for the update.** An HTML element whose only
+  animated property is its `transform` is drawn at its new transform in the frame the animation is
+  sampled, whatever the panel's channel still holds: each box writes its matrix in a channel of its
+  own, from the layout the panel last committed and the transform as it is now. A step that would
+  change the order the panel is drawn in waits for the commit: one that makes the element a layer or
+  stops it being one (a `translateZ`, a 3D rotation), one that changes whether it is placed by a
+  matrix or which painting layer it is in (a transform appearing or going), or, for an element that
+  is not a layer, one that moves it onto or off a positioned or transformed sibling. Its transform
+  is drawn from that commit on. An SVG element's transform, and one animated beside any other
+  property, still lands with the update.
 - **`data-xr-busy`** is on the container while a panel has work it will do on a coming frame — an
   animation the clock is sampling, an update the pump has not yet brought into the scene — and comes
   off on the frame that draws the last of it. A harness pins the page's animations, then waits for

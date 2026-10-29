@@ -7,7 +7,9 @@ import {
   hasDepthTransform,
   isTransformed,
   parseTransform,
+  parseTransformInto,
   parseTransformOrigin,
+  parseTransformOriginInto,
 } from "./cssTransform.js";
 
 /**
@@ -69,6 +71,37 @@ describe("parseTransform", () => {
     assert.ok(Math.abs(x) < 1e-9 && Math.abs(y) < 1e-9);
     assert.equal(z, 1);
   });
+
+  test("reads each number as Number.parseFloat does", () => {
+    // The scanner reads a frame's matrix without the strings a split would
+    // make, and a value it rounded differently would be a matrix that moved.
+    for (const value of [
+      "0",
+      "-0.087",
+      "+0.996",
+      ".5",
+      "-.25",
+      "12345.6789",
+      "0.30000000000000004",
+      "1e-7",
+      "2.5E+2",
+      "-1.5e3",
+      "1234567890123456789",
+      "1e-30",
+    ]) {
+      const matrix = parseTransform(`matrix(1, 0, 0, 1, ${value}, 0)`);
+      assert.ok(matrix, value);
+      assert.equal(matrix.elements[12], Number.parseFloat(value), value);
+    }
+  });
+
+  test("into a matrix given, which none leaves as it was", () => {
+    const target = new THREE.Matrix4().makeTranslation(1, 2, 3);
+    assert.equal(parseTransformInto("none", target), false);
+    assert.deepEqual(apply(target, 0, 0), [1, 2, 3]);
+    assert.equal(parseTransformInto("matrix(1, 0, 0, 1, 10, 20)", target), true);
+    assert.deepEqual(apply(target, 0, 0), [10, 20, 0]);
+  });
 });
 
 describe("parseTransformOrigin", () => {
@@ -90,6 +123,12 @@ describe("parseTransformOrigin", () => {
 
   test("a third component is a z length in px", () => {
     assert.deepEqual(parseTransformOrigin("10px 20px 5px", 100, 50), { x: 10, y: 20, z: 5 });
+  });
+
+  test("into an object given", () => {
+    const out = { x: 0, y: 0, z: 0 };
+    assert.equal(parseTransformOriginInto("-2.5px 1e1px 3px", 100, 50, out), out);
+    assert.deepEqual(out, { x: -2.5, y: 10, z: 3 });
   });
 });
 

@@ -1697,6 +1697,9 @@ describe("div clipping", () => {
   // `getContentPosition`, already gated on equality, so a reflow that leaves
   // it in place never reaches `placement`. On a transformed chain the offset
   // is read fresh from the reflow context, and `placementEqual` decides.
+  // Outside a portal the place effect runs the motion step itself, so this
+  // is also the step's own check, that a matrix it composes the same as the
+  // one drawn is not written.
   test("a re-read layout that leaves a transformed box in place writes no matrix", () => {
     const { container, object, moveTo, subscription } = setupScrolledRow({
       transform: "matrix(1, 0, 0, 1, 5, 0)",

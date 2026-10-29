@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createProperty, onCleanup } from "@apendua/signal";
+import { createProperty, Effect, onCleanup, Signal } from "@apendua/signal";
 import { Derived, effects, flatMap, just, on, set, observable, useEffects } from "@apendua/signal";
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
@@ -20,13 +20,29 @@ import { createBlocker, coverBox } from "./blocker.js";
 import {
   getBorderBoxSize,
   getBoxOffset,
+  getChildNodes,
   getLocalClipBox,
+  getParentElement,
   getScrollOffset,
   isVisibilityHidden,
 } from "./mirror.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
-import { composeTransform, getOwnTransform, isTransformed } from "./cssTransform.js";
-import { getContentRenderOrder, getLayer, isOverlay, OVERLAY_LIFT } from "./elevation.js";
+import {
+  composeTransform,
+  hasDepthTransform,
+  isTransformed,
+  readOwnTransform,
+} from "./cssTransform.js";
+import {
+  getContentRenderOrder,
+  getLayer,
+  getPaintedBounds,
+  getPaintLayer,
+  isOverlay,
+  OVERLAY_LIFT,
+  overlaps,
+  paintedBoundsInto,
+} from "./elevation.js";
 import { LayerOrderContext } from "./layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
@@ -58,8 +74,22 @@ export const PortalReadyContext = createProperty(
 );
 
 /**
+ * The channel a box writes its matrix in, apart from the panel's: the
+ * portal's `motionChannel`, which drains of its own accord. Null outside a
+ * portal, where the motion effect is built in whatever channel builds the
+ * box.
+ */
+export const MotionChannelContext = createProperty(
+  /**
+   * @returns {import("@apendua/signal").UpdateChannel | null}
+   */
+  () => null,
+);
+
+/**
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
+ * @import {PaintedBounds, PaintLayer} from './elevation.js';
  * @import {EntityEffect, Subscribable} from '@apendua/signal';
  */
 
@@ -72,15 +102,41 @@ export const PortalReadyContext = createProperty(
 const BLOCKER_OFFSET = 2;
 
 /**
- * Where a box stands in its parent's object (see `placement` in `box`).
+ * Where a box stands in its parent's object, as the panel's channel last
+ * committed it (see `placement` in `box`): everything its matrix is composed
+ * from but the element's own transform, and the answers the panel's order
+ * was written from, which a transform can change.
  *
  * @typedef {object} Placement
  * @property {number} x
  * @property {number} y
  * @property {number} z
- * @property {THREE.Matrix4 | null} matrix The local matrix, on a transformed
- *   chain; null where the offsets and `z` are the whole of it.
+ * @property {number} width The border box the transform's origin resolves
+ *   against.
+ * @property {number} height
+ * @property {boolean} transformed `isTransformed`: whether the box is placed
+ *   by a matrix.
+ * @property {boolean} depth `hasDepthTransform`: whether it is a layer by
+ *   its transform.
+ * @property {boolean} layer Whether it is a layer's root (`getLayer`).
+ * @property {PaintLayer} paintLayer `getPaintLayer`.
+ * @property {PaintedBounds | null} bounds The bounds its siblings' draw
+ *   levels were worked out against, while those can depend on them: null for
+ *   a layer, which the walk orders, and for a box in the flow, which clears
+ *   nothing and is cleared by nothing.
  */
+
+/**
+ * @param {PaintedBounds | null} a
+ * @param {PaintedBounds | null} b
+ * @returns {boolean}
+ */
+function boundsEqual(a, b) {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+}
 
 /**
  * @param {Placement} a
@@ -88,11 +144,27 @@ const BLOCKER_OFFSET = 2;
  * @returns {boolean}
  */
 function placementEqual(a, b) {
-  if (a.x !== b.x || a.y !== b.y || a.z !== b.z) {
-    return false;
-  }
-  return a.matrix === null || b.matrix === null ? a.matrix === b.matrix : a.matrix.equals(b.matrix);
+  return (
+    a.x === b.x &&
+    a.y === b.y &&
+    a.z === b.z &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.transformed === b.transformed &&
+    a.depth === b.depth &&
+    a.layer === b.layer &&
+    a.paintLayer === b.paintLayer &&
+    boundsEqual(a.bounds, b.bounds)
+  );
 }
+
+/**
+ * Each box's committed placement, by its element, for its siblings' motion
+ * steps to test their bounds against.
+ *
+ * @type {WeakMap<Element, Signal<Placement | null>>}
+ */
+const committedPlacements = new WeakMap();
 
 /**
  * What a box hands to whatever else is drawn inside it: the properties it is
@@ -369,12 +441,24 @@ export function box(ctx, element, options = {}) {
   });
 
   /**
-   * Where this box stands in its parent's object: content-space offsets and
-   * a lift, or, on a transformed chain, the matrix those compose to with the
-   * element's own transform about its origin. The offset here is then
-   * layout offsets (see `getBoxOffset`), and `getBoxOffset` reads the reflow
-   * context, so layout moves recompute this. A scroll does not, which is
-   * what lets the effect that writes it share a run with the clip.
+   * Whether the element's own transform takes it out of its parent's plane,
+   * behind its own signal so that a frame of the transform that leaves the
+   * answer alone reaches no one through it.
+   */
+  const depth = new Derived(() => hasDepthTransform(element));
+
+  /**
+   * Where this box stands in its parent's object, but for its own
+   * transform: content-space offsets, a lift, and the box the transform's
+   * origin is resolved against, with the answers the panel's order is
+   * written from. The offset on a transformed chain is layout offsets (see
+   * `getBoxOffset`), and `getBoxOffset` reads the reflow context, so layout
+   * moves recompute this. A scroll does not, which is what lets the effect
+   * that writes it share a run with the clip.
+   *
+   * The place effect below commits it with the panel's channel; the motion
+   * effect composes the matrix from it and from the element's live
+   * transform (`docs/freedom-transform-motion-plan.md`).
    */
   const placement = new Derived(
     () => {
@@ -384,28 +468,157 @@ export function box(ctx, element, options = {}) {
       // along.
       const z = overlay.get() ? -OVERLAY_LIFT : 0;
       const offset = getBoxOffset(element);
-      if (!isTransformed(element)) {
-        return { x: offset.x, y: offset.y, z, matrix: null };
-      }
-      const own = getOwnTransform(element);
-      const matrix = new THREE.Matrix4();
-      if (own) {
-        composeTransform(matrix, offset.x, offset.y, z, own.matrix, own.origin);
-      } else {
-        matrix.makeTranslation(offset.x, offset.y, z);
-      }
-      return { x: offset.x, y: offset.y, z, matrix };
+      const size = getBorderBoxSize(element);
+      const layer = getLayer(element) === element;
+      const paintLayer = getPaintLayer(element);
+      return {
+        x: offset.x,
+        y: offset.y,
+        z,
+        width: size.width,
+        height: size.height,
+        transformed: isTransformed(element),
+        depth: depth.get(),
+        layer,
+        paintLayer,
+        bounds: layer || paintLayer === null ? null : getPaintedBounds(element),
+      };
     },
     { isEqual: placementEqual },
   );
 
   /**
-   * The placement last written to the object, so a run that finds the same
-   * one writes nothing.
+   * The placement the panel's channel last committed, for the motion effect
+   * to compose the matrix from. Written by the place effect, so it moves
+   * when the panel's update lands and not before.
+   */
+  const committed = Signal.of(/** @type {Placement | null} */ (null));
+
+  /**
+   * The channel the motion effect runs in (see `MotionChannelContext`).
+   */
+  const motionChannel = MotionChannelContext.get(ctx);
+
+  // What the motion effect composes into, kept for the box's life so that a
+  // frame of an animation allocates nothing.
+  const ownMatrix = new THREE.Matrix4();
+  const ownOrigin = { x: 0, y: 0, z: 0 };
+  const nextMatrix = new THREE.Matrix4();
+  /** @type {PaintedBounds} */
+  const liveBounds = { left: 0, top: 0, right: 0, bottom: 0 };
+  /** Whether the matrix was last written whole, rather than by `place`. */
+  let wroteMatrix = false;
+  /**
+   * The placement the last plain write was made from, so a run that finds
+   * the same one writes nothing.
    *
    * @type {Placement | null}
    */
   let placed = null;
+
+  /**
+   * Whether every sibling the element overlapped, by the bounds its order
+   * was written from, it still overlaps at `bounds`, and no other: tested
+   * against the bounds each sibling's order was written from. A sibling that
+   * is a layer, or in the flow, is skipped, since an overlap with it changes
+   * no draw level (`getDrawLevel`, `getClearedSiblings`).
+   *
+   * @param {PaintedBounds} was
+   * @param {PaintedBounds} bounds
+   * @returns {boolean}
+   */
+  const keepsOverlaps = (was, bounds) => {
+    const parent = getParentElement(element);
+    if (!parent) {
+      return true;
+    }
+    for (const node of getChildNodes(parent)) {
+      if (node === element || node.nodeType !== Node.ELEMENT_NODE) {
+        continue;
+      }
+      const theirs = committedPlacements.get(/** @type {Element} */ (node))?.get();
+      if (!theirs?.bounds) {
+        continue;
+      }
+      if (overlaps(bounds, theirs.bounds) !== overlaps(was, theirs.bounds)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  /**
+   * The motion step: the matrix from the committed placement and the live
+   * transform. A step whose transform would change the order the panel's
+   * channel last committed writes nothing, and the matrix stays where the
+   * last step put it until the channel's commit catches up (the plan's
+   * rules, in `docs/freedom-transform-motion-plan.md`).
+   *
+   * @param {THREE.Object3D} obj
+   * @param {Placement | null} at
+   */
+  const move = (obj, at) => {
+    if (!at) {
+      return;
+    }
+    if (
+      isTransformed(element) !== at.transformed ||
+      depth.get() !== at.depth ||
+      getPaintLayer(element) !== at.paintLayer
+    ) {
+      return;
+    }
+    if (!at.transformed) {
+      if (at !== placed || wroteMatrix) {
+        // Content-space coordinates: relative to the parent's border box
+        // plus its scroll offset, which is what makes them constants of
+        // the layout — a scroll changes the content group's translation
+        // below, not this. A positioned element is anchored to its
+        // containing block instead, and holds still while scrollers
+        // between the two slide (see `getObjectPosition`).
+        //
+        // `place` recomposes from position, quaternion and scale, which
+        // is what makes this the way back out of the branch below: that
+        // branch writes `matrix` without ever disturbing the three, so
+        // they are still the identity a plain box wants.
+        place(obj, at.x, at.y, at.z);
+        placed = at;
+        wroteMatrix = false;
+        batchChanged();
+      }
+      return;
+    }
+    const own = readOwnTransform(element, at.width, at.height, ownMatrix, ownOrigin);
+    if (at.bounds) {
+      const bounds = paintedBoundsInto(
+        liveBounds,
+        element,
+        at.x,
+        at.y,
+        at.width,
+        at.height,
+        own ? ownMatrix : null,
+        ownOrigin,
+      );
+      if (!keepsOverlaps(at.bounds, bounds)) {
+        return;
+      }
+    }
+    if (own) {
+      composeTransform(nextMatrix, at.x, at.y, at.z, ownMatrix, ownOrigin);
+    } else {
+      nextMatrix.makeTranslation(at.x, at.y, at.z);
+    }
+    if (wroteMatrix && nextMatrix.equals(obj.matrix)) {
+      return;
+    }
+    obj.matrixAutoUpdate = false;
+    obj.matrix.copy(nextMatrix);
+    obj.matrixWorldNeedsUpdate = true;
+    wroteMatrix = true;
+    placed = null;
+    batchChanged();
+  };
 
   /**
    * Being a ray target, and forwarding what happens there back to the DOM.
@@ -463,33 +676,21 @@ export function box(ctx, element, options = {}) {
     // given in the box's own frame, so a box that moves inside a clipping
     // ancestor changes both, and a channel that runs effects under a budget
     // could otherwise draw the box in its new place through the clip of
-    // the old one. A scroll shifts the clip and slides this element's own
-    // content group while the placement holds still, and the placement is
-    // a `Derived` compared by value, so a scroll re-runs this without
-    // writing the matrix: the layout reads behind it are not re-run, and
+    // the old one. The place is committed here and drawn by the motion
+    // effect after it, which runs in the same frame (see `motionChannel`
+    // in `portal.js`). A scroll shifts the clip and slides this element's
+    // own content group while the placement holds still, and the placement
+    // is a `Derived` compared by value, so a scroll re-runs this without
+    // moving the placement: the layout reads behind it are not re-run, and
     // three is not asked to recompute the world matrices under the box.
     effects((obj) => {
       const at = placement.get();
-      if (at !== placed) {
-        if (at.matrix) {
-          obj.matrixAutoUpdate = false;
-          obj.matrix.copy(at.matrix);
-          obj.matrixWorldNeedsUpdate = true;
-        } else {
-          // Content-space coordinates: relative to the parent's border box
-          // plus its scroll offset, which is what makes them constants of
-          // the layout — a scroll changes the content group's translation
-          // below, not this. A positioned element is anchored to its
-          // containing block instead, and holds still while scrollers
-          // between the two slide (see `getObjectPosition`).
-          //
-          // `place` recomposes from position, quaternion and scale, which
-          // is what makes this the way back out of the branch above: that
-          // branch writes `matrix` without ever disturbing the three, so
-          // they are still the identity a plain box wants.
-          place(obj, at.x, at.y, at.z);
-        }
-        placed = at;
+      committed.set(at);
+      // Outside a portal there is no channel of its own to move in, and a
+      // budget may stop between two effects, so the place and the clip are
+      // written in this one.
+      if (!motionChannel) {
+        move(obj, at);
       }
       // A scroll, applied where a scroll belongs: one translation of the
       // group that carries the scrolled content. Nothing inside is
@@ -508,6 +709,22 @@ export function box(ctx, element, options = {}) {
       // which follows the same flag for the same reason.
       obj.visible = shown.get();
       batchChanged();
+    }),
+    // The motion effect, after the place effect so that its first run finds
+    // a placement committed. Its own channel, so that a transform animating
+    // on its own is drawn in the frame the clock samples it, whatever the
+    // panel's channel still holds.
+    effects((obj) => {
+      committedPlacements.set(element, committed);
+      const motion = motionChannel
+        ? new Effect(() => move(obj, committed.get()), { name: "motion", channel: motionChannel })
+        : null;
+      onCleanup(() => {
+        motion?.dispose();
+        if (committedPlacements.get(element) === committed) {
+          committedPlacements.delete(element);
+        }
+      });
     }),
     // The content group of a box whose children are in a frame of their
     // own: the same scroll, applied after the matrix into the box's frame.

@@ -7,7 +7,7 @@ import {
   withChannel,
   withComputation,
 } from "@apendua/signal";
-import { div, PortalReadyContext } from "./div.js";
+import { div, MotionChannelContext, PortalReadyContext } from "./div.js";
 import { getContentGroup } from "./contentGroup.js";
 import { text } from "./text.js";
 import { checkbox } from "./checkbox.js";
@@ -273,7 +273,11 @@ function claimRoot(root) {
  *   the mount go in and come out as soon as they are built or gone, not
  *   when the channel next empties. For a panel where responding to the
  *   hand matters more than never being seen half-updated. The initial
- *   mount is held back until it is whole either way.
+ *   mount is held back until it is whole either way. A transform that
+ *   animates on its own does not wait for the update either way: each box
+ *   writes its matrix from its live transform in a channel of its own,
+ *   every frame, unless a step would change the order the panel was drawn
+ *   in, which waits for the commit (`docs/freedom-transform-motion-plan.md`).
  * @property {number} [maxTextScale] The most device pixels this panel's text
  *   is rasterized for each of its CSS pixels. Measured per panel by default
  *   (`textScale.js` says how) and capped at 4, which is what a panel of a
@@ -873,6 +877,23 @@ function buildPortal(ctx, ownOptions = {}) {
         maxStalePasses: Infinity,
       })
     : null;
+
+  /**
+   * Where each box writes its matrix from its own transform: a channel after
+   * the panel's, since the panel's effects write what the box was placed
+   * by, and one that drains of its own accord, so a transform animating on
+   * its own reaches the scene in the frame the clock samples it, whatever
+   * the panel's channel still holds (`docs/freedom-transform-motion-plan.md`).
+   * A pass of the panel's channel takes it along under its own clock, so
+   * the end of every tick, and a scroll, flush it with no budget: what the
+   * panel's channel committed and the matrices composed from it agree by the
+   * time the frame is drawn. Null with no frames, where every effect is in
+   * the default channel and runs at once.
+   *
+   * @type {UpdateChannel | null}
+   */
+  const motionChannel = hasFrames ? new UpdateChannel({ name: "motion", order: 2 }) : null;
+  ctx = MotionChannelContext.set(ctx, motionChannel);
 
   /**
    * The scheduler `render()` installed, if this portal is under one. Besides
@@ -1674,6 +1695,7 @@ function buildPortal(ctx, ownOptions = {}) {
               // place — from this tick on, and for its minimum time.
               showLoadingFrame();
             }
+            motionChannel?.flush({ budget: Infinity });
             interactionManager.updateIntersections();
           },
         })
@@ -1944,6 +1966,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // hand on the panel, and no more than every scroll cost before the panel
     // learned to defer at all.
     channel?.flush({ budget: Infinity });
+    motionChannel?.flush({ budget: Infinity });
     // Content has moved out from under a ray that did not move with it. The
     // manager only recasts when a hand moves or when it is told the scene
     // changed, and this is the second case.

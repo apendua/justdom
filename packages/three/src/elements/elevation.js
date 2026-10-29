@@ -314,7 +314,7 @@ function boundsEqual(a, b) {
  * @param {PaintedBounds} b
  * @returns {boolean}
  */
-function overlaps(a, b) {
+export function overlaps(a, b) {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
@@ -406,6 +406,66 @@ const corner = new THREE.Vector3();
 /** @type {WeakMap<Element, Derived<PaintedBounds>>} */
 const paintedBoundsCache = nodeCache();
 
+/** The origin `paintedBoundsInto` is given with no matrix to apply it to. */
+const NO_ORIGIN = Object.freeze({ x: 0, y: 0, z: 0 });
+
+/**
+ * The area `element` covers in its parent's content space with its border
+ * box, `width` by `height`, at `x`, `y` and its own transform `matrix` about
+ * `origin`, or none for `matrix` null: `getPaintedBounds` for numbers given
+ * rather than read. Written into `out`, or `EVERYWHERE` when a corner goes
+ * to or behind the eye. Allocates nothing, for the motion step's check of a
+ * transform against the bounds its siblings were ordered by (`div.js`).
+ *
+ * @param {PaintedBounds} out
+ * @param {HTMLElement} element
+ * @param {number} x
+ * @param {number} y
+ * @param {number} borderWidth
+ * @param {number} borderHeight
+ * @param {THREE.Matrix4 | null} matrix
+ * @param {{ x: number, y: number, z: number }} origin
+ * @returns {PaintedBounds}
+ */
+export function paintedBoundsInto(out, element, x, y, borderWidth, borderHeight, matrix, origin) {
+  const bleed = ownShadowBleed(element);
+  const width = borderWidth + bleed.right;
+  const height = borderHeight + bleed.bottom;
+  if (!matrix) {
+    out.left = x;
+    out.top = y;
+    out.right = x + width;
+    out.bottom = y + height;
+    return out;
+  }
+  composeTransform(cornerMatrix, x, y, 0, matrix, origin);
+  const e = cornerMatrix.elements;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (let i = 0; i < 4; i += 1) {
+    const cornerX = i & 1 ? width : 0;
+    const cornerY = i & 2 ? height : 0;
+    // A perspective that sends a corner to or behind the eye has no
+    // finite box to give: dividing by a w at or below zero would
+    // mirror that corner to the wrong side rather than fail.
+    if (e[3] * cornerX + e[7] * cornerY + e[15] <= 0) {
+      return EVERYWHERE;
+    }
+    corner.set(cornerX, cornerY, 0).applyMatrix4(cornerMatrix);
+    left = Math.min(left, corner.x);
+    top = Math.min(top, corner.y);
+    right = Math.max(right, corner.x);
+    bottom = Math.max(bottom, corner.y);
+  }
+  out.left = left;
+  out.top = top;
+  out.right = right;
+  out.bottom = bottom;
+  return out;
+}
+
 /**
  * The area an element covers in its parent's content space, the frame its
  * object is placed in: its border box at `getBoxOffset`. For an element with
@@ -420,7 +480,7 @@ const paintedBoundsCache = nodeCache();
  * @param {HTMLElement} element
  * @returns {PaintedBounds}
  */
-function getPaintedBounds(element) {
+export function getPaintedBounds(element) {
   let signal = paintedBoundsCache.get(element);
   if (!signal) {
     signal = nodeDerived(
@@ -434,41 +494,18 @@ function getPaintedBounds(element) {
           return EVERYWHERE;
         }
         const size = getBorderBoxSize(element);
-        const bleed = ownShadowBleed(element);
-        const width = size.width + bleed.right;
-        const height = size.height + bleed.bottom;
         const offset = getBoxOffset(element);
         const own = getOwnTransform(element);
-        if (!own) {
-          return {
-            left: offset.x,
-            top: offset.y,
-            right: offset.x + width,
-            bottom: offset.y + height,
-          };
-        }
-        composeTransform(cornerMatrix, offset.x, offset.y, 0, own.matrix, own.origin);
-        const e = cornerMatrix.elements;
-        let left = Infinity;
-        let top = Infinity;
-        let right = -Infinity;
-        let bottom = -Infinity;
-        for (let i = 0; i < 4; i += 1) {
-          const x = i & 1 ? width : 0;
-          const y = i & 2 ? height : 0;
-          // A perspective that sends a corner to or behind the eye has no
-          // finite box to give: dividing by a w at or below zero would
-          // mirror that corner to the wrong side rather than fail.
-          if (e[3] * x + e[7] * y + e[15] <= 0) {
-            return EVERYWHERE;
-          }
-          corner.set(x, y, 0).applyMatrix4(cornerMatrix);
-          left = Math.min(left, corner.x);
-          top = Math.min(top, corner.y);
-          right = Math.max(right, corner.x);
-          bottom = Math.max(bottom, corner.y);
-        }
-        return { left, top, right, bottom };
+        return paintedBoundsInto(
+          { left: 0, top: 0, right: 0, bottom: 0 },
+          element,
+          offset.x,
+          offset.y,
+          size.width,
+          size.height,
+          own ? own.matrix : null,
+          own ? own.origin : NO_ORIGIN,
+        );
       },
       { isEqual: boundsEqual },
     );

@@ -3425,7 +3425,7 @@ describe("mounting a tree justdom did not build", () => {
           throw new Error("Cannot replace a segment that is not in a tree.");
         }
         parent.insertBefore(node, first);
-        for (let current = /** @type {Node | null} */ (first); current; ) {
+        for (let current = /** @type {Node | null} */ (first); current;) {
           const next = current.nextSibling;
           parent.removeChild(current);
           current = current === last ? null : next;
@@ -4108,15 +4108,17 @@ describe("a panel that is always busy", () => {
   };
 
   /**
-   * Counts the channel flushes run with no budget, the long frames a time
-   * bound forces. Give `UpdateChannel.prototype.flush` back with `restore`,
-   * in a `finally`.
+   * Counts the panel channel's flushes run with no budget, the long frames
+   * a time bound forces. Give `UpdateChannel.prototype.flush` back with
+   * `restore`, in a `finally`.
    */
   const countUnbudgeted = () => {
     const flush = UpdateChannel.prototype.flush;
     let count = 0;
     UpdateChannel.prototype.flush = function (options) {
-      if (options?.budget === Infinity) {
+      // The panel's own channel: the motion channel is flushed with no
+      // budget at the end of every tick, and its frames are not long ones.
+      if (options?.budget === Infinity && this.name === "portal") {
         count += 1;
       }
       return flush.call(this, options);
@@ -4178,7 +4180,7 @@ describe("a panel that is always busy", () => {
         );
         return rootObject ? rootObject.children[0].children.length : 0;
       };
-      return { portal, list, rows, clock, dispose };
+      return { portal, list, rows, clock, containerObject, dispose };
     } catch (error) {
       dispose();
       throw error;
@@ -4642,6 +4644,447 @@ describe("a panel that is always busy", () => {
       );
     } finally {
       stop();
+      await drain();
+      dispose();
+    }
+  });
+
+  /**
+   * The computed transform of `element`, as a frame of an animation would
+   * have the browser report it: jsdom has no transitions, and writing the
+   * style would be a mutation. Set `value` for the next frame's sample, and
+   * give `window.getComputedStyle` back with `restore`, in a `finally`.
+   *
+   * @param {HTMLElement} element
+   * @param {string} value The transform it starts at.
+   */
+  const reportTransform = (element, value) => {
+    const getComputedStyle = window.getComputedStyle;
+    const reported = {
+      value,
+      restore() {
+        window.getComputedStyle = getComputedStyle;
+      },
+    };
+    window.getComputedStyle = (target, pseudoElement) => {
+      const style = getComputedStyle.call(window, target, pseudoElement);
+      if (target !== element) {
+        return style;
+      }
+      return new Proxy(style, {
+        get(styles, key) {
+          if (key === "transform") {
+            return reported.value;
+          }
+          const read = Reflect.get(styles, key);
+          return typeof read === "function" ? read.bind(styles) : read;
+        },
+      });
+    };
+    return reported;
+  };
+
+  /**
+   * The object a row of `busyPanel` is drawn by.
+   *
+   * @param {THREE.Object3D} containerObject
+   * @param {number} index
+   * @returns {THREE.Object3D}
+   */
+  const rowObject = (containerObject, index) => {
+    const rootObject = /** @type {THREE.Object3D} */ (
+      containerObject.children.find(
+        (child) => !(child instanceof THREE.Mesh) && child.children.length > 0,
+      )
+    );
+    return rootObject.children[0].children[index];
+  };
+
+  /**
+   * @param {HTMLElement} element
+   * @param {string} type
+   */
+  const transformTransition = (element, type) =>
+    element.dispatchEvent(syntheticEvent(type, { propertyName: "transform" }));
+
+  /** @param {number} x */
+  const shifted = (x) => `matrix(1, 0, 0, 1, ${x}, 0)`;
+
+  test("a transform moving on its own is drawn every frame, while the panel waits", async () => {
+    // The plan's first case (`docs/freedom-transform-motion-plan.md`). A
+    // timer keeps the panel's channel from emptying, so a row added waits
+    // for the commit; the card's transform is drawn on the frame each of
+    // its samples is taken, without it. The matrix used to be written by
+    // the place effect, in the channel, and so waited with the row.
+    const { portal, list, rows, containerObject, dispose } = busyPanel();
+    const card = /** @type {HTMLElement} */ (list.firstElementChild);
+    card.style.transform = shifted(0);
+    const reported = reportTransform(card, shifted(0));
+    /** @type {(() => void) | undefined} */
+    let stop;
+    try {
+      await settle(portal);
+      const object = rowObject(containerObject, 0);
+      assert.equal(object.matrix.elements[12], 0);
+      stop = flicker(list);
+      list.appendChild(document.createElement("div"));
+      transformTransition(card, "transitionrun");
+      await nextMacrotask();
+      for (let frame = 1; frame <= 5; frame++) {
+        reported.value = shifted(frame);
+        flushFrame();
+        await nextMacrotask();
+        assert.equal(object.matrix.elements[12], frame, `the card is drawn at frame ${frame}`);
+      }
+      assert.equal(rows(), 4, "while the row added waits for the commit");
+    } finally {
+      transformTransition(card, "transitionend");
+      stop?.();
+      reported.restore();
+      await drain();
+      dispose();
+    }
+  });
+
+  /**
+   * Give an element the layout offsets and size jsdom does not, for a box
+   * on a transformed chain, which is measured by them.
+   *
+   * @param {HTMLElement} element
+   * @param {{ left?: number, width?: number, height?: number }} layout
+   */
+  const lay = (element, layout) => {
+    for (const [key, name] of /** @type {const} */ ([
+      ["left", "offsetLeft"],
+      ["width", "offsetWidth"],
+      ["height", "offsetHeight"],
+    ])) {
+      if (layout[key] !== undefined) {
+        Object.defineProperty(element, name, { configurable: true, get: () => layout[key] });
+      }
+    }
+  };
+
+  /**
+   * Run frames, the clock moving, until the row `whileWaiting` added is in
+   * the scene: until the commit, which the time bound forces if nothing
+   * else does. Calls `frame` before each.
+   *
+   * @param {() => number} rows
+   * @param {ReturnType<typeof fakeClock>} clock
+   * @param {(frame: number) => void} [frame]
+   * @returns {Promise<number>} how many frames it took
+   */
+  const untilCommitted = async (rows, clock, frame = () => {}) => {
+    let frames = 0;
+    while (frames < 300 && rows() < 5) {
+      frames += 1;
+      frame(frames);
+      clock.advance(16);
+      flushFrame();
+      await nextMacrotask();
+    }
+    assert.equal(rows(), 5, "the commit landed");
+    return frames;
+  };
+
+  /**
+   * A card, the first of `busyPanel`'s rows, that steps from transform
+   * `from` to `to` while a timer keeps the panel's channel from emptying,
+   * so that the commit waits: `during` is called after a few frames of
+   * that, and `after` once the commit has landed. `prepare` styles the
+   * rows before the panel settles.
+   *
+   * @param {object} options
+   * @param {(list: HTMLElement, card: HTMLElement) => void} [options.prepare]
+   * @param {string} options.from
+   * @param {string} options.to
+   * @param {(object: THREE.Object3D, before: THREE.Matrix4) => void} options.during
+   * @param {(object: THREE.Object3D) => void} options.after
+   */
+  const whileWaiting = async ({ prepare = () => {}, from, to, during, after }) => {
+    const { portal, list, rows, clock, containerObject, dispose } = busyPanel();
+    const card = /** @type {HTMLElement} */ (list.firstElementChild);
+    prepare(list, card);
+    card.style.transform = from;
+    const reported = reportTransform(card, from);
+    /** @type {(() => void) | undefined} */
+    let stop;
+    try {
+      await settle(portal);
+      const object = rowObject(containerObject, 0);
+      const before = object.matrix.clone();
+      stop = flicker(list);
+      list.appendChild(document.createElement("div"));
+      transformTransition(card, "transitionrun");
+      reported.value = to;
+      for (let frame = 0; frame < 3; frame++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(rows(), 4, "the panel's channel is waiting");
+      during(object, before);
+      stop();
+      stop = undefined;
+      await untilCommitted(rows, clock);
+      after(object);
+    } finally {
+      transformTransition(card, "transitionend");
+      stop?.();
+      reported.restore();
+      await drain();
+      dispose();
+    }
+  };
+
+  /** @param {THREE.Object3D} object @param {THREE.Matrix4} before */
+  const held = (object, before) =>
+    assert.ok(object.matrix.equals(before), "the matrix holds where the order was written for");
+
+  /**
+   * The overlap cases' rows: the card 10 by 10, and the row after it a
+   * transformed card as big, at 50.
+   *
+   * @param {HTMLElement} list
+   * @param {HTMLElement} card
+   */
+  const besideACard = (list, card) => {
+    const other = /** @type {HTMLElement} */ (card.nextElementSibling);
+    lay(card, { width: 10, height: 10 });
+    lay(other, { left: 50, width: 10, height: 10 });
+    other.style.transform = shifted(0);
+  };
+
+  test("a transform is composed with the offset the panel committed, until it commits the next", async () => {
+    // The motion step never reads a layout the panel's channel has not
+    // committed: the card's layout moves while the channel waits, and its
+    // transform is drawn at the old offset until the commit, which brings
+    // the offset and that frame's transform in together.
+    const { portal, list, rows, clock, containerObject, dispose } = busyPanel();
+    const card = /** @type {HTMLElement} */ (list.firstElementChild);
+    card.style.transform = shifted(0);
+    const reported = reportTransform(card, shifted(0));
+    let left = 0;
+    Object.defineProperty(card, "offsetLeft", { configurable: true, get: () => left });
+    /** @type {(() => void) | undefined} */
+    let stop;
+    try {
+      await settle(portal);
+      const object = rowObject(containerObject, 0);
+      stop = flicker(list);
+      left = 100;
+      list.appendChild(document.createElement("div"));
+      transformTransition(card, "transitionrun");
+      await nextMacrotask();
+      for (let frame = 1; frame <= 5; frame++) {
+        reported.value = shifted(frame);
+        flushFrame();
+        await nextMacrotask();
+        assert.equal(object.matrix.elements[12], frame, `at the committed offset, frame ${frame}`);
+      }
+      stop();
+      stop = undefined;
+      /** @type {number[]} */
+      const drawn = [];
+      const frames = await untilCommitted(rows, clock, (frame) => {
+        if (frame > 1) {
+          drawn.push(object.matrix.elements[12] - (frame - 1) - 5);
+        }
+        reported.value = shifted(5 + frame);
+      });
+      drawn.push(object.matrix.elements[12] - frames - 5);
+      assert.deepEqual(
+        drawn,
+        [...Array.from({ length: frames - 1 }, () => 0), 100],
+        "each frame draws its own transform, and the commit's adds the new offset to it",
+      );
+    } finally {
+      transformTransition(card, "transitionend");
+      stop?.();
+      reported.restore();
+      await drain();
+      dispose();
+    }
+  });
+
+  test("a step that makes the element a layer holds until the commit", () =>
+    whileWaiting({
+      from: shifted(2),
+      to: "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2, 0, 5, 1)",
+      during: held,
+      after(object) {
+        assert.equal(object.matrix.elements[12], 2);
+        assert.equal(object.matrix.elements[14], -5, "the live transform, once committed");
+      },
+    }));
+
+  test("a step that leaves the element untransformed holds until the commit", () =>
+    // Positioned, so that its painting layer is the same either way, and
+    // only `isTransformed` flips.
+    whileWaiting({
+      prepare(list, card) {
+        card.style.position = "relative";
+      },
+      from: shifted(2),
+      to: "none",
+      during: held,
+      after(object) {
+        assert.equal(object.matrix.elements[12], 0, "placed plainly, once committed");
+      },
+    }));
+
+  test("a transform of its own under a transformed ancestor holds until the commit", () =>
+    // `isTransformed` is true for the card already, through the list, and
+    // does not flip; its painting layer does.
+    whileWaiting({
+      prepare(list) {
+        list.style.transform = shifted(0);
+      },
+      from: "none",
+      to: shifted(3),
+      during: held,
+      after(object) {
+        assert.equal(object.matrix.elements[12], 3, "the live transform, once committed");
+      },
+    }));
+
+  test("a step onto a sibling it did not overlap holds until the commit", () =>
+    whileWaiting({
+      prepare: besideACard,
+      from: shifted(10),
+      to: shifted(45),
+      during: held,
+      after(object) {
+        assert.equal(object.matrix.elements[12], 45, "the live transform, once committed");
+      },
+    }));
+
+  test("a layer stepping onto a sibling is drawn at once", () =>
+    // A layer is ordered by the walk, from its matrix, and its siblings'
+    // draw levels skip it, so what it overlaps decides nothing.
+    whileWaiting({
+      prepare: besideACard,
+      from: "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 0, 5, 1)",
+      to: "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 45, 0, 5, 1)",
+      during(object) {
+        assert.equal(object.matrix.elements[12], 45, "drawn where it went");
+      },
+      after(object) {
+        assert.equal(object.matrix.elements[12], 45);
+      },
+    }));
+
+  test("a step onto a sibling in the flow is drawn at once", () =>
+    // A box in the flow is never cleared and clears nothing.
+    whileWaiting({
+      prepare(list, card) {
+        const other = /** @type {HTMLElement} */ (card.nextElementSibling);
+        lay(card, { width: 10, height: 10 });
+        other.getBoundingClientRect = () => clientRect(50, 0, 10, 10);
+      },
+      from: shifted(10),
+      to: shifted(45),
+      during(object) {
+        assert.equal(object.matrix.elements[12], 45, "drawn where it went");
+      },
+      after(object) {
+        assert.equal(object.matrix.elements[12], 45);
+      },
+    }));
+
+  test("a departing row keeps its matrix until the commit takes it out", async () => {
+    // The mirror has let go of the row, and its transform read keeps the
+    // value it had, as every other read does. A row of the test's own, so
+    // that taking it out leaves the tree's own rows as it built them.
+    const { portal, list, clock, containerObject, dispose } = busyPanel();
+    const card = document.createElement("div");
+    list.appendChild(card);
+    card.style.transform = shifted(7);
+    const reported = reportTransform(card, shifted(7));
+    /** @type {(() => void) | undefined} */
+    let stop;
+    try {
+      await settle(portal);
+      // The only row drawn shifted, wherever the scene put it.
+      const object = /** @type {THREE.Object3D} */ (
+        rowObject(containerObject, 0).parent?.children.find(
+          (child) => child.matrix.elements[12] === 7,
+        )
+      );
+      assert.ok(object, "the row is drawn where its transform puts it");
+      stop = flicker(list);
+      card.remove();
+      card.style.transform = shifted(20);
+      reported.value = shifted(20);
+      for (let frame = 0; frame < 3; frame++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(object.parent?.children.includes(object), true, "the row is still drawn");
+      assert.equal(object.matrix.elements[12], 7, "where it was");
+      stop();
+      stop = undefined;
+      let frames = 0;
+      while (frames < 300 && object.parent) {
+        frames += 1;
+        clock.advance(16);
+        flushFrame();
+        await nextMacrotask();
+      }
+      assert.equal(object.parent, null, "until the commit takes it out");
+      assert.equal(object.matrix.elements[12], 7, "still where it was");
+    } finally {
+      stop?.();
+      reported.restore();
+      await drain();
+      dispose();
+    }
+  });
+
+  test("the motion channel finishes in the frame, under a budget that cuts the panel's", async () => {
+    // A panel that is not atomic runs its channel's effects under the
+    // budget, and a pass that runs a place effect may stop before the
+    // motion effect the place marked. The end of the tick drains the motion
+    // channel, so no frame is drawn with a box's place and clip committed
+    // and its matrix behind them.
+    const { portal, list, containerObject, dispose } = busyPanel({ atomic: false });
+    const cards = /** @type {HTMLElement[]} */ ([...list.children]);
+    let left = 0;
+    for (const card of cards) {
+      card.style.transform = shifted(0);
+      Object.defineProperty(card, "offsetLeft", { configurable: true, get: () => left });
+    }
+    /** @type {UpdateChannel | undefined} */
+    let motion;
+    const reportPending = UpdateChannel.prototype.reportPending;
+    UpdateChannel.prototype.reportPending = function (queue, count) {
+      if (this.name === "motion") {
+        motion = this;
+      }
+      return reportPending.call(this, queue, count);
+    };
+    try {
+      await settle(portal);
+      const objects = cards.map((_, index) => rowObject(containerObject, index));
+      left = 30;
+      list.setAttribute("data-step", "1");
+      await nextMacrotask();
+      /** @type {number[]} */
+      const moved = [];
+      for (let frame = 0; frame < 200 && moved.at(-1) !== cards.length; frame++) {
+        flushFrame();
+        assert.equal(motion?.pendingCount ?? 0, 0, `the motion channel is empty, frame ${frame}`);
+        await nextMacrotask();
+        moved.push(objects.filter((object) => object.matrix.elements[12] === 30).length);
+      }
+      assert.equal(moved.at(-1), cards.length, "every row moved, in the end");
+      assert.ok(
+        moved.some((count) => count > 0 && count < cards.length),
+        `and some before the rest, so the budget cut the panel's passes: ${moved.join(", ")}`,
+      );
+      assert.ok(motion, "the motion channel was used");
+    } finally {
+      UpdateChannel.prototype.reportPending = reportPending;
       await drain();
       dispose();
     }

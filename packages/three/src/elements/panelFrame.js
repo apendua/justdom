@@ -1,4 +1,5 @@
 import { getPortalRoot } from "./portalRoot.js";
+import { matrixScratch, readMatrix } from "./cssNumbers.js";
 
 /**
  * Every client rect freedom reads, and the frame it is read in.
@@ -177,27 +178,6 @@ function frameRecord(base) {
 }
 
 /**
- * The six or sixteen numbers of a computed `matrix()` or `matrix3d()`, or
- * null for anything else. A browser computes every transform to one of the
- * two; jsdom passes the author's value through, which counts as none here
- * as it does for `hasTransform`.
- *
- * @param {string | undefined} value
- * @returns {number[] | null}
- */
-export function matrixValues(value) {
-  const match = value?.match(/^matrix(3d)?\(([^)]*)\)/);
-  if (!match) {
-    return null;
-  }
-  const values = match[2].split(",").map((part) => Number.parseFloat(part));
-  if (values.some(Number.isNaN) || values.length !== (match[1] ? 16 : 6)) {
-    return null;
-  }
-  return values;
-}
-
-/**
  * The factors a frame divides by for a scale of `x` across and `y` down,
  * or null for a flip. A scale of 0 draws nothing, so there is nothing to
  * divide and nothing to warn about: it counts as 1.
@@ -225,11 +205,12 @@ function scaleFactors(x, y) {
  * @returns {[number, number] | null}
  */
 function transformScale(value) {
-  const m = matrixValues(value);
-  if (!m) {
+  const count = readMatrix(value ?? "");
+  if (count === 0) {
     return [1, 1];
   }
-  if (m.length === 6) {
+  const m = matrixScratch;
+  if (count === 6) {
     const [a, b, c, d] = m;
     return b === 0 && c === 0 ? scaleFactors(a, d) : null;
   }

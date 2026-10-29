@@ -76,8 +76,8 @@ export const PortalReadyContext = createProperty(
 /**
  * The channel a box writes its matrix in, apart from the panel's: the
  * portal's `motionChannel`, which drains of its own accord. Null outside a
- * portal, where the motion effect is built in whatever channel builds the
- * box.
+ * portal, where no motion effect is built: the place effect runs the
+ * motion step in its own run.
  */
 export const MotionChannelContext = createProperty(
   /**

@@ -814,9 +814,9 @@ dom(ctx, menu, [set({ position })], {
   change the order the panel is drawn in waits for the commit: one that makes the element a layer or
   stops it being one (a `translateZ`, a 3D rotation), one that changes whether it is placed by a
   matrix or which painting layer it is in (a transform appearing or going), or, for an element that
-  is not a layer, one that moves it onto or off a positioned or transformed sibling. Its transform
-  is drawn from that commit on. An SVG element's transform, and one animated beside any other
-  property, still lands with the update.
+  is not a layer, one that moves it onto or off a positioned or transformed sibling that is not a
+  layer either. Its transform is drawn from that commit on. An SVG element's transform, and one
+  animated beside any other property, still lands with the update.
 - **`data-xr-busy`** is on the container while a panel has work it will do on a coming frame — an
   animation the clock is sampling, an update the pump has not yet brought into the scene — and comes
   off on the frame that draws the last of it. A harness pins the page's animations, then waits for

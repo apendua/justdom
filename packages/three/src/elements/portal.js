@@ -1859,7 +1859,8 @@ function buildPortal(ctx, ownOptions = {}) {
   /**
    * What the animation clock's batches mean in the mirror's vocabulary:
    * `animated` is a style change stretched over time, `animatedSelf` the
-   * same confined to the element, `reflow` is rects
+   * same confined to the element, `transformed` confined to its transform,
+   * `reflow` is rects
    * moving without a mutation — a settling transform for its own subtree,
    * an animating layout property for everyone.
    *
@@ -1873,6 +1874,9 @@ function buildPortal(ctx, ownOptions = {}) {
         }
         if (animationBatch.types.has("animatedSelf") && animationBatch.targets) {
           mirror.animatedStyles(animationBatch.targets, { subtree: false });
+        }
+        if (animationBatch.types.has("transformed") && animationBatch.targets) {
+          mirror.transformed(animationBatch.targets);
         }
         if (animationBatch.types.has("reflow")) {
           mirror.reflowed(animationBatch.targets);

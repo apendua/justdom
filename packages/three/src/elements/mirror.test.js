@@ -13,6 +13,7 @@ import {
   getLocalClipBox,
   getObjectPosition,
   getTextLayout,
+  getTransformStyle,
   isTransformed,
   isVisibilityHidden,
   resetMeasuringRangeForTests,
@@ -20,6 +21,8 @@ import {
   tracksCharacterEdges,
 } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { hasDepthTransform } from "./cssTransform.js";
+import { getPaintLayer } from "./elevation.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
 import { stagedRoot } from "../test/stagedRoot.js";
@@ -701,6 +704,87 @@ describe("getComputedStyleCached", () => {
     holder.dispose();
     first.remove();
     second.remove();
+  });
+});
+
+describe("a transform moving alone", () => {
+  test("reaches what reads the transform and leaves the rest of the style alone", () => {
+    // A card turning is sampled every frame. What depends on its transform
+    // has to follow, the answers that change the panel's order included;
+    // what is copied out of the rest of its style has nothing to re-read.
+    const root = document.createElement("div");
+    root.setAttribute(PORTAL_ATTRIBUTE, "");
+    const card = document.createElement("div");
+    root.appendChild(card);
+    document.body.appendChild(root);
+    const mirror = createMirror();
+    mirror.adopt(root);
+    mirror.adopt(card);
+
+    // The transform as the browser reports it. jsdom has no transitions,
+    // and writing the style would be a mutation.
+    let transform = "none";
+    const getComputedStyle = window.getComputedStyle;
+    window.getComputedStyle = (element, pseudoElement) => {
+      const style = getComputedStyle.call(window, element, pseudoElement);
+      if (element !== card) {
+        return style;
+      }
+      return new Proxy(style, {
+        get(target, key) {
+          if (key === "transform") {
+            return transform;
+          }
+          const value = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    };
+    let styleReads = 0;
+    /** @type {{ transformed?: boolean, depth?: boolean, layer?: number | null }} */
+    const seen = {};
+    const holders = [
+      new Effect(() => {
+        styleReads += 1;
+        getComputedStyleCached(card);
+      }),
+      new Effect(() => {
+        seen.transformed = isTransformed(card);
+      }),
+      new Effect(() => {
+        seen.depth = hasDepthTransform(card);
+      }),
+      new Effect(() => {
+        seen.layer = getPaintLayer(card);
+      }),
+    ];
+    try {
+      assert.deepEqual(seen, { transformed: false, depth: false, layer: null });
+
+      // The first frame of a lift: the card is transformed, in a painting
+      // layer of its own, and out of its parent's plane.
+      transform = "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 2, 1)";
+      mirror.transformed([card]);
+      assert.deepEqual(seen, { transformed: true, depth: true, layer: 0 });
+      assert.equal(getTransformStyle(card).transform, transform);
+      assert.equal(styleReads, 1, "the rest of the card's style is not read again");
+
+      // And back down.
+      transform = "none";
+      mirror.transformed([card]);
+      assert.deepEqual(seen, { transformed: false, depth: false, layer: null });
+      assert.equal(styleReads, 1);
+
+      // A sample of the whole style still reaches the transform.
+      transform = "matrix(1, 0, 0, 1, 4, 0)";
+      mirror.animatedStyles([card], { subtree: false });
+      assert.equal(styleReads, 2);
+      assert.deepEqual(seen, { transformed: true, depth: false, layer: 0 });
+    } finally {
+      window.getComputedStyle = getComputedStyle;
+      holders.forEach((effect) => effect.dispose());
+      root.remove();
+    }
   });
 });
 

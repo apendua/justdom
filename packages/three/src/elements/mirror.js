@@ -731,6 +731,17 @@ class NodeRecord {
   own = Signal.of(0);
 
   /**
+   * This node's own transform moved and nothing else about it can have: an
+   * animation of `transform` alone on an HTML element. Read by its transform
+   * (`getTransformStyle`) and by nothing else, so a frame of a card turning
+   * re-reads what depends on the card's transform and leaves the rest of its
+   * computed style, and everything copied out of it, as it was.
+   *
+   * @type {Signal<number>}
+   */
+  transform = Signal.of(0);
+
+  /**
    * Some *child* of this node changed its attributes. Sibling combinators
    * (`~`, `+`) let a mutation restyle the elements after it, so each
    * child's computed style depends on this — one signal on the parent
@@ -1698,7 +1709,8 @@ export class DomMirror {
    * than a frame's budget could re-resolve, so the tilt never reached the
    * scene until it had finished. Whatever a descendant does derive from an
    * ancestor's style — `isTransformed` — reads it through the ancestor's
-   * own memoized style, which this still invalidates.
+   * own memoized reads, which this still invalidates. A transform animating
+   * alone on an HTML element goes narrower still, to `transformed`.
    *
    * @param {Iterable<Node>} targets
    * @param {{ subtree?: boolean }} [options]
@@ -1714,6 +1726,26 @@ export class DomMirror {
           if (record) {
             bump(record.own);
           }
+        }
+      }
+    });
+  }
+
+  /**
+   * The animation clock sampled: the transforms of these elements may have
+   * moved, and nothing else about them. Narrower than `animatedStyles` with
+   * `subtree: false`, which re-reads the element's whole computed style; this
+   * reaches only what reads the transform (`getTransformStyle`).
+   *
+   * @param {Iterable<Node>} targets
+   * @returns {void}
+   */
+  transformed(targets) {
+    batch(() => {
+      for (const target of targets) {
+        const record = recordOf(target);
+        if (record) {
+          bump(record.transform);
         }
       }
     });
@@ -2772,6 +2804,49 @@ export function getAttributeCached(element, name) {
   return signal.get();
 }
 
+/**
+ * @typedef {object} TransformStyle
+ * @property {string} transform The computed `transform`.
+ * @property {string} transformOrigin The computed `transform-origin`.
+ */
+
+/** @type {WeakMap<Element, Derived<TransformStyle>>} */
+const transformStyleCache = nodeCache();
+
+/**
+ * The element's computed `transform` and `transform-origin`, behind their
+ * own equality gate. The one read of an element's transform: it hears what
+ * the element's computed style hears (`getStyleContext`) and, besides, the
+ * clock's sample of a transform animating alone (`DomMirror.transformed`),
+ * which nothing else hears. It asks the browser itself rather than reading
+ * `getComputedStyleCached`, whose declaration is read again only when the
+ * context moves. So a restyle that leaves the transform where it was stops
+ * here, and a transform that moves reaches its readers without the rest of
+ * the element's style being read again.
+ *
+ * @param {Element} element
+ * @returns {TransformStyle}
+ */
+export function getTransformStyle(element) {
+  let signal = transformStyleCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(
+      element,
+      () => {
+        getStyleContext(element);
+        readRecordOf(element)?.transform.get();
+        const style = window.getComputedStyle(element);
+        return { transform: style.transform, transformOrigin: style.transformOrigin };
+      },
+      {
+        isEqual: (a, b) => a.transform === b.transform && a.transformOrigin === b.transformOrigin,
+      },
+    );
+    transformStyleCache.set(element, signal);
+  }
+  return signal.get();
+}
+
 /** @type {WeakMap<HTMLElement, Derived<boolean>>} */
 const transformedCache = nodeCache();
 
@@ -2797,7 +2872,7 @@ export function isTransformed(element) {
       if (isPortalRoot(element)) {
         return false;
       }
-      if (hasTransform(getComputedStyleCached(element).transform)) {
+      if (hasTransform(getTransformStyle(element).transform)) {
         return true;
       }
       const parent = getParentElement(element);

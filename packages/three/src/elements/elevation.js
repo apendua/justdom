@@ -7,6 +7,7 @@ import {
   getComputedStyleCached,
   getParentElement,
   getTextDataCached,
+  getTransformStyle,
   hasTransform,
   isTransformed,
   movesAgainstScroll,
@@ -345,7 +346,7 @@ export function getPaintLayer(element) {
       const style = getComputedStyleCached(element);
       const positioned = !!style.position && style.position !== "static";
       if (!positioned) {
-        return hasTransform(style.transform) ? 0 : null;
+        return hasTransform(getTransformStyle(element).transform) ? 0 : null;
       }
       const zIndex = parseInt(style.zIndex, 10);
       return zIndex < 0 ? -1 : zIndex > 0 ? 1 : 0;

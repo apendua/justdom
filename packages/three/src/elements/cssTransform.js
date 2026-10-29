@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getComputedStyleCached, hasTransform, isTransformed } from "./mirror.js";
+import { getTransformStyle, hasTransform, isTransformed } from "./mirror.js";
 import { matrixValues } from "./panelFrame.js";
 
 /**
@@ -127,7 +127,7 @@ export function composeTransform(target, x, y, z, matrix, origin) {
  * @returns {{ matrix: THREE.Matrix4, origin: { x: number, y: number, z: number } } | null}
  */
 export function getOwnTransform(element) {
-  const style = getComputedStyleCached(element);
+  const style = getTransformStyle(element);
   const matrix = parseTransform(style.transform);
   if (!matrix) {
     return null;
@@ -156,7 +156,7 @@ export function getOwnTransform(element) {
  * @returns {boolean}
  */
 export function hasDepthTransform(element) {
-  const matrix = parseTransform(getComputedStyleCached(element).transform);
+  const matrix = parseTransform(getTransformStyle(element).transform);
   if (!matrix) {
     return false;
   }

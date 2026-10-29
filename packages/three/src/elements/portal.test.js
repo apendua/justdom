@@ -9,6 +9,7 @@ import {
   DomMirror,
   getChildNodes,
   getComputedStyleCached,
+  getTransformStyle,
   LOADING_ATTRIBUTE,
   resetMeasuringRangeForTests,
 } from "./mirror.js";
@@ -1196,7 +1197,8 @@ describe("createPortal", () => {
   test("an animation of nothing inherited restyles the element, not what is on it", async () => {
     // The clock and the mirror each have tests of their own for this; what
     // this one pins is the wire between them. A card turning under a
-    // transform restyles the card and not the label on it; a colour
+    // transform re-reads the card's transform and neither style; a
+    // background fading restyles the card and not the label on it; a colour
     // transition, which the label inherits, restyles both.
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
@@ -1218,9 +1220,35 @@ describe("createPortal", () => {
     // label. The clock compares the two to rule out a label that inherits
     // the transform explicitly, and two unset values would compare equal.
     card.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
+    // And a background of its own, which the label does not share, for the
+    // same reason.
+    card.style.backgroundColor = "rgb(10, 20, 30)";
     await pump();
-    const reads = { card: 0, label: 0 };
+    // The turn as the browser reports it frame by frame. jsdom has no
+    // transitions, and writing the style would be a mutation.
+    let turn = 0;
+    const getComputedStyle = window.getComputedStyle;
+    window.getComputedStyle = (element, pseudoElement) => {
+      const style = getComputedStyle.call(window, element, pseudoElement);
+      if (element !== card) {
+        return style;
+      }
+      return new Proxy(style, {
+        get(target, key) {
+          if (key === "transform") {
+            return `matrix(0.996, 0.087, -0.087, 0.996, ${turn}, 0)`;
+          }
+          const value = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    };
+    const reads = { transform: 0, card: 0, label: 0 };
     const holders = [
+      new Effect(() => {
+        reads.transform += 1;
+        getTransformStyle(card);
+      }),
       new Effect(() => {
         reads.card += 1;
         getComputedStyleCached(card);
@@ -1230,7 +1258,7 @@ describe("createPortal", () => {
         getComputedStyleCached(label);
       }),
     ];
-    assert.deepEqual(reads, { card: 1, label: 1 });
+    assert.deepEqual(reads, { transform: 1, card: 1, label: 1 });
 
     /** @param {string} type @param {string} propertyName */
     const transition = (type, propertyName) =>
@@ -1238,10 +1266,19 @@ describe("createPortal", () => {
 
     try {
       transition("transitionrun", "transform");
+      turn = 1;
       await pump();
-      assert.ok(reads.card > 1, "the card restyles while it turns");
-      assert.equal(reads.label, 1, "the label on it does not");
+      assert.ok(reads.transform > 1, "the card's transform is read again while it turns");
+      assert.equal(reads.card, 1, "the rest of the card's style is not");
+      assert.equal(reads.label, 1, "nor the label's on it");
       transition("transitionend", "transform");
+      await pump();
+
+      transition("transitionrun", "background-color");
+      await pump();
+      assert.ok(reads.card > 1, "the card restyles while its background fades");
+      assert.equal(reads.label, 1, "the label on it does not");
+      transition("transitionend", "background-color");
       await pump();
 
       const before = reads.label;
@@ -1252,8 +1289,10 @@ describe("createPortal", () => {
       // Ended whichever way the test went, or the clock goes on asking for
       // frames every test after this one would have to flush.
       transition("transitionend", "transform");
+      transition("transitionend", "background-color");
       transition("transitionend", "color");
       await pump();
+      window.getComputedStyle = getComputedStyle;
       holders.forEach((effect) => effect.dispose());
       subscription.unsubscribe();
       portal.disconnect();
@@ -3386,7 +3425,7 @@ describe("mounting a tree justdom did not build", () => {
           throw new Error("Cannot replace a segment that is not in a tree.");
         }
         parent.insertBefore(node, first);
-        for (let current = /** @type {Node | null} */ (first); current;) {
+        for (let current = /** @type {Node | null} */ (first); current; ) {
           const next = current.nextSibling;
           parent.removeChild(current);
           current = current === last ? null : next;

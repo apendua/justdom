@@ -146,13 +146,13 @@ describe("animation clock", () => {
         [["animated"]],
       );
 
-      // The colour lands and the transform runs on: the element alone again.
+      // The colour lands and the transform runs on: its transform alone.
       element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "color" }));
       frames.step();
       const ticked = emitted[emitted.length - 1];
       assert.deepEqual(
         ticked.map((batch) => [...batch.types]),
-        [["animatedSelf"]],
+        [["transformed"]],
       );
     } finally {
       cleanup();
@@ -167,17 +167,20 @@ describe("animation clock", () => {
       // Mid-flight, nothing consumes the transformed client rects: elements
       // measure off layout offsets and text measures with transforms
       // switched off. Only the style sample goes out.
-      // And the style sample is of the element alone: a transform is not
-      // inherited, so a card turning restyles the card and nothing on it.
+      // And the sample is of the element's transform alone: a transform is
+      // not inherited, so a card turning moves the card's transform and
+      // nothing else of its style, nor anything on it.
       const [ticked] = emitted;
       assert.equal(ticked.length, 1);
-      assert.deepEqual([...ticked[0].types], ["animatedSelf"]);
+      assert.deepEqual([...ticked[0].types], ["transformed"]);
+      assert.deepEqual([...(ticked[0].targets ?? [])], [element]);
 
       // The end is different: the element returns to the client-rect path,
       // and whatever its subtree cached mid-flight is stale.
       element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "transform" }));
       const settled = emitted[emitted.length - 1];
       assert.equal(settled.length, 2);
+      assert.deepEqual([...settled[0].types], ["transformed"]);
       assert.deepEqual([...settled[1].types], ["reflow"]);
       assert.deepEqual([...(settled[1].targets ?? [])], [element]);
     } finally {
@@ -300,12 +303,12 @@ describe("animation clock", () => {
       // The card has moved; its child has not.
       element.style.transform = "matrix(0.996, 0.087, -0.087, 0.996, 0, 0)";
       frames.step();
-      assert.deepEqual([...emitted[1][0].types], ["animatedSelf"]);
+      assert.deepEqual([...emitted[1][0].types], ["transformed"]);
       assert.equal(childReads, 2);
 
       frames.step();
       frames.step();
-      assert.deepEqual([...emitted[3][0].types], ["animatedSelf"]);
+      assert.deepEqual([...emitted[3][0].types], ["transformed"]);
       assert.equal(childReads, 2, "and the verdict is kept");
     } finally {
       restore();
@@ -325,7 +328,7 @@ describe("animation clock", () => {
 
       element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
       frames.step();
-      assert.deepEqual([...emitted[emitted.length - 1][0].types], ["animatedSelf"]);
+      assert.deepEqual([...emitted[emitted.length - 1][0].types], ["transformed"]);
 
       // The child inherits opacity, which the kept verdict never compared.
       element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
@@ -366,6 +369,57 @@ describe("animation clock", () => {
         { transform: "translateX(10px)", offset: 1, easing: "linear", composite: "replace" },
       ]);
       clock.sweep();
+      frames.step();
+      assert.deepEqual(
+        emitted[emitted.length - 1].map((batch) => [...batch.types]),
+        [["transformed"]],
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("a transform animated beside anything else restyles the element alone", () => {
+    // `opacity` with `transform` combines to the transform class, since the
+    // classes subsume, but the opacity is still read off the element's whole
+    // computed style, which only `animatedSelf` re-reads.
+    const { element, emitted, frames, cleanup } = setup();
+    try {
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
+      element.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "opacity" }));
+      frames.step();
+      assert.deepEqual(
+        emitted[emitted.length - 1].map((batch) => [...batch.types]),
+        [["animatedSelf"]],
+      );
+
+      // The opacity lands: its settle re-reads the style, and the transform
+      // running on is its transform alone again.
+      element.dispatchEvent(syntheticEvent("transitionend", { propertyName: "opacity" }));
+      assert.deepEqual(
+        emitted[emitted.length - 1].map((batch) => [...batch.types]),
+        [["animatedSelf"]],
+      );
+      frames.step();
+      assert.deepEqual(
+        emitted[emitted.length - 1].map((batch) => [...batch.types]),
+        [["transformed"]],
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("an SVG element's transform restyles the element alone", () => {
+    // What reads an SVG element's transform reads its whole computed style
+    // (`ownTransform` in `svg/shape.js`), so its transform is not narrowed.
+    const { container, emitted, frames, cleanup } = setup();
+    try {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      svg.appendChild(group);
+      container.appendChild(svg);
+      group.dispatchEvent(syntheticEvent("transitionrun", { propertyName: "transform" }));
       frames.step();
       assert.deepEqual(
         emitted[emitted.length - 1].map((batch) => [...batch.types]),

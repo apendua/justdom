@@ -1,15 +1,18 @@
+import { isSvgElement } from "./plugins.js";
 import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
 
 /**
  * The kinds of change the clock can announce, and the shape it announces
  * them in. `animated` says the computed styles of the targets' subtrees may
  * have moved; `animatedSelf` says only the targets' own have, because what
- * is animating does not inherit; `reflow` says client rects have — of the
+ * is animating does not inherit; `transformed` narrows that once more, to
+ * the targets' own transforms, for an HTML element animating nothing else;
+ * `reflow` says client rects have — of the
  * targets' subtrees, or of everything when layout itself is animating and
  * no target can name what it displaced. The portal translates these into
  * the mirror's targeted invalidations.
  *
- * @typedef {"animated" | "animatedSelf" | "reflow"} MutationType
+ * @typedef {"animated" | "animatedSelf" | "transformed" | "reflow"} MutationType
  */
 
 /**
@@ -324,6 +327,27 @@ function reachesSubtree(element, animated) {
 }
 
 /**
+ * Whether one element's animations, already known to reach no child, move
+ * its transform and nothing else: every property they animate is in
+ * `TRANSFORM_PROPERTIES`. Asked of the properties and not of the class,
+ * since `CLASS_RANK` subsumes and an `opacity` animated beside a
+ * `transform` combines to the transform class. An SVG element is never
+ * one, since what reads its transform reads its whole computed style
+ * (`ownTransform` in `svg/shape.js`).
+ *
+ * @param {Element} element
+ * @param {Animated} animated
+ * @returns {boolean}
+ */
+function movesOnlyTransform(element, animated) {
+  return (
+    !isSvgElement(element) &&
+    animated.properties.length > 0 &&
+    animated.properties.every((property) => TRANSFORM_PROPERTIES.has(property))
+  );
+}
+
+/**
  * How many ticks between `getAnimations()` reconciliations — about once a
  * second at typical frame rates.
  */
@@ -512,11 +536,12 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
    *
    * @param {Set<Node>} targets restyled with their subtrees
    * @param {Set<Node>} selfTargets restyled alone
+   * @param {Set<Node>} movedTargets whose transforms alone moved
    * @param {Set<Node>} transformTargets
    * @param {boolean} layout
    * @returns {MutationBatch[]}
    */
-  function batchesFor(targets, selfTargets, transformTargets, layout) {
+  function batchesFor(targets, selfTargets, movedTargets, transformTargets, layout) {
     /** @type {MutationBatch[]} */
     const batches = [];
     if (targets.size) {
@@ -524,6 +549,9 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     }
     if (selfTargets.size) {
       batches.push({ types: new Set(["animatedSelf"]), targets: selfTargets });
+    }
+    if (movedTargets.size) {
+      batches.push({ types: new Set(["transformed"]), targets: movedTargets });
     }
     if (layout) {
       batches.push({ types: new Set(["reflow"]), targets: null });
@@ -539,16 +567,22 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     const targets = new Set();
     /** @type {Set<Node>} */
     const selfTargets = new Set();
+    /** @type {Set<Node>} */
+    const movedTargets = new Set();
     let layout = false;
     for (const [element, keys] of animating) {
       const animated = combine(keys.values());
       const { cls } = animated;
-      (reachesSubtreeWhileRunning(element, animated) ? targets : selfTargets).add(element);
+      if (reachesSubtreeWhileRunning(element, animated)) {
+        targets.add(element);
+      } else {
+        (movesOnlyTransform(element, animated) ? movedTargets : selfTargets).add(element);
+      }
       if (cls === "layout") {
         layout = true;
       }
     }
-    return batchesFor(targets, selfTargets, new Set(), layout);
+    return batchesFor(targets, selfTargets, movedTargets, new Set(), layout);
   }
 
   /**
@@ -565,10 +599,12 @@ export function createAnimationClock(container, emit, requestFrames, { held = ()
     // Checked again rather than trusted from the last frame: the value the
     // property lands on is what a child that inherits it has to show.
     const subtree = reachesSubtree(element, animated);
+    const moved = !subtree && movesOnlyTransform(element, animated);
     emit(
       batchesFor(
         subtree ? target : none,
-        subtree ? none : target,
+        subtree || moved ? none : target,
+        moved ? target : none,
         cls === "transform" ? target : none,
         cls === "layout",
       ),

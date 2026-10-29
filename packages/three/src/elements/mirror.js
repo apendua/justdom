@@ -721,10 +721,12 @@ class NodeRecord {
 
   /**
    * This node's own computed style moved and nothing under it can have: an
-   * animation of a property that does not inherit — a transform, an
-   * opacity, a background. Read by this node's style context alone (and by
-   * its text children's, whose computed style *is* this node's), where
-   * `self` is read by every descendant's.
+   * animation of a property that does not inherit — an opacity, a
+   * background, or a transform beside one of them or on an SVG element (a
+   * transform animating alone on an HTML element bumps `transform`
+   * instead). Read by this node's style context alone (and by its text
+   * children's, whose computed style *is* this node's), where `self` is
+   * read by every descendant's.
    *
    * @type {Signal<number>}
    */

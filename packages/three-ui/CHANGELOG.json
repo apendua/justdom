@@ -2,6 +2,26 @@
   "name": "@apendua/justui",
   "entries": [
     {
+      "version": "0.3.5",
+      "tag": "@apendua/justui_v0.3.5",
+      "date": "Fri, 30 Oct 2026 14:51:18 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "`drawOnTop` leaves a material that draws no colour alone, so a diagnostics panel no longer turns off the depth test of a panel's depth quad"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.30.0`"
+          },
+          {
+            "comment": "Updating dependency \"@apendua/freedom\" to `0.30.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.4",
       "tag": "@apendua/justui_v0.3.4",
       "date": "Sun, 18 Oct 2026 19:57:45 GMT",

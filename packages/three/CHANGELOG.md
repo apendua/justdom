@@ -1,6 +1,24 @@
 # Change Log - @apendua/freedom
 
-This log was last generated on Sun, 18 Oct 2026 19:57:45 GMT and should not be manually modified.
+This log was last generated on Fri, 30 Oct 2026 14:51:18 GMT and should not be manually modified.
+
+## 0.30.0
+Fri, 30 Oct 2026 14:51:18 GMT
+
+### Minor changes
+
+- Transform-only animations on HTML elements are drawn every frame through a motion channel of their own, without waiting for the atomic commit, unless a step would change the panel's paint order
+- A transform animating on its own re-reads only what depends on the element's transform, not the rest of its computed style
+- Add paint order's layer model, the tree that orders a panel's layers and the half-plane test in a box's and a mark's materials, none of them used by a panel yet
+- Add the `paintOrder` panel option, off by default, which draws a panel in paint order: flat on its layers' planes, its layers ordered by a tree walked from the viewer, its boxes and text in one batch, and one depth quad over its root
+- Draw every panel in paint order by default; `paintOrder: false` keeps the lift for now
+- Draw every panel in paint order, its only model. Breaking: the `paintOrder` and `depthRank` panel options are removed, with the lift they chose between and the depth bias, and each panel's boxes and text now draw in its one batch
+
+### Patches
+
+- Pressing on something draggable no longer crashes the app when a material is disposed while its shader programs link
+- Add the paint-order draw count and draw bench, which compare a panel drawn in paint order with the lift
+- Share the box and text batches' instancing helpers, split measureTextCanvas out of generateTextTexture and add hasDepthTransform, with nothing drawn differently
 
 ## 0.29.0
 Sun, 18 Oct 2026 19:57:45 GMT

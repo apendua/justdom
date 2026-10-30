@@ -1,6 +1,13 @@
 # Change Log - @apendua/justui
 
-This log was last generated on Sun, 18 Oct 2026 19:57:45 GMT and should not be manually modified.
+This log was last generated on Fri, 30 Oct 2026 14:51:18 GMT and should not be manually modified.
+
+## 0.3.5
+Fri, 30 Oct 2026 14:51:18 GMT
+
+### Patches
+
+- `drawOnTop` leaves a material that draws no colour alone, so a diagnostics panel no longer turns off the depth test of a panel's depth quad
 
 ## 0.3.4
 Sun, 18 Oct 2026 19:57:45 GMT

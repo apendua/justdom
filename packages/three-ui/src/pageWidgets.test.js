@@ -52,9 +52,9 @@ test("the widgets a page shows load no three.js and no scene", () => {
   // scroll, which is the page's side of freedom, not the renderer's.
   for (const widget of WIDGETS) {
     const graph = [...importGraph(new URL(`./${widget}.js`, import.meta.url).href)];
-    const three = graph.filter((url) => /\/three\/(src|build)\//.test(url));
+    const three = graph.filter((url) => /\/node_modules\/three\/(src|build)\//.test(url));
     assert.deepEqual(three, [], `${widget}.js reaches three.js`);
-    const scene = graph.filter((url) => url.endsWith("/freedom/src/index.js"));
+    const scene = graph.filter((url) => url === import.meta.resolve("justdom-three"));
     assert.deepEqual(scene, [], `${widget}.js reaches freedom's scene`);
   }
 });

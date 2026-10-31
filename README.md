@@ -2,9 +2,15 @@
 
 A reactive, non-VDOM renderer for the DOM and for Three.js, built on signals.
 
-The packages are moving here from the private apendua.dev monorepo. Until that is finished this
-repository holds only the build setup; [`docs/migration-plan.md`](docs/migration-plan.md) says what
-moves, what it will be called on npm, and in what order.
+The packages are moving here from the private apendua.dev monorepo;
+[`docs/migration-plan.md`](docs/migration-plan.md) says what moves, what it will be called on npm,
+and in what order. Their code and history are imported under `packages/` and `apps/`, but they still
+carry their apendua.dev package names and are not yet Rush projects, so `rush build` does not build
+them.
+
+`common/scripts/import-apendua-dev.sh` is the script that imported them. It is run once more at the
+start of the freeze, and because its rewrite is deterministic, that run adds apendua.dev's newer
+commits on top of the ones already here.
 
 ## Getting started
 

@@ -101,13 +101,11 @@
   // }
 
   /**
-   * The packages published to GitHub Packages under the "@apendua" scope.
+   * The packages published to npm: the unscoped "justdom-*" family and the
+   * "@apendua/*" packages beside it.
    *
-   * "individualVersion" is the ordinary NPM model -- each package keeps its own
-   * version number and CHANGELOG.md, and change files drive the bumps. That is
-   * exactly what "shouldPublish": true did before, so switching these projects
-   * over changed nothing about how "rush change" or "rush version --bump"
-   * behave.
+   * "individualVersion" is the ordinary npm model: each package keeps its own
+   * version number and CHANGELOG.md, and change files drive the bumps.
    *
    * The point of naming the set is that Rush can then select it natively.
    * "shouldPublish" is derived from "versionPolicyName", so this stays the one

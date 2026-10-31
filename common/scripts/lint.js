@@ -24,7 +24,6 @@ const allowedExtensions = [
   '.jsx',
   '.ts',
   '.tsx',
-  '.svelte',
 ];
 
 const eslintPath = path.resolve(

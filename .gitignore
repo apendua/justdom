@@ -77,11 +77,3 @@ lib
 lib-es
 lib-types
 dist
-
-# What the visual test photographed on this run. The baselines beside it are
-# committed; these are the frames it just took and the differences it found.
-apps/*/tests/output/
-
-# The site the Pages workflow assembles: the VitePress build with each demo's
-# build copied under it. Untracked, and rebuilt on every deploy.
-/site-deploy/

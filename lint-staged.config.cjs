@@ -11,5 +11,5 @@ const prettierPath = path.resolve(
 );
 
 module.exports = {
-  "*.{cjs,mjs,js,jsx,ts,tsx,svelte,json,md}": [`${prettierPath} --write`],
+  "*.{cjs,mjs,js,jsx,ts,tsx,json,md}": [`${prettierPath} --write`],
 };

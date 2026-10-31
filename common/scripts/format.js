@@ -33,7 +33,6 @@ const allowedExtensions = [
   '.jsx',
   '.ts',
   '.tsx',
-  '.svelte',
   '.json',
 ];
 

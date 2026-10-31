@@ -28,8 +28,8 @@ wins.
   paths rather than copying files in one commit.
 - **Versions continue.** Each package that has been published keeps its current version number
   under its new name (`justdom-signal` starts at 1.0.0, `justdom-three` at 0.30.0, and so on).
-  headset, sound and geometry have never been published and sit at a placeholder 1.0.0; see Still
-  open.
+  headset, sound and geometry have never been published and sit at a placeholder 1.0.0, so
+  `justdom-xr`, `@apendua/sound` and `@apendua/geometry` start at 0.1.0 instead.
 - **Publishing is done by hand.** GitHub Actions opens the version bump pull request and nothing
   more. The publish itself runs from Tomasz's own machine after that pull request is merged.
 - **The public packages do not need to work offline.** The apps load the WebXR controller and hand
@@ -63,7 +63,9 @@ proposals that have not been confirmed.
   the five apps that use it. That alone is not enough, because the apps point three's factories
   at the local path themselves: headset's `inputModels` and `apps/desk/src/xr.ts` both call
   `setPath` with `<base>profiles`, which answers 404 once the plugin is gone. Both stop calling
-  `setPath`, so the factories use their default, the jsDelivr CDN.
+  `setPath`, so the factories use their default, the jsDelivr CDN. `inputModels` then has no use
+  for its `base` parameter and becomes `inputModels()`, so its seven callers drop the argument,
+  including `apps/pinball` when it moves to `justdom-xr`.
 - `castle-xr` drops its Cinzel and Quicksand fonts in favour of the browser's defaults.
 - The two soundtracks move into their apps as they are: `glass_desk_habits.mp3` to `castle-xr` and
   `steps_to_the_throne.mp3` to `knights`. They are AI-generated, and they are Git LFS objects of
@@ -95,10 +97,11 @@ Pages under the custom domain.
   as they stand.
 - **Demos as sub-paths.** Each demo builds with `base: "/demos/<app>/"`. Today all eight hardcode
   `base: "/apps/<app>/"` in their `vite.config.mts`, and their PWA manifests and service workers are
-  scoped to it, so the base changes in all eight; nothing is installed from justdom.dev yet, so no
-  installed copy breaks. The Pages workflow
-  copies the builds into the site's output, so `desk` is served at `justdom.dev/demos/desk/`. None
-  of the demos need custom headers or redirects, which GitHub Pages does not offer.
+  scoped to it, so the base changes in all eight. desk's second `base`, the one it passes to
+  `ProbeResultsPlugin` in the same file, changes with it. Nothing is installed from justdom.dev yet,
+  so no installed copy breaks. The Pages workflow copies the builds into the site's output, so
+  `desk` is served at `justdom.dev/demos/desk/`. None of the demos need custom headers or
+  redirects, which GitHub Pages does not offer.
 - **Deploy** with `actions/upload-pages-artifact` and `actions/deploy-pages` on every push to
   `develop`, checking out with `lfs: true`.
 
@@ -154,8 +157,6 @@ Before the site can go live:
 - The names `justdom-xr` and `justdom-vite-hmr`.
 - Whether `@apendua/jsdom-env` is published. If it is not, `apps/signal-ssr`, which stays in
   apendua.dev and dev-depends on it, needs its own copy or loses its tests.
-- Whether `justdom-xr`, `@apendua/sound` and `@apendua/geometry` first go out at their placeholder
-  1.0.0, which promises a stable API under semver, or at 0.1.0. The proposal is 0.1.0.
 - Whether apendua.dev's demo page links to the demos at justdom.dev once they leave its own site.
 - Whether `rush publish` passes npm's second-factor prompt through for each package. If it does
   not, a short script runs `npm publish --otp` per package instead. The first release settles it.

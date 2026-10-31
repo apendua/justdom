@@ -1,9 +1,9 @@
 /**
- * Rapier bindings, the same shape as the ones in marblerun: a world held in a
- * context, rigid bodies attached to scene objects through an operator, and a
- * fixed step loop driven off the render loop.
+ * Rapier bindings: a world held in a context, rigid bodies attached to scene
+ * objects through an operator, and a fixed step loop driven off the render
+ * loop.
  *
- * One thing differs, and it matters for a game about knocking things down: the
+ * One thing matters for a game about knocking things down: the
  * ground is placed so that its *surface* is the origin's y = 0. A brick resting
  * on the ground therefore has its centre exactly half its own height up, which
  * is the same arithmetic the half grid uses, so a brick placed on the floor of

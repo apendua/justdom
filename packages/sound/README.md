@@ -97,7 +97,7 @@ Music(ctx, listener, music);
 
 Held apart like this because the two ends are rarely near each other: the music starts wherever the
 scene is built, while the panel that turns it down is often several routes away, so both reach it
-through the controls object — passed down, or put in a context, as `marblerun` does.
+through the controls object — passed down, as `castle-xr` does, or put in a context.
 
 ## Three things worth knowing
 
@@ -118,19 +118,10 @@ frame would put the click wherever the _last_ one landed.
 
 ## Used by
 
-`castle-xr` and `marblerun` on a brick coming to rest, and `polytope-xr` on two clusters snapping
-together — which is the same event wearing a different hat, and used to be a `Switch1.wav` loaded by
-hand in that app.
-
-`pinball` makes all of its noises with `createSweepWaveform` and `createVoices`, and uses the click
-for the ball meeting a wall or a flipper. `hexboard-xr`, `laser-xr` and `paperwings-xr` each carry
-an older copy of the sweep and of the voice pool, written before the package had them, and
-`pirates-xr` carries a voice pool and a variant of the sweep with its own noise decay and smoothing.
-
-The soundtrack player and the output picker are used by every app here with music, the three above
-among them, each behind a Music section on a panel it already had. Every one of them had its own
-copy of the player before this package took it; `knights` still has its own, and should, being a
-flat page with an `<audio>` element rather than a session to hang the track on.
+`castle-xr` plays the click on a brick coming to rest, and plays its soundtrack through the player
+and the output picker, behind a Music section on a panel it already had. `knights` has its own
+player, and should, being a flat page with an `<audio>` element rather than a session to hang the
+track on.
 
 Not `bricks-xr`: that one is a worked example, kept to the smallest thing that still builds
 something, and a sound is not part of what it is there to show.

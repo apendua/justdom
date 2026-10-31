@@ -72,7 +72,7 @@ test("a summary is the title and the first paragraph, links taken out", () => {
 });
 
 test("a demo with a screenshot shows it, linked to the demo", () => {
-  const demo = { slug: "desk", title: 'The "Desk"', folder: "apps/desk" };
+  const demo = { slug: "desk", title: 'The "Desk"', folder: "apps/desk", headset: false };
   const links = `<a href="/demos/desk/" target="_self">Open the demo</a> · [Source](${repositoryUrl}/tree/develop/apps/desk)`;
   assert.deepEqual(demoLinks(demo, false), [links, ""]);
   assert.deepEqual(demoLinks(demo, true), [
@@ -80,6 +80,16 @@ test("a demo with a screenshot shows it, linked to the demo", () => {
       'alt="The &quot;Desk&quot;" width="1280" height="800" loading="lazy"></a>',
     "",
     links,
+    "",
+  ]);
+});
+
+test("a demo that draws a headset session links to it under the emulator, in a new tab", () => {
+  const demo = { slug: "euclid", title: "Euclid", folder: "apps/euclid", headset: true };
+  assert.deepEqual(demoLinks(demo, false), [
+    '<a href="/demos/euclid/" target="_self">Open the demo</a> · ' +
+      '<a href="/demos/euclid/?emulator" target="_blank" rel="noopener">Play in a tab with an emulated headset</a> · ' +
+      `[Source](${repositoryUrl}/tree/develop/apps/euclid)`,
     "",
   ]);
 });

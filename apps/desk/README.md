@@ -19,7 +19,7 @@ needs a scene that holds still. The three looks are the mockups in
 ## Running it
 
 ```
-npm run dev        # http://localhost:5173/apps/desk/
+npm run dev        # http://localhost:5173/demos/desk/
 npm run build      # what `rush build` runs
 ```
 
@@ -64,7 +64,7 @@ npx vite                           # in apps/desk
 adb reverse tcp:5173 tcp:5173      # the headset's localhost:5173 is this machine's
 ```
 
-then open `http://localhost:5173/apps/desk/paint-order-probe.html?scene=pile` in the Quest Browser.
+then open `http://localhost:5173/demos/desk/paint-order-probe.html?scene=pile` in the Quest Browser.
 `localhost` is a secure context, so the session needs no certificate. `?emulator` runs it under IWER
 on a desktop instead.
 

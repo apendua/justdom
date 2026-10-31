@@ -52,7 +52,7 @@ describe("resultsFileName", () => {
 function route(dir) {
   /** @type {(req: object, res: object, next: () => void) => void} */
   let middleware = () => {};
-  const plugin = ProbeResultsPlugin({ dir, base: "/apps/desk/", prefix: "probe" });
+  const plugin = ProbeResultsPlugin({ dir, base: "/demos/desk/", prefix: "probe" });
   const server = {
     middlewares: { use: (/** @type {typeof middleware} */ fn) => (middleware = fn) },
     config: { root: dir, logger: { info: () => {}, error: () => {} } },
@@ -109,7 +109,7 @@ describe("the probe-results route", () => {
   it("names the file by the body's scene", async () => {
     const reply = await send(
       route(dir),
-      "/apps/desk/api/probe-results",
+      "/demos/desk/api/probe-results",
       "POST",
       JSON.stringify({ scene: "hover", runs: [] }),
     );
@@ -123,7 +123,7 @@ describe("the probe-results route", () => {
     // A file where the directory should be, so making it fails.
     const blocked = join(dir, "blocked");
     await writeFile(blocked, "");
-    const reply = await send(route(blocked), "/apps/desk/api/probe-results", "POST", "{}");
+    const reply = await send(route(blocked), "/demos/desk/api/probe-results", "POST", "{}");
     expect(reply).toMatchObject({ status: 500 });
   });
 });

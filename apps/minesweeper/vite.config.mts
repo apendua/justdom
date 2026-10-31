@@ -68,5 +68,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/apps/minesweeper/",
+  base: "/demos/minesweeper/",
 });

@@ -25,5 +25,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/apps/euclid/",
+  base: "/demos/euclid/",
 });

@@ -69,5 +69,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/apps/todo-vanilla/",
+  base: "/demos/todo-vanilla/",
 });

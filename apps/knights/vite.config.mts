@@ -24,5 +24,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/apps/knights/",
+  base: "/demos/knights/",
 });

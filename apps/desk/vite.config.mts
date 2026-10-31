@@ -10,7 +10,7 @@ export default defineConfig({
     // `vite/probeResults.js`.
     ProbeResultsPlugin({
       dir: fileURLToPath(new URL("probe-results", import.meta.url)),
-      base: "/apps/desk/",
+      base: "/demos/desk/",
       prefix: "paint-order-probe",
     }),
   ],
@@ -37,5 +37,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/apps/desk/",
+  base: "/demos/desk/",
 });

@@ -33,7 +33,7 @@ page's address has `?dashes=off`, which draws them solid.
 ## Running it
 
 ```
-npm run dev        # http://localhost:5173/apps/euclid/
+npm run dev        # http://localhost:5173/demos/euclid/
 npm test           # the store and the editor's highlighting
 npm run build      # what `rush build` runs
 ```

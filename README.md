@@ -42,8 +42,8 @@ on every publish. GitHub Actions only prepares it:
 
 1. Every push to `develop` that adds change files runs `.github/workflows/release.yml`. It applies
    them with `rush version --bump` and opens or updates the `release/version-bump` pull request.
-2. Merge that pull request with a merge commit. Its commit carries `[skip ci]`, and a squash or
-   rebase would put the marker on `develop`'s head and skip every workflow for that push.
+2. Merge that pull request. CI does not build it (`ci.yml` skips the `release/version-bump` branch),
+   since it only rewrites versions and changelogs.
 3. Then publish from an up-to-date `develop`:
 
 ```

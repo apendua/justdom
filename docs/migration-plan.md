@@ -66,8 +66,9 @@ proposals that have not been confirmed.
   at the local path themselves: headset's `inputModels` and `apps/desk/src/xr.ts` both call
   `setPath` with `<base>profiles`, which answers 404 once the plugin is gone. Both stop calling
   `setPath`, so the factories use their default, the jsDelivr CDN. `inputModels` then has no use
-  for its `base` parameter and becomes `inputModels()`, so its seven callers drop the argument,
-  including `apps/pinball` when it moves to `justdom-xr`.
+  for its `base` parameter and becomes `inputModels()`, so its six callers drop the argument,
+  including `apps/pinball` when it moves to `justdom-xr`. `packages/headset/src/scene.test.js`,
+  which asserts the local `profiles` path, is rewritten against the CDN default.
 - `castle-xr` drops its Cinzel and Quicksand fonts in favour of the browser's defaults.
 - The two soundtracks move into their apps as they are: `glass_desk_habits.mp3` to `castle-xr` and
   `steps_to_the_throne.mp3` to `knights`. They are AI-generated, and they are Git LFS objects of

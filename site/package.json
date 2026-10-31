@@ -18,7 +18,6 @@
     "test": "node --test \"scripts/*.test.mjs\""
   },
   "devDependencies": {
-    "bricks-xr": "workspace:*",
     "castle-xr": "workspace:*",
     "desk": "workspace:*",
     "euclid": "workspace:*",

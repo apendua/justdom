@@ -122,6 +122,3 @@ frame would put the click wherever the _last_ one landed.
 and the output picker, behind a Music section on a panel it already had. `knights` has its own
 player, and should, being a flat page with an `<audio>` element rather than a session to hang the
 track on.
-
-Not `bricks-xr`: that one is a worked example, kept to the smallest thing that still builds
-something, and a sound is not part of what it is there to show.

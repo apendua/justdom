@@ -14,45 +14,6 @@ importers:
 
   .: {}
 
-  ../../apps/bricks-xr:
-    dependencies:
-      '@types/three':
-        specifier: ~0.185.0
-        version: 0.185.4
-      '@vite-pwa/assets-generator':
-        specifier: ^1.0.1
-        version: 1.0.4(@types/node@24.19.2)
-      justdom:
-        specifier: workspace:*
-        version: link:../../packages/justdom
-      justdom-signal:
-        specifier: workspace:*
-        version: link:../../packages/signal
-      justdom-three:
-        specifier: workspace:*
-        version: link:../../packages/three
-      justdom-three-ui:
-        specifier: workspace:*
-        version: link:../../packages/three-ui
-      justdom-vite-hmr:
-        specifier: workspace:*
-        version: link:../../packages/vite-hmr
-      justdom-xr:
-        specifier: workspace:*
-        version: link:../../packages/xr
-      three:
-        specifier: ~0.185.0
-        version: 0.185.1
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vite:
-        specifier: ^7.1.9
-        version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.7(@types/node@24.19.2)(jiti@2.7.0)(jsdom@26.1.0(canvas@3.2.3))(terser@5.51.2)
-
   ../../apps/castle-xr:
     dependencies:
       '@apendua/sound':
@@ -731,9 +692,6 @@ importers:
 
   ../../site:
     devDependencies:
-      bricks-xr:
-        specifier: workspace:*
-        version: link:../apps/bricks-xr
       castle-xr:
         specifier: workspace:*
         version: link:../apps/castle-xr

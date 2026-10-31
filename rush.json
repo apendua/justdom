@@ -63,7 +63,6 @@
     { "packageName": "@apendua/jsdom-env", "projectFolder": "packages/jsdom-env" },
     { "packageName": "@apendua/euclid-core", "projectFolder": "packages/euclid-core" },
     { "packageName": "@apendua/euclid-lang", "projectFolder": "packages/euclid-lang" },
-    { "packageName": "bricks-xr", "projectFolder": "apps/bricks-xr" },
     { "packageName": "castle-xr", "projectFolder": "apps/castle-xr" },
     { "packageName": "desk", "projectFolder": "apps/desk" },
     { "packageName": "euclid", "projectFolder": "apps/euclid" },

@@ -40,7 +40,6 @@ const packages = [
   { folder: "packages/jsdom-env", from: "@apendua/jsdom-env", to: "@apendua/jsdom-env" },
   { folder: "packages/euclid-core", from: "@apendua.dev/euclid-core", to: "@apendua/euclid-core" },
   { folder: "packages/euclid-lang", from: "@apendua.dev/euclid-lang", to: "@apendua/euclid-lang" },
-  { folder: "apps/bricks-xr", from: "@apendua.dev/bricks-xr", to: "bricks-xr" },
   { folder: "apps/castle-xr", from: "@apendua.dev/castle-xr", to: "castle-xr" },
   { folder: "apps/desk", from: "@apendua.dev/desk", to: "desk" },
   { folder: "apps/euclid", from: "@apendua.dev/euclid", to: "euclid" },

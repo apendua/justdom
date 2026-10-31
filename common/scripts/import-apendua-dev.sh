@@ -39,6 +39,9 @@ moved=(
   packages/jsdom-env
   packages/euclid-core
   packages/euclid-lang
+  # Deleted again right after the import, since castle-xr is the same game
+  # with more in it. It stays on this list so that a re-run reproduces the
+  # history already merged, which a shorter list would rewrite.
   apps/bricks-xr
   apps/castle-xr
   apps/desk

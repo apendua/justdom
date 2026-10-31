@@ -17,7 +17,8 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
   `announced` list in its `.github/deployed-apps.json`) come here. `desk` tests freedom more than
   any other app, and the labs games are not needed to validate it. `apps/signal-ssr` comes too,
   renamed `todo-ssr`: it is the server-rendering example for `justdom` and `justdom-signal`, and it
-  uses nothing else.
+  uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31 October
+  2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays.
 - **Everything public lives here.** apendua.dev publishes nothing after the move, and there is no
   third repository. One Rush setup publishes two name families: unscoped `justdom-*` for the library
   and `@apendua/*` for packages that are not about justdom. GitHub Packages is retired.
@@ -80,7 +81,6 @@ With the profiles gone, nothing third-party is vendored, so there are no asset l
 
 | App            | Uses besides the library          |
 | -------------- | --------------------------------- |
-| `bricks-xr`    | headset                           |
 | `castle-xr`    | headset, sound, one mp3           |
 | `desk`         | headset                           |
 | `euclid`       | headset, euclid-core, euclid-lang |
@@ -101,13 +101,13 @@ under the custom domain.
 - **Docs first.** Plain Markdown guides and per-package pages, written from the package READMEs. A
   custom landing page comes later. apendua.dev's design docs are internal and stay out of the site
   as they stand.
-- **Demos as sub-paths.** Each demo builds with `base: "/demos/<app>/"`. Today all eight hardcode
-  `base: "/apps/<app>/"` in their `vite.config.mts`, and their PWA manifests and service workers are
-  scoped to it, so the base changes in all eight. desk's second `base`, the one it passes to
-  `ProbeResultsPlugin` in the same file, changes with it. Nothing is installed from justdom.dev yet,
-  so no installed copy breaks. The Pages workflow copies the builds into the site's output, so
-  `desk` is served at `justdom.dev/demos/desk/`. None of the demos need custom headers or redirects,
-  which GitHub Pages does not offer.
+- **Demos as sub-paths.** Each demo builds with `base: "/demos/<app>/"`. Today every one of them
+  hardcodes `base: "/apps/<app>/"` in their `vite.config.mts`, and their PWA manifests and service
+  workers are scoped to it, so the base changes in all of them. desk's second `base`, the one it
+  passes to `ProbeResultsPlugin` in the same file, changes with it. Nothing is installed from
+  justdom.dev yet, so no installed copy breaks. The Pages workflow copies the builds into the site's
+  output, so `desk` is served at `justdom.dev/demos/desk/`. None of the demos need custom headers or
+  redirects, which GitHub Pages does not offer.
 - **Deploy** with `actions/upload-pages-artifact` and `actions/deploy-pages` on every push to
   `develop`, checking out with `lfs: true`.
 
@@ -152,10 +152,11 @@ Before the site can go live:
 8. **Cut over apendua.dev.** The labs apps switch from `workspace:*` to npm ranges under the new
    names. The moved directories are deleted, the `publishable` version policy, `release.yml` and the
    GitHub Packages mapping in `.npmrc-publish` are removed, and `provenance.yml` stops listing the
-   moved package paths. `signal-ssr` leaves the `notDeployed` list. Removing the eight apps from
-   `announced` in `.github/deployed-apps.json` fails
-   `pages/apendua/src/content/deployed-apps.test.ts` until `pages/apendua/src/content/demos.ts`
-   drops or relinks their entries, which is the linking question under Still open.
+   moved package paths. `signal-ssr` leaves the `notDeployed` list. `bricks-xr`, which came here
+   only to be deleted, is deleted there too. Removing the eight apps from `announced` in
+   `.github/deployed-apps.json` fails `pages/apendua/src/content/deployed-apps.test.ts` until
+   `pages/apendua/src/content/demos.ts` drops or relinks their entries, which is the linking
+   question under Still open.
 9. **Retire the old names.** The `@apendua/*` versions on GitHub Packages are deprecated with a
    pointer to their npm names.
 10. **Make this repository public**, then decide whether to write to npm support about `@justdom`.

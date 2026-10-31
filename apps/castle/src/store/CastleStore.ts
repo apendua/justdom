@@ -25,7 +25,7 @@ export interface StoredBrick {
   rotation: [number, number, number];
 }
 
-const STORAGE_KEY = "castle-xr:castle";
+const STORAGE_KEY = "castle:castle";
 /**
  * What the key was called before the game was named. Read once so that a castle
  * built under the old name is still there after the rename; it can go as soon as

@@ -46,8 +46,8 @@ frame, and each read is a pipeline sync that stalls the emulated session for as 
 takes to finish the frame. Nothing on a headset runs it.
 
 Import it lazily, as above, so that it lands in a chunk of its own, named `emulator-<hash>.js`. A
-service worker that precaches the app should leave that chunk out; `minesweeper` and `todo-vanilla`
-do it with `globIgnores: ["**/emulator-*.js"]`.
+service worker that precaches the app should leave that chunk out; `minesweeper` and `todo` do it
+with `globIgnores: ["**/emulator-*.js"]`.
 
 ## `justdom-xr/offer`
 
@@ -148,8 +148,8 @@ while the left one stays turned away as `install` left it, `rotate(v, pitch, yaw
 on a panel into the scene by the panel's angles, `press(page, "trigger" | "squeeze")`,
 `hold(page, button, 1 | 0)` to close or open a button for a drag, and `check`, `finish` and
 `closeAll` for the tally, the exit code and the teardown. It is in `driver/` rather than `src/`,
-since it runs in Node and never in a page. It borrows Playwright from `apps/showcase-xr` and
-launches the Chromium at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
+since it runs in Node and never in a page. It borrows Playwright from `apps/showcase` and launches
+the Chromium at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
 `precache(build, root)` builds an app with its own Vite and says which chunks its service worker
 precaches and which the page loads, for a check that holds the two equal; minesweeper's check and
 the todo app's drag check use it. Minesweeper's, the desk's, Euclid's and Knights' checks use the

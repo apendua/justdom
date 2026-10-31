@@ -27,9 +27,8 @@ _mount → serialize → unmount_ cycle:
 1. `setupJsdom({ html })` from [`@apendua/jsdom-env`][jsdom-env] — the same helper the
    `packages/justdom` test suite uses — creates a jsdom instance from an HTML shell and installs its
    globals (`document`, `window`, `Node`, …) on `globalThis`.
-2. The component is mounted exactly the way a browser app is mounted in
-   `apps/todo-vanilla/src/main.ts`: by subscribing to `just(root, [children(component(ctx))])`.
-   Subscribing _is_ mounting.
+2. The component is mounted exactly the way a browser app is mounted in `apps/todo/src/main.ts`: by
+   subscribing to `just(root, [children(component(ctx))])`. Subscribing _is_ mounting.
 3. `dom.serialize()` is called **while the subscription is still alive**, and its result is the
    response body.
 4. The subscription is unsubscribed (running every `onCleanup`) and the jsdom window is closed.

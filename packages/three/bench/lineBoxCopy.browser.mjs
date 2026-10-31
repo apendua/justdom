@@ -21,7 +21,7 @@
  * `PORTAL_SIZES=10,50` picks its sizes, and `PORTAL_ONLY=1` runs it alone.
  *
  * Chromium is launched through `packages/xr/driver`, which borrows
- * Playwright from `apps/showcase-xr` and finds the browser at
+ * Playwright from `apps/showcase` and finds the browser at
  * `/opt/pw-browsers/chromium-1194`, or at the path `CHROMIUM` names. Both
  * projects have to have been installed.
  */

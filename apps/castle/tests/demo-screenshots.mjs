@@ -1,10 +1,10 @@
 /**
- * Regenerates the website's demo screenshots for castle-xr, with the real
- * emulator stack: vite-served castle-xr, headless Chromium, IWER standing in
+ * Regenerates the website's demo screenshots for castle, with the real
+ * emulator stack: vite-served castle, headless Chromium, IWER standing in
  * for a Quest 3.
  *
- *   node tests/demo-screenshots.mjs build    # castle-xr-01.png (1280x960)
- *   node tests/demo-screenshots.mjs siege    # castle-xr-02.png (780x585)
+ *   node tests/demo-screenshots.mjs build    # castle-01.png (1280x960)
+ *   node tests/demo-screenshots.mjs siege    # castle-02.png (780x585)
  *   SHOT=/tmp/out.png node tests/demo-screenshots.mjs build   # elsewhere
  *
  * The build shot is a finished castle — seeded straight into localStorage, so
@@ -25,7 +25,7 @@ import { castle } from "./castle.mjs";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
+  resolve(HERE, "../showcase/node_modules/playwright-core/index.mjs")
 );
 
 const MODE = process.argv[2] ?? "build";
@@ -37,7 +37,7 @@ const OUT =
   resolve(
     HERE,
     "../../pages/apendua/public/images/demos",
-    MODE === "build" ? "castle-xr-01.png" : "castle-xr-02.png",
+    MODE === "build" ? "castle-01.png" : "castle-02.png",
   );
 const SIZE = MODE === "build" ? { width: 1280, height: 960 } : { width: 780, height: 585 };
 const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
@@ -135,7 +135,7 @@ async function main() {
   page.on("pageerror", (error) => console.log("[pageerror]", error.message));
 
   await page.addInitScript((seed) => {
-    localStorage.setItem("castle-xr:castle", seed);
+    localStorage.setItem("castle:castle", seed);
   }, JSON.stringify(castle()));
 
   await page.goto(`${url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });

@@ -1,6 +1,6 @@
 /**
  * Reorders the todo list by dragging a row's handle twice, with the real
- * browser stack: vite-served todo-vanilla in headless Chromium. Before
+ * browser stack: vite-served todo in headless Chromium. Before
  * that, a production build must not precache the headset's chunks: its
  * service worker lists the chunks the page loads, and no other.
  *
@@ -26,7 +26,7 @@ import { precache } from "justdom-xr/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
+  resolve(HERE, "../showcase/node_modules/playwright-core/index.mjs")
 );
 
 /**

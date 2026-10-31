@@ -3,13 +3,13 @@
 A suite for answering one question honestly: **did that change make a panel cheaper to mirror, or
 did it just move the cost somewhere the stopwatch wasn't looking?**
 
-It lives in `showcase-xr` because that is the project with the Playwright dependency, but it drives
-whichever app you point it at — `todo-vanilla` by default, because that is the one with a list long
-enough to hurt.
+It lives in `showcase` because that is the project with the Playwright dependency, but it drives
+whichever app you point it at — `todo` by default, because that is the one with a list long enough
+to hurt.
 
 ## Running it
 
-From `apps/showcase-xr`:
+From `apps/showcase`:
 
 ```bash
 npm run bench                    # working tree, all five scenarios
@@ -18,21 +18,21 @@ npm run bench:against            # A/B against origin/develop
 # or directly, for the flags:
 node bench/run.js --against origin/develop --repeat 4 --scenario scroll,burst
 node bench/run.js --scenario burst          # one scenario
-node bench/run.js --app showcase-xr         # a different app
+node bench/run.js --app showcase         # a different app
 node bench/run.js --rounds 40               # a longer list (20 → ~825 elements)
 node bench/run.js --burst 300               # bigger mount bursts
 node bench/run.js --style-reads             # + computed-style property reads
 ```
 
-| flag              | default        |                                                                              |
-| ----------------- | -------------- | ---------------------------------------------------------------------------- |
-| `--against <rev>` | none           | any git revision — branch, tag, SHA. Omit to measure the working tree alone. |
-| `--repeat <n>`    | 3              | rounds, interleaved A-B-A-B. Medians reported.                               |
-| `--scenario a,b`  | all six        | `mount`, `scroll`, `mixed`, `burst`, `mutate`, `idle`.                       |
-| `--app <name>`    | `todo-vanilla` | any project under `apps/`.                                                   |
-| `--rounds <n>`    | 20             | presses of "Add 10 items" during setup.                                      |
-| `--burst <n>`     | 100            | items each `mount` burst adds at once.                                       |
-| `--style-reads`   | off            | wrap computed styles to count property reads.                                |
+| flag              | default |                                                                              |
+| ----------------- | ------- | ---------------------------------------------------------------------------- |
+| `--against <rev>` | none    | any git revision — branch, tag, SHA. Omit to measure the working tree alone. |
+| `--repeat <n>`    | 3       | rounds, interleaved A-B-A-B. Medians reported.                               |
+| `--scenario a,b`  | all six | `mount`, `scroll`, `mixed`, `burst`, `mutate`, `idle`.                       |
+| `--app <name>`    | `todo`  | any project under `apps/`.                                                   |
+| `--rounds <n>`    | 20      | presses of "Add 10 items" during setup.                                      |
+| `--burst <n>`     | 100     | items each `mount` burst adds at once.                                       |
+| `--style-reads`   | off     | wrap computed styles to count property reads.                                |
 
 A full six-scenario A/B at `--repeat 3` is around 25 minutes; one scenario at `--repeat 1` is about
 three.
@@ -170,7 +170,7 @@ It works without touching the package: the harness wraps `getBoundingClientRect`
 last rect every element was handed, and in a steady state the mirror is the only caller. That is the
 mirror's belief, and it is compared against a fresh read through the unwrapped method.
 
-Run `apps/showcase-xr` visual tests alongside — they catch what a rect comparison cannot.
+Run `apps/showcase` visual tests alongside — they catch what a rect comparison cannot.
 
 ## Was the suite itself checked?
 

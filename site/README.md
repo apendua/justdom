@@ -30,12 +30,12 @@ The screenshots are committed under `public/screenshots/`, which VitePress serve
 `/screenshots/`. `demos/` shows `public/screenshots/demos/<app>.webp` above a demo's links when it
 exists, and the guide shows the two in `public/screenshots/guide/`. `npm run screenshots` takes them
 again from the last build: it serves `dist` and photographs each demo in headless Chromium, after
-setting some of them up so the picture shows them in use (Castle XR with a castle built, Euclid with
-a pentagon, Minesweeper mid-game), and the todo app on a page and in an emulated headset for the
-guide. Run it by hand when a demo changes how it looks, after `rush build --to justdom-site`. With
-app folder names after `--` it retakes only those, and `guide` names the guide's two. Playwright
-looks for the Chromium build it was released with; where that is not installed, name another in
-`PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+setting some of them up so the picture shows them in use (the castle game with a castle built,
+Euclid with a pentagon, Minesweeper mid-game), and the todo app on a page and in an emulated headset
+for the guide. Run it by hand when a demo changes how it looks, after
+`rush build --to justdom-site`. With app folder names after `--` it retakes only those, and `guide`
+names the guide's two. Playwright looks for the Chromium build it was released with; where that is
+not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 To work on the site:
 

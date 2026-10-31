@@ -280,9 +280,9 @@ switch turns off. A panel switched back on has the last minute to show rather th
 
 The reading is a live number and the chart is a minute of live numbers, so a picture of a scene with
 this in it never matches the picture before. Anything comparing frames —
-[`showcase-xr`](../../apps/showcase-xr)'s visual suite is the one here — should put the panel down
-first, through `visible.set(false)` on the controls the app holds. Freezing the clock is not enough:
-the timestamps this counts come from the session's frame callbacks rather than from the page's.
+[`showcase`](../../apps/showcase)'s visual suite is the one here — should put the panel down first,
+through `visible.set(false)` on the controls the app holds. Freezing the clock is not enough: the
+timestamps this counts come from the session's frame callbacks rather than from the page's.
 
 ### Keeping it cheap
 
@@ -317,9 +317,9 @@ and presses every key by ray — the argument for the whole package, checked.
 
 ## Real examples
 
-[`apps/todo-vanilla`](../../apps/todo-vanilla) scrolls its list with `scrollable` on the page and in
-the headset alike, and dresses the keyboard freedom's portal offers its text field;
-[`apps/castle-xr`](../../apps/castle-xr) picks an audio output with the dropdown and carries the
+[`apps/todo`](../../apps/todo) scrolls its list with `scrollable` on the page and in the headset
+alike, and dresses the keyboard freedom's portal offers its text field;
+[`apps/castle`](../../apps/castle) picks an audio output with the dropdown and carries the
 diagnostics button in its own panel; [`apps/euclid`](../../apps/euclid)'s toolbar uses the dropdown
 too.
 

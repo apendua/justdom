@@ -1,7 +1,7 @@
-// The castle the screenshots show: castle-xr's own, in
+// The castle the screenshots show: the app's own, in
 // tests/demo-screenshots.mjs, and the one on justdom.dev's demos page, which
 // site/scripts/screenshots.mjs takes. Both seed it into localStorage under
-// `castle-xr:castle`, which is where the game keeps the castle between visits.
+// `castle:castle`, which is where the game keeps the castle between visits.
 
 /** A castle: four roofed towers, walls, a gate, and a keep in the middle. */
 export function castle() {

@@ -22,5 +22,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/demos/showcase-xr/",
+  base: "/demos/showcase/",
 });

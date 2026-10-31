@@ -18,14 +18,14 @@
     "test": "node --test \"scripts/*.test.mjs\""
   },
   "devDependencies": {
-    "castle-xr": "workspace:*",
+    "castle": "workspace:*",
     "desk": "workspace:*",
     "euclid": "workspace:*",
     "knights": "workspace:*",
     "minesweeper": "workspace:*",
     "playwright-core": "^1.56.0",
-    "showcase-xr": "workspace:*",
-    "todo-vanilla": "workspace:*",
+    "showcase": "workspace:*",
+    "todo": "workspace:*",
     "vitepress": "1.6.4"
   }
 }

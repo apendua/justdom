@@ -5,9 +5,9 @@ functions, updates land as attribute and text writes, there is no framework unde
 it is the very same DOM: the page keeps showing it, and `justdom-three` mirrors the element the app
 is mounted in into a panel in front of the viewer, keyboard and all.
 
-There used to be two apps here — `todo-vanilla` for the page and `todo-xr` for the headset, each
-building the list from the same components. This is what replaced them, and the point of it: an app
-that already delivers a flat interface adds an immersive session without building its UI twice.
+There used to be two apps, one for the page and one for the headset, each building the list from the
+same components. This is what replaced them, and the point of it: an app that already delivers a
+flat interface adds an immersive session without building its UI twice.
 
 ## Running it
 

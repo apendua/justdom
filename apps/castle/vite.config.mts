@@ -44,5 +44,5 @@ export default defineConfig({
       },
     },
   },
-  base: "/demos/castle-xr/",
+  base: "/demos/castle/",
 });

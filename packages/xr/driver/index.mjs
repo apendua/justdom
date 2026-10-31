@@ -9,7 +9,7 @@
  * on `window.xrDevice` (`src/emulator.js`), so the page has to be loaded
  * with `?emulator`, or `?emulator=bare` for nothing over the scene.
  *
- * Playwright is borrowed from `apps/showcase-xr`, so that project has to
+ * Playwright is borrowed from `apps/showcase`, so that project has to
  * have been installed. The browser is the Chromium a development container
  * keeps at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
  */
@@ -22,7 +22,7 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /** @type {typeof import("playwright-core")} */
 const { chromium } = await import(
-  resolve(REPO, "apps/showcase-xr/node_modules/playwright-core/index.mjs")
+  resolve(REPO, "apps/showcase/node_modules/playwright-core/index.mjs")
 );
 
 /**

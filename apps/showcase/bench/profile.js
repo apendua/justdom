@@ -23,7 +23,7 @@
  * grows with the panel.
  *
  *   node bench/profile.js
- *   node bench/profile.js --sizes 5,20,60 --frames 120 --app todo-vanilla
+ *   node bench/profile.js --sizes 5,20,60 --frames 120 --app todo
  *
  * Two things to know before reading the output.
  *
@@ -61,7 +61,7 @@ function parse(args) {
     }
   }
   return {
-    app: flags.app ?? "todo-vanilla",
+    app: flags.app ?? "todo",
     frames: Number(flags.frames ?? 120),
     repeat: Number(flags.repeat ?? 3),
     sizes: (flags.sizes ?? "5,20,60").split(",").map(Number),

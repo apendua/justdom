@@ -1,11 +1,11 @@
 {
-  "name": "showcase-xr",
+  "name": "showcase",
   "version": "1.0.0",
   "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apendua/justdom.git",
-    "directory": "apps/showcase-xr"
+    "directory": "apps/showcase"
   },
   "type": "module",
   "scripts": {

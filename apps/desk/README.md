@@ -6,8 +6,8 @@ from, and a paper to read. On a page it is a page. In a headset `justdom-three` 
 into a panel of its own and sets them out on a desk in a room.
 
 It is the sampler for what freedom can mirror, written as one scene rather than a grid of specimens.
-`apps/showcase-xr` stays as it is, because its visual suite is a regression test for freedom and
-needs a scene that holds still. The three looks are the mockups in
+`apps/showcase` stays as it is, because its visual suite is a regression test for freedom and needs
+a scene that holds still. The three looks are the mockups in
 [`docs/showcase-desk`](../../docs/showcase-desk), each picked from the "Look" menu in the corner:
 
 | Look          | `?look=` | The desk                                                                                                                                                                  |
@@ -46,8 +46,8 @@ power control is on it, and the trigger there ends the session, or if the page t
 look it then starts a second session and fails if ending it leaves more geometries on the GPU than
 the first did. It takes about two minutes. `SHOTS=<dir>` also photographs each session, and
 `STACKS=1` prints a stack for anything the page throws. It drives the browser and the controller
-through `justdom-xr/driver`, which borrows Playwright from `apps/showcase-xr` and launches the
-Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
+through `justdom-xr/driver`, which borrows Playwright from `apps/showcase` and launches the Chromium
+at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
 installed elsewhere. A pull request that changes this app or a package it imports, other than in
 docs, unit tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights', from
 `.github/workflows/driven.yml`.

@@ -1,4 +1,4 @@
-# Castle XR
+# Castle
 
 Build a castle out of bricks in passthrough AR, then take a slingshot to it and knock the whole
 thing down. The game is won when every brick is lying on the ground.
@@ -7,8 +7,8 @@ It is built on `justdom-signal` for reactivity, `justdom-three` for the reactive
 projected into it for the panels, and `@dimforge/rapier3d` for the physics.
 
 ```
-rush build --to castle-xr
-cd apps/castle-xr && npm run dev
+rush build --to castle
+cd apps/castle && npm run dev
 ```
 
 Open the printed `https://` URL in a headset browser and press **Start AR** (passthrough). On a
@@ -36,7 +36,7 @@ history back, and fights a short siege — asserting the whole way through the p
 is what the panels being real DOM makes cheap. It is the one automated test of the drag itself; the
 pure grid arithmetic under it has unit tests of its own.
 
-The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after the last change. The
+The castle is saved to `localStorage` (key `castle:castle`) a moment after the last change. The
 soundtrack is `src/assets/glass_desk_habits.mp3`, started with the session and stopped with it —
 played by `@apendua/sound/xr`, which every headset app here shares.
 

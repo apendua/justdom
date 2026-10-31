@@ -24,7 +24,7 @@ import { createServer } from "vite";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(
-  resolve(HERE, "../showcase-xr/node_modules/playwright-core/index.mjs")
+  resolve(HERE, "../showcase/node_modules/playwright-core/index.mjs")
 );
 
 const SHOT = process.env.SHOT ?? "";
@@ -243,7 +243,7 @@ async function main() {
   page.on("pageerror", (error) => console.log("[pageerror]", error.message));
 
   await page.addInitScript((seed) => {
-    localStorage.setItem("castle-xr:castle", seed);
+    localStorage.setItem("castle:castle", seed);
   }, JSON.stringify(castle()));
 
   // Count the sessions this page offers the browser, which should be none.

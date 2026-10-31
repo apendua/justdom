@@ -45,7 +45,7 @@ function parse(args) {
   return {
     against: flags.against ?? null,
     repeat: Number(flags.repeat ?? 3),
-    app: flags.app ?? "todo-vanilla",
+    app: flags.app ?? "todo",
     rounds: Number(flags.rounds ?? 20),
     burst: Number(flags.burst ?? 100),
     only: flags.scenario ? flags.scenario.split(",") : null,
@@ -116,7 +116,7 @@ function worktree(revision) {
   }
   // A project the revision has but this checkout never installed would fail
   // to resolve at serve time, several minutes into a run. Say so now.
-  const target = join(path, "apps", "todo-vanilla", "node_modules");
+  const target = join(path, "apps", "todo", "node_modules");
   if (!existsSync(target)) {
     throw new Error(
       `${revision} has apps that this checkout has not installed; run \`rush install\` first`,

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Docs and the emulator driver name the castle, showcase and todo demos by their new folder names",
+      "type": "none",
+      "packageName": "justdom-three-ui"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

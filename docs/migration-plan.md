@@ -18,7 +18,9 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
   any other app, and the labs games are not needed to validate it. `apps/signal-ssr` comes too,
   renamed `todo-ssr`: it is the server-rendering example for `justdom` and `justdom-signal`, and it
   uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31 October
-  2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays.
+  2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the import,
+  `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo` (Tomasz,
+  31 October 2026).
 - **Everything public lives here.** apendua.dev publishes nothing after the move, and there is no
   third repository. One Rush setup publishes two name families: unscoped `justdom-*` for the library
   and `@apendua/*` for packages that are not about justdom. GitHub Packages is retired.
@@ -79,16 +81,16 @@ With the profiles gone, nothing third-party is vendored, so there are no asset l
 
 ## Apps
 
-| App            | Uses besides the library          |
-| -------------- | --------------------------------- |
-| `castle-xr`    | headset, sound, one mp3           |
-| `desk`         | headset                           |
-| `euclid`       | headset, euclid-core, euclid-lang |
-| `knights`      | headset, one mp3                  |
-| `minesweeper`  | headset, geometry                 |
-| `showcase-xr`  | headset                           |
-| `todo-vanilla` | headset                           |
-| `todo-ssr`     | jsdom-env, express                |
+| App           | Uses besides the library          |
+| ------------- | --------------------------------- |
+| `castle`      | headset, sound, one mp3           |
+| `desk`        | headset                           |
+| `euclid`      | headset, euclid-core, euclid-lang |
+| `knights`     | headset, one mp3                  |
+| `minesweeper` | headset, geometry                 |
+| `showcase`    | headset                           |
+| `todo`        | headset                           |
+| `todo-ssr`    | jsdom-env, express                |
 
 `todo-ssr`, today `apps/signal-ssr`, is an express server, so GitHub Pages cannot host it. It is an
 example to run locally, not a demo on the site, as it is not deployed from apendua.dev either.

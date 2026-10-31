@@ -1,0 +1,4 @@
+/common
+# Written by `rush version` and `rush publish` from the change files, in a
+# shape of their own. Formatted here, every release would undo the formatting.
+CHANGELOG.md

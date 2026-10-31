@@ -1,0 +1,160 @@
+# Builds and tests every project on each pull request and on each push to
+# develop. A draft pull request is skipped: a branch takes most of its pushes
+# under review, and `rush build --to ...` checks the same thing locally.
+#
+# A pull request that changes what the site shows also gets the site, demos
+# included, deployed to the justdom-dev Cloudflare Pages project, and a comment
+# with its preview URL. The production site is pages.yml's, on GitHub Pages.
+# The deploy is a job of its own, `preview`, because it is the one that needs
+# the `staging` environment: a protection rule on that environment, such as a
+# required reviewer, then holds up the preview and never the build.
+name: CI
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop"]
+  pull_request:
+    branches: ["develop", "claude/**"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  build:
+    # The version bump pull request only rewrites versions and changelogs,
+    # which the build that produced the change files has already checked.
+    if: >-
+      github.head_ref != 'release/version-bump'
+      && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      preview: ${{ steps.preview.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          # `rush change --verify` compares the branch with develop.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Verify change files
+        run: node common/scripts/install-run-rush.js change --verify
+      - name: Rush build
+        run: node common/scripts/install-run-rush.js build --verbose
+      - name: Decide whether to deploy a preview
+        id: preview
+        # Only for a pull request from this repository: a fork's run gets no
+        # secrets, and its code should not reach them. Only when the diff
+        # touches what the site is built from, which is the site itself, the
+        # demos, the packages whose READMEs are its pages, or the build.
+        #
+        # The checkout is the pull request's merge commit, whose first parent
+        # is the base as it was when GitHub made the commit. The event's base
+        # sha can be gone by now, when a stacked pull request's base branch
+        # has been force-pushed since.
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          # The default shell's -e fails the step when the diff fails, rather
+          # than reading as a pull request with nothing to preview.
+          files="$(git diff --name-only HEAD^1 HEAD)"
+          if printf '%s\n' "$files" |
+            grep -qE '^(site|apps|packages)/|^rush\.json$|^common/config/rush/|^\.github/workflows/ci\.yml$'
+          then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "This pull request changes nothing the site is built from, so it gets no preview." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Keep the site for the preview job
+        if: steps.preview.outputs.deploy == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: site/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  preview:
+    needs: build
+    if: needs.build.outputs.preview == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Holds CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+    environment:
+      name: staging
+      url: ${{ steps.cloudflare.outputs.alias-url }}
+    permissions:
+      # To post and refresh the preview comment.
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: site/dist
+      - name: Deploy the site preview to Cloudflare Pages
+        id: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Cloudflare names the branch alias after this, so each pull request
+          # keeps one URL across its pushes.
+          DEPLOY_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 pages deploy site/dist \
+            --project-name=justdom-dev \
+            --branch="$DEPLOY_BRANCH" 2>&1 | tee "$RUNNER_TEMP/wrangler.log"
+
+          # Wrangler prints "Take a peek over at <url>" for this deployment and
+          # "Deployment alias URL: <url>" for the branch alias, in colour.
+          sed 's/\x1b\[[0-9;]*m//g' "$RUNNER_TEMP/wrangler.log" > "$RUNNER_TEMP/wrangler-plain.log"
+          deployment_url="$(sed -n \
+            -e 's|.*Take a peek over at \(https://[^ ]*\).*|\1|p' \
+            -e 's|.*Visit your deployment at \(https://[^ ]*\).*|\1|p' \
+            "$RUNNER_TEMP/wrangler-plain.log" | head -n 1)"
+          alias_url="$(sed -n 's|.*Deployment alias URL: \(https://[^ ]*\).*|\1|p' \
+            "$RUNNER_TEMP/wrangler-plain.log" | head -n 1)"
+          {
+            echo "deployment-url=$deployment_url"
+            echo "alias-url=$alias_url"
+          } >> "$GITHUB_OUTPUT"
+      - name: Comment the preview URL on the pull request
+        if: steps.cloudflare.outputs.deployment-url != '' || steps.cloudflare.outputs.alias-url != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ALIAS_URL: ${{ steps.cloudflare.outputs.alias-url }}
+          DEPLOYMENT_URL: ${{ steps.cloudflare.outputs.deployment-url }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          marker="<!-- cloudflare-pages-preview -->"
+          {
+            echo "$marker"
+            echo "### Cloudflare Pages preview"
+            echo
+            echo "| | URL |"
+            echo "| --- | --- |"
+            if [ -n "$ALIAS_URL" ]; then echo "| Branch alias | $ALIAS_URL |"; fi
+            if [ -n "$DEPLOYMENT_URL" ]; then echo "| This deployment | $DEPLOYMENT_URL |"; fi
+            echo
+            echo "Built from $SHA. The demos are under \`/demos/<app>/\`."
+          } > "$RUNNER_TEMP/comment.md"
+          cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
+
+          # One comment per pull request, rewritten on each push.
+          comment_id="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"$marker\")) | .id" | head -n 1)"
+          if [ -n "$comment_id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@"$RUNNER_TEMP/comment.md"
+          else
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@"$RUNNER_TEMP/comment.md"
+          fi

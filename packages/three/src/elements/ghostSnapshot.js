@@ -1,0 +1,206 @@
+import * as THREE from "three";
+
+/**
+ * A picture of what is being dragged, for the ghost to carry.
+ *
+ * A browser's drag image is a picture of the element taken when the drag
+ * starts, and so is this: the panel is rendered once, at `dragstart`, into
+ * a render target, through a camera framed on the element's box. Nothing
+ * is rendered again while the drag goes on, so it costs one pass per drag
+ * and nothing per frame. Rendering into a target of its own needs shader
+ * programs the panel has never needed for the headset, which three would
+ * compile in the frame the drag starts; `prepare` has them compiled while
+ * the press is still a press.
+ *
+ * The element cannot be drawn on its own. A panel draws its boxes as
+ * instances of one batch and its text as another, and the element's own
+ * meshes are bookkeeping those batches read, never drawn themselves. So
+ * the picture is of the panel, cropped to the element's box: whatever is
+ * drawn behind the element inside its box, a card it sits on, is in it as
+ * well, where a browser's drag image has the element and its descendants
+ * alone.
+ */
+
+/** How many texels a px of the panel gets, for a picture that stays sharp. */
+const TEXELS_PER_PX = 2;
+
+/** The longest side a picture is allowed, in texels. */
+const MAX_TEXELS = 1024;
+
+/**
+ * How far in front of the element the camera stands, in its px, and so how
+ * much of what a panel stacks in front of its boxes, overlays included, is
+ * inside the picture.
+ */
+const DEPTH = 500;
+
+/** The half turn that points a camera along an element's +z, up its -y. */
+const FACING = new THREE.Matrix4().makeRotationX(Math.PI);
+
+const clearColor = new THREE.Color();
+
+/**
+ * @typedef {object} Box
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * The camera that sees `box` of `frame` and nothing around it.
+ *
+ * An element's object is its border box in px, top-left origin, y down,
+ * with the viewer on its -z side (see the portal's half turn). The camera
+ * stands `DEPTH` px in front of the box's centre, looks along +z, and has
+ * -y as its up, so the picture comes out the way round the panel shows it.
+ * Its matrix carries the frame's world matrix, but three takes the scale
+ * back out of a camera's view matrix, so its view space is in world units
+ * and the frustum is the box times the frame's world scale.
+ *
+ * @param {THREE.Object3D} frame
+ * @param {Box} box
+ * @returns {THREE.OrthographicCamera}
+ */
+export function cameraFor(frame, { x, y, width, height }) {
+  frame.updateWorldMatrix(true, false);
+  const scale = new THREE.Vector3().setFromMatrixScale(frame.matrixWorld).x;
+  const camera = new THREE.OrthographicCamera(
+    (-width / 2) * scale,
+    (width / 2) * scale,
+    (height / 2) * scale,
+    (-height / 2) * scale,
+    0,
+    DEPTH * 2 * scale,
+  );
+  camera.matrixAutoUpdate = false;
+  camera.matrix
+    .copy(frame.matrixWorld)
+    .multiply(new THREE.Matrix4().makeTranslation(x + width / 2, y + height / 2, -DEPTH))
+    .multiply(FACING);
+  camera.updateMatrixWorld(true);
+  return camera;
+}
+
+/**
+ * Run `draw` with `target` bound, onto a transparent clear, and put the
+ * renderer back as it was: its render target, its clear colour and alpha,
+ * and `xr.enabled`, which has to be off meanwhile, or a renderer presenting
+ * a session would draw the headset's eyes into the target instead.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.WebGLRenderTarget} target
+ * @param {() => void} draw
+ * @returns {void}
+ */
+function intoTarget(renderer, target, draw) {
+  const previousTarget = renderer.getRenderTarget();
+  const previousXr = renderer.xr.enabled;
+  renderer.getClearColor(clearColor);
+  const previousAlpha = renderer.getClearAlpha();
+  try {
+    renderer.xr.enabled = false;
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 0);
+    draw();
+  } finally {
+    renderer.setClearColor(clearColor, previousAlpha);
+    renderer.setRenderTarget(previousTarget);
+    renderer.xr.enabled = previousXr;
+  }
+}
+
+/**
+ * Render `panel` once into a new render target, through a camera framed on
+ * `box` of `frame`, and put the renderer back as it was.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Object3D} panel The panel's container object, which holds
+ *   its batches; rendered on its own, without the rest of the scene.
+ * @param {THREE.Object3D} frame
+ * @param {Box} box
+ * @returns {THREE.WebGLRenderTarget | null} The caller's to dispose. Null for
+ *   a box with nothing in it.
+ */
+export function takeSnapshot(renderer, panel, frame, box) {
+  if (box.width <= 0 || box.height <= 0) {
+    return null;
+  }
+  const fit = Math.min(1, MAX_TEXELS / (Math.max(box.width, box.height) * TEXELS_PER_PX));
+  const target = new THREE.WebGLRenderTarget(
+    Math.max(1, Math.round(box.width * TEXELS_PER_PX * fit)),
+    Math.max(1, Math.round(box.height * TEXELS_PER_PX * fit)),
+  );
+  const camera = cameraFor(frame, box);
+  intoTarget(renderer, target, () => {
+    renderer.clear();
+    renderer.render(panel, camera);
+  });
+  return target;
+}
+
+/** What `prepare` binds, so that programs are keyed as a snapshot's are. */
+let compileTarget = /** @type {THREE.WebGLRenderTarget | null} */ (null);
+const compileCamera = new THREE.OrthographicCamera();
+
+/**
+ * Compile the programs `takeSnapshot` will draw `panel` with, without
+ * drawing anything. Three keys a program by where it draws to, among other
+ * things, and a target of its own is a different key from the headset's, so
+ * the first snapshot of a panel would otherwise compile and link a second
+ * copy of every program the panel uses, in the frame the drag starts.
+ *
+ * `compile` and not `compileAsync`: the two start the same compiles and
+ * links, which the driver runs in the background where it can, and three
+ * asks for no status until a program is first drawn with. What
+ * `compileAsync` adds is a promise, and the poll behind it reads each
+ * material's program every 10 ms until all are linked. A material
+ * disposed meanwhile, the keyboard's as it closes, has no program left to
+ * read, and the poll throws from a timer, out of reach of any `catch`.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Object3D} panel
+ * @returns {void}
+ */
+export function prepareSnapshot(renderer, panel) {
+  compileTarget ??= new THREE.WebGLRenderTarget(1, 1);
+  intoTarget(renderer, compileTarget, () => {
+    renderer.compile(panel, compileCamera);
+  });
+}
+
+/**
+ * How a drag gets pictures of what it carries.
+ *
+ * @typedef {object} Snapshots
+ * @property {(panel: THREE.Object3D) => void} prepare Called when a press on
+ *   something draggable in `panel` begins, before it is a drag.
+ * @property {(panel: THREE.Object3D, frame: THREE.Object3D, box: Box) => THREE.WebGLRenderTarget | null} take
+ *   A picture of `box` of `frame` as `panel` draws it, or null.
+ */
+
+/** @type {Snapshots} */
+export const NO_SNAPSHOTS = { prepare: () => {}, take: () => null };
+
+/**
+ * Pictures taken with `renderer`, or none without a WebGL renderer, as under
+ * a test runner; the ghost is then the outline. Asked by three's own flag
+ * rather than `instanceof`, which a second copy of three in an app would
+ * fail. A panel is prepared at every press, since a kind of element it
+ * did not have at its first, an image or a caret, brings a program of its
+ * own; three keys programs by their parameters, so for a panel whose kinds
+ * are all compiled already that is a walk and some cache lookups.
+ *
+ * @param {unknown} renderer
+ * @returns {Snapshots}
+ */
+export function snapshotsFor(renderer) {
+  if (!(/** @type {{ isWebGLRenderer?: boolean } | null} */ (renderer)?.isWebGLRenderer)) {
+    return NO_SNAPSHOTS;
+  }
+  const webgl = /** @type {THREE.WebGLRenderer} */ (renderer);
+  return {
+    prepare: (panel) => prepareSnapshot(webgl, panel),
+    take: (panel, frame, box) => takeSnapshot(webgl, panel, frame, box),
+  };
+}

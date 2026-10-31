@@ -1,0 +1,73 @@
+{
+  "name": "justdom-three",
+  "version": "0.30.0",
+  "description": "Reactive Three.js scene graph built on justdom-signal, with WebXR helpers and a DOM-in-scene bridge",
+  "keywords": [
+    "three",
+    "threejs",
+    "reactive",
+    "renderer",
+    "signals",
+    "webxr",
+    "webgl",
+    "3d"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/three"
+  },
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./page": {
+      "types": "./lib-types/page.d.ts",
+      "import": "./src/page.js"
+    },
+    "./svg": {
+      "types": "./lib-types/svg/index.d.ts",
+      "import": "./src/svg/index.js"
+    }
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "test": "npm run test:syntax && npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@apendua/jsdom-env": "workspace:*",
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
+    "@webgpu/types": "^0.1.65",
+    "eslint": "^9.37.0",
+    "fast-check": "^4.3.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
+    "rxjs": "^7.8.2",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "justdom-signal": "workspace:*",
+    "three": ">=0.180.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

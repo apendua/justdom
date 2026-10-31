@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The music docs say the track is the app's own mp3, not one from apendua.dev's media package",
+      "type": "none",
+      "packageName": "@apendua/sound"
+    }
+  ],
+  "packageName": "@apendua/sound",
+  "email": "noreply@anthropic.com"
+}

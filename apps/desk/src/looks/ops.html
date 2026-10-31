@@ -1,0 +1,138 @@
+  <div class="wall"></div><div class="wall-panels"></div><div class="tabletop"></div>
+
+  <div class="zone" id="clocks">
+    <div class="clocks">
+      <div><b data-time-zone="America/Los_Angeles">--:--:--</b><span>SFO</span></div>
+      <div><b data-time-zone="Europe/Warsaw">--:--:--</b><span>WAW</span></div>
+      <div><b data-time-zone="Asia/Tokyo">--:--:--</b><span>TYO</span></div>
+    </div>
+    <div class="tag" style="left:490px;top:0"><b>Wall clocks</b>Text rewritten once a second: one short run re-rasterized per tick. A contrast to the screen, which never rewrites.</div>
+  </div>
+
+  <!-- ===================== telemetry ===================== -->
+  <div class="zone" id="charts">
+    <div class="cluster">
+      <h3>TELEMETRY <span>● REC</span></h3>
+      <div class="gauges">
+        <div class="gauge"><div class="dial"><div class="dial-hole"></div></div><div class="needle" data-gauge style="transform:rotate(-30deg)"></div><div class="cap-dot"></div><label>LOAD</label></div>
+        <div class="gauge"><div class="dial"><div class="dial-hole"></div></div><div class="needle" data-gauge style="transform:rotate(20deg)"></div><div class="cap-dot"></div><label>TEMP</label></div>
+        <div class="gauge"><div class="dial"><div class="dial-hole"></div></div><div class="needle" data-gauge style="transform:rotate(-70deg)"></div><div class="cap-dot"></div><label>NET</label></div>
+      </div>
+      <div class="strip">
+        <div class="row"><span>FRAME TIME · 13 S</span><b data-last></b></div>
+        <svg class="chart" viewBox="0 -4 300 118" preserveAspectRatio="none">
+          <line class="grid" x1="0" y1="20" x2="300" y2="20" /><line class="grid" x1="0" y1="50" x2="300" y2="50" /><line class="grid" x1="0" y1="80" x2="300" y2="80" />
+          <line class="grid" x1="75" y1="0" x2="75" y2="110" /><line class="grid" x1="150" y1="0" x2="150" y2="110" /><line class="grid" x1="225" y1="0" x2="225" y2="110" />
+          <line class="limit" x1="0" y1="14" x2="300" y2="14" /><text x="252" y="10">LIMIT</text>
+          <polygon class="area" data-area points="" /><polyline class="line" data-line points="" /><g class="dots" data-line-dots></g>
+        </svg>
+      </div>
+      <div class="lower">
+        <div class="radar"><div class="cross"></div><div class="cross h"></div><div class="sweep"></div>
+          <div class="blip" style="left:96px;top:38px"></div><div class="blip" style="left:44px;top:92px;animation-delay:-1.6s"></div><div class="blip" style="left:108px;top:104px;animation-delay:-2.4s"></div></div>
+        <div class="lights">
+          <div class="light ok"><i></i>MIRROR</div><div class="light ok"><i></i>RAYS</div><div class="light warn"><i></i>GLYPH</div><div class="light ok"><i></i>CLIP</div>
+          <div class="light ok"><i></i>SVG</div><div class="light bad"><i></i>COFFEE</div><div class="light ok"><i></i>DRAG</div><div class="light warn"><i></i>HAPTIC</div>
+          <div class="light ok"><i></i>LAYER</div><div class="light ok"><i></i>IMG</div><div class="light ok"><i></i>LIST</div><div class="light ok"><i></i>XR</div>
+        </div>
+        <div class="log" data-log></div>
+      </div>
+    </div>
+    <div class="tag" style="left:20px;top:-10px"><b>Telemetry</b>Needles are <code>transform: rotate</code> with a springy transition over conic-gradient dials; the radar sweep is a conic gradient spun by a keyframe; repeating-radial range rings; blinking status lights with staggered <code>steps()</code> keyframes; a dashed limit line in SVG; an amber log streaming rows.</div>
+  </div>
+
+  <!-- ===================== monitor ===================== -->
+  <div class="zone" id="monitor">
+    <div class="case">
+      <div class="bezel">
+        <div class="screen" data-screen data-phosphor="amber">
+          <pre class="crt"><span data-program></span><span data-prompt></span><span class="cursor"></span></pre>
+        </div>
+        <div class="scanlines"></div><div class="vignette"></div>
+      </div>
+      <div class="chin">
+        <div class="model">OPS-1<small>MONOCHROME TERMINAL</small></div>
+        <div class="spacer"></div>
+        <div class="knob-wrap"><div class="knob" data-phosphor-knob><i></i><span data-phosphor-label>AMBER</span> ▴</div></div>
+        <div class="deck" data-drive data-led><div class="reel"></div><div class="tape"></div><div class="reel"></div><div class="led"></div></div>
+        <div class="power" data-power title="End the session"><i></i>PWR</div>
+      </div>
+    </div>
+    <div class="neck"></div><div class="foot"></div>
+    <div class="tag" style="left:30px;top:40px"><b>Terminal</b>Boots by revealing the shader that reveals it. Elliptical <code>border-radius</code> on the tube, a vignette layer. Drop a cassette on the deck: its reels spin while the program loads. In a session PWR ends it.</div>
+  </div>
+
+  <!-- ===================== whiteboard ===================== -->
+  <div class="zone" id="board">
+    <div class="wb-frame"><div class="wb" data-board>
+      <div class="wb-title">SPRINT 42 <small>ship by Fri!</small></div>
+      <div class="cols">
+        <div class="col" data-column><h4>TODO</h4><div class="tickets" data-tickets>
+          <div class="ticket red" draggable="true" data-ticket><div class="magnet"></div><b>OPS-118</b>Mirror the cassette deck</div>
+          <div class="ticket" draggable="true" data-ticket><div class="magnet"></div><b>OPS-121</b>Gauge needles feel springy</div>
+          <div class="ticket blue" draggable="true" data-ticket><div class="magnet"></div><b>OPS-124</b>Printout you can tear off</div>
+        </div></div>
+        <div class="col" data-column><h4>DOING</h4><div class="tickets" data-tickets>
+          <div class="ticket" draggable="true" data-ticket><div class="magnet"></div><b>OPS-109</b>Amber phosphor in the scene</div>
+          <div class="ticket blue" draggable="true" data-ticket><div class="magnet"></div><b>OPS-112</b>Radar sweep on a conic</div>
+        </div></div>
+        <div class="col" data-column><h4>DONE</h4><div class="tickets" data-tickets>
+          <div class="ticket green" draggable="true" data-ticket><div class="magnet"></div><b>OPS-101</b>Drag across panels</div>
+          <div class="ticket green" draggable="true" data-ticket><div class="magnet"></div><b>OPS-104</b>List markers</div>
+        </div></div>
+      </div>
+      <svg class="scribble" viewBox="0 0 110 70"><path d="M8 52 C 30 64, 70 66, 96 34 M84 30 L97 33 L94 46" /><text x="6" y="24">deploy!</text></svg>
+      <div class="tray"></div>
+      <div class="pen" style="left:40px;background:#1d4fb8"></div><div class="pen" style="left:140px;background:#d0342c"></div><div class="pen" style="left:240px;background:#1f8a4c"></div>
+    </div></div>
+    <div class="tag" style="left:30px;top:-10px"><b>Kanban</b>Tickets move between columns by drag and drop, landing above or below a ticket by <code>clientY</code> against its rect. A column lights while a ticket is over it. Magnets are layers; the scribble is an SVG path in a marker face.</div>
+  </div>
+
+  <!-- ===================== cassettes ===================== -->
+  <div class="zone" id="tapes">
+    <div class="cassette" draggable="true" data-floppy="DESK.JS" style="left:0;top:40px;--tilt:-8deg"><div class="c-label"><b>DESK.JS</b><div class="c-window"><i></i><i></i></div></div><div class="c-foot"></div></div>
+    <div class="cassette clear" draggable="true" data-floppy="SNAKE.ASM" style="left:120px;top:2px;--tilt:5deg"><div class="c-label"><b>SNAKE.ASM</b><div class="c-window"><i></i><i></i></div></div><div class="c-foot"></div></div>
+    <div class="cassette orange" draggable="true" data-floppy="PLOT.BAS" style="left:172px;top:92px;--tilt:14deg"><div class="c-label"><b>PLOT.BAS</b><div class="c-window"><i></i><i></i></div></div><div class="c-foot"></div></div>
+    <div class="tag" style="left:0;top:-30px"><b>Cassettes</b>Drag one onto the terminal's deck: drag and drop from one panel to another.</div>
+  </div>
+
+  <!-- ===================== keyboard ===================== -->
+  <div class="zone" id="keyboard">
+    <div class="keyboard">
+      <div class="kb-top"><span>OPS-1 · KEYBOARD UNIT</span><span class="lights2"><i></i><i></i><i></i></span></div>
+      <div class="keys" data-keys></div>
+    </div>
+    <div class="tag" style="left:20px;top:-8px"><b>Keyboard</b>Hover lights the legend only (a colour write in the key's own subtree); press is a transform. The amber RETURN is a gradient keycap.</div>
+  </div>
+
+  <!-- ===================== printout ===================== -->
+  <div class="zone" id="memo">
+    <div class="continuous">
+      <div class="feed"></div>
+      <div class="sheet">
+        <div class="perf"></div>
+        <div class="lh">
+          <svg viewBox="0 0 40 40"><polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill="#1f2a22" /><polygon points="20,9 30,15 30,25 20,31 10,25 10,15" fill="none" stroke="#ffb000" stroke-width="2.5" /><circle cx="20" cy="20" r="3.5" fill="#ffb000" /></svg>
+          <div><h1>APENDUA OPS</h1><p>NIGHT SHIFT · SECTOR 7 · EST. 1984</p></div>
+        </div>
+        <div class="wo"><h2>WORK ORDER</h2><span>№ 0042-B</span></div>
+        <p>Proceed with <em>mirroring the control room</em> into the headset. Every instrument is ordinary markup; nothing is drawn twice. Discrepancies are to be reported on the whiteboard.</p>
+        <div class="table">
+          <div class="th">#</div><div class="th">TASK</div><div class="th n">HRS</div>
+          <div class="n">1</div><div>Calibrate needle springs</div><div class="n">2.5</div>
+          <div class="n">2</div><div>Re-spool cassettes</div><div class="n">1.0</div>
+          <div class="n">3</div><div>Sweep radar, conic</div><div class="n">0.5</div>
+          <div class="n">4</div><div>Tear off this printout</div><div class="n">0.1</div>
+        </div>
+        <div class="signoff">
+          <div><div class="sig">K. Ops</div><small>SUPERVISOR</small></div>
+          <div class="barcode"></div>
+        </div>
+      </div>
+      <div class="feed"></div>
+    </div>
+    <div class="tag" style="left:10px;top:-34px"><b>Printout</b>Green bars and tractor holes are repeating gradients; the perforation is a gradient, because a dashed border is drawn solid. A grid table, a hexagon logo in SVG, a barcode from one repeating gradient. Pick it up to read.</div>
+  </div>
+
+  <div class="lamp-pool"></div>
+<template id="phosphor-menu"><div class="menu"><div data-pick="amber"><i style="background:#ffb000"></i>AMBER P3</div><div data-pick="green"><i style="background:#66ff7a"></i>GREEN P1</div><div data-pick="white"><i style="background:#e8eef0"></i>WHITE P4</div></div></template>

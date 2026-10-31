@@ -1,0 +1,77 @@
+/**
+ * The Rush configuration for the justdom repository. The packages and apps
+ * are listed under "projects" as they move in from apendua.dev; see
+ * docs/migration-plan.md.
+ */
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/rush/v5/rush.schema.json",
+  "rushVersion": "5.171.0",
+  "pnpmVersion": "10.32.1",
+  "nodeSupportedVersionRange": ">=22.18.0 <23.0.0 || >=24.11.1 <25.0.0",
+  "gitPolicy": {},
+  "repository": {
+    "url": "https://github.com/apendua/justdom",
+    "defaultBranch": "develop"
+  },
+  "eventHooks": {
+    "preRushInstall": [],
+    "postRushInstall": [],
+    "preRushBuild": [],
+    "postRushBuild": []
+  },
+  "projects": [
+    {
+      "packageName": "justdom",
+      "projectFolder": "packages/justdom",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-signal",
+      "projectFolder": "packages/signal",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-three",
+      "projectFolder": "packages/three",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-three-ui",
+      "projectFolder": "packages/three-ui",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-vite-hmr",
+      "projectFolder": "packages/vite-hmr",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-xr",
+      "projectFolder": "packages/xr",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "@apendua/geometry",
+      "projectFolder": "packages/geometry",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "@apendua/sound",
+      "projectFolder": "packages/sound",
+      "versionPolicyName": "publishable"
+    },
+    { "packageName": "@apendua/jsdom-env", "projectFolder": "packages/jsdom-env" },
+    { "packageName": "@apendua/euclid-core", "projectFolder": "packages/euclid-core" },
+    { "packageName": "@apendua/euclid-lang", "projectFolder": "packages/euclid-lang" },
+    { "packageName": "bricks-xr", "projectFolder": "apps/bricks-xr" },
+    { "packageName": "castle-xr", "projectFolder": "apps/castle-xr" },
+    { "packageName": "desk", "projectFolder": "apps/desk" },
+    { "packageName": "euclid", "projectFolder": "apps/euclid" },
+    { "packageName": "knights", "projectFolder": "apps/knights" },
+    { "packageName": "minesweeper", "projectFolder": "apps/minesweeper" },
+    { "packageName": "showcase-xr", "projectFolder": "apps/showcase-xr" },
+    { "packageName": "todo-ssr", "projectFolder": "apps/todo-ssr" },
+    { "packageName": "todo-vanilla", "projectFolder": "apps/todo-vanilla" },
+    { "packageName": "justdom-site", "projectFolder": "site" }
+  ]
+}

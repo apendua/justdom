@@ -1,0 +1,32 @@
+{
+  "name": "desk",
+  "version": "0.1.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "apps/desk"
+  },
+  "scripts": {
+    "build": "npm run test && npm run compile && vite build",
+    "build:watch": "",
+    "compile": "tsc",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run --environment jsdom",
+    "test:watch": "vitest --environment jsdom"
+  },
+  "dependencies": {
+    "@types/three": "~0.185.0",
+    "jsdom": "^26.1.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
+    "justdom-three-ui": "workspace:*",
+    "justdom-xr": "workspace:*",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}

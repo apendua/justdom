@@ -1,0 +1,579 @@
+import * as THREE from "three";
+import { parseColor } from "../elements/VisualProperties.js";
+import { getAttributeCached } from "../elements/mirror.js";
+import { normalizeDashArray } from "./dash.js";
+
+/**
+ * Reading an SVG element's styling and geometry off its computed style.
+ *
+ * Computed style, and not the attributes, is the source, because it is what
+ * the page's stylesheets resolve to: a class swap, a `[data-xr-hover]` rule
+ * on the button around an icon and a CSS keyframe on `stroke-dashoffset` all
+ * land there and nowhere else. The attribute is the fallback, for the two
+ * places the computed style is empty — a geometry property the browser does
+ * not expose as CSS (`x1` on a `<line>`, `points` on a `<polygon>`), and a
+ * test runner whose style engine knows none of these properties at all.
+ * `readSize` also falls back to it for a size the browser leaves `auto`.
+ */
+
+/**
+ * The computed value of a property, or the presentation attribute of the
+ * same name when the computed style has nothing to say.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {Element} element
+ * @param {string} name
+ * @returns {string}
+ */
+export function readProperty(style, element, name) {
+  const computed = style.getPropertyValue(name);
+  if (computed !== "") {
+    return computed;
+  }
+  return getAttributeCached(element, name) ?? "";
+}
+
+/**
+ * The `width` or `height` of a `<use>` or a nested `<svg>`: the computed
+ * value, or the attribute when the computed value is `auto`.
+ *
+ * Chromium 152 no longer maps either attribute to CSS on those two
+ * elements, and neither 141 nor 152 maps a percentage on a `<use>`, so
+ * `width="11"` computes to `auto` and is drawn at the attribute's size all
+ * the same. A stylesheet's `width: 9px` still reaches the computed value.
+ * Any `auto` reads the attribute, a stylesheet's `width: auto` included,
+ * since the browser draws the attribute's size then too.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {Element} element
+ * @param {"width" | "height"} name
+ * @returns {string}
+ */
+export function readSize(style, element, name) {
+  const computed = style.getPropertyValue(name);
+  return computed === "" || computed === "auto"
+    ? (getAttributeCached(element, name) ?? "")
+    : computed;
+}
+
+/**
+ * The id a `url()` reference names, as `marker-start`, `marker-mid`,
+ * `marker-end` and `clip-path` name one, or null for `none` and anything
+ * else. A computed value is `url("#id")`, an attribute `url(#id)`.
+ *
+ * @param {string} value
+ * @returns {string | null}
+ */
+export function parseUrlReference(value) {
+  const match = /^url\(\s*(["']?)(.*)\1\s*\)$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const hash = match[2].lastIndexOf("#");
+  return hash >= 0 && hash < match[2].length - 1 ? match[2].slice(hash + 1) : null;
+}
+
+/**
+ * A length in user units. `px` and unitless are the same thing in user
+ * space; a percentage would need the viewport to resolve against and reads
+ * as the fallback here (`parseLengthIn` is the reader that has a viewport);
+ * `auto`, `none` and nothing at all read as the fallback too.
+ *
+ * @param {string} value
+ * @param {number} [fallback]
+ * @returns {number}
+ */
+export function parseLength(value, fallback = 0) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.endsWith("%")) {
+    return fallback;
+  }
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * A length in user units that may be a percentage of `reference`: the
+ * viewport's width or height, or for a length on neither axis its diagonal
+ * over root two (`viewportReferences`). Anything else reads as `parseLength`
+ * reads it.
+ *
+ * @param {string} value
+ * @param {number | undefined | (() => number | undefined)} reference What
+ *   100% is, or undefined when there is no viewport to measure against,
+ *   which reads a percentage as the fallback. A function is called only for
+ *   a percentage, so a length that is none reads no viewport.
+ * @param {number} [fallback]
+ * @returns {number}
+ */
+export function parseLengthIn(value, reference, fallback = 0) {
+  const trimmed = value.trim();
+  if (!trimmed.endsWith("%")) {
+    return parseLength(trimmed, fallback);
+  }
+  const base = typeof reference === "function" ? reference() : reference;
+  const percent = Number.parseFloat(trimmed);
+  return base !== undefined && Number.isFinite(percent) ? (base * percent) / 100 : fallback;
+}
+
+/**
+ * What a percentage length is of: the viewport's width for a length along x,
+ * its height along y, and for one along neither, such as a circle's `r` or a
+ * `stroke-width`, its diagonal over root two, as SVG defines it.
+ *
+ * @typedef {"width" | "height" | "diagonal"} ViewportAxis
+ */
+
+/**
+ * The three references a percentage can be of, for `parseLengthIn`, over a
+ * viewport read at most once, on the first percentage that asks for it.
+ *
+ * @param {() => { width: number, height: number } | null} viewport
+ * @returns {Record<ViewportAxis, () => number | undefined>} Each undefined
+ *   with no viewport.
+ */
+export function viewportReferences(viewport) {
+  /** @type {{ width: number, height: number } | null | undefined} */
+  let size;
+  const read = () => {
+    if (size === undefined) {
+      size = viewport();
+    }
+    return size;
+  };
+  return {
+    width: () => read()?.width,
+    height: () => read()?.height,
+    diagonal: () => {
+      const current = read();
+      return current ? Math.hypot(current.width, current.height) / Math.SQRT2 : undefined;
+    },
+  };
+}
+
+/**
+ * @param {string} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+export function parseNumber(value, fallback) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * A `fill` or `stroke` as the colour to draw and the alpha to draw it with,
+ * or null for nothing to draw: `none`, and — until gradients and patterns
+ * are drawn — a `url(#…)` paint server. A paint server given a fallback
+ * colour, `url(#hatch) black`, is drawn in that colour, which is what a
+ * browser draws when it cannot use the server either.
+ *
+ * @typedef {object} Paint
+ * @property {THREE.Color} color
+ * @property {number} alpha
+ */
+
+/**
+ * A paint server reference and what follows it: the fallback, if any. The
+ * reference may be quoted, as a computed value always is.
+ */
+const PAINT_SERVER = /^url\((?:"[^"]*"|'[^']*'|[^)]*)\)\s*(.*)$/;
+
+/**
+ * @param {string} value
+ * @returns {Paint | null}
+ */
+export function parsePaint(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("url(")) {
+    const fallback = PAINT_SERVER.exec(trimmed)?.[1] ?? "";
+    return fallback.startsWith("url(") ? null : parsePaint(fallback);
+  }
+  if (!trimmed || trimmed === "none") {
+    return null;
+  }
+  if (/^rgba?\(/.test(trimmed)) {
+    // What a browser's computed style always is. Read as sRGB, the way every
+    // other colour in a portal is.
+    const [color, alpha] = parseColor(trimmed);
+    return { color, alpha };
+  }
+  if (trimmed === "transparent") {
+    return { color: new THREE.Color(0, 0, 0), alpha: 0 };
+  }
+  // A keyword or a hex value, which is what an attribute says and what a
+  // style engine that does not resolve colours hands back.
+  const color = new THREE.Color();
+  color.setStyle(trimmed, THREE.SRGBColorSpace);
+  return { color, alpha: 1 };
+}
+
+/**
+ * @param {Paint | null} a
+ * @param {Paint | null} b
+ * @returns {boolean}
+ */
+export function paintEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return a.alpha === b.alpha && a.color.equals(b.color);
+}
+
+/**
+ * Whether a `fill` or `stroke` paints anything, in the sense hit testing
+ * uses. Any paint but `none` counts. A `url(#…)` paint server counts though
+ * it is not drawn yet, and so does `transparent`, which is how a page makes
+ * an invisible shape clickable.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isPainted(value) {
+  const trimmed = value.trim();
+  return trimmed !== "" && trimmed !== "none";
+}
+
+/**
+ * When a ray can hit one of a shape's two regions, the fill or the stroke.
+ *
+ * @typedef {object} HitRule
+ * @property {boolean} painted Only while the region's paint is not `none`.
+ * @property {boolean} visible Only while `visibility` shows the shape.
+ */
+
+/**
+ * What a shape's `pointer-events` lets a ray hit. Each region has a rule,
+ * or null when no ray hits it.
+ *
+ * @typedef {object} HitRegions
+ * @property {HitRule | null} fill
+ * @property {HitRule | null} stroke
+ */
+
+/** @type {Record<string, HitRegions>} */
+const HIT_REGIONS = (() => {
+  const painted = { painted: true, visible: false };
+  const visible = { painted: false, visible: true };
+  const visiblePainted = { painted: true, visible: true };
+  const always = { painted: false, visible: false };
+  return {
+    visiblePainted: { fill: visiblePainted, stroke: visiblePainted },
+    visibleFill: { fill: visible, stroke: null },
+    visibleStroke: { fill: null, stroke: visible },
+    visible: { fill: visible, stroke: visible },
+    painted: { fill: painted, stroke: painted },
+    fill: { fill: always, stroke: null },
+    stroke: { fill: null, stroke: always },
+    all: { fill: always, stroke: always },
+    none: { fill: null, stroke: null },
+  };
+})();
+
+/**
+ * `pointer-events` on a shape, as SVG defines it. `auto` and any value this
+ * does not know, `bounding-box` among them, read as `visiblePainted`, the
+ * initial value.
+ *
+ * @param {string} value
+ * @returns {HitRegions}
+ */
+export function parsePointerEvents(value) {
+  return Object.hasOwn(HIT_REGIONS, value.trim())
+    ? HIT_REGIONS[value.trim()]
+    : HIT_REGIONS.visiblePainted;
+}
+
+/**
+ * Whether a viewport's `overflow` clips its content: a nested `<svg>`, a
+ * `<symbol>` or a `<marker>`, all `hidden` by the browser's own stylesheet.
+ * Not the mirror's `clipsOverflow`, because in SVG `auto` means `visible`.
+ *
+ * @param {string} value Computed `overflow`.
+ * @returns {boolean}
+ */
+export function clipsViewport(value) {
+  const first = value.trim().split(/\s+/)[0];
+  return first === "hidden" || first === "scroll" || first === "clip";
+}
+
+/**
+ * @param {string} value
+ * @returns {"nonzero" | "evenodd"}
+ */
+export function parseFillRule(value) {
+  return value.trim() === "evenodd" ? "evenodd" : "nonzero";
+}
+
+/**
+ * `stroke-dasharray`, as the pattern the dash cutter wants or null for a
+ * solid line. Computed style spells it `4px, 2px`; an attribute `4 2` or
+ * `4,2`; both are read.
+ *
+ * @param {string} value
+ * @param {() => number | undefined} [reference] What a percentage dash is
+ *   of, the viewport's diagonal over root two; without one a percentage
+ *   reads as no dash.
+ * @returns {number[] | null}
+ */
+export function parseDashArray(value, reference) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "none") {
+    return null;
+  }
+  const values = trimmed.split(/[\s,]+/).map((part) => parseLengthIn(part, reference, Number.NaN));
+  return normalizeDashArray(values);
+}
+
+/**
+ * @param {string} value
+ * @returns {"butt" | "round" | "square"}
+ */
+export function parseLineCap(value) {
+  const trimmed = value.trim();
+  return trimmed === "round" || trimmed === "square" ? trimmed : "butt";
+}
+
+/**
+ * @param {string} value
+ * @returns {"miter" | "round" | "bevel"}
+ */
+export function parseLineJoin(value) {
+  const trimmed = value.trim();
+  return trimmed === "round" || trimmed === "bevel" ? trimmed : "miter";
+}
+
+/**
+ * The numbers a shape's outline is built from, by the kind of shape: what
+ * `buildShapePath` in `shape.js` turns into three's `ShapePath`. A `<path>`
+ * keeps its `d` as the string it is, since parsing one is `SVGLoader`'s
+ * job; every other kind is a handful of lengths. A polyline's or a
+ * polygon's `points` are its coordinates in order, x then y, two to a
+ * vertex.
+ *
+ * @typedef {{
+ *       kind: "rect",
+ *       x: number,
+ *       y: number,
+ *       width: number,
+ *       height: number,
+ *       rx: number,
+ *       ry: number,
+ *     }
+ *   | { kind: "circle", cx: number, cy: number, r: number }
+ *   | { kind: "ellipse", cx: number, cy: number, rx: number, ry: number }
+ *   | { kind: "line", x1: number, y1: number, x2: number, y2: number }
+ *   | { kind: "polyline" | "polygon", points: number[] }
+ *   | { kind: "path", d: string }} ShapeGeometry
+ */
+
+/**
+ * Whether two readings of a shape's geometry are the same outline: the same
+ * kind, and every field equal. A restyle that moves none of them builds
+ * nothing.
+ *
+ * @param {ShapeGeometry | null} a
+ * @param {ShapeGeometry | null} b
+ * @returns {boolean}
+ */
+export function shapeGeometryEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  switch (a.kind) {
+    case "rect":
+      return (
+        b.kind === "rect" &&
+        a.x === b.x &&
+        a.y === b.y &&
+        a.width === b.width &&
+        a.height === b.height &&
+        a.rx === b.rx &&
+        a.ry === b.ry
+      );
+    case "circle":
+      return b.kind === "circle" && a.cx === b.cx && a.cy === b.cy && a.r === b.r;
+    case "ellipse":
+      return (
+        b.kind === "ellipse" && a.cx === b.cx && a.cy === b.cy && a.rx === b.rx && a.ry === b.ry
+      );
+    case "line":
+      return b.kind === "line" && a.x1 === b.x1 && a.y1 === b.y1 && a.x2 === b.x2 && a.y2 === b.y2;
+    case "polyline":
+    case "polygon": {
+      if (b.kind !== a.kind || a.points.length !== b.points.length) {
+        return false;
+      }
+      for (let i = 0; i < a.points.length; i++) {
+        if (a.points[i] !== b.points[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case "path":
+      return b.kind === "path" && a.d === b.d;
+  }
+}
+
+/**
+ * A number in a `points` list, as SVG's grammar writes one, matched only
+ * where the scan stands.
+ */
+const POINTS_NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/y;
+
+/**
+ * What separates two numbers in a `points` list: spaces, a comma with or
+ * without spaces around it, or nothing at all where a sign or a second
+ * decimal point starts the next number (`10-5`, `0.5.5`).
+ */
+const POINTS_SEPARATOR = /\s*,?\s*/y;
+
+/**
+ * A `points` list read as SVG reads it: the coordinates in order, two to a
+ * vertex. The scan stops at the first token that is not a number or a
+ * separator, or at a number too large to be finite, and keeps the whole
+ * pairs read before it, as Chromium's `SVGPointList::Parse` does; an odd
+ * last number goes with it. Null for a list with not one whole pair in it,
+ * which draws nothing.
+ *
+ * @param {string} value
+ * @returns {number[] | null}
+ */
+export function parsePoints(value) {
+  /** @type {number[]} */
+  const numbers = [];
+  POINTS_SEPARATOR.lastIndex = 0;
+  POINTS_SEPARATOR.exec(value);
+  let at = POINTS_SEPARATOR.lastIndex;
+  while (at < value.length) {
+    POINTS_NUMBER.lastIndex = at;
+    const match = POINTS_NUMBER.exec(value);
+    const number = match ? Number(match[0]) : Number.NaN;
+    if (!Number.isFinite(number)) {
+      break;
+    }
+    numbers.push(number);
+    POINTS_SEPARATOR.lastIndex = POINTS_NUMBER.lastIndex;
+    POINTS_SEPARATOR.exec(value);
+    at = POINTS_SEPARATOR.lastIndex;
+  }
+  if (numbers.length % 2 === 1) {
+    numbers.pop();
+  }
+  return numbers.length ? numbers : null;
+}
+
+/**
+ * The shape's geometry, or null for a shape with nothing to draw. Nothing
+ * about the element's styling goes in; the styling is read from the live
+ * element by the code that draws it.
+ *
+ * Geometry comes from the computed style where the browser exposes it as
+ * CSS — Chromium reports `cx`, `r`, `x`, `width` and the rest in px, and a
+ * `<path>`'s `d` as `path("…")` — and from the attribute otherwise. Both
+ * reads are dependencies of the computation this runs in: the portal
+ * observes every attribute, and a write to one invalidates the element's
+ * computed style and its cached attribute reads alike.
+ *
+ * A percentage, which the computed style keeps as one, is a share of the
+ * viewport the shape is in. The viewport is read once, and only for a length
+ * that is a percentage, so a shape with none does not depend on its size.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @param {Element} element
+ * @param {() => { width: number, height: number } | null} viewport The
+ *   viewport the shape is in, `viewportSize` in `shape.js`.
+ * @returns {ShapeGeometry | null}
+ */
+export function readShapeGeometry(style, element, viewport) {
+  const of = viewportReferences(viewport);
+  /**
+   * @param {string} name
+   * @param {ViewportAxis} axis What a percentage of it is of.
+   * @param {number} [fallback]
+   */
+  const length = (name, axis, fallback = 0) =>
+    parseLengthIn(readProperty(style, element, name), of[axis], fallback);
+  switch (element.localName) {
+    case "rect": {
+      const width = length("width", "width");
+      const height = length("height", "height");
+      if (width <= 0 || height <= 0) {
+        return null;
+      }
+      // `auto` on one radius means "the other one"; on both, square corners.
+      let rx = length("rx", "width", Number.NaN);
+      let ry = length("ry", "height", Number.NaN);
+      if (Number.isNaN(rx) && Number.isNaN(ry)) {
+        rx = 0;
+        ry = 0;
+      } else if (Number.isNaN(rx)) {
+        rx = ry;
+      } else if (Number.isNaN(ry)) {
+        ry = rx;
+      }
+      return {
+        kind: "rect",
+        x: length("x", "width"),
+        y: length("y", "height"),
+        width,
+        height,
+        rx,
+        ry,
+      };
+    }
+    case "circle": {
+      const r = length("r", "diagonal");
+      if (r <= 0) {
+        return null;
+      }
+      return { kind: "circle", cx: length("cx", "width"), cy: length("cy", "height"), r };
+    }
+    case "ellipse": {
+      let rx = length("rx", "width", Number.NaN);
+      let ry = length("ry", "height", Number.NaN);
+      if (Number.isNaN(rx)) {
+        rx = ry;
+      }
+      if (Number.isNaN(ry)) {
+        ry = rx;
+      }
+      if (!(rx > 0) || !(ry > 0)) {
+        return null;
+      }
+      return { kind: "ellipse", cx: length("cx", "width"), cy: length("cy", "height"), rx, ry };
+    }
+    case "line": {
+      return {
+        kind: "line",
+        x1: length("x1", "width"),
+        y1: length("y1", "height"),
+        x2: length("x2", "width"),
+        y2: length("y2", "height"),
+      };
+    }
+    case "polyline":
+    case "polygon": {
+      const points = parsePoints(readProperty(style, element, "points"));
+      if (!points) {
+        return null;
+      }
+      return { kind: element.localName === "polygon" ? "polygon" : "polyline", points };
+    }
+    case "path": {
+      const computed = style.getPropertyValue("d").trim();
+      const match = /^path\((["'])([\s\S]*)\1\)$/.exec(computed);
+      const d = (match ? match[2] : (getAttributeCached(element, "d") ?? "")).trim();
+      return d ? { kind: "path", d } : null;
+    }
+    default:
+      return null;
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Renamed from `@apendua.dev/geometry`, and moved from apendua.dev to the justdom repository",
+      "type": "none",
+      "packageName": "@apendua/geometry"
+    }
+  ],
+  "packageName": "@apendua/geometry",
+  "email": "noreply@anthropic.com"
+}

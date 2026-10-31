@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Renamed from `@apendua/signal`, and moved from apendua.dev to the justdom repository",
+      "type": "none",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

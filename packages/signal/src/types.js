@@ -1,0 +1,96 @@
+/**
+ * Represents a property with getter and setter functions.
+ * @template T
+ * @typedef {object} Property
+ * @property {(ctx: WeakKey) => T} get - Function to get the property value from the context.
+ * @property {(ctx: WeakKey, value: T) => WeakKey} set - Function to set the property value in the context.
+ */
+
+/**
+ * @template X
+ * @template Y
+ * @template [A=X]
+ * @template [B=never]
+ * @typedef {(
+ *   (<T>() => T extends X ? 1 : 2) extends
+ *   (<T>() => T extends Y ? 1 : 2) ? A : B
+ * )} IfEquals
+ */
+
+/**
+ * @template X
+ * @template A
+ * @template [B=never]
+ * @typedef {(
+ *   X extends (...args: any[]) => any ? A : B
+ * )} IfFunction
+ */
+
+/**
+ * @template {object} T
+ * @typedef {{
+ *   [P in keyof T as IfEquals<{ [Q in P]: T[P] }, { -readonly [Q in P]: T[P] },
+ *   IfFunction<T[P], never, P>>]?: IfFunction<T[P], never, T[P]>;
+ * }} WritableProps
+ */
+
+/**
+ * The subscription contract, re-exported so that a package built on this one
+ * can spell its types in this package's vocabulary — `Source` for what the
+ * factories hand out, `Subscribable` for what the graph accepts — without
+ * naming RxJS. See `subscribable.js` for the contract itself.
+ *
+ * @template T
+ * @typedef {import("./subscribable.js").Observer<T>} Observer
+ */
+
+/**
+ * @typedef {import("./subscribable.js").Unsubscribable} Unsubscribable
+ */
+
+/**
+ * @template T
+ * @typedef {import("./subscribable.js").Subscribable<T>} Subscribable
+ */
+
+/**
+ * @template T
+ * @typedef {import("./subscribable.js").Source<T>} Source
+ */
+
+/**
+ * A transformation from one source to another, spelled in this package's own
+ * contract so that neither end of a chain has to be an RxJS observable. What
+ * `OperatorFunction` was being imported for.
+ *
+ * @template T, U
+ * @typedef {import("./util.js").Operator<T, U>} Operator
+ */
+
+/**
+ * @template T
+ * @typedef {import("./util.js").MonoTypeOperator<T>} MonoTypeOperator
+ */
+
+/**
+ * Work mounted on an entity for as long as its holder stands.
+ *
+ * This is what `just`, `useEffects` and `store` take where they used to take
+ * a `MonoTypeOperatorFunction`: not a stream transformer, but the body of an
+ * `Effect` with the entity in scope. It runs when the mounting is built,
+ * re-runs when anything it read changes, may register teardowns through
+ * `onCleanup` or by returning a function, and never substitutes the entity —
+ * the one value a mounting carries is the entity itself.
+ *
+ * A plain lambda is a valid effect: `(el) => { ref = el; }` reads nothing, so
+ * it runs exactly once per mounting.
+ *
+ * The second argument is the run's `EffectContext` — `fail` is how work the
+ * run merely started reports a failure that arrives after the run returned,
+ * such as a subscription erroring later. Most effects never need it.
+ *
+ * @template T
+ * @typedef {(entity: T, context: import("./Effect.js").EffectContext) => unknown} EntityEffect
+ */
+
+export {};

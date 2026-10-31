@@ -1,0 +1,66 @@
+/* The page: a 1600x1000 desk scaled to fit the window, the picker for its
+   look, and the feature notes the button in the corner lays over it. Each
+   look's own design is in src/looks/, and only the chosen one is loaded. */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
+.stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+.desk { position: relative; width: 1600px; height: 1000px; flex: none; transform-origin: center center; overflow: hidden; }
+.zone { position: absolute; }
+.chrome { position: fixed; top: 10px; left: 10px; z-index: 50; display: flex; gap: 6px; font: 600 12px/1 system-ui, sans-serif; }
+.chrome button, .look-picker {
+  color: #fff; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.25);
+  padding: 7px 10px; border-radius: 6px; font: inherit;
+}
+.chrome button { cursor: pointer; }
+.look-picker { display: flex; align-items: center; gap: 8px; }
+.look-picker select { color: inherit; background: transparent; border: 0; font: inherit; cursor: pointer; }
+.look-picker option { color: #111; }
+.tag {
+  display: none; position: absolute; z-index: 40; max-width: 260px;
+  background: #fffbe6; color: #222; border: 1px solid #d4a017; border-radius: 6px;
+  padding: 6px 8px; font: 500 11px/1.35 system-ui, sans-serif; pointer-events: none;
+}
+.tag b { display: block; font-size: 11px; color: #8a5a00; margin-bottom: 2px; letter-spacing: .04em; text-transform: uppercase; }
+body.tags .tag { display: block; }
+
+/* While a session runs every zone is a panel of its own, posed by the scene
+   (src/components/Scene.ts). The staging goes: the desk is not scaled and
+   no zone is tilted, so each one is measured flat and at its own size, and
+   the notes are not mirrored with the zone they sit in. The page is under
+   the session's canvas meanwhile, so none of this is seen. The desk's own
+   scale is an inline style, which src/stage.ts sets to one. Important,
+   because each tilt is set by the zone's id, which no rule for `.zone` can
+   outrank; without it the tilted zones were mirrored measured under their
+   tilt, and the text in them was drawn out of place. */
+html[data-presenting] .zone { transform: none !important; }
+html[data-presenting] .tag { display: none; }
+html[data-presenting] .chrome { display: none; }
+/* The cursor sits after the text, and in a session the whole program is in
+   the text from the start, revealed by the scene: while it is being typed
+   the cursor would blink at its end rather than at the cut. */
+html[data-presenting] .screen[data-typing] .cursor { visibility: hidden; }
+/* A key pressed on the page moves down the screen, which is how a keycap
+   going down looks from above. In the room the keyboard lies on the desk,
+   and down the screen is along the desk, so there the caps stand proud of
+   the board and a press pushes them into it, as a real one would. The
+   phosphor knob stands on the monitor and is pressed the same way. */
+html[data-presenting] .key { transform: translateZ(4px); }
+html[data-presenting] .key:hover, html[data-presenting] .key[data-xr-hover] { transform: translateZ(5px); }
+html[data-presenting] .key:active, html[data-presenting] .key[data-xr-active], html[data-presenting] .key[data-down] { transform: translateZ(1px); }
+html[data-presenting] .knob { transform: translateZ(3px); }
+html[data-presenting] .knob:hover, html[data-presenting] .knob[data-xr-hover] { transform: translateZ(4px); }
+html[data-presenting] .knob:active, html[data-presenting] .knob[data-xr-active] { transform: translateZ(1px); }
+
+.krow { display: flex; gap: 5px; }
+.key { position: relative; display: flex; align-items: center; justify-content: center; flex: 1 1 0; min-width: 0; cursor: pointer; user-select: none; }
+.key.w15 { flex-grow: 1.5; } .key.w18 { flex-grow: 1.8; } .key.w2 { flex-grow: 2; }
+.key.w22 { flex-grow: 2.2; } .key.w23 { flex-grow: 2.3; } .key.w27 { flex-grow: 2.7; }
+.key.space { flex-grow: 7; }
+[draggable=true] { cursor: grab; }
+[data-dragging] { opacity: .45; }
+.crt { margin: 0; white-space: pre-wrap; }
+.cursor { display: inline-block; width: .6em; height: 1em; vertical-align: -.12em; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes march { to { stroke-dashoffset: -20; } }
+@keyframes busy { 50% { opacity: .25; } }
+@keyframes spin { to { transform: rotate(360deg); } }

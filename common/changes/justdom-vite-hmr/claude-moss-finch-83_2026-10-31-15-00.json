@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Renamed from `@apendua/vite-hmr`, and moved from apendua.dev to the justdom repository",
+      "type": "none",
+      "packageName": "justdom-vite-hmr"
+    }
+  ],
+  "packageName": "justdom-vite-hmr",
+  "email": "noreply@anthropic.com"
+}

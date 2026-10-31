@@ -1,0 +1,12 @@
+# Used by "rush publish" in place of common/config/rush/.npmrc. Rush copies this
+# file to common/temp/publish-home/.npmrc and makes that folder the home
+# directory for the publish, so the publishing account's own ~/.npmrc is not
+# read. The token comes from NPM_AUTH_TOKEN in the environment of whoever runs
+# the publish; Rush drops the line when the variable is unset.
+#
+# Every published package is public, unscoped ("justdom-*") or under the
+# "@apendua" scope, and all of them go to the public registry, so there is no
+# scope-to-registry mapping.
+registry=https://registry.npmjs.org/
+//registry.npmjs.org/:_authToken=${NPM_AUTH_TOKEN}
+always-auth=true

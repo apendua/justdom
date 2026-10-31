@@ -1,0 +1,8 @@
+{
+  "name": "browserslist-tools",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "browserslist": "^4.28.1"
+  }
+}

@@ -5,6 +5,9 @@
 # A pull request that changes what the site shows also gets the site, demos
 # included, deployed to the justdom-dev Cloudflare Pages project, and a comment
 # with its preview URL. The production site is pages.yml's, on GitHub Pages.
+# The deploy is a job of its own, `preview`, because it is the one that needs
+# the `staging` environment: a protection rule on that environment, such as a
+# required reviewer, then holds up the preview and never the build.
 name: CI
 on:
   workflow_dispatch:
@@ -25,16 +28,10 @@ jobs:
       && !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Holds CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID for the preview.
-    # Every run is recorded as a deployment to it, so the record points at the
-    # preview when there is one.
-    environment:
-      name: staging
-      url: ${{ steps.cloudflare.outputs.alias-url }}
     permissions:
       contents: read
-      # To post and refresh the preview comment.
-      pull-requests: write
+    outputs:
+      preview: ${{ steps.preview.outputs.deploy }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,9 +73,34 @@ jobs:
             echo "This pull request changes nothing the site is built from, so it gets no preview." \
               >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Keep the site for the preview job
+        if: steps.preview.outputs.deploy == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: site/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  preview:
+    needs: build
+    if: needs.build.outputs.preview == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Holds CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+    environment:
+      name: staging
+      url: ${{ steps.cloudflare.outputs.alias-url }}
+    permissions:
+      # To post and refresh the preview comment.
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: site/dist
       - name: Deploy the site preview to Cloudflare Pages
         id: cloudflare
-        if: steps.preview.outputs.deploy == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

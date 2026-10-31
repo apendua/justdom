@@ -26,6 +26,13 @@ node common/scripts/install-run-rush.js build
 formats staged files with Prettier. `rush update` rewrites the lockfile and is needed only when
 dependencies change.
 
+## The site
+
+`site/` is justdom.dev: the guides, a page for each published package made from its README, and the
+demos under `/demos/<app>/`. `.github/workflows/pages.yml` builds it on every push to `develop` and
+deploys it to GitHub Pages. [`site/README.md`](site/README.md) says how it is put together and how
+to work on it.
+
 ## Change files
 
 Every change to a published package needs a change file, which CI checks with

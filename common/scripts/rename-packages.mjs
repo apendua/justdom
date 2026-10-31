@@ -6,8 +6,9 @@
 // It rewrites every package specifier and every path to a renamed directory in
 // the tracked files under packages/ and apps/, then sets each package.json's
 // version, publishConfig and repository from the table below and lists the
-// packages and apps in rush.json. Running it again changes nothing, so it can
-// follow each re-run of import-apendua-dev.sh.
+// packages and apps in rush.json, after which it keeps the projects that did
+// not come from apendua.dev. Running it again changes nothing, so it can follow
+// each re-run of import-apendua-dev.sh.
 //
 // The CHANGELOG files are left alone apart from the "name" in CHANGELOG.json:
 // they record what each package was called when the entry was written.
@@ -140,27 +141,32 @@ for (const { folder, to, publish } of packages) {
 
 const rushJson = join(root, "rush.json");
 const rush = readFileSync(rushJson, "utf8");
-const entries = packages.map(({ folder, to, publish }) => ({
-  packageName: to,
-  projectFolder: folder,
-  ...(publish ? { versionPolicyName: "publishable" } : {}),
-}));
+// The list runs from its key to the bracket at its own indentation, so an
+// entry may hold arrays of its own.
+const projectsRe = /"projects": (\[[\s\S]*?\n  \])/;
+const imported = new Set(packages.map(({ folder }) => folder));
+/** @type {Record<string, unknown>[]} */
+const listed = JSON.parse(rush.match(projectsRe)?.[1] ?? "[]");
+const entries = [
+  ...packages.map(({ folder, to, publish }) => ({
+    packageName: to,
+    projectFolder: folder,
+    ...(publish ? { versionPolicyName: "publishable" } : {}),
+  })),
+  // Projects that started here, such as the site, are kept as they are.
+  ...listed.filter((entry) => !imported.has(/** @type {string} */ (entry.projectFolder))),
+];
 // Written as Prettier prints it on commit, so that a second run leaves
 // rush.json as the first run's commit has it: an entry on one line when that
 // line, comma included, fits in 100 columns, and one field per line when not.
 const projects = entries.map((entry, index) => {
-  const fields = Object.entries(entry).map(([key, value]) => `"${key}": "${value}"`);
+  const fields = Object.entries(entry).map(([key, value]) => `"${key}": ${JSON.stringify(value)}`);
   const comma = index < entries.length - 1 ? "," : "";
   const line = `    { ${fields.join(", ")} }${comma}`;
   return line.length <= 100
     ? line
     : `    {\n${fields.map((field) => `      ${field}`).join(",\n")}\n    }${comma}`;
 });
-// The list runs from its key to the bracket at its own indentation, so an
-// entry may hold arrays of its own.
-writeFileSync(
-  rushJson,
-  rush.replace(/"projects": \[[\s\S]*?\n  \]/, `"projects": [\n${projects.join("\n")}\n  ]`),
-);
+writeFileSync(rushJson, rush.replace(projectsRe, `"projects": [\n${projects.join("\n")}\n  ]`));
 
 console.log(`Rewrote ${rewritten} files and ${packages.length} package.json files.`);

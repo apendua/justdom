@@ -81,3 +81,9 @@ dist
 # What the visual test photographed on this run. The baselines beside it are
 # committed; these are the frames it just took and the differences it found.
 apps/*/tests/output/
+
+# The site's generated pages, written by site/scripts/pages.mjs from the
+# READMEs and rush.json, and VitePress's cache. Its build goes to site/dist.
+site/packages/
+site/demos/
+site/.vitepress/cache/

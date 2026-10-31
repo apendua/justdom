@@ -71,6 +71,7 @@
     { "packageName": "minesweeper", "projectFolder": "apps/minesweeper" },
     { "packageName": "showcase-xr", "projectFolder": "apps/showcase-xr" },
     { "packageName": "todo-ssr", "projectFolder": "apps/todo-ssr" },
-    { "packageName": "todo-vanilla", "projectFolder": "apps/todo-vanilla" }
+    { "packageName": "todo-vanilla", "projectFolder": "apps/todo-vanilla" },
+    { "packageName": "justdom-site", "projectFolder": "site" }
   ]
 }

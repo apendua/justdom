@@ -1,0 +1,30 @@
+{
+  "name": "justdom-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "justdom.dev: the guides, the package pages and the demos",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "site"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "npm run test && node scripts/pages.mjs && vitepress build 2>&1 && node scripts/copy-demos.mjs",
+    "build:watch": "",
+    "dev": "node scripts/pages.mjs && vitepress dev",
+    "preview": "vitepress preview",
+    "test": "node --test \"scripts/*.test.mjs\""
+  },
+  "devDependencies": {
+    "bricks-xr": "workspace:*",
+    "castle-xr": "workspace:*",
+    "desk": "workspace:*",
+    "euclid": "workspace:*",
+    "knights": "workspace:*",
+    "minesweeper": "workspace:*",
+    "showcase-xr": "workspace:*",
+    "todo-vanilla": "workspace:*",
+    "vitepress": "1.6.4"
+  }
+}

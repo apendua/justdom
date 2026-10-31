@@ -1,0 +1,51 @@
+# Builds the site in site/ with the demos it serves and deploys it to GitHub
+# Pages, on every push to develop. site/README.md says how the site is put
+# together.
+name: Pages
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop"]
+
+# One deployment at a time, and the newest push wins: a run still going for an
+# older commit would only deploy a site that is already out of date.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The demos' music is in Git LFS, and a build without it would
+          # serve pointer files in place of the mp3s.
+          lfs: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Build the site and the demos
+        run: node common/scripts/install-run-rush.js build --to justdom-site --verbose
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

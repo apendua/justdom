@@ -26,7 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Holds CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID for the preview.
-    environment: staging
+    # Every run is recorded as a deployment to it, so the record points at the
+    # preview when there is one.
+    environment:
+      name: staging
+      url: ${{ steps.cloudflare.outputs.alias-url }}
     permissions:
       contents: read
       # To post and refresh the preview comment.
@@ -52,14 +56,19 @@ jobs:
         # secrets, and its code should not reach them. Only when the diff
         # touches what the site is built from, which is the site itself, the
         # demos, the packages whose READMEs are its pages, or the build.
+        #
+        # The checkout is the pull request's merge commit, whose first parent
+        # is the base as it was when GitHub made the commit. The event's base
+        # sha can be gone by now, when a stacked pull request's base branch
+        # has been force-pushed since.
         if: >-
           github.event_name == 'pull_request'
           && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git diff --name-only "$BASE...$HEAD" |
+          # The default shell's -e fails the step when the diff fails, rather
+          # than reading as a pull request with nothing to preview.
+          files="$(git diff --name-only HEAD^1 HEAD)"
+          if printf '%s\n' "$files" |
             grep -qE '^(site|apps|packages)/|^rush\.json$|^common/config/rush/|^\.github/workflows/ci\.yml$'
           then
             echo "deploy=true" >> "$GITHUB_OUTPUT"

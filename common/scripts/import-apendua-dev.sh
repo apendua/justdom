@@ -41,7 +41,9 @@ moved=(
   packages/euclid-lang
   # Deleted again right after the import, since castle-xr is the same game
   # with more in it. It stays on this list so that a re-run reproduces the
-  # history already merged, which a shorter list would rewrite.
+  # history already merged, which a shorter list would rewrite. If
+  # apendua.dev changed it since, merging the re-run's branch stops on a
+  # modify/delete conflict there; keep the files deleted.
   apps/bricks-xr
   apps/castle-xr
   apps/desk

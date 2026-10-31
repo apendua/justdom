@@ -53,6 +53,12 @@ moved=(
 # Where the moved files lived before an earlier rename. Without these a file's
 # history would stop at the commit that moved it. They stay at their old paths,
 # so `git log --follow` finds them the same way it does in apendua.dev.
+#
+# This list and the one of single files below hold every rename into the kept
+# paths that git finds at its default similarity threshold of 50%, the one
+# `--follow` uses. Files reworked on the way in, such as the two that
+# packages/reactive-data-structures left in signal, fall below it and are left
+# out, since `--follow` would not reach their old paths anyway.
 earlier=(
   packages/dom # justdom
   packages/hmr # vite-hmr

@@ -203,7 +203,8 @@ function main() {
         : { title: undefined, summary: undefined };
       // A demo that draws a headset session does it with justdom-xr, whose
       // emulator every such demo installs behind `?emulator`.
-      const { dependencies = {} } = readJson(join(root, folder, "package.json"));
+      const manifest = readJson(join(root, folder, "package.json"));
+      const dependencies = { ...manifest.devDependencies, ...manifest.dependencies };
       return {
         folder,
         slug: project.slug,

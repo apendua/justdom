@@ -31,10 +31,6 @@ describe("inputModels", () => {
 
   beforeEach(() => {
     fetched = [];
-    Object.defineProperty(globalThis, "location", {
-      configurable: true,
-      value: { href: "https://example.test/apps/euclid/?emulator" },
-    });
     // Records what is asked for, and answers nothing, as a headset with no
     // network would.
     globalThis.fetch = async (input) => {
@@ -49,8 +45,8 @@ describe("inputModels", () => {
   /** Let the promise callbacks queued so far run. */
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  it("asks for a controller's model from the app's own profiles", async () => {
-    const { createControllerModel } = inputModels("/apps/euclid/");
+  it("asks for a controller's model from three's default CDN", async () => {
+    const { createControllerModel } = inputModels();
     const grip = /** @type {THREE.XRGripSpace} */ (new THREE.Group());
     createControllerModel(grip);
     // three warns that the fetch failed, which is the point here.
@@ -69,18 +65,22 @@ describe("inputModels", () => {
     );
     await settle();
     console.warn = warn;
-    assert.deepEqual(fetched, ["https://example.test/apps/euclid/profiles/profilesList.json"]);
+    assert.deepEqual(fetched, [
+      "https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles/profilesList.json",
+    ]);
   });
 
   it("and a tracked hand's from the same tree", async () => {
-    const { createHandModel } = inputModels("/apps/euclid/");
+    const { createHandModel } = inputModels();
     const hand = /** @type {THREE.XRHandSpace} */ (new THREE.Group());
     createHandModel(hand);
     hand.dispatchEvent(
       /** @type {any} */ ({ type: "connected", data: { handedness: "left", hand: {} } }),
     );
     await settle();
-    assert.deepEqual(fetched, ["https://example.test/apps/euclid/profiles/generic-hand/left.glb"]);
+    assert.deepEqual(fetched, [
+      "https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles/generic-hand/left.glb",
+    ]);
   });
 });
 

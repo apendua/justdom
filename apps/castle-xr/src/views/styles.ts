@@ -4,8 +4,8 @@
  * in cannot drift apart.
  *
  * The dress is parchment and bronze: plaque-like cards with squared corners,
- * titles set in Cinzel's carved capitals over a ruled line, and readings in
- * Quicksand's round hand. The buttons are the one deliberately different
+ * titles in the browser's serif capitals over a ruled line, and readings in
+ * its sans-serif. The buttons are the one deliberately different
  * shape — full pills, dark oak with a gilt rim — so the things that can be
  * pressed are told from the things that can only be read at a glance.
  *
@@ -13,18 +13,10 @@
  * borders, corner radii and text — no gradients and no shadows — so the whole
  * design is carried by colour, line and type.
  */
-import { fontFace, stylesheet, CLASS_NAME } from "justdom";
+import { stylesheet, CLASS_NAME } from "justdom";
 import type { DropdownClasses } from "justdom-three-ui";
-import titleFontFile from "@apendua.dev/media/fonts/Cinzel-wght.ttf";
-import bodyFontFile from "@apendua.dev/media/fonts/Quicksand-wght.ttf";
 import { fromObservable, observable, type Subscribable } from "justdom-signal";
 import { palette } from "../elements/palette.js";
-
-/** Carved Roman capitals, for what a panel is called. */
-export const titleFont = fontFace(titleFontFile, { fontWeight: "400 900" });
-
-/** A round, legible hand, for everything a panel says. */
-export const bodyFont = fontFace(bodyFontFile, { fontWeight: "300 700" });
 
 export const panelStack = stylesheet`
   .${CLASS_NAME} {
@@ -37,7 +29,7 @@ export const panelStack = stylesheet`
 
 export const panelCard = stylesheet`
   .${CLASS_NAME} {
-    font-family: '${bodyFont}';
+    font-family: sans-serif;
     font-weight: 500;
     background: ${() => palette.panel};
     border: 3px solid ${() => palette.panelEdge};
@@ -49,7 +41,7 @@ export const panelCard = stylesheet`
 
 export const panelTitle = stylesheet`
   .${CLASS_NAME} {
-    font-family: '${titleFont}';
+    font-family: serif;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.16em;
@@ -261,7 +253,7 @@ export const outputClasses: DropdownClasses = {
  */
 export const paletteLabel = stylesheet`
   .${CLASS_NAME} {
-    font-family: '${bodyFont}';
+    font-family: sans-serif;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -275,7 +267,7 @@ export const paletteLabel = stylesheet`
 /** Shown once the last brick is on the ground. */
 export const victoryBanner = stylesheet`
   .${CLASS_NAME} {
-    font-family: '${titleFont}';
+    font-family: serif;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.12em;

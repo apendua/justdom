@@ -17,7 +17,6 @@
     "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
-    "@apendua.dev/media": "workspace:*",
     "@types/three": "~0.185.0",
     "jsdom": "^26.1.0",
     "justdom": "workspace:*",

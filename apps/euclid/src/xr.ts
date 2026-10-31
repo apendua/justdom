@@ -16,8 +16,8 @@ export function offerXR(mounts: Mounts): void {
   followOutlinesQuery(new URLSearchParams(location.search));
 
   render(Scene(mounts), {
-    // From this app's own origin, where `vite.config.mts` serves them.
-    ...inputModels(import.meta.env.BASE_URL),
+    // From three's default CDN, when a controller or hand connects.
+    ...inputModels(),
     presentingOnly: true,
     // The drawing is an `<svg>`, which a panel draws only through this plugin.
     portalPlugins: [svgElements()],

@@ -32,10 +32,8 @@ On a laptop the page is the page and nothing else. No session can be opened, so 
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
 (IWER, with its dev panels) and the **Enter** button appears at the top, over the sky in the
 backdrop, since freedom's place for it at the bottom is the toolbar's. Press it and the emulated
-session is drawn over the page. The controller and hand models come from this app's own origin,
-where `@apendua.dev/media`'s Vite plugin serves them. Knights has no service worker, so nothing
-precaches them, and a headset with no network draws no models. `?emulator=bare` installs the runtime
-without the panels.
+session is drawn over the page. The controller and hand models come from three's default CDN, so a
+headset with no network draws no models. `?emulator=bare` installs the runtime without the panels.
 
 The page needed four changes to look the same in the panel. The first three do not show on the page;
 the fourth does:

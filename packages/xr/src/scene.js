@@ -55,30 +55,18 @@ export const Backdrop = component(
 
 /**
  * The models `render()` draws for the controllers and the tracked hands,
- * from the app's own origin rather than three's default CDN, so no other
- * origin is asked for them. Spread into `render()`'s options. A headset
- * with no network draws them only if the app's service worker precaches
- * them, which takes `globPatterns` covering the `.glb` and `.json` files
- * under `profiles/`; each app's README says whether it does.
+ * spread into `render()`'s options. Both factories fetch the WebXR input
+ * profiles from three's default, the jsDelivr CDN, when a controller or hand
+ * connects, so a headset with no network draws neither.
  *
- * The files are `@apendua.dev/media`'s WebXR input profiles, which its Vite
- * plugin serves at `<base>profiles/`, so the app's `vite.config.mts` has to
- * list `xrProfiles()` from `@apendua.dev/media/vite`. `base` is the app's
- * `import.meta.env.BASE_URL`.
- *
- * @param {string} base
  * @returns {{
  *   createControllerModel: (grip: THREE.XRGripSpace) => THREE.Object3D,
  *   createHandModel: (hand: THREE.XRHandSpace) => THREE.Object3D,
  * }}
  */
-export function inputModels(base) {
-  const profiles = new URL("profiles", new URL(base, location.href)).href;
-  // The two paths are spelled differently on purpose: the controller
-  // factory joins `/profilesList.json` onto its own, and the hand model
-  // joins `<handedness>.glb` onto its own with no separator.
-  const controllers = new XRControllerModelFactory().setPath(profiles);
-  const hands = new XRHandModelFactory().setPath(`${profiles}/generic-hand/`);
+export function inputModels() {
+  const controllers = new XRControllerModelFactory();
+  const hands = new XRHandModelFactory();
   return {
     createControllerModel: (grip) => controllers.createControllerModel(grip),
     createHandModel: (hand) => hands.createHandModel(hand, "mesh"),

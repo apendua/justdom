@@ -38,8 +38,8 @@ is what the panels being real DOM makes cheap. It is the one automated test of t
 pure grid arithmetic under it has unit tests of its own.
 
 The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after the last change. The
-soundtrack is the house one, `glass_desk_habits.mp3` out of `@apendua.dev/media`, started with the
-session and stopped with it — played by `@apendua/sound/xr`, which every headset app here shares.
+soundtrack is `src/assets/glass_desk_habits.mp3`, started with the session and stopped with it —
+played by `@apendua/sound/xr`, which every headset app here shares.
 
 A brick that lands clicks, from the cell it landed in — a knock with a little ring in it, the way
 two magnets sound when they meet. Both halves of that come from `@apendua/sound`: the waveform is
@@ -81,8 +81,8 @@ triggers belong to the slingshot.
 
 Every colour in the game comes from `elements/palette.ts`, panels included, so the interface and the
 world it sits in cannot drift apart. The board is deep teal and the bricks are the one warm thing
-standing on it; the panels take the bricks' side of that split — parchment in a bronze frame, Cinzel
-capitals for titles, Quicksand for everything else, pill-shaped oak-and-gilt buttons — so the
+standing on it; the panels take the bricks' side of that split — parchment in a bronze frame, serif
+capitals for titles, sans-serif for everything else, pill-shaped oak-and-gilt buttons — so the
 interface belongs with the castle rather than with the table. Cyan is kept for what the player is
 _about_ to do — the ghost of a brick, the pointer — so it never competes with anything already
 built.

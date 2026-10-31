@@ -302,7 +302,7 @@ async function start(): Promise<void> {
     return;
   }
   render(probeScene, {
-    ...inputModels(import.meta.env.BASE_URL),
+    ...inputModels(),
     presentingOnly: true,
   }).subscribe({
     next: (drawing) => {

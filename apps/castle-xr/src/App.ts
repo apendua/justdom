@@ -20,7 +20,7 @@ import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
 import { createMusicControls, Music } from "@apendua/sound/xr";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
+import glass_desk_habits from "./assets/glass_desk_habits.mp3";
 import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";
 import Session from "./store/Session.js";

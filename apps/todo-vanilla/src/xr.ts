@@ -16,8 +16,8 @@ export function offerXR(panel: HTMLElement): void {
   followOutlinesQuery(query);
 
   render(Scene(panel), {
-    // From this app's own origin, where `vite.config.mts` serves them.
-    ...inputModels(import.meta.env.BASE_URL),
+    // From three's default CDN, when a controller or hand connects.
+    ...inputModels(),
     presentingOnly: true,
     // The keyboard for every panel in the scene: what it looks like is
     // `TodoKeyboard`'s, and where it opens, when it goes and how it is

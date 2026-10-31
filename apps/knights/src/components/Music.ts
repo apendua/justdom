@@ -1,6 +1,6 @@
 import { $, set } from "justdom";
 import { component, effects, onCleanup } from "justdom-signal";
-import stepsToTheThrone from "@apendua.dev/media/steps_to_the_throne.mp3";
+import stepsToTheThrone from "../assets/steps_to_the_throne.mp3";
 
 const MUSIC_VOLUME = 0.4;
 

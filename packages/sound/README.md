@@ -78,9 +78,9 @@ const output = audioOutputSelection();
 
 **`createMusicControls({ track, volume? })`** — the soundtrack's state, in one object: the volume as
 a signal, an `audioOutputSelection()` of its own, and a `step` that moves the volume by whole tenths
-and stops at silence and at full. The track is a URL, which in every app here is an asset import out
-of `@apendua.dev/media`. Volume starts at `DEFAULT_MUSIC_VOLUME` (0.5) unless the app says
-otherwise.
+and stops at silence and at full. The track is a URL, which in every app here is an asset import of
+an mp3 the app keeps in `src/assets/`. Volume starts at `DEFAULT_MUSIC_VOLUME` (0.5) unless the app
+says otherwise.
 
 **`Music(ctx, listener, controls)`** — plays it. The track starts when an XR session begins and
 stops when it ends, which keeps it out of the way of autoplay policy and leaves the browser tab

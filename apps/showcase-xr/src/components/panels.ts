@@ -3,8 +3,7 @@ import { stylesheet, className, CLASS_NAME } from "justdom";
 
 /**
  * Whatever the machine already has. The panels used to be set in Zen Dots,
- * mounted as a `@font-face` from `@apendua.dev/media` — which still ships it,
- * for the apps whose dress is built on it. This one's is not: a web font is
+ * mounted as a `@font-face`. They no longer are: a web font is
  * one more thing the measuring has to wait for before a panel can be built,
  * and nothing here asks for anything a system sans does not do.
  */

@@ -69,8 +69,8 @@ export const DEFAULT_MUSIC_VOLUME = 0.5;
 
 /**
  * @typedef {object} MusicOptions
- * @property {string} track The track to loop, as a URL — an asset import out of
- *   `@apendua.dev/media` in every app here, but anything the `AudioLoader` can
+ * @property {string} track The track to loop, as a URL — an asset import of
+ *   the app's own mp3 in every app here, but anything the `AudioLoader` can
  *   fetch will do.
  * @property {number} [volume] Where the volume starts, from 0 for silence to 1
  *   for as loud as the track was recorded. Apps that have their own noises to

@@ -214,20 +214,24 @@ async function main() {
 
     console.log("\n== the controller models");
     {
-      // A controller that connects asks for its model. The models are
-      // served from the app's own origin, as the scene's chunk is, and
-      // nothing is asked of a CDN.
-      const own = new URL("profiles/", url);
+      // A controller that connects asks for its model, from three's
+      // default CDN, and nothing else is asked of any origin but the app's.
+      const cdn = new URL(
+        "https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles/",
+      );
+      const own = new URL(url);
       const models = requested.filter((at) => at.pathname.endsWith(".glb"));
       check(
-        models.length > 0 && models.every((at) => at.href.startsWith(own.href)),
-        `the controller models come from ${own.pathname} ` +
+        models.length > 0 && models.every((at) => at.href.startsWith(cdn.href)),
+        `the controller models come from ${cdn.host} ` +
           `(${models.map((at) => at.href).join(", ") || "none"})`,
       );
-      const elsewhere = requested.filter((at) => at.origin !== own.origin);
+      const elsewhere = requested.filter(
+        (at) => at.origin !== own.origin && at.origin !== cdn.origin,
+      );
       check(
         elsewhere.length === 0,
-        `and nothing is fetched from another origin (${elsewhere.map((at) => at.host).join(", ")})`,
+        `and nothing is fetched from a third origin (${elsewhere.map((at) => at.host).join(", ")})`,
       );
     }
 

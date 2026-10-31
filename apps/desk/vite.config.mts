@@ -1,14 +1,10 @@
 import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
-import XRProfilesPlugin from "@apendua.dev/media/vite";
 import ProbeResultsPlugin from "./vite/probeResults.js";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // The controller models, from this repository rather than a CDN: they are
-  // served at `<base>profiles/`, where src/xr.ts points three's factory.
   plugins: [
-    XRProfilesPlugin(),
     // Where the paint-order probe saves its runs, so that one taken on the
     // headset lands as a file under the dev server. Development only; see
     // `vite/probeResults.js`.

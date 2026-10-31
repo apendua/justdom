@@ -1,0 +1,40 @@
+# Builds and tests every project on each pull request and on each push to
+# develop. A draft pull request is skipped: a branch takes most of its pushes
+# under review, and `rush build --to ...` checks the same thing locally.
+name: CI
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop"]
+  pull_request:
+    branches: ["develop", "claude/**"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  build:
+    # The version bump pull request only rewrites versions and changelogs,
+    # which the build that produced the change files has already checked.
+    if: >-
+      github.head_ref != 'release/version-bump'
+      && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          # `rush change --verify` compares the branch with develop.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Verify change files
+        run: node common/scripts/install-run-rush.js change --verify
+      - name: Rush build
+        run: node common/scripts/install-run-rush.js build --verbose

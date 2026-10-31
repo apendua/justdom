@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["ES2022"],
+    "allowJs": true,
+    "checkJs": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "noImplicitAny": true,
+    // @types/jsdom declares Infinity and NaN as number properties on a Window
+    // that also carries a numeric index signature of type Window. TypeScript 7
+    // enforces index-signature conformance in declaration files that
+    // TypeScript 6 let through, so checking that dependency's types fails on
+    // errors we cannot fix from here. Every app in the repo already sets this,
+    // and it is the default tsc --init emits.
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "sourceMap": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
+  }
+}

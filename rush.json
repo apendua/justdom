@@ -1,0 +1,23 @@
+/**
+ * The Rush configuration for the justdom repository. The packages and apps
+ * are listed under "projects" as they move in from apendua.dev; see
+ * docs/migration-plan.md.
+ */
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/rush/v5/rush.schema.json",
+  "rushVersion": "5.171.0",
+  "pnpmVersion": "10.32.1",
+  "nodeSupportedVersionRange": ">=22.18.0 <23.0.0 || >=24.11.1 <25.0.0",
+  "gitPolicy": {},
+  "repository": {
+    "url": "https://github.com/apendua/justdom",
+    "defaultBranch": "develop"
+  },
+  "eventHooks": {
+    "preRushInstall": [],
+    "postRushInstall": [],
+    "preRushBuild": [],
+    "postRushBuild": []
+  },
+  "projects": []
+}

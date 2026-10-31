@@ -3,9 +3,8 @@
 Build a castle out of bricks in passthrough AR, then take a slingshot to it and knock the whole
 thing down. The game is won when every brick is lying on the ground.
 
-It is built on the same stack as [marblerun](../marblerun/README.md), and the building half is
-deliberately the same to use: `justdom-signal` for reactivity, `justdom-three` for the reactive
-scene, `justdom` projected into it for the panels, and `@dimforge/rapier3d` for the physics.
+It is built on `justdom-signal` for reactivity, `justdom-three` for the reactive scene, `justdom`
+projected into it for the panels, and `@dimforge/rapier3d` for the physics.
 
 ```
 rush build --to castle-xr
@@ -123,7 +122,7 @@ the moment the siege starts is nobody's idea of a castle.
 
 ## Building
 
-Straight out of marblerun, minus the port snapping, which a stacked castle has no use for:
+Bricks snap to a half grid, since a castle is stacked rather than plugged together:
 
 - The tray shows the whole catalogue at once, each brick in the orientation it will land in, at half
   size so the row stays within reach. **Picking a brick up brings it to full size** — what is in the

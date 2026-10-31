@@ -168,8 +168,8 @@ The rules:
   saying `lost`, and the hand leaves what its ray was on, with its cursor, in the same event. A
   `drag()` lets go of what the hand carried, where it is in the room, and a `carry()` puts its
   object down. A release handler that commits something asks the event's `lost` first, since nobody
-  chose to let go: `apps/rubik` swings the layer home and `apps/polytope-xr` leaves the piece
-  unsnapped.
+  chose to let go: a puzzle that turns a layer on release can swing it home instead, and one that
+  snaps pieces together can leave the piece unsnapped.
 - **A release goes no further than its press did.** The manager sends a release along the press's
   path and no further, so whatever is behind an object that swallowed a press hears neither.
 - **Hits are worked out once per frame**, after every `useFrame(ctx, fn)` callback has run and with
@@ -2017,12 +2017,12 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
 
 ## Real examples
 
-This package drives several full apps in this monorepo — [`apps/rubik`](../../apps/rubik),
-[`apps/blockout-xr`](../../apps/blockout-xr), [`apps/marblerun`](../../apps/marblerun),
-[`apps/todo-vanilla`](../../apps/todo-vanilla) — worth reading for realistic scenes combining
-lighting, keyed lists (`list`/`keyedList`), controller/hand input, and DOM panels projected into 3D
-space. [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: six panels in a grid
-demonstrating hover/press transitions, CSS keyframes, a Web Animations API animation, a
+This package drives every demo in this repository — [`apps/castle-xr`](../../apps/castle-xr),
+[`apps/desk`](../../apps/desk), [`apps/minesweeper`](../../apps/minesweeper),
+[`apps/todo-vanilla`](../../apps/todo-vanilla) and the rest — worth reading for realistic scenes
+combining lighting, keyed lists (`list`/`keyedList`), controller/hand input, and DOM panels
+projected into 3D space. [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: six panels in
+a grid demonstrating hover/press transitions, CSS keyframes, a Web Animations API animation, a
 `useFrame(ctx, fn)` loop writing inline styles, animated text colour, a paragraph revealed to a
 moving cursor, static transforms, a layout-tier width transition, every `object-fit` an image can be
 drawn with, a card of inline SVG (a diagram of boxes joined by dashed and dotted arrows with marker

@@ -19,7 +19,11 @@ npm install justdom justdom-signal
 Each package's page starts with its install line and a first example. They are also the package's
 README, so the same text is on npm.
 
-::: warning Not on npm yet The packages are moving here from another repository. Until their first
-release under these names, these install commands find nothing. :::
+::: warning Not on npm yet
+
+The packages are moving here from another repository. Until their first release under these names,
+these install commands find nothing.
+
+:::
 
 To see what the packages can do, open the [demos](/demos/). Each one links to its source.

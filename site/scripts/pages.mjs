@@ -184,12 +184,15 @@ function main() {
       "open in a browser too, with an emulated headset behind `?emulator`.",
       "",
       ...served.flatMap((demo) => [
-        // A plain anchor with a target, so that VitePress's router leaves it
-        // to the browser: the demo is a page of its own, not one of the site's.
-        `## <a href="/demos/${demo.slug}/" target="_self">${demo.title}</a>`,
+        // The heading is plain text, since VitePress makes its permalink's
+        // label from the heading's source, markup included.
+        `## ${demo.title}`,
         "",
         ...(demo.summary ? [demo.summary, ""] : []),
-        `[Source](${repositoryUrl}/tree/develop/${demo.folder})`,
+        // A plain anchor with a target, so that VitePress's router leaves it
+        // to the browser: the demo is a page of its own, not one of the site's.
+        `<a href="/demos/${demo.slug}/" target="_self">Open the demo</a> · ` +
+          `[Source](${repositoryUrl}/tree/develop/${demo.folder})`,
         "",
       ]),
     ].join("\n"),

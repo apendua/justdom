@@ -1,5 +1,5 @@
-import { Derived, Signal, batch } from "@apendua/signal";
-import { Circle, Line, Point } from "@apendua.dev/euclid-core";
+import { Derived, Signal, batch } from "justdom-signal";
+import { Circle, Line, Point } from "@apendua/euclid-core";
 import {
   appendStatement,
   buildScene,
@@ -16,7 +16,7 @@ import {
   type ParseResult,
   type Scene,
   type SceneItem,
-} from "@apendua.dev/euclid-lang";
+} from "@apendua/euclid-lang";
 import { EXAMPLES } from "../examples";
 
 export type Tool = "select" | "point" | "line" | "circle" | "intersect";

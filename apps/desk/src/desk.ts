@@ -1,4 +1,4 @@
-import { effect } from "@apendua/signal";
+import { effect } from "justdom-signal";
 import { mountCharts } from "./charts.js";
 import { mountClock, mountDigitalClocks } from "./clock.js";
 import { mountDragAndDrop, mountNewNotes } from "./dragAndDrop.js";
@@ -7,7 +7,7 @@ import type { Look } from "./looks.js";
 import { mountPhosphorMenu } from "./phosphorMenu.js";
 import { mountPowerButton } from "./power.js";
 import { mountScreen } from "./screen.js";
-import { xrSession } from "@apendua.dev/headset/session";
+import { xrSession } from "justdom-xr/session";
 import { presenting } from "./session.js";
 import { mountSwatches } from "./swatches.js";
 import { mountTabs } from "./tabs.js";

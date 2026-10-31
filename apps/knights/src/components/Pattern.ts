@@ -1,4 +1,4 @@
-import { $$, attr, children } from "@apendua/justdom";
+import { $$, attr, children } from "justdom";
 
 interface PatternProps {
   name: string;

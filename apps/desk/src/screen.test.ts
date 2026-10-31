@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 import { mountScreen } from "./screen.js";
 import { Terminal } from "./terminal.js";
 

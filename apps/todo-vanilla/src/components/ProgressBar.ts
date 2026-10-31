@@ -1,5 +1,5 @@
-import { className, text, $, children, style } from "@apendua/justdom";
-import { fromObservable, map, observable, set, timer, type Source } from "@apendua/signal";
+import { className, text, $, children, style } from "justdom";
+import { fromObservable, map, observable, set, timer, type Source } from "justdom-signal";
 
 const containerStyle = className`
   display: flex;

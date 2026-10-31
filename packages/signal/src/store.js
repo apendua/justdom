@@ -768,7 +768,7 @@ function store(data, operators = []) {
  * second call changes nothing, on the store or on a store nested in it that
  * was tracked first.
  *
- * `@apendua/vite-hmr` calls it on every store a module exports, once the
+ * `justdom-vite-hmr` calls it on every store a module exports, once the
  * export's initialiser has evaluated. A write to a key with a getter or a
  * setter is not state and marks nothing. A write that changes nothing, or a
  * delete of a key the store does not have, marks nothing. A write marks the

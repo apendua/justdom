@@ -43,7 +43,7 @@
  */
 
 import * as THREE from "three";
-import { Derived, Signal } from "@apendua/signal";
+import { Derived, Signal } from "justdom-signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
 import { LOADING_ATTRIBUTE } from "./mirror.js";

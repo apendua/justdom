@@ -1,8 +1,12 @@
 {
-  "name": "@apendua.dev/headset",
-  "version": "1.0.0",
-  "private": true,
+  "name": "justdom-xr",
+  "version": "0.1.0",
   "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/xr"
+  },
   "author": "apendua",
   "type": "module",
   "exports": {
@@ -42,10 +46,10 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua/freedom": "workspace:*",
-    "@apendua/signal": "workspace:*",
     "@iwer/devui": "^2.4.0",
-    "iwer": "^2.4.0"
+    "iwer": "^2.4.0",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.7.0",
@@ -56,5 +60,8 @@
   },
   "peerDependencies": {
     "three": ">=0.180.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

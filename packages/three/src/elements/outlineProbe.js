@@ -1,4 +1,4 @@
-import { Derived } from "@apendua/signal";
+import { Derived } from "justdom-signal";
 import { getPortalRoot } from "./portalRoot.js";
 
 /**

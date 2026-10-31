@@ -4,7 +4,7 @@
  * A store is the ordinary way to hold state in this library, and the shape
  * that matters is not one big store but very many small ones: a mirrored
  * element owns a store of its visual properties (see `VisualProperties` in
- * @apendua/freedom), a panel owns a few hundred elements, and mounting the
+ * justdom-three), a panel owns a few hundred elements, and mounting the
  * panel builds all of them in a frame. So what is measured here is the cost
  * of *building* one, not of reading it.
  *

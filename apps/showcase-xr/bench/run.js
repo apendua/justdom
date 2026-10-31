@@ -92,7 +92,7 @@ function worktree(revision) {
   // One symlink at the root lends it the installed one, and no dependency has
   // to be installed twice.
   //
-  // Workspace packages point at `../../../../packages/freedom` — and because
+  // Workspace packages point at `../../../../packages/three` — and because
   // that is *relative*, a copy of the directory inside the worktree resolves
   // to the **worktree's** copy of the package. That is precisely what an A/B
   // needs, and it is why these are copied rather than symlinked wholesale:

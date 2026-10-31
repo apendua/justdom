@@ -45,7 +45,7 @@ export function effects(fn) {
  * the same thing as `flatMap` into an effect loses the value on the way
  * through.
  *
- * `rxEffects` in `@apendua/signal/rxjs` is this, carried into RxJS: same
+ * `rxEffects` in `justdom-signal/rxjs` is this, carried into RxJS: same
  * mounting, an `Observable` to `.pipe()` on the way out.
  *
  * @template T

@@ -1,7 +1,6 @@
 {
-  "name": "@apendua.dev/sound",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@apendua/sound",
+  "version": "0.1.0",
   "description": "The noises the demos make: waveforms generated in code, and the three.js voices that place them in the room",
   "keywords": [
     "audio",
@@ -9,6 +8,11 @@
     "three",
     "webxr"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/sound"
+  },
   "license": "MIT",
   "author": "apendua",
   "type": "module",
@@ -38,23 +42,26 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "devDependencies": {
-    "@apendua/freedom": "workspace:*",
-    "@apendua/signal": "workspace:*",
-    "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "eslint": "^9.37.0",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
     "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@apendua/freedom": "workspace:*",
-    "@apendua/signal": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
     "three": ">=0.180.0"
   },
   "peerDependenciesMeta": {
-    "@apendua/freedom": {
+    "justdom-three": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -9,7 +9,7 @@
  * `createRange` here is a real (and much more expensive) call in a browser.
  */
 import * as THREE from "three";
-import { $, attr, children, text } from "@apendua/justdom";
+import { $, attr, children, text } from "justdom";
 import { InteractionContext, InteractionManager } from "../src/interactions.js";
 import { createPortal } from "../src/elements/portal.js";
 
@@ -167,7 +167,7 @@ async function scenario(name, rows, run) {
   const portal = createPortal(ctx);
   portal.addTo(new THREE.Group());
 
-  /** @type {import("@apendua/justdom").Mountable<Node> | undefined} */
+  /** @type {import("justdom").Mountable<Node> | undefined} */
   let mountable;
   // A header outside the scroller, and the scroller: the shape of every
   // panel that shows a live reading above a list.

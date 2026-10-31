@@ -1,11 +1,11 @@
-import { list, $$, children, attr, on, className } from "@apendua/justdom";
-import { observe } from "@apendua/signal";
+import { list, $$, children, attr, on, className } from "justdom";
+import { observe } from "justdom-signal";
 import { Field, Fields, getKey } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import { ViewportContext } from "../store/Viewport";
 import FieldSet from "./FieldSet";
 import FieldStatus from "./FieldStatus";
-import { component } from "@apendua/signal";
+import { component } from "justdom-signal";
 
 const noSelect = className`
   position: absolute;

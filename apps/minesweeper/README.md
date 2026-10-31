@@ -2,7 +2,7 @@
 
 Minesweeper on a hexagonal grid, with no framework under it. On a page the board is one `<svg>`
 wired to signals and the menu is a card beside it, or above it in a tall window. On a headset it is
-the very same DOM: the page keeps it, and `@apendua/freedom` mirrors the board and the menu into two
+the very same DOM: the page keeps it, and `justdom-three` mirrors the board and the menu into two
 panels in front of the viewer, the way `todo-vanilla` mirrors its list.
 
 ## Running it
@@ -29,25 +29,24 @@ flags a tile with the grip, uncovers tiles with the trigger, deals a new board a
 the menu panel, turns the passthrough on and leaves by the ×, and fails if any of that does not
 happen or the page throws. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1`
 prints a stack for anything the page throws. It drives the browser and the controller through
-`@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has
-to have been installed. It launches the Chromium at
-`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
-elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
-tests or benchmarks, runs it, with the desk's, Euclid's and Knights', from
-`.github/workflows/driven.yml`.
+`justdom-xr/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has to have
+been installed. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+`CHROMIUM=<path>` points it at one installed elsewhere. A pull request that changes this app or a
+package it imports, other than in docs, unit tests or benchmarks, runs it, with the desk's, Euclid's
+and Knights', from `.github/workflows/driven.yml`.
 
 ## How it is put together
 
 | File                          | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`                 | Mounts the board into `#board` and the menu into `#menu`, then offers a session that mirrors both, through `@apendua.dev/headset`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present.                                                                                                                                                                                                                              |
+| `src/main.ts`                 | Mounts the board into `#board` and the menu into `#menu`, then offers a session that mirrors both, through `justdom-xr`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present.                                                                                                                                                                                                                                        |
 | `src/components/Game.ts`      | The state, and the two trees over it: the board, rebuilt for each new game, and the menu, built once.                                                                                                                                                                                                                                                                                                                                     |
 | `src/components/Minefield.ts` | The board: one `<svg>`, its covered tiles one traced path, finding the tile under a press from where it was pressed.                                                                                                                                                                                                                                                                                                                      |
 | `src/components/Menu.ts`      | The card: the size, the mines left, how the game stands, Restart, and the × and Passthrough a session adds.                                                                                                                                                                                                                                                                                                                               |
 | `src/xr.ts`                   | The session: makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, and the Enter button.                                                                                                                                                                                                                                                                                                |
 | `src/components/Scene.ts`     | The scene: the two panels, a backdrop, lights, the cursors and the frame rate.                                                                                                                                                                                                                                                                                                                                                            |
 | `src/placement.ts`            | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                                                                                                                                                                                                                                                                |
-| `@apendua.dev/headset`        | Not a file here, but shared with the other headset apps: IWER behind `?emulator` and the offer of a session, which reloads once a newer service worker has the page if a deploy took either chunk away; `canPresent`; the session the page is shown in and the passthrough switch, written by the scene and read by the menu; the backdrop; and the controller and hand models, which `vite.config.mts` serves from `@apendua.dev/media`. |
+| `justdom-xr`                  | Not a file here, but shared with the other headset apps: IWER behind `?emulator` and the offer of a session, which reloads once a newer service worker has the page if a deploy took either chunk away; `canPresent`; the session the page is shown in and the passthrough switch, written by the scene and read by the menu; the backdrop; and the controller and hand models, which `vite.config.mts` serves from `@apendua.dev/media`. |
 
 The board and the menu are mounted in two places because a panel is the element it mirrors, and the
 two hang apart in a session. On the page the menu sits beside the board, or above it in a window

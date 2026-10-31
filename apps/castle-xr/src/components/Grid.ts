@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { $ } from "@apendua/freedom";
-import { MINUTE, memoizeWithTTL, onCleanup } from "@apendua/signal";
-import { component, effects, Op, set, store } from "@apendua/signal";
+import { $ } from "justdom-three";
+import { MINUTE, memoizeWithTTL, onCleanup } from "justdom-signal";
+import { component, effects, Op, set, store } from "justdom-signal";
 import { palette } from "../elements/palette.js";
 
 interface GridProps {

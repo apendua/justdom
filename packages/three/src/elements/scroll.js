@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createProperty } from "@apendua/signal";
+import { createProperty } from "justdom-signal";
 import { InteractionContext } from "../interactions.js";
 import { clipsOverflow, getComputedStyleCached, getParentElement, isPortalRoot } from "./mirror.js";
 import { getParentObject } from "./contentGroup.js";

@@ -1,4 +1,4 @@
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 
 /**
  * A change that can be taken back and put back again. Both directions are

@@ -1,5 +1,5 @@
 {
-  "name": "@apendua/vite-hmr",
+  "name": "justdom-vite-hmr",
   "entries": [
     {
       "version": "0.5.0",

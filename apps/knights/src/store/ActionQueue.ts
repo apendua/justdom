@@ -1,4 +1,4 @@
-import { mutate, store } from "@apendua/signal";
+import { mutate, store } from "justdom-signal";
 
 interface QueuedAction {
   run: () => void;

@@ -8,7 +8,7 @@ import {
   onCleanup,
   set,
   useEffects,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { $, children, Nothing } from "../operators.js";
 import { applyClip, clipRaycast, intersectClipBoxes, UNCLIPPED } from "../elements/clip.js";
@@ -79,7 +79,7 @@ import {
 } from "./style.js";
 
 /**
- * @import {EntityEffect, Source} from '@apendua/signal';
+ * @import {EntityEffect, Source} from 'justdom-signal';
  * @import {ShapePath} from 'three';
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';

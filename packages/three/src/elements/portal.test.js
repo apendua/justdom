@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "@apendua/signal";
-import { $, $$, attr, children, className, stylesheet } from "@apendua/justdom";
+import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "justdom-signal";
+import { $, $$, attr, children, className, stylesheet } from "justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import {
   BUSY_ATTRIBUTE,
@@ -73,7 +73,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
 
     // A card with one button (cursor: pointer) and one plain label wrapper.
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -144,7 +144,7 @@ describe("createPortal", () => {
     root.appendChild(a);
     a.appendChild(b);
 
-    /** @type {import("@apendua/justdom").Mountable} */
+    /** @type {import("justdom").Mountable} */
     const mountable = {
       replace([first, last]) {
         const container = first.parentNode;
@@ -182,7 +182,7 @@ describe("createPortal", () => {
     const controlParent = new THREE.Group();
     control.addTo(controlParent);
     const controlRoot = /** @type {HTMLElement} */ (root.cloneNode(true));
-    /** @type {import("@apendua/justdom").Mountable} */
+    /** @type {import("justdom").Mountable} */
     const controlMountable = {
       replace([first, last]) {
         const container = first.parentNode;
@@ -231,7 +231,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
     const subscription = tree.subscribe((value) => {
@@ -329,7 +329,7 @@ describe("createPortal", () => {
     const parent = new THREE.Group();
     portal.addTo(parent);
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("style", () => "padding: 4px")]))]);
     const subscription = tree.subscribe((value) => {
@@ -362,7 +362,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "inside")]))]);
     const subscription = tree.subscribe((value) => {
@@ -406,7 +406,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     // Deliberately without `cursor: pointer`: an ordinary box has to ask to be
     // a ray target, and a checkbox does not.
@@ -469,7 +469,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("input", [attr("type", () => "checkbox")]))]);
     const subscription = tree.subscribe((value) => {
@@ -528,7 +528,7 @@ describe("createPortal", () => {
     portal.addTo(new THREE.Group());
 
     const outerStyle = Signal.of("cursor: pointer; visibility: hidden");
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       attr("style", () => outerStyle.get()),
@@ -601,7 +601,7 @@ describe("createPortal", () => {
   test("the container is out of the page's way without hiding what it holds", async () => {
     const portal = createPortal(InteractionContext.set({}, new InteractionManager()));
     portal.addTo(new THREE.Group());
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const subscription = $("div", [attr("id", () => "held")]).subscribe((value) => {
       mountable = value;
@@ -645,7 +645,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("style", () => "cursor: pointer")]))]);
     const subscription = tree.subscribe((value) => {
@@ -685,7 +685,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx, { budget: Infinity });
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -749,7 +749,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx, { budget: Infinity });
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -791,7 +791,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx, { budget: Infinity });
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -863,7 +863,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -900,7 +900,7 @@ describe("createPortal", () => {
     const parent = new THREE.Group();
     portal.addTo(parent);
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -1019,7 +1019,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(
@@ -1136,7 +1136,7 @@ describe("createPortal", () => {
     const rowClass = className`
       background-color: ${toObservable(color)};
     `;
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(...Array.from({ length: 4 }, () => $("div", [attr("class", rowClass)]))),
@@ -1204,7 +1204,7 @@ describe("createPortal", () => {
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const subscription = $("div", [children($("div", []))]).subscribe((value) => {
       mountable = value;
@@ -1309,7 +1309,7 @@ describe("createPortal", () => {
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const subscription = $("div", [children($("div", []))]).subscribe((value) => {
       mountable = value;
@@ -1356,7 +1356,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx, { budget: 0 });
     portal.addTo(new THREE.Group());
     const label = Signal.of("a");
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div"), $("div", [attr("title", toObservable(label))]))]);
     const subscription = tree.subscribe((value) => {
@@ -1412,7 +1412,7 @@ describe("createPortal", () => {
     const rowClass = className`
       background-color: ${toObservable(color)};
     `;
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(...Array.from({ length: 4 }, () => $("div", [attr("class", rowClass)]))),
@@ -1478,7 +1478,7 @@ describe("createPortal", () => {
     const rowClass = className`
       background-color: ${toObservable(color)};
     `;
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children(...Array.from({ length: 4 }, () => $("div", [attr("class", rowClass)]))),
@@ -1539,7 +1539,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -1632,7 +1632,7 @@ describe("createPortal", () => {
         .filter((child) => child instanceof THREE.InstancedMesh)
         .reduce((sum, mesh) => sum + /** @type {THREE.InstancedMesh} */ (mesh).count, 0);
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div"), $("div"))]);
     const subscription = tree.subscribe((value) => {
@@ -1703,7 +1703,7 @@ describe("createPortal", () => {
       const loadingFrame = () =>
         containerObject.children.find((child) => child.name === "loading-frame");
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children($("div"), $("div"), $("div"))]);
       const subscription = tree.subscribe((value) => {
@@ -1783,7 +1783,7 @@ describe("createPortal", () => {
           (child) => !(child instanceof THREE.Mesh) && child.name !== "loading-frame",
         );
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children($("div"), $("div"))]);
       const subscription = tree.subscribe((value) => {
@@ -1859,7 +1859,7 @@ describe("createPortal", () => {
         return originalAdd(...objects);
       };
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children($("div"), $("div"))]);
       const subscription = tree.subscribe((value) => {
@@ -1912,7 +1912,7 @@ describe("createPortal", () => {
           (child) => !(child instanceof THREE.Mesh) && child.name !== "loading-frame",
         );
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children($("div"), $("div"))]);
       const subscription = tree.subscribe((value) => {
@@ -1986,7 +1986,7 @@ describe("createPortal", () => {
         return originalAdd(...objects);
       };
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children($("div"), $("div"))]);
       const subscription = tree.subscribe((value) => {
@@ -2049,7 +2049,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div"), $("div"))]);
     const subscription = tree.subscribe((value) => {
@@ -2082,7 +2082,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div"), $("div"))]);
     const subscription = tree.subscribe((value) => {
@@ -2146,7 +2146,7 @@ describe("createPortal", () => {
           .filter((child) => child instanceof THREE.InstancedMesh)
           .reduce((sum, mesh) => sum + /** @type {THREE.InstancedMesh} */ (mesh).count, 0);
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children($("div"))]);
       const subscription = tree.subscribe((value) => {
@@ -2217,7 +2217,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2295,7 +2295,7 @@ describe("createPortal", () => {
       const parent = new THREE.Group();
       portal.addTo(parent);
       const containerObject = parent.children[0];
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const subscription = $("div").subscribe((value) => {
         mountable = value;
@@ -2367,7 +2367,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2434,7 +2434,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2492,7 +2492,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2557,7 +2557,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2616,7 +2616,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx, { budget: 0 });
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2669,7 +2669,7 @@ describe("createPortal", () => {
     portal.addTo(parent);
     const containerObject = parent.children[0];
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div");
     const subscription = tree.subscribe((value) => {
@@ -2711,7 +2711,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx, { budget: () => budget });
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children(...Array.from({ length: 8 }, () => $("div")))]);
     const subscription = tree.subscribe((value) => {
@@ -2787,7 +2787,7 @@ describe("createPortal", () => {
       const portal = createPortal(ctx);
       const parent = new THREE.Group();
       portal.addTo(parent);
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const tree = $("div", [children(...Array.from({ length: 4 }, () => $("div")))]);
       const subscription = tree.subscribe((value) => {
@@ -2842,7 +2842,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "hovered")]))]);
     const subscription = tree.subscribe((value) => {
@@ -2898,7 +2898,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "switch")]))]);
     const subscription = tree.subscribe((value) => {
@@ -2943,7 +2943,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "inside")]))]);
     const subscription = tree.subscribe((value) => {
@@ -3035,7 +3035,7 @@ describe("createPortal", () => {
       const mountPanel = () => {
         const portal = createPortal(ctx);
         portal.addTo(new THREE.Group());
-        /** @type {import("@apendua/justdom").Mountable | undefined} */
+        /** @type {import("justdom").Mountable | undefined} */
         let mountable;
         const tree = $("div", [children($("div", []))]);
         const subscription = tree.subscribe((value) => {
@@ -3097,7 +3097,7 @@ describe("createPortal", () => {
       const mountImage = () => {
         const portal = createPortal(ctx);
         portal.addTo(new THREE.Group());
-        /** @type {import("@apendua/justdom").Mountable | undefined} */
+        /** @type {import("justdom").Mountable | undefined} */
         let mountable;
         const tree = $("div", [children($("img", [attr("src", () => "/shared-icon.png")]))]);
         const subscription = tree.subscribe((value) => {
@@ -3241,7 +3241,7 @@ describe("createPortal", () => {
       background-color: ${toObservable(color)};
     `;
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "card"), attr("class", card)]))]);
     const subscription = tree.subscribe((value) => {
@@ -3294,7 +3294,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [children($("div", [attr("id", () => "plain")]))]);
     const subscription = tree.subscribe((value) => {
@@ -3344,7 +3344,7 @@ describe("createPortal", () => {
     const portal = createPortal(ctx);
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const tree = $("div", [
       children($("div", [attr("id", () => "late"), attr("class", () => "late")])),
@@ -3401,7 +3401,7 @@ describe("createPortal", () => {
  * itself to in the first place.
  *
  * It is the *contract*. Every other test in this file builds its tree with
- * `@apendua/justdom`, so all of them would keep passing if `mount` quietly grew
+ * `justdom`, so all of them would keep passing if `mount` quietly grew
  * a second requirement and justdom grew the method to satisfy it — and every
  * integration written against the one method in the README would break. That is
  * the regression this catches, and the only test here that can: it is the sole
@@ -3543,7 +3543,7 @@ describe("the order a mount is built in", () => {
         $("div", [attr("data-n", () => name), children(cell(`${name}a`), cell(`${name}b`))]);
       const tree = $("div", [attr("data-n", () => "root"), children(row("r1"), row("r2"))]);
 
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const subscription = tree.subscribe((value) => {
         mountable = value;
@@ -3680,7 +3680,7 @@ describe("mirroring an element the page owns", () => {
     const portal = createPortal(ctx, { root });
     portal.addTo(new THREE.Group());
 
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const subscription = $("div").subscribe((value) => {
       mountable = value;
@@ -3889,7 +3889,7 @@ describe("a draggable panel", () => {
       });
       const parent = new THREE.Group();
       portal.addTo(parent);
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
         mountable = value;
@@ -3932,7 +3932,7 @@ describe("a draggable panel", () => {
       portal.addTo(parent);
       const group = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handles"));
       const loadingFrame = () => parent.getObjectByName("loading-frame");
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
         mountable = value;
@@ -3974,7 +3974,7 @@ describe("a draggable panel", () => {
     const parent = new THREE.Group();
     portal.addTo(parent);
     const group = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handles"));
-    /** @type {import("@apendua/justdom").Mountable | undefined} */
+    /** @type {import("justdom").Mountable | undefined} */
     let mountable;
     const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
       mountable = value;
@@ -4162,7 +4162,7 @@ describe("a panel that is always busy", () => {
       const parent = new THREE.Group();
       portal.addTo(parent);
       const containerObject = parent.children[0];
-      /** @type {import("@apendua/justdom").Mountable | undefined} */
+      /** @type {import("justdom").Mountable | undefined} */
       let mountable;
       subscription = $("div", [
         children(...Array.from({ length: count }, () => $("div", [children($("div", []))]))),

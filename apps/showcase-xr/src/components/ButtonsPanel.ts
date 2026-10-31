@@ -1,7 +1,7 @@
-import { className, stylesheet, text, $, children, attr, CLASS_NAME } from "@apendua/justdom";
-import { set, on } from "@apendua/justdom";
-import { Signal, component, effects, observable } from "@apendua/signal";
-import { makeReveal, useFrame } from "@apendua/freedom";
+import { className, stylesheet, text, $, children, attr, CLASS_NAME } from "justdom";
+import { set, on } from "justdom";
+import { Signal, component, effects, observable } from "justdom-signal";
+import { makeReveal, useFrame } from "justdom-three";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
 
 /**

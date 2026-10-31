@@ -20,7 +20,7 @@
  * across frames: it counts the copies made and the frames taken.
  * `PORTAL_SIZES=10,50` picks its sizes, and `PORTAL_ONLY=1` runs it alone.
  *
- * Chromium is launched through `packages/headset/driver`, which borrows
+ * Chromium is launched through `packages/xr/driver`, which borrows
  * Playwright from `apps/showcase-xr` and finds the browser at
  * `/opt/pw-browsers/chromium-1194`, or at the path `CHROMIUM` names. Both
  * projects have to have been installed.
@@ -29,7 +29,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { closeAll, launch } from "../../headset/driver/index.mjs";
+import { closeAll, launch } from "../../xr/driver/index.mjs";
 
 const SIZES = [10, 50, 100, 200, 400];
 const REPEATS = 7;
@@ -45,9 +45,9 @@ const PAGE = `<!doctype html>
 <script type="importmap">
   {
     "imports": {
-      "@apendua/signal": "/packages/signal/src/index.js",
-      "three": "/packages/freedom/node_modules/three/build/three.module.js",
-      "three/addons/": "/packages/freedom/node_modules/three/examples/jsm/"
+      "justdom-signal": "/packages/signal/src/index.js",
+      "three": "/packages/three/node_modules/three/build/three.module.js",
+      "three/addons/": "/packages/three/node_modules/three/examples/jsm/"
     }
   }
 </script>
@@ -56,8 +56,8 @@ const PAGE = `<!doctype html>
   .card { width: 300px; padding: 12px; transform: rotate(-4deg); }
 </style>
 <script type="module">
-  import { Effect } from "@apendua/signal";
-  import { createMirror, getTextLayout } from "/packages/freedom/src/elements/mirror.js";
+  import { Effect } from "justdom-signal";
+  import { createMirror, getTextLayout } from "/packages/three/src/elements/mirror.js";
 
   function buildCard(sentences) {
     const card = document.createElement("div");
@@ -110,9 +110,9 @@ const PAGE = `<!doctype html>
   // time and measures it a frame budget at a time, so the texts of one
   // paragraph are measured across frames, a pass or more each.
   window.runPortalBench = async (sentences) => {
-    const { createPortal } = await import("/packages/freedom/src/elements/portal.js");
+    const { createPortal } = await import("/packages/three/src/elements/portal.js");
     const { InteractionContext, InteractionManager } = await import(
-      "/packages/freedom/src/interactions.js"
+      "/packages/three/src/interactions.js"
     );
     const THREE = await import("three");
     let copies = 0;

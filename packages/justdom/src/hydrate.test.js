@@ -1,6 +1,6 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { just, Signal, set, toObservable } from "@apendua/signal";
+import { just, Signal, set, toObservable } from "justdom-signal";
 import { userEvent } from "@testing-library/user-event";
 import { $, children, keyedList, list } from "./dom.js";
 import { text } from "./text.js";
@@ -12,7 +12,7 @@ import { suspend, waitFor, withFallback } from "./suspend.js";
 /**
  * Renders `build()` the way a server would, and returns the markup.
  *
- * @param {() => import("@apendua/signal").Subscribable<import("./types.js").Mountable>} build
+ * @param {() => import("justdom-signal").Subscribable<import("./types.js").Mountable>} build
  * @returns {string}
  */
 function renderToString(build) {
@@ -202,7 +202,7 @@ describe("hydrate()", () => {
   describe("lists", () => {
     /**
      * @param {string[]} values
-     * @returns {import("@apendua/signal").Subscribable<import("./types.js").Mountable>}
+     * @returns {import("justdom-signal").Subscribable<import("./types.js").Mountable>}
      */
     const buildList = (values) =>
       $("ul", [children(list(just(values), (item) => $("li", [children(text`${item}`)])))]);
@@ -316,7 +316,7 @@ describe("hydrate()", () => {
   describe("suspense", () => {
     /**
      * @param {number} delay
-     * @returns {import("@apendua/signal").Subscribable<import("./types.js").Mountable>}
+     * @returns {import("justdom-signal").Subscribable<import("./types.js").Mountable>}
      */
     function build(delay) {
       const ctx = suspend({}, () => $("p", [children(text`Loading...`)]));

@@ -7,14 +7,14 @@
  * Each app is served from source by its own Vite config, as its driven check
  * serves it, so a module the visitor imports through the same server reads
  * the very modules the app's panels were built by. Chromium is launched
- * through `packages/headset/driver`, as `bench/lineBoxCopy.browser.mjs`
+ * through `packages/xr/driver`, as `bench/lineBoxCopy.browser.mjs`
  * explains, and the showcase's session is entered by its own harness, as its
  * photographs are.
  */
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { closeAll, frames, launch } from "../../headset/driver/index.mjs";
+import { closeAll, frames, launch } from "../../xr/driver/index.mjs";
 
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 

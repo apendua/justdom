@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { createProperty, Effect, onCleanup, Signal } from "@apendua/signal";
-import { Derived, effects, flatMap, just, on, set, observable, useEffects } from "@apendua/signal";
+import { createProperty, Effect, onCleanup, Signal } from "justdom-signal";
+import { Derived, effects, flatMap, just, on, set, observable, useEffects } from "justdom-signal";
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
@@ -81,7 +81,7 @@ export const PortalReadyContext = createProperty(
  */
 export const MotionChannelContext = createProperty(
   /**
-   * @returns {import("@apendua/signal").UpdateChannel | null}
+   * @returns {import("justdom-signal").UpdateChannel | null}
    */
   () => null,
 );
@@ -90,7 +90,7 @@ export const MotionChannelContext = createProperty(
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
  * @import {PaintedBounds, PaintLayer} from './elevation.js';
- * @import {EntityEffect, Subscribable} from '@apendua/signal';
+ * @import {EntityEffect, Subscribable} from 'justdom-signal';
  */
 
 /**
@@ -236,7 +236,7 @@ const committedPlacements = new WeakMap();
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @param {BoxOptions} [options]
- * @returns {import("@apendua/signal").Source<THREE.Object3D>}
+ * @returns {import("justdom-signal").Source<THREE.Object3D>}
  */
 export function box(ctx, element, options = {}) {
   const {
@@ -903,7 +903,7 @@ export function box(ctx, element, options = {}) {
 /**
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
- * @returns {import("@apendua/signal").Source<THREE.Object3D>}
+ * @returns {import("justdom-signal").Source<THREE.Object3D>}
  */
 export function div(ctx, element) {
   return box(ctx, element);

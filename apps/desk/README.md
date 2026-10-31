@@ -2,8 +2,8 @@
 
 A desk drawn in HTML and CSS, in three looks: a computer typing out its program on its screen, a
 keyboard that types on it, a panel of live charts, a board of cards, something to load programs
-from, and a paper to read. On a page it is a page. In a headset `@apendua/freedom` mirrors each
-object into a panel of its own and sets them out on a desk in a room.
+from, and a paper to read. On a page it is a page. In a headset `justdom-three` mirrors each object
+into a panel of its own and sets them out on a desk in a room.
 
 It is the sampler for what freedom can mirror, written as one scene rather than a grid of specimens.
 `apps/showcase-xr` stays as it is, because its visual suite is a regression test for freedom and
@@ -31,8 +31,8 @@ a link opens the same desk. The menu is hidden while a session runs, which mirro
 started with.
 
 On a laptop there is no session to offer, so there is no button and no renderer. `?emulator`
-installs a headset in the browser (IWER, with its dev panels, from `@apendua.dev/headset`) and an
-Enter button appears at the bottom; `?emulator=bare` installs the runtime without the panels.
+installs a headset in the browser (IWER, with its dev panels, from `justdom-xr`) and an Enter button
+appears at the bottom; `?emulator=bare` installs the runtime without the panels.
 
 `?trace`, under the dev server, keeps a row for every frame of each session and saves them as the
 session ends (`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk:
@@ -46,9 +46,9 @@ power control is on it, and the trigger there ends the session, or if the page t
 look it then starts a second session and fails if ending it leaves more geometries on the GPU than
 the first did. It takes about two minutes. `SHOTS=<dir>` also photographs each session, and
 `STACKS=1` prints a stack for anything the page throws. It drives the browser and the controller
-through `@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr` and launches
-the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at
-one installed elsewhere. A pull request that changes this app or a package it imports, other than in
+through `justdom-xr/driver`, which borrows Playwright from `apps/showcase-xr` and launches the
+Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
+installed elsewhere. A pull request that changes this app or a package it imports, other than in
 docs, unit tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights', from
 `.github/workflows/driven.yml`.
 
@@ -144,7 +144,7 @@ rules for a session. Each object is a `.zone` with an id, and the modules in `sr
 | `src/swatches.ts`                | The swatches that recolour the desk.                                                                                                                                                                                                                            |
 | `src/power.ts`                   | The control that ends a session.                                                                                                                                                                                                                                |
 | `src/stage.ts`                   | Scales the desk to the window, and takes the staging off during a session.                                                                                                                                                                                      |
-| `src/session.ts`                 | Whether a session is showing the desk, from the session `@apendua.dev/headset` keeps and the scene writes.                                                                                                                                                      |
+| `src/session.ts`                 | Whether a session is showing the desk, from the session `justdom-xr` keeps and the scene writes.                                                                                                                                                                |
 | `src/xr.ts`                      | The offer: the renderer, the Enter button, the SVG plugin and the note field's keyboard.                                                                                                                                                                        |
 | `src/components/Scene.ts`        | The room in the look's colours, and each zone posed where the look places it.                                                                                                                                                                                   |
 | `src/components/NoteKeyboard.ts` | What the note field's keyboard looks like in a session.                                                                                                                                                                                                         |

@@ -1,4 +1,4 @@
-import { Signal, store } from "@apendua/signal";
+import { Signal, store } from "justdom-signal";
 
 /**
  * @typedef {object} Todo

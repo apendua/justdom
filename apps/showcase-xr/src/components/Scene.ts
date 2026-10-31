@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene } from "@apendua/freedom";
-import { effects, effectsOnly, useEffects } from "@apendua/signal";
+import { children, cursors, $, dom, getScene } from "justdom-three";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
 
-import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "@apendua/justui";
+import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
 import ButtonsPanel from "./ButtonsPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import BoxesPanel from "./BoxesPanel.js";

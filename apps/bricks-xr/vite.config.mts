@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import HMRPlugin from "@apendua/vite-hmr/plugin";
+import HMRPlugin from "justdom-vite-hmr/plugin";
 
 // https://vitejs.dev/config/
 export default defineConfig({

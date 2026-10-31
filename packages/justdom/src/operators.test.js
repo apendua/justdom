@@ -1,8 +1,8 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { userEvent } from "@testing-library/user-event";
-import { just, Signal } from "@apendua/signal";
-import { rx } from "@apendua/signal/rxjs";
+import { just, Signal } from "justdom-signal";
+import { rx } from "justdom-signal/rxjs";
 import { map, Subject } from "rxjs";
 import { on, set, attr, data, style } from "./operators.js";
 import { children, toMountable } from "./dom.js";

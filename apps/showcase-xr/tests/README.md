@@ -1,6 +1,6 @@
 # Looking at the scene
 
-The unit suites in `@apendua/freedom` run under jsdom, which computes styles and lays nothing out:
+The unit suites in `justdom-three` run under jsdom, which computes styles and lays nothing out:
 every rect is zero, no animation advances, and nothing is drawn. They can assert that an element
 registered the uniforms it should have and never that anything appeared. Both rendering bugs this
 project has actually shipped — text masks that lost their tint, so every label drew white, and a
@@ -48,7 +48,7 @@ panels.
 Two more photographs are of the same scene under a hand. The emulated right controller is aimed at
 the Interactions panel's first button, and the scene is photographed with the ray resting on it
 (`hover.png`) and with the trigger held on it (`press.png`). They are the part of the pointer path
-that the event goldens in `packages/freedom` cannot see: those say that `data-xr-hover` and
+that the event goldens in `packages/three` cannot see: those say that `data-xr-hover` and
 `data-xr-active` were set, and these say that the styles hung on them were drawn. The button is
 found by angle, since the page cannot say where in the room a panel is drawn, and the test asserts
 that the button took the hover before it trusts the photograph. A layout change that moves the
@@ -111,8 +111,8 @@ which is the path that was working when this was broken. Arming that one produce
 passes just as happily against the bug. The patch looks at the stack for that reason, and takes only
 the clear that freedom's own loop asked for.
 
-Removing the frame loop's reporting from `packages/freedom/src/render.js` fails it, which is the
-only property that makes it worth running: the session stays open and no panel appears, while the
+Removing the frame loop's reporting from `packages/three/src/render.js` fails it, which is the only
+property that makes it worth running: the session stays open and no panel appears, while the
 assertion that the window heard nothing goes on passing.
 
 ## When it fails

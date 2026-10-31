@@ -1,9 +1,9 @@
-import { $, attr, children, list, on, renderText, set, text } from "@apendua/justdom";
-import { effects, flatMap, observable, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot } from "@apendua/freedom/page";
+import { $, attr, children, list, on, renderText, set, text } from "justdom";
+import { effects, flatMap, observable, onCleanup, Signal } from "justdom-signal";
+import { getPortalRoot } from "justdom-three/page";
 
 /**
- * @import {Mountable} from "@apendua/justdom";
+ * @import {Mountable} from "justdom";
  */
 
 /**
@@ -24,18 +24,18 @@ import { getPortalRoot } from "@apendua/freedom/page";
  * keeps the menu over itself rather than hanging into the room.
  *
  * @typedef {object} DropdownClasses
- * @property {import("@apendua/signal").Subscribable<string>} root The positioning context the menu is
+ * @property {import("justdom-signal").Subscribable<string>} root The positioning context the menu is
  *   placed against: `position: relative`.
- * @property {import("@apendua/signal").Subscribable<string>} trigger The closed control, naming whatever is
+ * @property {import("justdom-signal").Subscribable<string>} trigger The closed control, naming whatever is
  *   currently chosen. Needs `cursor: pointer` to be a ray target.
- * @property {import("@apendua/signal").Subscribable<string>} [caret] The open/closed mark. Omit to leave
+ * @property {import("justdom-signal").Subscribable<string>} [caret] The open/closed mark. Omit to leave
  *   the trigger with nothing but its label.
- * @property {import("@apendua/signal").Subscribable<string>} menu The list. Must be positioned and stacked
+ * @property {import("justdom-signal").Subscribable<string>} menu The list. Must be positioned and stacked
  *   above (`position: absolute; z-index: 1`) — see the layers section of the
  *   README for what that buys in a scene — and out of the flow, or opening it
  *   resizes the panel it hangs off.
- * @property {import("@apendua/signal").Subscribable<string>} option One row.
- * @property {import("@apendua/signal").Subscribable<string>} [optionSelected] Added to the row that is
+ * @property {import("justdom-signal").Subscribable<string>} option One row.
+ * @property {import("justdom-signal").Subscribable<string>} [optionSelected] Added to the row that is
  *   currently chosen.
  */
 
@@ -73,7 +73,7 @@ const DEFAULT_CARET_MARKS = /** @type {const} */ (["▲", "▼"]);
  *
  * @template T
  * @param {DropdownProps<T>} props
- * @returns {import("@apendua/signal").Source<Mountable>}
+ * @returns {import("justdom-signal").Source<Mountable>}
  */
 export function dropdown(props) {
   const {
@@ -98,10 +98,10 @@ export function dropdown(props) {
    * the same trick the panels use to keep a state change down to one class
    * attribute rather than a rebuilt subtree.
    *
-   * @param {import("@apendua/signal").Subscribable<string>} base
-   * @param {import("@apendua/signal").Subscribable<string>} modifier
+   * @param {import("justdom-signal").Subscribable<string>} base
+   * @param {import("justdom-signal").Subscribable<string>} modifier
    * @param {() => boolean} active
-   * @returns {import("@apendua/signal").Source<string>}
+   * @returns {import("justdom-signal").Source<string>}
    */
   const withModifier = (base, modifier, active) =>
     flatMap((/** @type {boolean} */ isActive) =>

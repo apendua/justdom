@@ -1,4 +1,4 @@
-import { batch, withChannel } from "@apendua/signal";
+import { batch, withChannel } from "justdom-signal";
 
 /**
  * @import {PortalPump, PortalScheduler} from './portalScheduler.js';

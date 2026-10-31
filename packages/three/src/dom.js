@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { flatMap, just, mountEach, onCleanup, Stream } from "@apendua/signal";
+import { flatMap, just, mountEach, onCleanup, Stream } from "justdom-signal";
 import { createPortal } from "./elements/portal.js";
 
 /**
- * @import {EntityEffect, Source, Subscribable, Unsubscribable} from '@apendua/signal';
+ * @import {EntityEffect, Source, Subscribable, Unsubscribable} from 'justdom-signal';
  * @import {Component,Mountable,XREventMap} from './core.js';
  * @import {PortalOptions} from './elements/portal.js';
  */

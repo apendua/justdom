@@ -21,7 +21,7 @@ import {
  *
  * `fail` is for work the evaluation *starts* rather than does — a node that
  * mounts a resource on the way through and holds it open with `onCleanup`
- * (`stylesheet.js` in `@apendua/justdom` mounts a `<style>` element exactly
+ * (`stylesheet.js` in `justdom` mounts a `<style>` element exactly
  * like this). Such work can die after the evaluation returned, with no stack
  * left to throw into, and `fail` is where that news goes: the node fails,
  * terminally, the way a foreign source erroring fails it. It is passed in

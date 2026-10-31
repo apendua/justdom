@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 import { mountPowerButton } from "./power.js";
 
 describe("mountPowerButton", () => {

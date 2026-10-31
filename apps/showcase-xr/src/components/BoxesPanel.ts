@@ -1,6 +1,6 @@
-import { className, stylesheet, text, style, $, children, CLASS_NAME } from "@apendua/justdom";
-import { set, on } from "@apendua/justdom";
-import { Signal, component } from "@apendua/signal";
+import { className, stylesheet, text, style, $, children, CLASS_NAME } from "justdom";
+import { set, on } from "justdom";
+import { Signal, component } from "justdom-signal";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
 
 /**

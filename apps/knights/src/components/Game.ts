@@ -1,5 +1,5 @@
-import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "@apendua/justdom";
-import { component, makeNonReactive, store } from "@apendua/signal";
+import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "justdom";
+import { component, makeNonReactive, store } from "justdom-signal";
 import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
 import { RootContext } from "../store/Root";
 import Board from "./Board";

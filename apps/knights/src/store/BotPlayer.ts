@@ -1,4 +1,4 @@
-import { Derived, Effect, onCleanup } from "@apendua/signal";
+import { Derived, Effect, onCleanup } from "justdom-signal";
 import { TIMING_BOT_THINKS } from "../constants";
 import chooseMove from "./bot";
 import type Game from "./Game";

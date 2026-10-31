@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Effect, Signal, withChannel, withComputation } from "@apendua/signal";
+import { Effect, Signal, withChannel, withComputation } from "justdom-signal";
 import { getBorderBoxSize } from "./mirror.js";
 import { FOCUS_ATTRIBUTE } from "./portalRoot.js";
 import { place } from "./place.js";
@@ -12,7 +12,7 @@ import { levelPose } from "../carry.js";
 import { CameraContext, RendererContext, SceneContext } from "../render.js";
 
 /**
- * @import {Unsubscribable} from '@apendua/signal';
+ * @import {Unsubscribable} from 'justdom-signal';
  * @import {Mountable} from '../core.js';
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardTarget, PortalKeyboardOptions} from './portalKeyboard.js';

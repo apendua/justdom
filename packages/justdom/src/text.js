@@ -1,9 +1,9 @@
-import { fromObservable, just, map, observable, Stream } from "@apendua/signal";
+import { fromObservable, just, map, observable, Stream } from "justdom-signal";
 import { claimText } from "./hydrate.js";
 import { toMountable } from "./dom.js";
 
 /**
- * @import { Source, Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  * @import { Primitive } from "./core.js";
  * @import { Mountable } from "./types.js";
  */

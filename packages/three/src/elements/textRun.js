@@ -1,5 +1,5 @@
 import { Mesh } from "three";
-import { Derived, effects, onCleanup, selector, set } from "@apendua/signal";
+import { Derived, effects, onCleanup, selector, set } from "justdom-signal";
 import { $ } from "../operators.js";
 import { createMarkMaterial, generateTextTexture, makeTextQuadGeometry } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
@@ -12,7 +12,7 @@ import { TextPrepareContext } from "./textPrepare.js";
 
 /**
  * @import {MeshBasicMaterial, Texture, Vector4} from 'three';
- * @import {EntityEffect, Source} from '@apendua/signal';
+ * @import {EntityEffect, Source} from 'justdom-signal';
  * @import {Component} from '../core.js';
  * @import {TextBounds, TextRenderStyle, TextTexture} from './textHelpers.js';
  * @import {TextLine} from './textLines.js';

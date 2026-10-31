@@ -1,4 +1,4 @@
-import { store } from "@apendua/signal";
+import { store } from "justdom-signal";
 
 /**
  * One palette for the whole game — the panels, the board and the bricks all

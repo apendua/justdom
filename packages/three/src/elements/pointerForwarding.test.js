@@ -60,7 +60,7 @@ const { setPointerCapture } = Element.prototype;
  * @param {object} options
  * @param {Element} options.outer
  * @param {Element} options.inner
- * @param {(ctx: WeakKey, element: Element) => import("@apendua/signal").Source<THREE.Object3D>} options.build
+ * @param {(ctx: WeakKey, element: Element) => import("justdom-signal").Source<THREE.Object3D>} options.build
  * @param {import("./haptics.js").Haptics | null} [options.haptics] What the
  *   panel lets the hand feel, if anything.
  */

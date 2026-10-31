@@ -15,12 +15,12 @@ import {
   Signal,
   Stream,
   use,
-} from "@apendua/signal";
-import { $, getXRSession } from "@apendua/freedom";
+} from "justdom-signal";
+import { $, getXRSession } from "justdom-three";
 import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
 
 /**
- * @import { Component } from '@apendua/freedom';
+ * @import { Component } from 'justdom-three';
  * @import { AudioOutputSelection } from '../audioOutputs.js';
  */
 
@@ -120,7 +120,7 @@ export function createMusicControls({ track, volume: initial = DEFAULT_MUSIC_VOL
  * autoplay policy, and means the browser tab stays silent until the headset
  * goes on.
  *
- * @type {(ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => import("@apendua/signal").Source<Component>}
+ * @type {(ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => import("justdom-signal").Source<Component>}
  */
 export const Music = component(
   /**

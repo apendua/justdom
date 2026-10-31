@@ -7,8 +7,8 @@
  * hand, and the ghost of where it would land.
  */
 import * as THREE from "three";
-import { component, effects, emit, on, Op, set, store } from "@apendua/signal";
-import { $, drag, interactions, XREventMap } from "@apendua/freedom";
+import { component, effects, emit, on, Op, set, store } from "justdom-signal";
+import { $, drag, interactions, XREventMap } from "justdom-three";
 import { CELL } from "./grid.js";
 import { palette } from "./palette.js";
 

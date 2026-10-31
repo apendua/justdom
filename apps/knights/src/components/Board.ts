@@ -1,5 +1,5 @@
-import { $$, attr, children, list, on } from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { $$, attr, children, list, on } from "justdom";
+import { component } from "justdom-signal";
 import { ANIMATION_IDLE, KNIGHT } from "../constants";
 import { areTheSameField } from "../helpers/map";
 import { createInverseMapping } from "../helpers/mappings";

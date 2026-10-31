@@ -1,4 +1,4 @@
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 import { mountDesk, type MountedDesk } from "./desk.js";
 import { lookFromSearch, type Look } from "./looks.js";
 import { mountLookPicker } from "./lookPicker.js";

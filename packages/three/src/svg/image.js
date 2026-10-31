@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Derived, effects, onCleanup } from "@apendua/signal";
+import { Derived, effects, onCleanup } from "justdom-signal";
 import { children } from "../operators.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
 import { getAttributeCached, getComputedStyleCached } from "../elements/mirror.js";
@@ -8,7 +8,7 @@ import { isDrawnHidden, svgNode, viewportSize } from "./shape.js";
 import { parseLengthIn, parsePointerEvents, readProperty } from "./style.js";
 
 /**
- * @import {Source} from '@apendua/signal';
+ * @import {Source} from 'justdom-signal';
  * @import {Size} from '../elements/objectFit.js';
  * @import {PreserveAspectRatio} from './geometry.js';
  * @import {Instance} from './shape.js';

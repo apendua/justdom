@@ -6,10 +6,10 @@
  * headset is rarely the only thing plugged in, and the browser's own choice is
  * not always the one the player is wearing.
  */
-import { each, makeNonReactive, Signal, Stream } from "@apendua/signal";
+import { each, makeNonReactive, Signal, Stream } from "justdom-signal";
 
 /**
- * @import { Source } from "@apendua/signal";
+ * @import { Source } from "justdom-signal";
  */
 
 /**

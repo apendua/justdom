@@ -1,7 +1,7 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { $, attr, children } from "@apendua/justdom";
+import { $, attr, children } from "justdom";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { withPanelOptions } from "./panelOptions.js";

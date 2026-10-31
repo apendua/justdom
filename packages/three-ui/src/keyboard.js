@@ -1,9 +1,9 @@
-import { $, attr, children, on, renderText, set, style, text } from "@apendua/justdom";
-import { Derived, flatMap, observable, Signal } from "@apendua/signal";
+import { $, attr, children, on, renderText, set, style, text } from "justdom";
+import { Derived, flatMap, observable, Signal } from "justdom-signal";
 
 /**
- * @import {EntityEffect} from "@apendua/signal";
- * @import {Mountable} from "@apendua/justdom";
+ * @import {EntityEffect} from "justdom-signal";
+ * @import {Mountable} from "justdom";
  */
 
 /**
@@ -12,10 +12,10 @@ import { Derived, flatMap, observable, Signal } from "@apendua/signal";
  * state change comes out as a class attribute rather than a rebuilt subtree,
  * so a portal restyles the key in place rather than building it again.
  *
- * @param {import("@apendua/signal").Subscribable<string>} base
- * @param {import("@apendua/signal").Subscribable<string>} modifier
+ * @param {import("justdom-signal").Subscribable<string>} base
+ * @param {import("justdom-signal").Subscribable<string>} modifier
  * @param {() => boolean} active
- * @returns {import("@apendua/signal").Source<string>}
+ * @returns {import("justdom-signal").Source<string>}
  */
 const withModifier = (base, modifier, active) =>
   flatMap((/** @type {boolean} */ isActive) => (isActive ? renderText`${base} ${modifier}` : base))(
@@ -113,11 +113,11 @@ const withModifier = (base, modifier, active) =>
  * class names.
  *
  * @typedef {object} KeyboardClasses
- * @property {import("@apendua/signal").Subscribable<string>} root The whole board.
- * @property {import("@apendua/signal").Subscribable<string>} row One row of keys.
- * @property {import("@apendua/signal").Subscribable<string>} key One key. Needs `cursor: pointer` to be a
+ * @property {import("justdom-signal").Subscribable<string>} root The whole board.
+ * @property {import("justdom-signal").Subscribable<string>} row One row of keys.
+ * @property {import("justdom-signal").Subscribable<string>} key One key. Needs `cursor: pointer` to be a
  *   ray target in a scene, the same as any other control projected into one.
- * @property {import("@apendua/signal").Subscribable<string>} [keyActive] Added to a modifier key while it
+ * @property {import("justdom-signal").Subscribable<string>} [keyActive] Added to a modifier key while it
  *   is engaged. Omit and a held shift looks like a loose one.
  */
 
@@ -135,7 +135,7 @@ const withModifier = (base, modifier, active) =>
  *   Defaults to {@link MOBILE_LAYOUT}, or, with `field`, to whichever of
  *   `MOBILE_LAYOUT` and `numericLayout` the field asks for.
  * @property {() => HTMLInputElement | null} [field] The field being typed
- *   into, read reactively — `field` on the target `@apendua/freedom` hands a
+ *   into, read reactively — `field` on the target `justdom-three` hands a
  *   board's factory is exactly this. A board given one follows it the way a
  *   phone's keyboard follows the field it pops up for: a number field gets
  *   the number pad, and nothing else. See {@link isNumericField}. Ignored
@@ -384,7 +384,7 @@ export function isNumericField(field) {
  * moves between a number field and a text one, never while typing.
  *
  * @param {KeyboardProps} props
- * @returns {import("@apendua/signal").Source<Mountable>}
+ * @returns {import("justdom-signal").Source<Mountable>}
  */
 export function keyboard(props) {
   const { onKey, classes, layout, field, numericLayout = NUMERIC_LAYOUT } = props;
@@ -482,7 +482,7 @@ export function keyboard(props) {
 
   /**
    * @param {KeyboardKey} entry
-   * @returns {import("@apendua/signal").Source<Mountable>}
+   * @returns {import("justdom-signal").Source<Mountable>}
    */
   const key = (entry) => {
     // Zero basis and a share of the row proportional to the key's width: the
@@ -520,7 +520,7 @@ export function keyboard(props) {
 
   /**
    * @param {readonly KeyboardKey[]} keys
-   * @returns {import("@apendua/signal").Source<Mountable>}
+   * @returns {import("justdom-signal").Source<Mountable>}
    */
   const row = (keys) =>
     $("div", [
@@ -532,7 +532,7 @@ export function keyboard(props) {
 
   /**
    * @param {KeyboardLayout} rows
-   * @returns {import("@apendua/signal").Source<Mountable>}
+   * @returns {import("justdom-signal").Source<Mountable>}
    */
   const board = (rows) =>
     $("div", [

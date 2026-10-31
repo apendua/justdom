@@ -1,7 +1,7 @@
 {
-  "name": "@apendua/justui",
+  "name": "justdom-three-ui",
   "version": "0.3.5",
-  "description": "The widgets a panel is made of -- dropdown, keyboard, scrollable and a frame rate readout -- built out of ordinary DOM so they work on a page and inside a @apendua/freedom portal alike",
+  "description": "The widgets a panel is made of -- dropdown, keyboard, scrollable and a frame rate readout -- built out of ordinary DOM so they work on a page and inside a justdom-three portal alike",
   "keywords": [
     "ui",
     "widgets",
@@ -14,8 +14,8 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/apendua/apendua.dev.git",
-    "directory": "packages/justui"
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/three-ui"
   },
   "license": "MIT",
   "author": "apendua",
@@ -43,26 +43,25 @@
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },
   "devDependencies": {
-    "@apendua/freedom": "workspace:*",
     "@apendua/jsdom-env": "workspace:*",
-    "@apendua/justdom": "workspace:*",
-    "@apendua/signal": "workspace:*",
-    "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "esbuild": "^0.27.4",
     "eslint": "^9.37.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
     "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@apendua/freedom": "workspace:*",
-    "@apendua/justdom": "workspace:*",
-    "@apendua/signal": "workspace:*",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
     "three": ">=0.180.0"
   },
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }

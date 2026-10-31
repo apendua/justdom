@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { effects } from "@apendua/signal";
+import { effects } from "justdom-signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";

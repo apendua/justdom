@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { component, effects, Op, set, store } from "@apendua/signal";
-import { $, XREventMap } from "@apendua/freedom";
+import { component, effects, Op, set, store } from "justdom-signal";
+import { $, XREventMap } from "justdom-three";
 import * as RAPIER from "@dimforge/rapier3d";
 import { collider, rigidBody } from "../elements/rapier.js";
 import { sphereGeometry } from "../elements/geometry.js";

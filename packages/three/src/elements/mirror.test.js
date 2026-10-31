@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { batch, Computation, Derived, Effect, selector, toObservable } from "@apendua/signal";
+import { batch, Computation, Derived, Effect, selector, toObservable } from "justdom-signal";
 import {
   createMirror,
   getCheckedCached,

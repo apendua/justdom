@@ -69,7 +69,7 @@ import { parseAst } from "vite";
  * @property {string} text
  */
 
-const RUNTIME = "@apendua/vite-hmr";
+const RUNTIME = "justdom-vite-hmr";
 
 /**
  * The runtime, as a file: what the injected import resolves to. Resolved
@@ -101,7 +101,7 @@ function packageRoot(file) {
 /**
  * Packages the transform stays out of: this one, and the reactive core the
  * runtime is built on. A transformed module imports the runtime, which
- * imports `@apendua/signal`, so transforming the core would put its own
+ * imports `justdom-signal`, so transforming the core would put its own
  * modules downstream of themselves — and their wrappers would be built while
  * the classes they check against are still being defined.
  *
@@ -109,7 +109,7 @@ function packageRoot(file) {
  */
 const EXCLUDED_ROOTS = [
   packageRoot(RUNTIME_PATH),
-  packageRoot(fileURLToPath(import.meta.resolve("@apendua/signal"))),
+  packageRoot(fileURLToPath(import.meta.resolve("justdom-signal"))),
 ].map((root) => `${root.replaceAll("\\", "/")}/`);
 
 /**

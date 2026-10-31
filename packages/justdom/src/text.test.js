@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Derived, just, Signal, Subject, toObservable } from "@apendua/signal";
+import { Derived, just, Signal, Subject, toObservable } from "justdom-signal";
 import { $, children } from "./dom.js";
 import { text } from "./text.js";
 

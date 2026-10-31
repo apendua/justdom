@@ -6,11 +6,11 @@ import {
   Signal,
   Stream,
   toObservable,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { withoutHydration } from "./hydrate.js";
 
 /**
- * @import { Property, Source, Subscribable } from "@apendua/signal";
+ * @import { Property, Source, Subscribable } from "justdom-signal";
  * @import { Mountable } from "./types.js";
  */
 

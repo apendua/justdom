@@ -1,7 +1,7 @@
-import { children } from "@apendua/justdom";
-import { just } from "@apendua/signal";
+import { children } from "justdom";
+import { just } from "justdom-signal";
 import Game from "./components/Game";
-import { offerHeadset } from "@apendua.dev/headset/offer";
+import { offerHeadset } from "justdom-xr/offer";
 import Root, { RootContext } from "./store/Root";
 import "./index.css";
 

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createProperty, onCleanup } from "@apendua/signal";
+import { createProperty, onCleanup } from "justdom-signal";
 import { interactions } from "../interactions.js";
 import { isBlocker } from "./blocker.js";
 import { getParentObject } from "./contentGroup.js";
@@ -32,7 +32,7 @@ import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
 import { takesTheTyping } from "./typing.js";
 
 /**
- * @import {EntityEffect} from '@apendua/signal';
+ * @import {EntityEffect} from 'justdom-signal';
  * @import {Object3D, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';

@@ -8,9 +8,9 @@ import {
   decorate,
   withChannel,
   withComputation,
-} from "@apendua/signal";
-import { fromEvent, store } from "@apendua/signal";
-import { filtered, Subject } from "@apendua/signal";
+} from "justdom-signal";
+import { fromEvent, store } from "justdom-signal";
+import { filtered, Subject } from "justdom-signal";
 import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
 import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";

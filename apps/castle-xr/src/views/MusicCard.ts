@@ -1,7 +1,7 @@
-import { component, on, set } from "@apendua/signal";
-import { children, $, text } from "@apendua/justdom";
-import { dropdown } from "@apendua/justui";
-import type { AudioOutputSelection } from "@apendua.dev/sound";
+import { component, on, set } from "justdom-signal";
+import { children, $, text } from "justdom";
+import { dropdown } from "justdom-three-ui";
+import type { AudioOutputSelection } from "@apendua/sound";
 import { musicRow, outputClasses, panelCard, panelTitle, stepButton, stepValue } from "./styles.js";
 
 /** What the card shows. Both phases' panels carry these among their own props. */

@@ -1,6 +1,7 @@
 {
   "name": "@apendua/jsdom-env",
   "version": "0.2.0",
+  "private": true,
   "description": "Installs a JSDOM window on globalThis, for running DOM code under node:test",
   "keywords": [
     "jsdom",
@@ -44,9 +45,5 @@
     "@types/jsdom": "^21.1.7",
     "@types/node": "^24.7.0",
     "typescript": "^7.0.2"
-  },
-  "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
   }
 }

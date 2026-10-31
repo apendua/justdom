@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { APPS, REPO, chosenApps } from "./emulatorApps.mjs";
 import { formatCounts, sumCounts } from "../src/test/paintOrderCount.js";
 
-const COUNTER = join(REPO, "packages/freedom/src/test/paintOrderCount.js");
+const COUNTER = join(REPO, "packages/three/src/test/paintOrderCount.js");
 
 /**
  * @typedef {import("../src/test/paintOrderCount.js").PanelCount} PanelCount

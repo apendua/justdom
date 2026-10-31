@@ -1,6 +1,6 @@
 import { describe, expect, it, onTestFinished } from "vitest";
-import { children } from "@apendua/justdom";
-import { just } from "@apendua/signal";
+import { children } from "justdom";
+import { just } from "justdom-signal";
 import type { Field } from "../store/Fields";
 import Viewport, { ViewportContext } from "../store/Viewport";
 import FieldStatus, { FLAG_URL, MINE_URL } from "./FieldStatus";

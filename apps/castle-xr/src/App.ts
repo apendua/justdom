@@ -9,17 +9,17 @@ import {
   interactions,
   getCamera,
   getScene,
-} from "@apendua/freedom";
-import { effectsOnly, useEffects } from "@apendua/signal";
-import { on, set, effects, component } from "@apendua/signal";
+} from "justdom-three";
+import { effectsOnly, useEffects } from "justdom-signal";
+import { on, set, effects, component } from "justdom-signal";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
 import { basicMaterial } from "./elements/material.js";
 import { palette } from "./elements/palette.js";
 import Game from "./components/Game.js";
-import { createMusicControls, Music } from "@apendua.dev/sound/xr";
-import { createDiagnostics, useDiagnostics } from "@apendua/justui";
+import { createMusicControls, Music } from "@apendua/sound/xr";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
 import glass_desk_habits from "@apendua.dev/media/glass_desk_habits.mp3";
 import GameUI from "./views/GameUI.js";
 import CastleStore from "./store/CastleStore.js";

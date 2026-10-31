@@ -1,10 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { children } from "@apendua/justdom";
-import { just, Signal } from "@apendua/signal";
+import { children } from "justdom";
+import { just, Signal } from "justdom-signal";
 import * as THREE from "three";
 import { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
-import { createPortal, InteractionContext, InteractionManager } from "@apendua/freedom";
+import { createPortal, InteractionContext, InteractionManager } from "justdom-three";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.
@@ -57,7 +57,7 @@ function dressBoard() {
 }
 
 /**
- * @import {Mountable} from "@apendua/justdom";
+ * @import {Mountable} from "justdom";
  * @import {KeyPress, KeyboardLayout} from "./keyboard.js";
  */
 
@@ -70,7 +70,7 @@ const classes = {
 };
 
 /**
- * @param {import("@apendua/signal").Subscribable<Mountable>} tree
+ * @param {import("justdom-signal").Subscribable<Mountable>} tree
  */
 function mount(tree) {
   const host = document.createElement("div");

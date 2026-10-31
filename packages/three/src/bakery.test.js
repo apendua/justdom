@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { $ as $dom, attr as domAttr, children as domChildren } from "@apendua/justdom";
+import { $ as $dom, attr as domAttr, children as domChildren } from "justdom";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { createBakery } from "./bakery.js";
 

@@ -70,7 +70,7 @@ describe("InteractionManager pointers", () => {
   let controller;
   /** @type {ReturnType<typeof fakeFrameLoop>} */
   let loop;
-  /** @type {import('@apendua/signal').Unsubscribable} */
+  /** @type {import('justdom-signal').Unsubscribable} */
   let subscription;
 
   beforeEach(() => {
@@ -224,7 +224,7 @@ describe("cursors", () => {
   });
 
   /**
-   * @param {import("@apendua/signal").Source<Component>} component$
+   * @param {import("justdom-signal").Source<Component>} component$
    * @returns {THREE.Object3D}
    */
   function mount(component$) {

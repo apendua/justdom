@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { batch } from "@apendua/signal";
+import { batch } from "justdom-signal";
 import { createMirror, getComputedStyleCached } from "../elements/mirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";

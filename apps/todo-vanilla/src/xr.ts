@@ -1,6 +1,6 @@
-import { render, createXRButton } from "@apendua/freedom";
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
-import { inputModels } from "@apendua.dev/headset/scene";
+import { render, createXRButton } from "justdom-three";
+import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
+import { inputModels } from "justdom-xr/scene";
 import Scene from "./components/Scene.js";
 import TodoKeyboard from "./components/TodoKeyboard.js";
 
@@ -8,7 +8,7 @@ import TodoKeyboard from "./components/TodoKeyboard.js";
  * Offer the page a headset: a scene that mirrors `panel` — the element the
  * app is mounted in — and freedom's Enter button, which starts a session
  * and is the way back in after one ends. Loaded by `offerHeadset` from
- * `@apendua.dev/headset/offer` only on a platform that can present.
+ * `justdom-xr/offer` only on a platform that can present.
  */
 export function offerXR(panel: HTMLElement): void {
   const query = new URLSearchParams(location.search);

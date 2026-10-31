@@ -1,5 +1,5 @@
 {
-  "name": "@apendua.dev/euclid-core",
+  "name": "@apendua/euclid-core",
   "version": "0.1.0",
   "private": true,
   "description": "Euclidean geometry primitives on the complex projective plane",

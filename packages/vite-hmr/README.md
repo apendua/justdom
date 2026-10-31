@@ -1,8 +1,7 @@
-# @apendua/vite-hmr
+# justdom-vite-hmr
 
-A Vite plugin that lets modules built on [`@apendua/signal`](../signal) and
-[`@apendua/justdom`](../justdom) survive hot module reloads without losing their live reactive
-state.
+A Vite plugin that lets modules built on [`justdom-signal`](../signal) and [`justdom`](../justdom)
+survive hot module reloads without losing their live reactive state.
 
 ## The problem it solves
 
@@ -17,7 +16,7 @@ whatever state lived only in memory (an open panel, scroll position, an in-progr
 ```js
 // vite.config.mts
 import { defineConfig } from "vite";
-import HMRPlugin from "@apendua/vite-hmr/plugin";
+import HMRPlugin from "justdom-vite-hmr/plugin";
 
 export default defineConfig({
   plugins: [HMRPlugin()],
@@ -102,8 +101,8 @@ with its holder depends on what kind of thing the module defined:
   always propagated rather than swapped.
 
 The transform itself needs no knowledge of what a definition is or which package constructed it, so
-nothing is hardcoded about `@apendua/signal` or `@apendua/justdom`; any module whose exports are
-functions, nodes, streams and state is one hot reload can replace in place.
+nothing is hardcoded about `justdom-signal` or `justdom`; any module whose exports are functions,
+nodes, streams and state is one hot reload can replace in place.
 
 ## What the transform does to a module
 
@@ -137,8 +136,8 @@ destructuring declaration, an object, array or regex literal, or a re-export fro
 automatically into transformed modules — it is not meant to be imported or called directly. The
 plugin resolves that import itself, so a workspace package whose modules are served through an app's
 dev server does not have to depend on this package for its modules to be transformed. The two
-packages the transform never touches are this one and `@apendua/signal`: a transformed module
-imports the runtime, and the runtime is built on the core.
+packages the transform never touches are this one and `justdom-signal`: a transformed module imports
+the runtime, and the runtime is built on the core.
 
 ## Scope
 
@@ -146,7 +145,7 @@ Values that are none of the above — plain objects, arrays, classes, anything t
 recognise — are compared by identity, so a module exporting a palette as a plain object next to its
 components propagates every update to its importers. A `store` is what such an object should be when
 its readers are reactive. Recognising a store and a context property relies on `isStore` and
-`isProperty` from `@apendua/signal`, since each is a `Proxy` or a bare object; a stateful shape from
+`isProperty` from `justdom-signal`, since each is a `Proxy` or a bare object; a stateful shape from
 another library would need the same kind of brand before it could be kept.
 
 ## License

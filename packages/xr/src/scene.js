@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
-import { $ } from "@apendua/freedom";
-import { addDependency, component, effects, onCleanup, Stream } from "@apendua/signal";
+import { $ } from "justdom-three";
+import { addDependency, component, effects, onCleanup, Stream } from "justdom-signal";
 import { backdropShown } from "./session.js";
 
 /**
- * @import { Component } from "@apendua/freedom";
- * @import { Source } from "@apendua/signal";
+ * @import { Component } from "justdom-three";
+ * @import { Source } from "justdom-signal";
  */
 
 const backdropGeometry = new THREE.SphereGeometry(10, 32, 16);

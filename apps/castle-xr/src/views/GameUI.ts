@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { component, effects, set, emit, observable, on, Op, store } from "@apendua/signal";
-import { dom } from "@apendua/freedom";
-import type { AudioOutputSelection } from "@apendua.dev/sound";
-import { diagnosticsButton, type DiagnosticsControls } from "@apendua/justui";
-import { children, list, $, text } from "@apendua/justdom";
+import { component, effects, set, emit, observable, on, Op, store } from "justdom-signal";
+import { dom } from "justdom-three";
+import type { AudioOutputSelection } from "@apendua/sound";
+import { diagnosticsButton, type DiagnosticsControls } from "justdom-three-ui";
+import { children, list, $, text } from "justdom";
 import {
   actionButton,
   actionButtonClass,

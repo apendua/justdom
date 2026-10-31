@@ -1,4 +1,4 @@
-import { $$, attr, children } from "@apendua/justdom";
+import { $$, attr, children } from "justdom";
 import {
   component,
   Derived,
@@ -9,7 +9,7 @@ import {
   store,
   use,
   useEffect,
-} from "@apendua/signal";
+} from "justdom-signal";
 import {
   ASSETS_PREFIX,
   animationsDb,

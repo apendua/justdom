@@ -1,9 +1,9 @@
 import { renderText } from "./text.js";
-import { Derived, just, map, onCleanup, Stream, toObservable } from "@apendua/signal";
+import { Derived, just, map, onCleanup, Stream, toObservable } from "justdom-signal";
 import { isHydrating } from "./hydrate.js";
 
 /**
- * @import { Source, Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  */
 
 const STYLE_KEY_ATTRIBUTE = "data-style-key";
@@ -135,7 +135,7 @@ function stableName(prefix, strings, isStatic) {
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
- * @returns {import("@apendua/signal").Source<string>}
+ * @returns {import("justdom-signal").Source<string>}
  */
 export function className(strings, ...values) {
   const key = stableName("class_", strings, values.length === 0);
@@ -183,7 +183,7 @@ function shared(key, content) {
  * Creates a CSS class name observable from template strings and values.
  * @param {TemplateStringsArray} strings - The template strings.
  * @param {...import("./text.js").Renderable} values - The values to interpolate.
- * @returns {import("@apendua/signal").Source<string>}
+ * @returns {import("justdom-signal").Source<string>}
  */
 export function stylesheet(strings, ...values) {
   const name = stableName("class_", strings, values.length === 0);
@@ -207,7 +207,7 @@ export function stylesheet(strings, ...values) {
  * @param {string} [options.format]
  * @param {string} [options.fontWeight]
  * @param {string} [options.fontStyle]
- * @returns {import("@apendua/signal").Source<string>}
+ * @returns {import("justdom-signal").Source<string>}
  */
 export function fontFace(fontUrl, options = {}) {
   const { format = "truetype", fontWeight = "normal", fontStyle = "normal" } = options;

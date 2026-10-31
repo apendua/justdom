@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { clientRect } from "../test/clientRect.js";
 import { clipMatrixOf, clipUniformsOf } from "../test/clipUniforms.js";
 import * as THREE from "three";
-import { UpdateChannel, withChannel } from "@apendua/signal";
+import { UpdateChannel, withChannel } from "justdom-signal";
 import { InteractionContext, InteractionManager, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";

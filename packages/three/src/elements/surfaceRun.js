@@ -1,4 +1,4 @@
-import { effects } from "@apendua/signal";
+import { effects } from "justdom-signal";
 import { toLocalClipBox, unboundedClipUniform } from "./clip.js";
 import { place } from "./place.js";
 import { TextBatchContext } from "./textBatch.js";
@@ -6,7 +6,7 @@ import { textRun } from "./textRun.js";
 
 /**
  * @import {Mesh} from 'three';
- * @import {EntityEffect} from '@apendua/signal';
+ * @import {EntityEffect} from 'justdom-signal';
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
  * @import {ClipBox} from './clip.js';
@@ -40,7 +40,7 @@ import { textRun } from "./textRun.js";
  * @param {EntityEffect<Mesh>[]} [extra] Effects of the caller's own,
  *   mounted with the run, after the trim of its hits to the box's clip and
  *   before everything else on it.
- * @returns {import("@apendua/signal").Source<Component>}
+ * @returns {import("justdom-signal").Source<Component>}
  */
 export function surfaceRun(ctx, surface, source, extra = []) {
   const batch = TextBatchContext.get(ctx);

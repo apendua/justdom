@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "@apendua/signal";
+import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "justdom-signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getCheckedCached, getComputedStyleCached } from "./mirror.js";
@@ -10,7 +10,7 @@ import { MARK_MATERIAL_SETTINGS } from "./textHelpers.js";
 import { registerDrawOrder } from "../drawOrder.js";
 
 /**
- * @import {Source} from '@apendua/signal';
+ * @import {Source} from 'justdom-signal';
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
  */
@@ -137,7 +137,7 @@ function makeTickGeometry(width, height, originX, originY) {
  * there. `applyClip` handles the drawing, `clipMesh` the hit region.
  *
  * @param {BoxSurface} surface
- * @returns {import("@apendua/signal").Source<Component>}
+ * @returns {import("justdom-signal").Source<Component>}
  */
 function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
   // Created here rather than inline, because `clipMesh` wraps `raycast` and
@@ -221,7 +221,7 @@ function tick({ properties, contentRenderOrder, clipBox, clipMesh, hidden }) {
  *
  * @param {WeakKey} ctx
  * @param {HTMLInputElement} element
- * @returns {import("@apendua/signal").Source<THREE.Object3D>}
+ * @returns {import("justdom-signal").Source<THREE.Object3D>}
  */
 export function checkbox(ctx, element) {
   const checked = new Derived(() => getCheckedCached(element));

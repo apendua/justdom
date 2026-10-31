@@ -1,7 +1,7 @@
-import { findBorder, getNodes, grow, VectorLike } from "@apendua.dev/geometry";
-import { attr, $$ } from "@apendua/justdom";
+import { findBorder, getNodes, grow, VectorLike } from "@apendua/geometry";
+import { attr, $$ } from "justdom";
 import Viewport, { ViewportContext } from "../store/Viewport";
-import { component, memo } from "@apendua/signal";
+import { component, memo } from "justdom-signal";
 
 function makePoint({ x, y }: VectorLike): string {
   return `${x.toFixed(2)},${y.toFixed(2)}`;

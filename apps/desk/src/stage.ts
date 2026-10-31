@@ -1,4 +1,4 @@
-import { effect } from "@apendua/signal";
+import { effect } from "justdom-signal";
 import type { Readable } from "./session.js";
 
 /** The size the desk is drawn at, in px. */

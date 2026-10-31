@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { withComputation } from "@apendua/signal";
+import { withComputation } from "justdom-signal";
 import { getBorderBoxSize } from "./mirror.js";
 import { emptyTally, setProbing, takeTallies, unprobed } from "./outlineProbe.js";
 import { describeElement } from "./panelFrame.js";

@@ -3,15 +3,15 @@
  * little else as the thing can be made of.
  */
 import * as THREE from "three";
-import { component, effects } from "@apendua/signal";
-import { $, children, set, style, text } from "@apendua/justdom";
-import { dom, useFrame } from "@apendua/freedom";
+import { component, effects } from "justdom-signal";
+import { $, children, set, style, text } from "justdom";
+import { dom, useFrame } from "justdom-three";
 import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
 import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
 
 /**
- * @import {Mountable} from '@apendua/justdom';
- * @import {Component} from '@apendua/freedom';
+ * @import {Mountable} from 'justdom';
+ * @import {Component} from 'justdom-three';
  * @import {DiagnosticsControls} from './diagnostics.js';
  */
 
@@ -138,7 +138,7 @@ export function sampleAt(history, index) {
 /**
  * @param {DiagnosticsControls} controls
  * @param {number} index
- * @returns {import("@apendua/signal").Source<Mountable>}
+ * @returns {import("justdom-signal").Source<Mountable>}
  */
 function chartBar(controls, index) {
   /** @returns {number | null} */
@@ -168,7 +168,7 @@ function chartBar(controls, index) {
  * stopped rays here would be a pane of glass the player's own pointer kept
  * landing on, a foot in front of the game.
  *
- * @type {(ctx: WeakKey, controls: DiagnosticsControls) => import("@apendua/signal").Source<Component>}
+ * @type {(ctx: WeakKey, controls: DiagnosticsControls) => import("justdom-signal").Source<Component>}
  */
 export const Panel = component(
   /**

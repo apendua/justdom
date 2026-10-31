@@ -15,10 +15,10 @@ import {
   Stream,
   Subject,
   UpdateChannel,
-} from "@apendua/signal";
+} from "justdom-signal";
 
 /**
- * @import { Source, Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  */
 
 /**
@@ -166,7 +166,7 @@ import {
  *   why the latest evaluation cannot be taken in place, or `null` when it can.
  */
 
-const REGISTRY_KEY = "@apendua/vite-hmr";
+const REGISTRY_KEY = "justdom-vite-hmr";
 
 /**
  * Everything `reloadable` has ever handed out in place of a definition, so a

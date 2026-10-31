@@ -7,7 +7,7 @@
  * in common is that it says the same thing in every scene, since a player who
  * has found it once should not have to find it again somewhere else.
  */
-import { $, children, on, set, text } from "@apendua/justdom";
+import { $, children, on, set, text } from "justdom";
 
 /**
  * @import {DiagnosticsControls} from './diagnostics.js';
@@ -16,7 +16,7 @@ import { $, children, on, set, text } from "@apendua/justdom";
 /**
  * @param {DiagnosticsControls} controls The scene's own, which the button both
  *   shows and sets.
- * @param {import("@apendua/signal").Subscribable<string>} className The app's button dressing. Needs
+ * @param {import("justdom-signal").Subscribable<string>} className The app's button dressing. Needs
  *   `cursor: pointer`, or rays pass straight through it.
  */
 export function diagnosticsButton(controls, className) {

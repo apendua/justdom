@@ -1,5 +1,5 @@
-import { $, children, className, set, style, text } from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { $, children, className, set, style, text } from "justdom";
+import { component } from "justdom-signal";
 import type AppStore from "../store/App";
 
 const statusStyle = className`

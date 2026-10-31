@@ -1,4 +1,4 @@
-import { CLASS_NAME, stylesheet } from "@apendua/justdom";
+import { CLASS_NAME, stylesheet } from "justdom";
 
 /**
  * The blocky, monospaced button the whole interface is built from.

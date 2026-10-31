@@ -10,7 +10,7 @@ import {
   set,
   Signal,
   withComputation,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import { getBorderBoxSize, getComputedStyleCached } from "./mirror.js";
@@ -31,7 +31,7 @@ import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./t
 import { holdShared, shadowAccessor } from "./shadowAccessor.js";
 
 /**
- * @import {EntityEffect} from '@apendua/signal';
+ * @import {EntityEffect} from 'justdom-signal';
  * @import {Component, InputEvent, PointerEvent, InputCancelEvent, XREventMap} from '../core.js';
  * @import {BoxSurface} from './div.js';
  * @import {ClipBox} from './clip.js';
@@ -309,7 +309,7 @@ function pointEqual(a, b) {
  * @param {BoxSurface} surface
  * @param {InputFocus} focus
  * @param {CaretLocator} locator
- * @returns {import("@apendua/signal").Source<Component>[]}
+ * @returns {import("justdom-signal").Source<Component>[]}
  */
 function fieldContent(ctx, element, surface, focus, locator) {
   const version = valueVersionOf(element);
@@ -612,7 +612,7 @@ function fieldContent(ctx, element, surface, focus, locator) {
 /**
  * @param {WeakKey} ctx
  * @param {HTMLInputElement} element
- * @returns {import("@apendua/signal").Source<THREE.Object3D>}
+ * @returns {import("justdom-signal").Source<THREE.Object3D>}
  */
 export function textInput(ctx, element) {
   const focus = InputFocusContext.get(ctx);

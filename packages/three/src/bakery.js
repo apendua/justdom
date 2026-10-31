@@ -1,13 +1,13 @@
 import * as THREE from "three";
-import { effects, Signal } from "@apendua/signal";
+import { effects, Signal } from "justdom-signal";
 import { $, children } from "./operators.js";
 import { dom } from "./dom.js";
 import { createFrameRequester } from "./elements/frameRequester.js";
 import { keepSubtreeMatrices } from "./elements/place.js";
 
 /**
- * @import {Source, Subscribable} from '@apendua/signal';
- * @import {Mountable} from '@apendua/justdom';
+ * @import {Source, Subscribable} from 'justdom-signal';
+ * @import {Mountable} from 'justdom';
  * @import {Component} from './core.js';
  */
 

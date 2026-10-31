@@ -1,4 +1,4 @@
-import { fromObservable, interval, toObservable } from "@apendua/signal";
+import { fromObservable, interval, toObservable } from "justdom-signal";
 import { TIMING_FRAMES_PER_SECOND } from "../constants";
 
 /**

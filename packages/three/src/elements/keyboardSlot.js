@@ -1,4 +1,4 @@
-import { createProperty } from "@apendua/signal";
+import { createProperty } from "justdom-signal";
 
 /**
  * @import {KeyboardHost} from './keyboardHost.js';

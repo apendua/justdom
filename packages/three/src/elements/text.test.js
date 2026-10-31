@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import { Signal, UpdateChannel, withChannel } from "justdom-signal";
 import { createMirror } from "./mirror.js";
 import { text } from "./text.js";
 import { TextBatchContext } from "./textBatch.js";

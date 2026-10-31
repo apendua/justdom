@@ -10,11 +10,11 @@ import {
   style,
   stylesheet,
   text,
-} from "@apendua/justdom";
-import type { Mountable } from "@apendua/justdom";
-import { component, type Subscribable } from "@apendua/signal";
+} from "justdom";
+import type { Mountable } from "justdom";
+import { component, type Subscribable } from "justdom-signal";
 import { Fields } from "../store/Fields";
-import { canPassThrough, passthrough, xrSession } from "@apendua.dev/headset/session";
+import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
 
 export interface SizePreset {
   id: string;

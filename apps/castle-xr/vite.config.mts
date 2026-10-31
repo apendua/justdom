@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import HMRPlugin from "@apendua/vite-hmr/plugin";
+import HMRPlugin from "justdom-vite-hmr/plugin";
 import wasm from "vite-plugin-wasm";
 
 // https://vitejs.dev/config/

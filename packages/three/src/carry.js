@@ -6,14 +6,14 @@ import {
   onCleanup,
   useEffect,
   withComputation,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { asReader, InteractionContext, interactions, setWorldMatrix } from "./interactions.js";
 import { createHold } from "./hold.js";
 import { $ } from "./operators.js";
 import { useFrame } from "./render.js";
 
 /**
- * @import { EntityEffect, Source } from "@apendua/signal";
+ * @import { EntityEffect, Source } from "justdom-signal";
  * @import { Object3D, XRTargetRaySpace } from "three";
  * @import { Component, InputEvent, InputCancelEvent, PressEnd, XREventMap } from "./core.js";
  * @import { Reactive } from "./interactions.js";

@@ -1,5 +1,5 @@
-import { render, createXRButton } from "@apendua/freedom";
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import { render, createXRButton } from "justdom-three";
+import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import createScene from "./components/Scene";
 import "./index.css";
 
@@ -28,7 +28,7 @@ const vectors = query.get("svg") !== "off";
 // load leaves the panel out rather than drawing an empty card in its place,
 // and says so.
 const plugins = vectors
-  ? import("@apendua/freedom/svg").then(
+  ? import("justdom-three/svg").then(
       ({ svgElements }) => [svgElements()],
       (err) => {
         console.error("Could not load the SVG plugin; the vector panel is left out:", err);
@@ -46,7 +46,7 @@ const plugins = vectors
 // frame of a photograph of the scene, which is what the visual test takes.
 Promise.resolve(
   query.has("emulator")
-    ? import("@apendua.dev/headset/emulator").then(({ install }) =>
+    ? import("justdom-xr/emulator").then(({ install }) =>
         install({ devUI: query.get("emulator") !== "bare" }),
       )
     : undefined,

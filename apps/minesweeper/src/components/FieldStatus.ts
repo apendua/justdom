@@ -1,5 +1,5 @@
-import { $$, attr, children, text } from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { $$, attr, children, text } from "justdom";
+import { component } from "justdom-signal";
 import { Field } from "../store/Fields";
 import { ViewportContext } from "../store/Viewport";
 

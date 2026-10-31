@@ -1,5 +1,5 @@
-import { render, createXRButton } from "@apendua/freedom";
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import { render, createXRButton } from "justdom-three";
+import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import App from "./App.js";
 
@@ -17,7 +17,7 @@ followOutlinesQuery(query);
 // it is asked for.
 Promise.resolve(
   query.has("emulator")
-    ? import("@apendua.dev/headset/emulator").then(({ install }) =>
+    ? import("justdom-xr/emulator").then(({ install }) =>
         install({ devUI: query.get("emulator") !== "bare" }),
       )
     : undefined,

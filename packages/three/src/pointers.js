@@ -9,14 +9,14 @@ import {
   observeFn,
   set,
   toEffect,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { list } from "./core.js";
 import { OVERLAY_RENDER_ORDER } from "./drawOrder.js";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 
 /**
- * @import { Signal } from '@apendua/signal';
+ * @import { Signal } from 'justdom-signal';
  * @import { Component, XREventMap } from './core.js';
  * @import { Pointers } from './interactions.js';
  */
@@ -216,7 +216,7 @@ export const DEFAULT_RAY_LENGTH = 5;
  * @param {THREE.XRTargetRaySpace} controller
  * @param {Pointers} all
  * @param {number} [fallback]
- * @returns {import("@apendua/signal").Source<never>}
+ * @returns {import("justdom-signal").Source<never>}
  */
 export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH) {
   // An `Effect` rather than a `Derived`: this writes to the scene graph and
@@ -260,7 +260,7 @@ export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH)
  *
  * @param {WeakKey} ctx
  * @param {CursorOptions} [options]
- * @returns {import("@apendua/signal").Source<Component>}
+ * @returns {import("justdom-signal").Source<Component>}
  */
 export function cursors(ctx, options = {}) {
   const { object, scale = 1, color = DEFAULT_COLOR } = options;

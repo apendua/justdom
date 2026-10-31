@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Derived, effects, flatMap, just, Stream, use } from "@apendua/signal";
+import { Derived, effects, flatMap, just, Stream, use } from "justdom-signal";
 import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import {
@@ -60,7 +60,7 @@ import {
  * The portal adopts a template's nodes into its mirror without building
  * them, so an edit inside a `<marker>` reaches every copy of it.
  *
- * @import {EntityEffect, Source, Subscribable} from '@apendua/signal';
+ * @import {EntityEffect, Source, Subscribable} from 'justdom-signal';
  * @import {Instance, ShapeHost} from './shape.js';
  * @import {MarkerVertex} from './marker.js';
  * @import {Rect} from './geometry.js';

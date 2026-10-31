@@ -1,4 +1,4 @@
-# @apendua.dev/headset
+# justdom-xr
 
 What every app with a headset session repeats, kept in one place: the emulated headset behind
 `?emulator`, the offer of a session to a page that can have one, freedom's theming mode behind
@@ -13,12 +13,12 @@ before it knows whether it will ever make a scene; the scene entry and theming i
 freedom, and belong in the chunk that makes the scene. A sixth entry, the driver, is for the apps'
 check scripts.
 
-## `@apendua.dev/headset/emulator`
+## `justdom-xr/emulator`
 
 ```ts
 const query = new URLSearchParams(location.search);
 if (query.has("emulator")) {
-  const { install } = await import("@apendua.dev/headset/emulator");
+  const { install } = await import("justdom-xr/emulator");
   install({ devUI: query.get("emulator") !== "bare" });
 }
 ```
@@ -49,10 +49,10 @@ Import it lazily, as above, so that it lands in a chunk of its own, named `emula
 service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperwings-xr`
 do it with `globIgnores: ["**/emulator-*.js"]`.
 
-## `@apendua.dev/headset/offer`
+## `justdom-xr/offer`
 
 ```ts
-import { offerHeadset } from "@apendua.dev/headset/offer";
+import { offerHeadset } from "justdom-xr/offer";
 
 offerHeadset(() => import("./xr")).then((xr) => xr?.offerXR(board, menu));
 ```
@@ -69,7 +69,7 @@ worker has taken it over, and at once if one already has. A page whose worker ha
 has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid, Knights and
 the todo app offer their sessions this way.
 
-## `@apendua.dev/headset/scene`
+## `justdom-xr/scene`
 
 What the scene of a headset app repeats. It imports three.js and freedom, so import it from the
 module that makes the scene, never from the page's entry.
@@ -100,10 +100,10 @@ dom(ctx, board, [
 ]);
 ```
 
-## `@apendua.dev/headset/theming`
+## `justdom-xr/theming`
 
 ```ts
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
+import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 
 const query = new URLSearchParams(location.search);
 followThemingQuery(query);
@@ -123,9 +123,9 @@ nothing from three.js. `paperwings-xr` calls it in its labs edition only.
 for nothing. "Outlines" in freedom's README says how to read them. Every app calls it on the line
 after `followThemingQuery`.
 
-This entry imports `@apendua/freedom`, so import it only from a module that already does.
+This entry imports `justdom-three`, so import it only from a module that already does.
 
-## `@apendua.dev/headset/session`
+## `justdom-xr/session`
 
 - `canPresent()` resolves to whether the platform can open an `immersive-ar` or `immersive-vr`
   session. Ask it before making a scene, a renderer or an Enter button, and after installing the
@@ -141,7 +141,7 @@ This entry imports `@apendua/freedom`, so import it only from a module that alre
 
 The signals are module state, one set per page.
 
-## `@apendua.dev/headset/driver`
+## `justdom-xr/driver`
 
 What an app's `tests/xr-check.mjs` imports to drive a session on the emulated headset from Node,
 through the device `install` leaves on `window.xrDevice`: `launch()` for Chromium on SwiftShader,
@@ -161,10 +161,10 @@ rest, and `.github/workflows/driven.yml` runs all four on pull requests.
 
 ## Tests
 
-`npm test` here, or `rush build --to @apendua.dev/headset`, runs `node --test` over `src`: the
-session's rules, `canPresent` against a stubbed `navigator.xr`, the offer against a stubbed platform
-and service worker, the controller and hand models' addresses against a stubbed `fetch`,
-`clientRect` against a stand-in `ResizeObserver`, the clear-state shadow against a stand-in WebGL
-context, which queries `followThemingQuery` takes for `?theming` and `followOutlinesQuery` for
-`?outlines`, and that each hands back freedom's off switch. `install` itself needs a browser, and is
-exercised by the apps' own check scripts, as is the driver.
+`npm test` here, or `rush build --to justdom-xr`, runs `node --test` over `src`: the session's
+rules, `canPresent` against a stubbed `navigator.xr`, the offer against a stubbed platform and
+service worker, the controller and hand models' addresses against a stubbed `fetch`, `clientRect`
+against a stand-in `ResizeObserver`, the clear-state shadow against a stand-in WebGL context, which
+queries `followThemingQuery` takes for `?theming` and `followOutlinesQuery` for `?outlines`, and
+that each hands back freedom's off switch. `install` itself needs a browser, and is exercised by the
+apps' own check scripts, as is the driver.

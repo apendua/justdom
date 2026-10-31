@@ -1,4 +1,4 @@
-import { scrollElementBy } from "@apendua/freedom";
+import { scrollElementBy } from "justdom-three";
 
 const SVG = "http://www.w3.org/2000/svg";
 

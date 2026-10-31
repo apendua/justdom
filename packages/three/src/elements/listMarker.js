@@ -1,4 +1,4 @@
-import { Derived, flatMap, observable, selector } from "@apendua/signal";
+import { Derived, flatMap, observable, selector } from "justdom-signal";
 import { Nothing } from "../operators.js";
 import { box } from "./div.js";
 import {
@@ -26,7 +26,7 @@ import { surfaceRun } from "./surfaceRun.js";
 /**
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
- * @import {Source} from '@apendua/signal';
+ * @import {Source} from 'justdom-signal';
  * @import * as THREE from 'three';
  */
 

@@ -29,7 +29,7 @@
  * along the way. It is kept out of `npm test` because it needs a browser
  * and takes about half a minute under SwiftShader;
  * `.github/workflows/driven.yml` runs it on pull requests. The browser and
- * the controller are driven through `@apendua.dev/headset/driver`.
+ * the controller are driven through `justdom-xr/driver`.
  */
 import { join, resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -46,7 +46,7 @@ import {
   precache,
   press,
   rotate,
-} from "@apendua.dev/headset/driver";
+} from "justdom-xr/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

@@ -10,7 +10,7 @@
  * could do without, and enough transparency that the room reads straight
  * through it.
  */
-import { stylesheet, CLASS_NAME } from "@apendua/justdom";
+import { stylesheet, CLASS_NAME } from "justdom";
 
 /**
  * Authored at roughly twice the size it is read at, and scaled back down: text

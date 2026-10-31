@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
-import { MINUTE, memoizeWithTTL, memoize, onCleanup } from "@apendua/signal";
+import { MINUTE, memoizeWithTTL, memoize, onCleanup } from "justdom-signal";
 
 export const boxGeometry = memoizeWithTTL(
   MINUTE,

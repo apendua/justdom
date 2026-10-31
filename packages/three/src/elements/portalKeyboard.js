@@ -1,7 +1,7 @@
 import { labelledField, takesTheTyping } from "./typing.js";
 
 /**
- * @import {Subscribable} from '@apendua/signal';
+ * @import {Subscribable} from 'justdom-signal';
  * @import {Mountable} from '../core.js';
  * @import {InputFocus} from './textInput.js';
  * @import {KeyPress} from './typing.js';
@@ -15,7 +15,7 @@ import { labelledField, takesTheTyping } from "./typing.js";
  * A headset has nothing to type with, and the keyboard the system offers is
  * chrome — the compositor's, not the page's — so none of it reaches a
  * projected field. What can reach one is a board of ordinary boxes, each a
- * ray target, mirrored by a portal of its own; `@apendua/justui` has such a
+ * ray target, mirrored by a portal of its own; `justdom-three-ui` has such a
  * board, and an app may have another. This package has none, and does not
  * want a dependency on one, so what the portal takes is a factory: given the
  * field, hand back the DOM of a keyboard wired to type into it. Everything
@@ -60,7 +60,7 @@ import { labelledField, takesTheTyping } from "./typing.js";
  * @typedef {object} PortalKeyboardOptions
  * @property {(target: KeyboardTarget) => Subscribable<Mountable>} create
  *   Build the keyboard's DOM for a field: a justdom tree, or anything with
- *   the `Mountable` shape, typically `keyboard(...)` from `@apendua/justui`
+ *   the `Mountable` shape, typically `keyboard(...)` from `justdom-three-ui`
  *   dressed in the panel's own classes and handed `target.onKey`. Called
  *   when a field is pressed; the tree is mounted into a portal of its own
  *   and taken down when the board goes.

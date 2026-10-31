@@ -9,9 +9,9 @@ import {
   stylesheet,
   text,
   type Mountable,
-} from "@apendua/justdom";
-import { component, type Subscribable } from "@apendua/signal";
-import { canPassThrough, passthrough, xrSession } from "@apendua.dev/headset/session";
+} from "justdom";
+import { component, type Subscribable } from "justdom-signal";
+import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
 import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
 import { VERSUS_COMPUTER, type GameMode } from "../store/Root";

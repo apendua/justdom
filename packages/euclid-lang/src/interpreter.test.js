@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Point, Line, Circle, Vec2 } from "@apendua.dev/euclid-core";
+import { Point, Line, Circle, Vec2 } from "@apendua/euclid-core";
 import { parse } from "./parser.js";
 import { evaluate } from "./interpreter.js";
 import { buildScene } from "./scene.js";

@@ -1,4 +1,4 @@
-import { enableOutlinesMode, enableThemingMode } from "@apendua/freedom";
+import { enableOutlinesMode, enableThemingMode } from "justdom-three";
 
 /**
  * Turn on freedom's theming mode when the page's address asks for it with

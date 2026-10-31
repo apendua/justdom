@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import * as THREE from "three";
-import { Derived } from "@apendua/signal";
+import { Derived } from "justdom-signal";
 import { Backdrop, clientRect, inputModels } from "./scene.js";
 
 describe("Backdrop", () => {

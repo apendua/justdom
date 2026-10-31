@@ -303,7 +303,7 @@ export function installCrashPanel(renderer, options = {}) {
  * takes space out of the row the window sits in, so the observer that noticed
  * the window had been laid out resized the window — one notice, and an app in
  * a headset was put back on the desktop with a crash report over it. The
- * widget no longer does that (see `scrollable` in `@apendua/justui`), but
+ * widget no longer does that (see `scrollable` in `justdom-three-ui`), but
  * anything a page mounts can, and none of it is this app crashing.
  *
  * `isMuted` does not cover it: the browser names the document as the file, so

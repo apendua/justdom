@@ -1,9 +1,9 @@
-# @apendua.dev/euclid-lang
+# @apendua/euclid-lang
 
 The euclid construction language: a tokenizer, a parser producing an AST with precise source spans,
 an interpreter evaluating programs into scenes of geometric objects, and span-based code editing
 helpers. A modernized port of the language from the original
-[euclid](https://github.com/apendua/euclid) project, built on `@apendua.dev/euclid-core`.
+[euclid](https://github.com/apendua/euclid) project, built on `@apendua/euclid-core`.
 
 ## The language
 

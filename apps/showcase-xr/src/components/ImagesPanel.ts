@@ -1,5 +1,5 @@
-import { className, text, set, attr, $, children } from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { className, text, set, attr, $, children } from "justdom";
+import { component } from "justdom-signal";
 import { cardStyle, captionStyle, headingStyle, rowStyle } from "./panels.js";
 
 /**

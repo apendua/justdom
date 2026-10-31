@@ -2,8 +2,8 @@
 
 A turn based hex battle inspired by Heroes of Might and Magic III, and a port of
 [KnightsJS](https://github.com/apendua/KnightsJS) — originally React, redux and Meteor — onto
-`@apendua/signal` for state and `@apendua/justdom` for rendering. The sprite sheet and the backdrop
-are the original assets.
+`justdom-signal` for state and `justdom` for rendering. The sprite sheet and the backdrop are the
+original assets.
 
 ## Playing
 
@@ -18,11 +18,11 @@ back, with whatever it has left.
 
 ## In a headset
 
-On a headset the game is the very same DOM. The page keeps it, and `@apendua/freedom` mirrors the
-whole of `#root`, the battlefield and the toolbar under it, into one panel in front of the viewer,
-the way `minesweeper` and `euclid` mirror theirs. The ray moving over the board is a `mousemove` and
-the trigger is a `click`, each carrying the place on the page the ray met, so the handlers that
-serve the mouse preview the route and send the stack along it. The menu behind ☰ opens over the
+On a headset the game is the very same DOM. The page keeps it, and `justdom-three` mirrors the whole
+of `#root`, the battlefield and the toolbar under it, into one panel in front of the viewer, the way
+`minesweeper` and `euclid` mirror theirs. The ray moving over the board is a `mousemove` and the
+trigger is a `click`, each carrying the place on the page the ray met, so the handlers that serve
+the mouse preview the route and send the stack along it. The menu behind ☰ opens over the
 battlefield in the panel as it does on the page.
 
 Two controls are there only in a session: Passthrough, which takes down the dark sphere the session
@@ -66,18 +66,17 @@ field the white stack can reach and checks that the route is drawn, pulls the tr
 that the click reached the board at that place and the turn passed on, then turns the passthrough on
 and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
 a stack for anything the page throws. It drives the browser and the controller through
-`@apendua.dev/headset/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has
-to have been installed. It launches the Chromium at
-`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
-elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
-tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
-`.github/workflows/driven.yml`.
+`justdom-xr/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has to have
+been installed. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+`CHROMIUM=<path>` points it at one installed elsewhere. A pull request that changes this app or a
+package it imports, other than in docs, unit tests or benchmarks, runs it, with minesweeper's, the
+desk's and Euclid's, from `.github/workflows/driven.yml`.
 
 | File                      | What it is                                                                                                                                                             |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `@apendua.dev/headset/offer`, which loads `xr.ts` only where one can open.             |
+| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `justdom-xr/offer`, which loads `xr.ts` only where one can open.                       |
 | `src/xr.ts`               | Makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, follows `?theming` and `?outlines`, and adds the Enter button. |
-| `src/components/Scene.ts` | The panel, `@apendua.dev/headset/scene`'s backdrop, lights and the cursors.                                                                                            |
+| `src/components/Scene.ts` | The panel, `justdom-xr/scene`'s backdrop, lights and the cursors.                                                                                                      |
 | `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                             |
 
 ## How it is put together

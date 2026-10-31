@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseAst } from "vite";
-import { Effect } from "@apendua/signal";
+import { Effect } from "justdom-signal";
 import HMRPlugin, { transform } from "./plugin.js";
 
 /**
@@ -42,7 +42,7 @@ function around(output, code) {
 describe("transform()", () => {
   test("an exported const is wrapped in place, on its own line", () => {
     const code = [
-      `import { component, just } from "@apendua/signal";`,
+      `import { component, just } from "justdom-signal";`,
       ``,
       `export const Greeting = component((who) => just(who));`,
     ].join("\n");
@@ -50,7 +50,7 @@ describe("transform()", () => {
     const { header } = around(output, code);
     assert.match(
       header,
-      /^import \{ \$hmr as \$hmr \} from "@apendua\/vite-hmr"; const \$module = \$hmr\(import\.meta\.hot\); import \{ component/,
+      /^import \{ \$hmr as \$hmr \} from "justdom-vite-hmr"; const \$module = \$hmr\(import\.meta\.hot\); import \{ component/,
     );
     assert.strictEqual(
       output.split("\n")[2],
@@ -133,7 +133,7 @@ describe("transform()", () => {
     // state is kept across reloads, and a module writing to a fresh instance
     // of it while importers hold the kept one would split the two.
     const code = [
-      `import { Signal } from "@apendua/signal";`,
+      `import { Signal } from "justdom-signal";`,
       `const locale = Signal.of("en");`,
       `export function setLocale(v) { locale.set(v); }`,
       `export default locale;`,
@@ -169,7 +169,7 @@ describe("transform()", () => {
     // The shape `justdom`'s operators module has: names re-exported from an
     // import, followed by the rest of the module.
     const code = [
-      `import { set, on } from "@apendua/signal";`,
+      `import { set, on } from "justdom-signal";`,
       `export { set, on };`,
       `/** what follows must survive */`,
       `export function attr() {}`,
@@ -241,7 +241,7 @@ describe("HMRPlugin()", () => {
   test("stays out of its own package and the reactive core", () => {
     const code = `export const f = () => 1;`;
     const runtime = path.resolve("src/index.js");
-    const signal = fileURLToPath(import.meta.resolve("@apendua/signal"));
+    const signal = fileURLToPath(import.meta.resolve("justdom-signal"));
     assert.strictEqual(hook(code, runtime), undefined);
     assert.strictEqual(hook(code, signal), undefined);
     assert.strictEqual(hook(code, path.join(path.dirname(signal), "Derived.js")), undefined);
@@ -251,7 +251,7 @@ describe("HMRPlugin()", () => {
     const resolveId = /** @type {(source: string) => unknown} */ (
       /** @type {any} */ (plugin).resolveId
     );
-    assert.strictEqual(resolveId("@apendua/vite-hmr"), path.resolve("src/index.js"));
+    assert.strictEqual(resolveId("justdom-vite-hmr"), path.resolve("src/index.js"));
     assert.strictEqual(resolveId("./app.js"), undefined);
   });
 });
@@ -298,7 +298,7 @@ describe("a transformed module, evaluated", () => {
      */
     const evaluate = async (name, code) => {
       const output = transformed(code)
-        .replaceAll(`"@apendua/vite-hmr"`, JSON.stringify(runtime))
+        .replaceAll(`"justdom-vite-hmr"`, JSON.stringify(runtime))
         .replaceAll("import.meta.hot", "globalThis.__vite_hmr_test_hot__");
       const file = path.join(dir, `${name}.mjs`);
       await writeFile(file, output);
@@ -335,15 +335,15 @@ describe("a transformed module, evaluated", () => {
     const hot = { data: {}, accept() {}, invalidate() {} };
     /** @type {any} */ (globalThis).__vite_hmr_test_hot__ = hot;
     const runtime = pathToFileURL(path.resolve("src/index.js")).href;
-    const signal = import.meta.resolve("@apendua/signal");
+    const signal = import.meta.resolve("justdom-signal");
     /**
      * @param {string} name
      * @param {string} code
      */
     const evaluate = async (name, code) => {
       const output = transformed(code)
-        .replaceAll(`"@apendua/vite-hmr"`, JSON.stringify(runtime))
-        .replaceAll(`"@apendua/signal"`, JSON.stringify(signal))
+        .replaceAll(`"justdom-vite-hmr"`, JSON.stringify(runtime))
+        .replaceAll(`"justdom-signal"`, JSON.stringify(signal))
         .replaceAll("import.meta.hot", "globalThis.__vite_hmr_test_hot__");
       const file = path.join(dir, `${name}.mjs`);
       await writeFile(file, output);
@@ -376,7 +376,7 @@ describe("a transformed module, evaluated", () => {
     // State declared locally and exported by reference: the module's own
     // functions and its importers share the kept instance.
     const src = [
-      `import { Signal } from "@apendua/signal";`,
+      `import { Signal } from "justdom-signal";`,
       `const locale = Signal.of("en");`,
       `export function setLocale(v) { locale.set(v); }`,
       `export default locale;`,

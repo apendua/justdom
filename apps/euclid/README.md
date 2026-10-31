@@ -1,13 +1,13 @@
 # Euclid
 
-An interactive editor for Euclidean constructions, built with `@apendua/signal` and
-`@apendua/justdom` on top of `@apendua.dev/euclid-lang`.
+An interactive editor for Euclidean constructions, built with `justdom-signal` and `justdom` on top
+of `@apendua/euclid-lang`.
 
 The code is the single source of truth: the drawing on the right is always the evaluation of the
 program on the left, and the construction tools work by _editing the program_ — so everything done
 by hand is reflected in the code, and everything typed in the code is reflected in the drawing.
 
-On a headset it is the very same DOM: the page keeps it, and `@apendua/freedom` mirrors the drawing,
+On a headset it is the very same DOM: the page keeps it, and `justdom-three` mirrors the drawing,
 the program and the toolbar into three panels in front of the viewer, the way `minesweeper` mirrors
 its board and its menu. There used to be a second app for that, `euclid-xr`, which built a headset
 interface of its own over a copy of the store. This is what replaced it.
@@ -51,26 +51,26 @@ draws a line with the trigger, drags a free point and pans the paper by holding 
 construction from the picker and leaves by the ×, and fails if any of that does not happen or the
 page throws. The whole check takes about half a minute under SwiftShader. `SHOTS=<dir>` also
 photographs the page and the session, and `STACKS=1` prints a stack for anything the page throws. It
-drives the browser and the controller through `@apendua.dev/headset/driver`, which borrows
-Playwright from `apps/showcase-xr`, so that project has to have been installed. It launches the
-Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one
-installed elsewhere. A pull request that changes this app or a package it imports, other than in
-docs, unit tests or benchmarks, runs it, with minesweeper's, the desk's and Knights', from
+drives the browser and the controller through `justdom-xr/driver`, which borrows Playwright from
+`apps/showcase-xr`, so that project has to have been installed. It launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
+elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
+tests or benchmarks, runs it, with minesweeper's, the desk's and Knights', from
 `.github/workflows/driven.yml`.
 
 ## How it is put together
 
-| File                          | What it is                                                                                                                                                                                                                                             |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/main.ts`                 | Mounts the toolbar into `#toolbar`, the program into `#editor` and the drawing into `#canvas`, then offers a session that mirrors all three, through `@apendua.dev/headset`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present. |
-| `src/components/EuclidApp.ts` | The three trees over one store.                                                                                                                                                                                                                        |
-| `src/components/Canvas.ts`    | The drawing: one `<svg>`, driven by pointer events, which finds what was pressed from where it was pressed.                                                                                                                                            |
-| `src/components/Editor.ts`    | The program: a transparent `<textarea>` over a highlighted copy of the code, which also grounds the selected statement.                                                                                                                                |
-| `src/components/Toolbar.ts`   | The tools, undo, zoom, the hint, the construction picker, and the × and Passthrough a session adds.                                                                                                                                                    |
-| `src/store/App.ts`            | The state: the code, what it evaluates to, the tool in progress and the view.                                                                                                                                                                          |
-| `src/xr.ts`                   | The session: makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, and the Enter button.                                                                                                             |
-| `src/components/Scene.ts`     | The scene: the three panels, a backdrop, lights, the cursors and the frame rate.                                                                                                                                                                       |
-| `src/placement.ts`            | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                                                                             |
+| File                          | What it is                                                                                                                                                                                                                                   |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`                 | Mounts the toolbar into `#toolbar`, the program into `#editor` and the drawing into `#canvas`, then offers a session that mirrors all three, through `justdom-xr`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present. |
+| `src/components/EuclidApp.ts` | The three trees over one store.                                                                                                                                                                                                              |
+| `src/components/Canvas.ts`    | The drawing: one `<svg>`, driven by pointer events, which finds what was pressed from where it was pressed.                                                                                                                                  |
+| `src/components/Editor.ts`    | The program: a transparent `<textarea>` over a highlighted copy of the code, which also grounds the selected statement.                                                                                                                      |
+| `src/components/Toolbar.ts`   | The tools, undo, zoom, the hint, the construction picker, and the × and Passthrough a session adds.                                                                                                                                          |
+| `src/store/App.ts`            | The state: the code, what it evaluates to, the tool in progress and the view.                                                                                                                                                                |
+| `src/xr.ts`                   | The session: makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, and the Enter button.                                                                                                   |
+| `src/components/Scene.ts`     | The scene: the three panels, a backdrop, lights, the cursors and the frame rate.                                                                                                                                                             |
+| `src/placement.ts`            | Where the panels hang, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                                                                   |
 
 The app is mounted in three places because a panel is the element it mirrors, and the three hang
 apart in a session: the drawing straight ahead, the program to its left, turned to face the viewer,

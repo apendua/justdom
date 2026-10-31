@@ -1,4 +1,4 @@
-import { $, children, className, set } from "@apendua/justdom";
+import { $, children, className, set } from "justdom";
 import type AppStore from "../store/App";
 import Canvas, { type CanvasOptions } from "./Canvas";
 import Editor from "./Editor";

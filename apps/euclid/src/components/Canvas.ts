@@ -1,8 +1,8 @@
-import { $, $$, attr, children, className, keyedList, on } from "@apendua/justdom";
-import { Signal, component, observable, set } from "@apendua/signal";
-import { Circle, Line, Point } from "@apendua.dev/euclid-core";
-import type { SceneItem } from "@apendua.dev/euclid-lang";
-import { xrSession } from "@apendua.dev/headset/session";
+import { $, $$, attr, children, className, keyedList, on } from "justdom";
+import { Signal, component, observable, set } from "justdom-signal";
+import { Circle, Line, Point } from "@apendua/euclid-core";
+import type { SceneItem } from "@apendua/euclid-lang";
+import { xrSession } from "justdom-xr/session";
 import type AppStore from "../store/App";
 
 const INK = "#1f1d1a";

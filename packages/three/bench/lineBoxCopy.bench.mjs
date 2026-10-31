@@ -22,7 +22,7 @@
  * first text alone, as a single label changing does. Each layout is held by
  * an effect while it is read, as the mirror holds it.
  */
-import { Effect } from "@apendua/signal";
+import { Effect } from "justdom-signal";
 import { createMirror, getTextLayout } from "../src/elements/mirror.js";
 
 const SIZES = [10, 50, 100, 200, 400];

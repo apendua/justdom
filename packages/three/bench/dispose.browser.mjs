@@ -19,14 +19,14 @@
  * the frames the rows were still drawn for, until the panel's commit, and
  * the rest counted until the rows that left are taken down.
  *
- * Chromium is launched through `packages/headset/driver`, as
+ * Chromium is launched through `packages/xr/driver`, as
  * `bench/lineBoxCopy.browser.mjs` explains.
  */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { closeAll, launch } from "../../headset/driver/index.mjs";
+import { closeAll, launch } from "../../xr/driver/index.mjs";
 
 const SIZES = (process.env.SIZES ?? "25,50,100,200,400").split(",").map(Number);
 const REPEATS = 5;
@@ -38,9 +38,9 @@ const PAGE = `<!doctype html>
 <script type="importmap">
   {
     "imports": {
-      "@apendua/signal": "/packages/signal/src/index.js",
-      "three": "/packages/freedom/node_modules/three/build/three.module.js",
-      "three/addons/": "/packages/freedom/node_modules/three/examples/jsm/"
+      "justdom-signal": "/packages/signal/src/index.js",
+      "three": "/packages/three/node_modules/three/build/three.module.js",
+      "three/addons/": "/packages/three/node_modules/three/examples/jsm/"
     }
   }
 </script>
@@ -51,13 +51,13 @@ const PAGE = `<!doctype html>
 </style>
 <script type="module">
   import * as THREE from "three";
-  import { createPortal } from "/packages/freedom/src/elements/portal.js";
-  import { InteractionContext, InteractionManager } from "/packages/freedom/src/interactions.js";
+  import { createPortal } from "/packages/three/src/elements/portal.js";
+  import { InteractionContext, InteractionManager } from "/packages/three/src/interactions.js";
   import {
     createPortalScheduler,
     PortalSchedulerContext,
-  } from "/packages/freedom/src/elements/portalScheduler.js";
-  import { createFrameRequester } from "/packages/freedom/src/elements/frameRequester.js";
+  } from "/packages/three/src/elements/portalScheduler.js";
+  import { createFrameRequester } from "/packages/three/src/elements/frameRequester.js";
 
   // One scheduler for every portal on the page, as \`render()\` installs one
   // for every portal in a scene: what paces the mounts, and what takes a

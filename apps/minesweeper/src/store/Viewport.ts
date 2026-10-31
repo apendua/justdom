@@ -5,8 +5,8 @@ import {
   getPixelsToHexMapping,
   to2D,
   VectorLike,
-} from "@apendua.dev/geometry";
-import { createProperty, memo } from "@apendua/signal";
+} from "@apendua/geometry";
+import { createProperty, memo } from "justdom-signal";
 
 interface ViewportProps {
   allFields: VectorLike[];

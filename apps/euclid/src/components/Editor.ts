@@ -1,7 +1,7 @@
-import { $, children, className, list, on, set } from "@apendua/justdom";
-import { Derived, component, effects } from "@apendua/signal";
-import { tokenize, KEYWORDS, BUILTINS } from "@apendua.dev/euclid-lang";
-import { xrSession } from "@apendua.dev/headset/session";
+import { $, children, className, list, on, set } from "justdom";
+import { Derived, component, effects } from "justdom-signal";
+import { tokenize, KEYWORDS, BUILTINS } from "@apendua/euclid-lang";
+import { xrSession } from "justdom-xr/session";
 import type AppStore from "../store/App";
 
 const editorStyle = className`

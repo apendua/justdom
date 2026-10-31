@@ -1,19 +1,9 @@
-import {
-  className,
-  stylesheet,
-  text,
-  attr,
-  $,
-  $$,
-  children,
-  set,
-  CLASS_NAME,
-} from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { className, stylesheet, text, attr, $, $$, children, set, CLASS_NAME } from "justdom";
+import { component } from "justdom-signal";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
 
 /**
- * Inline SVG, drawn through `@apendua/freedom/svg`: every mechanism the
+ * Inline SVG, drawn through `justdom-three/svg`: every mechanism the
  * plugin supports, on one card, so that a photograph of it is a regression
  * test of all of them.
  *

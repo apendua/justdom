@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createProperty, Signal } from "@apendua/signal";
+import { createProperty, Signal } from "justdom-signal";
 import { MAX_TEXT_SCALE } from "./textHelpers.js";
 
 /**

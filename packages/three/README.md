@@ -1,9 +1,9 @@
-# @apendua/freedom
+# justdom-three
 
-A reactive Three.js scene graph, built on [`@apendua/signal`](../signal) with the same operator
-vocabulary as [`@apendua/justdom`](../justdom) — `$`, `set`, `children`, `effects`, `on` — except
-targeting `THREE.Object3D` instead of DOM nodes. No VDOM, no diffing: every reactive value is wired
-directly to a Three.js mutation through a signal effect.
+A reactive Three.js scene graph, built on [`justdom-signal`](../signal) with the same operator
+vocabulary as [`justdom`](../justdom) — `$`, `set`, `children`, `effects`, `on` — except targeting
+`THREE.Object3D` instead of DOM nodes. No VDOM, no diffing: every reactive value is wired directly
+to a Three.js mutation through a signal effect.
 
 This README is a reference. Each section says what a part of the package does, lists its options
 with their defaults, and ends with what it follows of the page and what it does not. The reasoning
@@ -13,7 +13,7 @@ behind the choices is in the source headers it names and in
 ## Installation
 
 ```
-npm install @apendua/freedom @apendua/signal three
+npm install justdom-three justdom-signal three
 ```
 
 `three` is a peer dependency.
@@ -22,8 +22,8 @@ npm install @apendua/freedom @apendua/signal three
 
 ```js
 import * as THREE from "three";
-import { render, $, children, getScene, useFrame } from "@apendua/freedom";
-import { effects, effectsOnly, useEffects } from "@apendua/signal";
+import { render, $, children, getScene, useFrame } from "justdom-three";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
 
 const Scene = effectsOnly((ctx) => {
   useEffects(getScene(ctx), [
@@ -59,7 +59,7 @@ rather than producing one. `getCamera(ctx)`, `getScene(ctx)`, `getXRSession(ctx)
 | `foveation`             | `0`                                             | Fixed foveation for the headset's layer, 0 to 1.                                                                                                                                                                       |
 | `presentingOnly`        | `false`                                         | Draw, run `useFrame` and pump portals only while a session is presenting. For a page with a flat interface of its own.                                                                                                 |
 | `portalBudget`          | three tenths of a frame, clamped to 1.5 to 8 ms | Milliseconds of each frame every portal in the scene shares for mounting and settling content and taking closed panels down; a number or a getter read at the top of every frame. See **Loading, budget and updates**. |
-| `portalPlugins`         | none                                            | Element plugins for every portal; `svgElements()` from `@apendua/freedom/svg` is the one so far. See **Element plugins**.                                                                                              |
+| `portalPlugins`         | none                                            | Element plugins for every portal; `svgElements()` from `justdom-three/svg` is the one so far. See **Element plugins**.                                                                                                 |
 | `panelOptions`          | none                                            | What every panel starts from. See **Panel defaults**.                                                                                                                                                                  |
 | `createControllerModel` | none                                            | Something to draw on a controller's grip space.                                                                                                                                                                        |
 | `createHandModel`       | none                                            | Something to draw on a tracked hand's space. See **Hands**.                                                                                                                                                            |
@@ -108,8 +108,8 @@ getXRSession(ctx)?.end();
 ```
 
 `getXRSession(ctx)` is reactive and null between sessions. A page mounted before there is a renderer
-to ask reads the session from `xrSession` in `@apendua.dev/headset/session` instead, which the scene
-writes: minesweeper, Euclid and turntable through `enterSession(getXRSession(ctx))`, the desk with
+to ask reads the session from `xrSession` in `justdom-xr/session` instead, which the scene writes:
+minesweeper, Euclid and turntable through `enterSession(getXRSession(ctx))`, the desk with
 `xrSession.set` in its `components/Scene.ts`. `apps/minesweeper`'s × and `apps/desk`'s power button
 both call `end()` on the session that signal holds.
 
@@ -184,7 +184,7 @@ The rules:
 pointing at something, gone with the hit:
 
 ```js
-import { cursors, pointers } from "@apendua/freedom";
+import { cursors, pointers } from "justdom-three";
 
 children(
   cursors(ctx), // a white ball, 1 cm across, on every ray hit
@@ -357,13 +357,13 @@ since the runtime already turns the pinch into the select events `makeInteractiv
 
 ## Projecting DOM into the scene
 
-`dom(ctx, source, effects, options)` mounts a [`@apendua/justdom`](../justdom) component tree, or
-mirrors an element the page already has, onto a Three.js `Group` through a portal, so ordinary
-DOM-based UI (menus, HUDs, forms) is composited into a 3D or WebXR scene and still receives pointer
-events routed through `interactions(ctx)`. `source` is a `Mountable`, a subscribable of them, an
-element or a subscribable of elements; each emission is a fresh portal with the previous one taken
-down. `effects` go on the group, as for any `$()`. `createPortal(ctx, options)` is the same thing
-without the group, for a scene that drives portals by hand.
+`dom(ctx, source, effects, options)` mounts a [`justdom`](../justdom) component tree, or mirrors an
+element the page already has, onto a Three.js `Group` through a portal, so ordinary DOM-based UI
+(menus, HUDs, forms) is composited into a 3D or WebXR scene and still receives pointer events routed
+through `interactions(ctx)`. `source` is a `Mountable`, a subscribable of them, an element or a
+subscribable of elements; each emission is a fresh portal with the previous one taken down.
+`effects` go on the group, as for any `$()`. `createPortal(ctx, options)` is the same thing without
+the group, for a scene that drives portals by hand.
 
 It does that without depending on `justdom`. A `Mountable` — a tree that has not been put anywhere
 yet, exposing one method that swaps it into a span of sibling nodes — is declared here rather than
@@ -733,7 +733,7 @@ Every real mouse click on the page around the scene — the VR button, and in de
 whose every control is a mouse click — also reaches the document, and a menu that counted those
 would close itself the moment you reach for the control that was going to choose from it.
 `getPortalRoot` returns null off a portal, where the whole page is the right scope. The `dropdown`
-and `scrollable` widgets in [`@apendua/justui`](../justui) do it this way.
+and `scrollable` widgets in [`justdom-three-ui`](../three-ui) do it this way.
 
 A panel with nothing to press can say so and stop stopping rays:
 
@@ -796,12 +796,12 @@ dom(ctx, menu, [set({ position })], {
   (`programKeeper.js`). So a panel mounted after the last of its kind has closed, a text bucket that
   grows, a loading frame and a panel's handle bars link nothing that was linked before.
 - **An update lands whole.** The panel's channel is atomic (`UpdateChannel`'s option of that name in
-  `@apendua/signal`): each frame's budget goes on resolving what the update will read, and the
-  writes to the scene happen together, in the frame that finds nothing left to resolve. Until then
-  the panel stands exactly as it was, its own size and placement included, and objects built for
-  rows that arrived wait for it too, as do the objects of rows that left. The wait has a bound. Once
-  a panel has nothing left to build and has waited a second (`MAX_COMMIT_WAIT` in `portalPump.js`)
-  for its reading to finish, the next frame reads everything at once and the update lands, so under
+  `justdom-signal`): each frame's budget goes on resolving what the update will read, and the writes
+  to the scene happen together, in the frame that finds nothing left to resolve. Until then the
+  panel stands exactly as it was, its own size and placement included, and objects built for rows
+  that arrived wait for it too, as do the objects of rows that left. The wait has a bound. Once a
+  panel has nothing left to build and has waited a second (`MAX_COMMIT_WAIT` in `portalPump.js`) for
+  its reading to finish, the next frame reads everything at once and the update lands, so under
   input that never stops — an endless animation, a timer faster than a slow frame, a drag — the
   panel lands in one long frame about once a second. Once the page adds a node five seconds or more
   into a mount (`MAX_BUILD_WAIT`), one frame builds everything queued. A loading frame still up for
@@ -1056,12 +1056,12 @@ intercepted on the element for as long as the portal watches it, so that `input.
 submit is followed. A `value` or `placeholder` attribute rewritten from outside is followed too.
 
 Typing into one needs a keyboard, and the system's never reaches the panel. What does is a board of
-ordinary boxes, mirrored by a portal of its own; `keyboard(props)` in [`@apendua/justui`](../justui)
-is one. This package has no keyboard and does not depend on one, so a scene gives it a factory,
-once, for every panel:
+ordinary boxes, mirrored by a portal of its own; `keyboard(props)` in
+[`justdom-three-ui`](../three-ui) is one. This package has no keyboard and does not depend on one,
+so a scene gives it a factory, once, for every panel:
 
 ```js
-import { keyboard } from "@apendua/justui";
+import { keyboard } from "justdom-three-ui";
 
 render(Scene, {
   panelOptions: {
@@ -1224,7 +1224,7 @@ with no re-layout and no re-rasterized text. Prefer it for motion, as on the fla
 A panel follows its document's stylesheets, not only its own elements. Rewriting a `<style>`
 element's text, adding or removing a `<style>` or a `<link rel="stylesheet">`, and a `<link>`
 finishing its load each restyle the panels, which is how the `className` and `stylesheet` tags in
-[`@apendua/justdom`](../justdom) reach a panel.
+[`justdom`](../justdom) reach a panel.
 
 How much a change costs depends on what its rules start from:
 
@@ -1252,7 +1252,7 @@ theming mode is on.
 **Theming mode** follows those too, by reading the text of every rule on a timer:
 
 ```js
-import { enableThemingMode } from "@apendua/freedom";
+import { enableThemingMode } from "justdom-three";
 
 if (new URLSearchParams(location.search).has("theming")) {
   enableThemingMode(); // returns a function that turns it off again
@@ -1269,7 +1269,7 @@ restyle per read. The read takes a few milliseconds on a large stylesheet, on a 
 frame loop, which is fine at a desk and not worth paying in a headset. Sheets brought in by
 `@import` are read with the sheet that imports them; a sheet from another origin served without CORS
 hides its rules from script, and edits to it are not followed. The apps here turn it on with
-`?theming`, through `followThemingQuery()` in `@apendua.dev/headset`.
+`?theming`, through `followThemingQuery()` in `justdom-xr`.
 
 ## Outlines
 
@@ -1278,16 +1278,15 @@ which parts of a panel change more often than they should, and which the mirror 
 nothing:
 
 ```js
-import { enableOutlinesMode, outlinesReport } from "@apendua/freedom";
+import { enableOutlinesMode, outlinesReport } from "justdom-three";
 
 const off = enableOutlinesMode(); // returns a function that turns it off again
 console.table(outlinesReport()); // the busiest elements so far, for a headset
 ```
 
-The apps here turn it on with `?outlines`, through `followOutlinesQuery()` in
-`@apendua.dev/headset`. Each outline is decided at a commit of its panel, from what happened to the
-element since the commit before. The line says why the element is outlined, and the colour how
-often:
+The apps here turn it on with `?outlines`, through `followOutlinesQuery()` in `justdom-xr`. Each
+outline is decided at a commit of its panel, from what happened to the element since the commit
+before. The line says why the element is outlined, and the colour how often:
 
 | Line                                | Kind          | What it means                                                                                                                                                                                                                                                                                                                        |
 | ----------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -1356,11 +1355,11 @@ first frame, the browser wraps it once, and how many glyphs are drawn is answere
 shader.
 
 ```js
-import { makeReveal } from "@apendua/freedom";
+import { makeReveal } from "justdom-three";
 // The element builders are justdom's, as they are for any panel; `$` and
 // `children` here are that package's, not the ones freedom hands out for
 // Three objects.
-import { $, children, set } from "@apendua/justdom";
+import { $, children, set } from "justdom";
 
 const reveal = makeReveal(() => letter.typed.get());
 
@@ -1484,8 +1483,8 @@ Not followed:
   overhang, the remedy is the app's placement: Euclid's toolbar sits 18 cm nearer the viewer than
   its drawing.
 - A native `<select>` cannot work here: `<option>` has no CSS box, and the list the browser pops up
-  is chrome. Nor can the system keyboard. Both are in [`@apendua/justui`](../justui), built out of
-  ordinary elements: `dropdown(props)`, whose `root` is the positioning context and `menu` the
+  is chrome. Nor can the system keyboard. Both are in [`justdom-three-ui`](../three-ui), built out
+  of ordinary elements: `dropdown(props)`, whose `root` is the positioning context and `menu` the
   layer, and `keyboard(props)`.
 
 The paint-order tooling counts what a panel draws. `bench/paintOrderCount.jsdom.mjs` counts what the
@@ -1646,7 +1645,7 @@ a drag and drop, as it does under a mouse, so a list made only of draggable rows
 gaps and its padding.
 
 For a scrollbar's kind of control — visible, precise, resting — there is `scrollable(props)` in
-[`@apendua/justui`](../justui): arrows, a track and a thumb, over a viewport that hides its
+[`justdom-three-ui`](../three-ui): arrows, a track and a thumb, over a viewport that hides its
 overflow. It scrolls through `scrollElementBy(element, dx, dy)`, which is exported here and is the
 write above plus the `scroll` event the browser will not dispatch while the session has the display.
 
@@ -1673,7 +1672,7 @@ a panel that is not moving costs a matrix multiply (`place.js` says how). `place
 `placeAndScale` are exported for a scene's own static objects:
 
 ```js
-import { place, placeAndScale } from "@apendua/freedom";
+import { place, placeAndScale } from "justdom-three";
 
 placeAndScale(group, 0, 1, -2, 0.01, 0.01, 0.01);
 ```
@@ -1773,8 +1772,8 @@ panel of boxes and text has any use for — so the support lives behind a second
 main one never imports:
 
 ```js
-import { render } from "@apendua/freedom";
-import { svgElements } from "@apendua/freedom/svg";
+import { render } from "justdom-three";
+import { svgElements } from "justdom-three/svg";
 
 render(Scene, { portalPlugins: [svgElements()] });
 ```
@@ -2007,12 +2006,12 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
 - `getContentGroup(object)` is where a node's projected children hang, and where a plugin attaches
   its own. `isTextInput(node)` is the rule the portal draws a field by. `solveCut(layout, cursor)`
   is the arithmetic behind `makeReveal`.
-- From `@apendua/freedom/page`: `getPortalRoot` and `scrollElementBy` again, the two functions a
-  widget on a page asks of a portal, and `FOCUS_ATTRIBUTE`, from an entry point that imports nothing
-  from three.js. A widget a page shows before any session, and a panel may mirror during one,
-  imports them from there, so that the page's own bundle does not carry the renderer; the dropdown
-  and the scrolling list in `@apendua/justui` do.
-- From `@apendua/freedom/svg`: `shape`, `group`, `image` and `drawText` are the builders
+- From `justdom-three/page`: `getPortalRoot` and `scrollElementBy` again, the two functions a widget
+  on a page asks of a portal, and `FOCUS_ATTRIBUTE`, from an entry point that imports nothing from
+  three.js. A widget a page shows before any session, and a panel may mirror during one, imports
+  them from there, so that the page's own bundle does not carry the renderer; the dropdown and the
+  scrolling list in `justdom-three-ui` do.
+- From `justdom-three/svg`: `shape`, `group`, `image` and `drawText` are the builders
   `svgElements()` dispatches to, for a plugin that draws one SVG element its own way and hands the
   rest to them.
 

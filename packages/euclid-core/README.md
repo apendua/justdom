@@ -1,4 +1,4 @@
-# @apendua.dev/euclid-core
+# @apendua/euclid-core
 
 Euclidean geometry primitives on the complex projective plane, ported and modernized from the
 original [euclid](https://github.com/apendua/euclid) project.
@@ -10,7 +10,7 @@ realness is a predicate (`isReal()`) checked before anything is rendered. Parall
 meet at a point at infinity (`isAtInfinity()`).
 
 ```js
-import { Point, Line, Circle } from "@apendua.dev/euclid-core";
+import { Point, Line, Circle } from "@apendua/euclid-core";
 
 const a = Point.of(0, 0);
 const b = Point.of(1, 0);

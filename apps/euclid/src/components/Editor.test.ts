@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { children } from "@apendua/justdom";
-import { just } from "@apendua/signal";
-import { xrSession } from "@apendua.dev/headset/session";
+import { children } from "justdom";
+import { just } from "justdom-signal";
+import { xrSession } from "justdom-xr/session";
 import AppStore from "../store/App";
 import Editor, { renderHighlightLines } from "./Editor";
 

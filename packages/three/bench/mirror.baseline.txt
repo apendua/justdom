@@ -8,7 +8,7 @@ prints the same numbers on any machine, so a change in one is a change in what
 the mirror does. The ms columns are wall-clock on a 4-core cloud container
 under Node 22.22.0, and only comparable against a run on the same machine.
 
-Run with, from packages/freedom:
+Run with, from packages/three:
   node --import ./src/test/setup-jsdom.js src/elements/mirror.bench.js
 
 === the list in normal flow ===

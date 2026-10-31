@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { $, children, cursors, dom, getScene, getXRSession } from "@apendua/freedom";
-import { createDiagnostics, useDiagnostics } from "@apendua/justui";
-import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { enterSession } from "@apendua.dev/headset/session";
-import { Backdrop, clientRect } from "@apendua.dev/headset/scene";
+import { $, children, cursors, dom, getScene, getXRSession } from "justdom-three";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
+import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
+import { enterSession } from "justdom-xr/session";
+import { Backdrop, clientRect } from "justdom-xr/scene";
 import { BOARD_AT, boardScale, MENU_AT, MENU_PITCH, MENU_SCALE, MENU_YAW } from "../placement";
 
 /**

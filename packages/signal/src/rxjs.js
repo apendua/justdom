@@ -22,7 +22,7 @@ import { mountEach } from "./operators.js";
  * branch takes over — a `Source` that answers `Symbol.observable` lifts
  * through it — and no call site moves.
  *
- * Lives on its own subpath (`@apendua/signal/rxjs`) so that the package root
+ * Lives on its own subpath (`justdom-signal/rxjs`) so that the package root
  * stays free of RxJS types, and so that this module can one day keep `rxjs`
  * as its own optional dependency after the core has dropped it.
  *

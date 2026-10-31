@@ -8,11 +8,11 @@ import {
   Signal,
   Stream,
   withComputation,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { getObjectDrawOrder } from "./drawOrder.js";
 
 /**
- * @import { Source, Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  * @import { XREventMap, InteractionEvent, InteractionEventType, InteractionEventMap, InputEvent } from "./core.js";
  */
 
@@ -798,7 +798,7 @@ export function asReader(value) {
  * @property {(event: InteractionEvent) => void} stopPropagation
  * @property {(event: InteractionEvent) => boolean} isStopped Whether a
  *   handler has stopped the event.
- * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => import("@apendua/signal").EntityEffect<TEntity>} makeInteractive
+ * @property {<TEntity extends THREE.Object3D<XREventMap>>(enabled?: Reactive<boolean>) => import("justdom-signal").EntityEffect<TEntity>} makeInteractive
  */
 
 /**

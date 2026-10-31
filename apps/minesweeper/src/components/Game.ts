@@ -1,4 +1,4 @@
-import { flatMap, observe, store } from "@apendua/signal";
+import { flatMap, observe, store } from "justdom-signal";
 import { Fields, FieldsContext } from "../store/Fields";
 import { RootContext } from "../store/Root";
 import Viewport, { ViewportContext } from "../store/Viewport";

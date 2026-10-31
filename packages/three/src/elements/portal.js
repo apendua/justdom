@@ -1,12 +1,5 @@
 import * as THREE from "three";
-import {
-  batch,
-  Effect,
-  Signal,
-  UpdateChannel,
-  withChannel,
-  withComputation,
-} from "@apendua/signal";
+import { batch, Effect, Signal, UpdateChannel, withChannel, withComputation } from "justdom-signal";
 import { div, MotionChannelContext, PortalReadyContext } from "./div.js";
 import { getContentGroup } from "./contentGroup.js";
 import { text } from "./text.js";
@@ -1192,7 +1185,7 @@ function buildPortal(ctx, ownOptions = {}) {
     }
     // Built after all, having been moved out of a template.
     templateNodes.delete(node);
-    /** @type {import("@apendua/signal").Subscribable<THREE.Object3D> | undefined} */
+    /** @type {import("justdom-signal").Subscribable<THREE.Object3D> | undefined} */
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);

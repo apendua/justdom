@@ -1,28 +1,28 @@
-# @apendua/justui
+# justdom-three-ui
 
 The widgets a panel is made of, for panels that have to work in a room as well as on a page: a
 dropdown, a keyboard, a scrolling window with a bar, and the frame rate readout every headset app
 here wears.
 
-All of it is ordinary DOM. [`@apendua/justdom`](../justdom) builds the trees and
-[`@apendua/signal`](../signal) keeps them current, which is what lets the same widget be a control
-on a flat page and a control in a scene — a [`@apendua/freedom`](../freedom) portal mirrors
-elements, so anything built out of elements can be pointed at with a ray.
+All of it is ordinary DOM. [`justdom`](../justdom) builds the trees and
+[`justdom-signal`](../signal) keeps them current, which is what lets the same widget be a control on
+a flat page and a control in a scene — a [`justdom-three`](../three) portal mirrors elements, so
+anything built out of elements can be pointed at with a ray.
 
 ## Installation
 
 ```
-npm install @apendua/justui @apendua/freedom @apendua/justdom @apendua/signal three
+npm install justdom-three-ui justdom-three justdom justdom-signal three
 ```
 
 `freedom`, `justdom`, `signal` and `three` are peer dependencies. Only the diagnostics panel
 actually reaches for three.js; the three widgets are DOM and nothing else, and work on a page with
 no scene anywhere near them. A page that bundles only them carries none of three.js either: what
-they ask of freedom they ask of `@apendua/freedom/page`, which imports none of it, and the package
-says it has no side effects, so a bundler leaves the diagnostics out of a page that does not use
-them. `src/pageWidgets.test.js` holds the widgets to both: it walks each widget's imports for
-three.js and freedom's scene, and it bundles the three from the package's entry with esbuild and
-fails if three.js is in the result.
+they ask of freedom they ask of `justdom-three/page`, which imports none of it, and the package says
+it has no side effects, so a bundler leaves the diagnostics out of a page that does not use them.
+`src/pageWidgets.test.js` holds the widgets to both: it walks each widget's imports for three.js and
+freedom's scene, and it bundles the three from the package's entry with esbuild and fails if
+three.js is in the result.
 
 ## What is in it
 
@@ -49,7 +49,7 @@ browser pops up is chrome rather than DOM, so none of it reaches the room. This 
 ordinary elements instead:
 
 ```js
-import { dropdown } from "@apendua/justui";
+import { dropdown } from "justdom-three-ui";
 
 dropdown({
   options: () => outputs.get().map(({ id, name }) => ({ value: id, label: name })),
@@ -64,7 +64,7 @@ Two of those classes carry requirements. `root` is the positioning context (`pos
 and `menu` is a layer (`position: absolute; z-index: 1`) — which in a scene is what pushes the open
 menu clear of the surface it covers and gives it a ray blocker of its own, so a ray landing between
 two rows stops at the menu rather than pressing a button a few millimetres behind it. See the layers
-section of [`freedom`'s README](../freedom#layers) for what that costs and why. `top: 100%` or
+section of [`freedom`'s README](../three#layers) for what that costs and why. `top: 100%` or
 `bottom: 100%` decides which way it opens, and only the panel knows which of the two keeps the menu
 over itself rather than hanging into the room.
 
@@ -85,7 +85,7 @@ phone's layout, which is the right one for a board you point at — four rows, n
 arrows, no chording modifiers, every key either typing or changing what the board types next:
 
 ```js
-import { keyboard } from "@apendua/justui";
+import { keyboard } from "justdom-three-ui";
 
 keyboard({
   classes: { root, row, key, keyActive },
@@ -170,7 +170,7 @@ scrollbar's kind of control — visible, precise, resting — there is `scrollab
 supplies arrows, a track and a thumb, built out of ordinary elements like the dropdown:
 
 ```js
-import { scrollable } from "@apendua/justui";
+import { scrollable } from "justdom-three-ui";
 
 scrollable({
   classes: { root, viewport, bar, button, track, thumb, page },
@@ -204,7 +204,7 @@ This is the same reading, in the room. Two pieces: an object holding what the re
 whether it is shown, made wherever the scene is built, and an effect that measures and draws it.
 
 ```js
-import { createDiagnostics, useDiagnostics } from "@apendua/justui";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
 
 const App = effectsOnly((ctx) => {
   const diagnostics = createDiagnostics();
@@ -303,7 +303,7 @@ the chart is drawn against. Both are tested in node.
 ## Development
 
 ```
-rush build --to @apendua/justui
+rush build --to justdom-three-ui
 ```
 
 JavaScript with JSDoc types, checked by `tsc` and shipped as source, like `signal`, `justdom` and

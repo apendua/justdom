@@ -1,13 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Signal, just, toObservable } from "@apendua/signal";
+import { Signal, just, toObservable } from "justdom-signal";
 import { className, fontFace, stylesheet } from "./stylesheet.js";
 
 /**
  * Subscribes to a name observable and reports the emitted name together with
  * the css that was injected into the document head while it was subscribed.
  *
- * @param {import("@apendua/signal").Subscribable<string>} name$
+ * @param {import("justdom-signal").Subscribable<string>} name$
  * @returns {{ name: string, css: string, unsubscribe: () => void }}
  */
 function mount(name$) {

@@ -1,7 +1,7 @@
 {
-  "name": "@apendua/justdom",
+  "name": "justdom",
   "version": "0.3.7",
-  "description": "Reactive, non-VDOM DOM renderer built on @apendua/signal, with SSR and hydration support",
+  "description": "Reactive, non-VDOM DOM renderer built on justdom-signal, with SSR and hydration support",
   "keywords": [
     "dom",
     "reactive",
@@ -13,7 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/apendua/apendua.dev.git",
+    "url": "git+https://github.com/apendua/justdom.git",
     "directory": "packages/justdom"
   },
   "license": "MIT",
@@ -45,21 +45,20 @@
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua/signal": "workspace:*"
+    "justdom-signal": "workspace:*"
   },
   "devDependencies": {
     "@apendua/jsdom-env": "workspace:*",
-    "@apendua/vite-hmr": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
+    "justdom-vite-hmr": "workspace:*",
     "rxjs": "^7.8.2",
     "typescript": "^7.0.2"
   },
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }

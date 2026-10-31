@@ -1,6 +1,6 @@
-import { render, createXRButton } from "@apendua/freedom";
-import { followOutlinesQuery, followThemingQuery } from "@apendua.dev/headset/theming";
-import { canPresent } from "@apendua.dev/headset/session";
+import { render, createXRButton } from "justdom-three";
+import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
+import { canPresent } from "justdom-xr/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
@@ -26,7 +26,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   followOutlinesQuery(query);
   if (query.has("emulator")) {
     try {
-      const { install } = await import("@apendua.dev/headset/emulator");
+      const { install } = await import("justdom-xr/emulator");
       install({ devUI: query.get("emulator") !== "bare" });
     } catch (err) {
       console.error("Could not install the XR emulator:", err);
@@ -39,7 +39,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   // The charts, the memo and the plant are inline SVG, which a portal draws
   // only with the plugin that does. It is a separate entry point, so it is
   // loaded only once a session can be offered.
-  const { svgElements } = await import("@apendua/freedom/svg");
+  const { svgElements } = await import("justdom-three/svg");
 
   // A tracked hand points and pinches without a model of its own, so there
   // is none: three's hand models fetch theirs when the hand connects, and

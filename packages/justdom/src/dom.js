@@ -1,4 +1,4 @@
-import { each, just, map, observable, Stream, use } from "@apendua/signal";
+import { each, just, map, observable, Stream, use } from "justdom-signal";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
@@ -6,7 +6,7 @@ import { claimComment, claimElement, claimSegment, isHydrating, withCursor } fro
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
- * @import {EntityEffect, Subscribable, Source} from '@apendua/signal';
+ * @import {EntityEffect, Subscribable, Source} from 'justdom-signal';
  * @import {Mountable, Container} from "./types.js";
  */
 

@@ -9,11 +9,11 @@
  * is the same arithmetic the half grid uses, so a brick placed on the floor of
  * the board is already sitting on the floor of the simulation.
  */
-import { createProperty, onCleanup, type EntityEffect } from "@apendua/signal";
+import { createProperty, onCleanup, type EntityEffect } from "justdom-signal";
 import * as THREE from "three";
 import * as RAPIER from "@dimforge/rapier3d";
-import { effects, useEffects } from "@apendua/signal";
-import { layoutEffects, setWorldMatrix, useFrame } from "@apendua/freedom";
+import { effects, useEffects } from "justdom-signal";
+import { layoutEffects, setWorldMatrix, useFrame } from "justdom-three";
 
 export interface RapierWorkspace {
   world: RAPIER.World;

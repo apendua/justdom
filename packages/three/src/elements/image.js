@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { addDependency, Derived, fromEvent, onCleanup, Signal, withChannel } from "@apendua/signal";
+import { addDependency, Derived, fromEvent, onCleanup, Signal, withChannel } from "justdom-signal";
 import { getComputedStyleCached } from "./mirror.js";
 import { fitImage } from "./objectFit.js";
 

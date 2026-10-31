@@ -1,4 +1,4 @@
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 
 /**
  * Whether this platform can open an immersive session at all, of either

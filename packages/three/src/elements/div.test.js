@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { UpdateChannel, withChannel } from "@apendua/signal";
+import { UpdateChannel, withChannel } from "justdom-signal";
 import { InteractionContext } from "../interactions.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
@@ -616,7 +616,7 @@ function setupSiblings() {
      * portal draws them.
      *
      * @param {Element} element
-     * @param {(ctx: object) => import("@apendua/signal").Source<THREE.Object3D>} component
+     * @param {(ctx: object) => import("justdom-signal").Source<THREE.Object3D>} component
      * @returns {THREE.Object3D} What the component built.
      */
     drawWith(element, component) {

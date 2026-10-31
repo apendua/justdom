@@ -1,7 +1,7 @@
-import { Derived, each, effects, set, on, use, useEffect } from "@apendua/signal";
+import { Derived, each, effects, set, on, use, useEffect } from "justdom-signal";
 
 /**
- * @import { EntityEffect, Subscribable } from '@apendua/signal';
+ * @import { EntityEffect, Subscribable } from 'justdom-signal';
  * @import { WritableProps, Primitive } from './core.js';
  */
 

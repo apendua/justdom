@@ -1,4 +1,4 @@
-import { Derived, effects, onCleanup } from "@apendua/signal";
+import { Derived, effects, onCleanup } from "justdom-signal";
 import { keyedList } from "../core.js";
 import { children } from "../operators.js";
 import {
@@ -52,7 +52,7 @@ import { parseNumber, parsePaint, parsePointerEvents, readProperty } from "./sty
  * animation does not redraw it every frame.
  *
  * @import {MeshBasicMaterial, Object3D} from 'three';
- * @import {Source} from '@apendua/signal';
+ * @import {Source} from 'justdom-signal';
  * @import {Component} from '../core.js';
  * @import {Instance} from './shape.js';
  */

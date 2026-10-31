@@ -5,7 +5,7 @@
  * A portal mirrors its container's subtree, which is where every mutation an
  * author makes to the panel shows up — except one. A rule is not in the
  * subtree. A styling library that keeps a class name stable and rewrites the
- * rule behind it — `@apendua/justdom`'s `className` and `stylesheet` tags are
+ * rule behind it — `justdom`'s `className` and `stylesheet` tags are
  * exactly that, and the stable name is the point of them, since it lets one
  * `class` attribute survive a lifetime of style updates — changes the panel's
  * appearance without touching a single node the portal observes. The browser

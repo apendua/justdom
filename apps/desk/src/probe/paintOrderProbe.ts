@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { render, createXRButton, children, cursors, $, dom, getScene } from "@apendua/freedom";
-import { inputModels } from "@apendua.dev/headset/scene";
-import { canPresent } from "@apendua.dev/headset/session";
-import { effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
+import { render, createXRButton, children, cursors, $, dom, getScene } from "justdom-three";
+import { inputModels } from "justdom-xr/scene";
+import { canPresent } from "justdom-xr/session";
+import { effects, effectsOnly, Stream, useEffects } from "justdom-signal";
 import { captureEyes, countLinks, record, type EyeImage, type Run } from "./recorder.js";
 import { PROBE_CSS, SCENES, type Place, type ProbePanel } from "./scenes.js";
 import { noteTracer, timeFrames } from "./trace.js";
@@ -294,7 +294,7 @@ const probeScene = effectsOnly((ctx: WeakKey) => {
 
 async function start(): Promise<void> {
   if (query.has("emulator")) {
-    const { install } = await import("@apendua.dev/headset/emulator");
+    const { install } = await import("justdom-xr/emulator");
     install({ devUI: query.get("emulator") !== "bare" });
   }
   if (!(await canPresent())) {

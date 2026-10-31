@@ -1,4 +1,4 @@
-import { just, Stream } from "@apendua/signal";
+import { just, Stream } from "justdom-signal";
 import { children } from "./dom.js";
 
 /**
@@ -211,8 +211,8 @@ export function claimSegment(fn) {
  * scratch, so a mismatch costs performance rather than correctness.
  *
  * @param {Element} root
- * @param {...import("@apendua/signal").Subscribable<Mountable>} content
- * @returns {import("@apendua/signal").Source<unknown>}
+ * @param {...import("justdom-signal").Subscribable<Mountable>} content
+ * @returns {import("justdom-signal").Source<unknown>}
  */
 export function hydrate(root, ...content) {
   return new Stream((subscriber) => {

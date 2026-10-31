@@ -1,7 +1,7 @@
 import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Derived } from "@apendua/signal";
+import { Derived } from "justdom-signal";
 import { InteractionContext } from "../interactions.js";
 import { div } from "./div.js";
 import {

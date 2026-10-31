@@ -1,4 +1,4 @@
-import { addDependency, createProperty, Stream } from "@apendua/signal";
+import { addDependency, createProperty, Stream } from "justdom-signal";
 
 interface Dimensions {
   width: number;

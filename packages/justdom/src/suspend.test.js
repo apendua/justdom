@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { just, map } from "@apendua/signal";
+import { just, map } from "justdom-signal";
 import { $, children, toMountable } from "./dom.js";
 import { text } from "./text.js";
 import { suspend, waitFor, withFallback } from "./suspend.js";

@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { Derived, Effect, Signal } from "@apendua/signal";
+import { Derived, Effect, Signal } from "justdom-signal";
 import {
   attachRevealNode,
   detachRevealNode,
@@ -83,7 +83,7 @@ function installRange({ onMeasure } = {}) {
 /**
  * Mount one of a handle's runs into `parent` and hand back its text node.
  *
- * @param {{ text: (strings: TemplateStringsArray, ...values: never[]) => import('@apendua/signal').Source<import('../core.js').Mountable> }} reveal
+ * @param {{ text: (strings: TemplateStringsArray, ...values: never[]) => import('justdom-signal').Source<import('../core.js').Mountable> }} reveal
  * @param {HTMLElement} parent
  * @param {string} content
  * @returns {{ node: Text, stop: () => void }}

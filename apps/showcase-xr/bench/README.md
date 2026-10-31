@@ -75,8 +75,8 @@ treat the second as a rounding error with a sign.
 ### Changing the freedom package
 
 **Uncommitted edits work, and only affect the side you expect.** The working tree is served as-is —
-vite serves `packages/freedom/src` through the workspace symlink, so there is nothing to build and
-no step to remember. Edit, run, read.
+vite serves `packages/three/src` through the workspace symlink, so there is nothing to build and no
+step to remember. Edit, run, read.
 
 The `--against` side is a git worktree at the revision you named, and it uses **that revision's**
 copy of the package, not yours. That is what makes the comparison mean anything, and it is verified
@@ -86,7 +86,7 @@ Two consequences worth knowing:
 
 - The `--against` side sees only _committed_ work. Comparing two branches of your own is fine;
   comparing against uncommitted changes is not a thing the worktree can do.
-- Adding a _new_ dependency to `packages/freedom` needs a `rush install` before the benchmark can
+- Adding a _new_ dependency to `packages/three` needs a `rush install` before the benchmark can
   serve either side, since the worktree borrows this checkout's installed store. Editing existing
   code needs nothing.
 
@@ -178,9 +178,9 @@ Three ways, because a benchmark nobody has held against a known answer is not wo
 
 ### Do the two sides really run different code?
 
-The check that matters most, since the failure is silent: if the worktree resolved
-`@apendua/freedom` back to this checkout, every comparison would read as a clean null forever and
-look entirely plausible.
+The check that matters most, since the failure is silent: if the worktree resolved `justdom-three`
+back to this checkout, every comparison would read as a clean null forever and look entirely
+plausible.
 
 An unmistakable probe — an extra `getBoundingClientRect()` per cached measurement, left uncommitted
 in the working tree — settles it:

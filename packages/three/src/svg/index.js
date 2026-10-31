@@ -13,7 +13,7 @@ import { drawText } from "./text.js";
 /**
  * Inline SVG in a portal, as a plugin.
  *
- * A separate entry point — `@apendua/freedom/svg` — and not part of the main
+ * A separate entry point — `justdom-three/svg` — and not part of the main
  * one, because drawing a shape means triangulating it: three's `ShapePath`,
  * its curves and the earcut triangulator, plus the stroker from
  * `SVGLoader`, none of which a panel of boxes and text has any use for. A
@@ -22,8 +22,8 @@ import { drawText } from "./text.js";
  * is drawn as the CSS box it also is, with nothing inside.
  *
  * ```js
- * import { render } from "@apendua/freedom";
- * import { svgElements } from "@apendua/freedom/svg";
+ * import { render } from "justdom-three";
+ * import { svgElements } from "justdom-three/svg";
  *
  * render(Scene, { portalPlugins: [svgElements()] });
  * ```

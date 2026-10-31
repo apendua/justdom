@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { children } from "@apendua/justdom";
-import { just } from "@apendua/signal";
+import { children } from "justdom";
+import { just } from "justdom-signal";
 import AppStore, { type PendingStep } from "../store/App";
 import Canvas, { type CanvasOptions } from "./Canvas";
 

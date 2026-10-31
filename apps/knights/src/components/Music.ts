@@ -1,5 +1,5 @@
-import { $, set } from "@apendua/justdom";
-import { component, effects, onCleanup } from "@apendua/signal";
+import { $, set } from "justdom";
+import { component, effects, onCleanup } from "justdom-signal";
 import stepsToTheThrone from "@apendua.dev/media/steps_to_the_throne.mp3";
 
 const MUSIC_VOLUME = 0.4;

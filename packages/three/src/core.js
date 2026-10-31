@@ -1,8 +1,8 @@
-import { filtered, just, observable, Stream, Subject } from "@apendua/signal";
-import { addDependency, batch, Derived } from "@apendua/signal";
+import { filtered, just, observable, Stream, Subject } from "justdom-signal";
+import { addDependency, batch, Derived } from "justdom-signal";
 
 /**
- * @import { Source, Subscribable, Unsubscribable } from "@apendua/signal";
+ * @import { Source, Subscribable, Unsubscribable } from "justdom-signal";
  * @import { Object3D, XRTargetRaySpace, Intersection, Object3DEventMap, Matrix4 } from 'three';
  */
 
@@ -222,7 +222,7 @@ import { addDependency, batch, Derived } from "@apendua/signal";
  */
 
 /**
- * A DOM tree that has not been put anywhere yet: what `@apendua/justdom`
+ * A DOM tree that has not been put anywhere yet: what `justdom`
  * builds and what a portal mounts.
  *
  * A *segment* is the pair of sibling nodes a tree spans — its first and its

@@ -1,4 +1,4 @@
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 
 /**
  * @import { XRTargetRaySpace } from "three";

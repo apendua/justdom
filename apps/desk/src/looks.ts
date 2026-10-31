@@ -1,4 +1,4 @@
-import type { PortalOptions } from "@apendua/freedom";
+import type { PortalOptions } from "justdom-three";
 import type { Phosphor } from "./terminal.js";
 import beigeMarkup from "./looks/beige.html?raw";
 import beigeStyle from "./looks/beige.css?inline";

@@ -6,8 +6,8 @@ import {
   NoValueError,
   onCleanup,
   Signal,
-} from "@apendua/signal";
-import { Subject } from "@apendua/signal";
+} from "justdom-signal";
+import { Subject } from "justdom-signal";
 import {
   buildCharacterEdges,
   collapseLineOffsets,
@@ -44,7 +44,7 @@ import {
  * @import {TextBounds} from './textHelpers.js';
  * @import {ClipBox} from './clip.js';
  * @import {FramedRect, PanelFrame} from './panelFrame.js';
- * @import {Subscribable} from '@apendua/signal';
+ * @import {Subscribable} from 'justdom-signal';
  */
 
 /**

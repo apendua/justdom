@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { Effect, Signal, UpdateChannel, withChannel } from "@apendua/signal";
+import { Effect, Signal, UpdateChannel, withChannel } from "justdom-signal";
 import { createPortalPump, MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
 import { fakeClock } from "../test/clock.js";
 

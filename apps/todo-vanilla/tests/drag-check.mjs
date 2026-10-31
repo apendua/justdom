@@ -22,7 +22,7 @@
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, createServer } from "vite";
-import { precache } from "@apendua.dev/headset/driver";
+import { precache } from "justdom-xr/driver";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(

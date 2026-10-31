@@ -1,7 +1,7 @@
-import { createProperty } from "@apendua/signal";
+import { createProperty } from "justdom-signal";
 
 /**
- * @import {Subscribable} from '@apendua/signal';
+ * @import {Subscribable} from 'justdom-signal';
  * @import {Object3D} from 'three';
  */
 
@@ -99,7 +99,7 @@ export function readBBox(element) {
  * measured for nothing. The `<svg>` root itself is still drawn as the box
  * it is.
  *
- * Plugins are the reason `@apendua/freedom/svg` can exist as a separate
+ * Plugins are the reason `justdom-three/svg` can exist as a separate
  * entry point: triangulating a path costs three's whole shape subtree, and
  * a scene that has no SVG in it should not carry that for the one that
  * does. Register the plugin in the scene that needs it —

@@ -1,5 +1,5 @@
-import { $, attr, children, className, list, set, text } from "@apendua/justdom";
-import { component, makeNonReactive, observable, on } from "@apendua/signal";
+import { $, attr, children, className, list, set, text } from "justdom";
+import { component, makeNonReactive, observable, on } from "justdom-signal";
 import { addTodo, selectTodos, todos } from "../todos.js";
 import TodoItem from "./TodoItem.js";
 
@@ -90,7 +90,7 @@ function FilterLink(filter, current) {
 /**
  * The whole page, rendered from the server side state in `../todos.js`.
  */
-/** @type {(filter: Filter) => import("@apendua/signal").Source<import("@apendua/justdom").Mountable>} */
+/** @type {(filter: Filter) => import("justdom-signal").Source<import("justdom").Mountable>} */
 const TodoApp = component(
   /**
    * @param {Filter} filter

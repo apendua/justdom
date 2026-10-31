@@ -1,7 +1,7 @@
-import { children, text } from "@apendua/justdom";
-import { component, effect, just, observable } from "@apendua/signal";
+import { children, text } from "justdom";
+import { component, effect, just, observable } from "justdom-signal";
 import type { Readable } from "./session.js";
-import { makeReveal, scrollElementBy } from "@apendua/freedom";
+import { makeReveal, scrollElementBy } from "justdom-three";
 import { revealedCount, type Terminal } from "./terminal.js";
 
 /**

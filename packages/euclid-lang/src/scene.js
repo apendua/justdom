@@ -1,4 +1,4 @@
-import { Point, Line, Circle, BBox } from "@apendua.dev/euclid-core";
+import { Point, Line, Circle, BBox } from "@apendua/euclid-core";
 
 /**
  * @import { StatementNode } from "./parser.js"

@@ -1,4 +1,4 @@
-import { Point, Line, Circle, Vec2 } from "@apendua.dev/euclid-core";
+import { Point, Line, Circle, Vec2 } from "@apendua/euclid-core";
 
 /**
  * A coordinate selector — the values bound to `x` and `y`. Applied to points

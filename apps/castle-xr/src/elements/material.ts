@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { MINUTE, memoizeWithTTL, onCleanup } from "@apendua/signal";
+import { MINUTE, memoizeWithTTL, onCleanup } from "justdom-signal";
 
 export const basicMaterial = memoizeWithTTL(MINUTE, (color: string) => {
   const material = new THREE.MeshBasicMaterial({

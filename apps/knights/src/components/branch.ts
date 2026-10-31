@@ -1,5 +1,5 @@
-import { list, type Mountable } from "@apendua/justdom";
-import type { Source, Subscribable } from "@apendua/signal";
+import { list, type Mountable } from "justdom";
+import type { Source, Subscribable } from "justdom-signal";
 
 /**
  * Renders one of several alternatives, chosen by a key.

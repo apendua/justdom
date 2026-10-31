@@ -19,5 +19,49 @@
     "preRushBuild": [],
     "postRushBuild": []
   },
-  "projects": []
+  "projects": [
+    {
+      "packageName": "justdom",
+      "projectFolder": "packages/justdom",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-signal",
+      "projectFolder": "packages/signal",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-three",
+      "projectFolder": "packages/three",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-three-ui",
+      "projectFolder": "packages/three-ui",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-vite-hmr",
+      "projectFolder": "packages/vite-hmr",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "justdom-xr",
+      "projectFolder": "packages/xr",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "@apendua/geometry",
+      "projectFolder": "packages/geometry",
+      "versionPolicyName": "publishable"
+    },
+    {
+      "packageName": "@apendua/sound",
+      "projectFolder": "packages/sound",
+      "versionPolicyName": "publishable"
+    },
+    { "packageName": "@apendua/jsdom-env", "projectFolder": "packages/jsdom-env" },
+    { "packageName": "@apendua/euclid-core", "projectFolder": "packages/euclid-core" },
+    { "packageName": "@apendua/euclid-lang", "projectFolder": "packages/euclid-lang" }
+  ]
 }

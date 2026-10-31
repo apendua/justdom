@@ -1,8 +1,8 @@
 import { removeSegment, toSegment } from "./helpers.js";
-import { addDependency, batch, Derived, each, filtered, Stream, Subject } from "@apendua/signal";
+import { addDependency, batch, Derived, each, filtered, Stream, Subject } from "justdom-signal";
 
 /**
- * @import { MonoTypeOperator, Subscribable, Source, Unsubscribable } from "@apendua/signal";
+ * @import { MonoTypeOperator, Subscribable, Source, Unsubscribable } from "justdom-signal";
  * @import { ContainerOf, INode, MountableOf, SegmentOf } from "./nodes.js"
  */
 

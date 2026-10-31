@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { xrSession } from "@apendua.dev/headset/session";
-import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "@apendua/freedom";
-import { createDiagnostics, useDiagnostics } from "@apendua/justui";
-import { component, effects, effectsOnly, onCleanup, Stream, useEffects } from "@apendua/signal";
+import { xrSession } from "justdom-xr/session";
+import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "justdom-three";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
+import { component, effects, effectsOnly, onCleanup, Stream, useEffects } from "justdom-signal";
 import type { MountedDesk } from "../desk.js";
 import { DESK_TOP, PX, type Placement, type Room } from "../looks.js";
 import type { Readable } from "../session.js";

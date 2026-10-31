@@ -1,7 +1,7 @@
 {
-  "name": "@apendua/freedom",
+  "name": "justdom-three",
   "version": "0.30.0",
-  "description": "Reactive Three.js scene graph built on @apendua/signal, with WebXR helpers and a DOM-in-scene bridge",
+  "description": "Reactive Three.js scene graph built on justdom-signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",
     "threejs",
@@ -14,8 +14,8 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/apendua/apendua.dev.git",
-    "directory": "packages/freedom"
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/three"
   },
   "license": "MIT",
   "author": "apendua",
@@ -51,24 +51,23 @@
   },
   "devDependencies": {
     "@apendua/jsdom-env": "workspace:*",
-    "@apendua/justdom": "workspace:*",
-    "@apendua/signal": "workspace:*",
-    "@apendua/vite-hmr": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
     "rxjs": "^7.8.2",
     "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@apendua/signal": "workspace:*",
+    "justdom-signal": "workspace:*",
     "three": ">=0.180.0"
   },
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }

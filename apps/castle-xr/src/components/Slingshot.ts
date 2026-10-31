@@ -15,7 +15,7 @@
  * where the stone has to fly.
  */
 import * as THREE from "three";
-import { component, effects, emit, makeNonReactive, onCleanup, Op, store } from "@apendua/signal";
+import { component, effects, emit, makeNonReactive, onCleanup, Op, store } from "justdom-signal";
 import {
   $,
   children,
@@ -24,7 +24,7 @@ import {
   ControllerHandle,
   useFrame,
   getCamera,
-} from "@apendua/freedom";
+} from "justdom-three";
 import { cylinderGeometry, sphereGeometry } from "../elements/geometry.js";
 import { basicMaterial, stoneMaterial } from "../elements/material.js";
 import { clampDraw, computeLaunch, defaultLaunchOptions } from "../utils/launch.js";

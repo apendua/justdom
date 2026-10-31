@@ -1,7 +1,7 @@
-import { batch, Effect, withChannel } from "@apendua/signal";
+import { batch, Effect, withChannel } from "justdom-signal";
 
 /**
- * @import {UpdateChannel} from "@apendua/signal";
+ * @import {UpdateChannel} from "justdom-signal";
  * @import {PortalScheduler} from './portalScheduler.js';
  */
 

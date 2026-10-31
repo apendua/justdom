@@ -1,8 +1,12 @@
 {
-  "name": "@apendua.dev/geometry",
-  "version": "1.0.0",
-  "private": true,
+  "name": "@apendua/geometry",
+  "version": "0.1.0",
   "description": "Geometry utils for hexagonal grids",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/geometry"
+  },
   "author": "apendua",
   "type": "module",
   "exports": {
@@ -33,5 +37,8 @@
     "@types/node": "^24.7.0",
     "eslint": "^9.37.0",
     "typescript": "^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -7,7 +7,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { batch } from "@apendua/signal";
+import { batch } from "justdom-signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { clientRect } from "../test/clientRect.js";
 import { settle } from "../test/portalHarness.js";

@@ -1,12 +1,12 @@
 import * as THREE from "three";
-import { useEffect, withComputation } from "@apendua/signal";
+import { useEffect, withComputation } from "justdom-signal";
 import { carry } from "../carry.js";
 import { interactions } from "../interactions.js";
 import { $ } from "../operators.js";
 import { keepProgram } from "./programKeeper.js";
 
 /**
- * @import {Unsubscribable} from '@apendua/signal';
+ * @import {Unsubscribable} from 'justdom-signal';
  * @import {PointerCancelEvent, PointerEvent, XREventMap} from '../core.js';
  * @import {ProgramKind} from './programKeeper.js';
  */

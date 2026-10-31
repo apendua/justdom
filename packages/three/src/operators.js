@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { Derived, each, flatMap, fromEvent, just, Stream, use, useEffect } from "@apendua/signal";
-import { addDependency } from "@apendua/signal";
+import { Derived, each, flatMap, fromEvent, just, Stream, use, useEffect } from "justdom-signal";
+import { addDependency } from "justdom-signal";
 
 /**
- * @import { EntityEffect, Subscribable, Source } from '@apendua/signal';
+ * @import { EntityEffect, Subscribable, Source } from 'justdom-signal';
  * @import { Object3D } from 'three';
  * @import { CopyableProps, Component } from './core.js';
  */

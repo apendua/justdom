@@ -3,7 +3,7 @@ import test, { afterEach, describe } from "node:test";
 import { audioOutputs, audioOutputSelection, setAudioOutput } from "./audioOutputs.js";
 
 /**
- * @import { Source, Unsubscribable } from '@apendua/signal';
+ * @import { Source, Unsubscribable } from 'justdom-signal';
  * @import { AudioOutput } from './audioOutputs.js';
  */
 

@@ -1,15 +1,5 @@
-import {
-  $,
-  CLASS_NAME,
-  attr,
-  children,
-  on,
-  renderText,
-  set,
-  stylesheet,
-  text,
-} from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { $, CLASS_NAME, attr, children, on, renderText, set, stylesheet, text } from "justdom";
+import { component } from "justdom-signal";
 import { HOTSEAT, VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import ActionItem from "./ActionItem";
 import { menuItem, modal, modalFill } from "./styles";

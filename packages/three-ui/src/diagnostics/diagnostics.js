@@ -7,8 +7,8 @@
  * what the frame rate is *in the session* — is the one nobody can see. This is
  * the same reading, in the room, where it can be read while playing.
  */
-import { Signal, useEffect, useEffects } from "@apendua/signal";
-import { children, getCamera, useFrame } from "@apendua/freedom";
+import { Signal, useEffect, useEffects } from "justdom-signal";
+import { children, getCamera, useFrame } from "justdom-three";
 import { chartCeiling, createFrameMeter } from "./frameMeter.js";
 import { Panel } from "./panel.js";
 

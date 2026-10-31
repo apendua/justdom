@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parse, evaluate, type Evaluation } from "@apendua.dev/euclid-lang";
-import { Point, Line, Circle } from "@apendua.dev/euclid-core";
+import { parse, evaluate, type Evaluation } from "@apendua/euclid-lang";
+import { Point, Line, Circle } from "@apendua/euclid-core";
 import { EXAMPLES } from "./examples";
 
 const PHI = (1 + Math.sqrt(5)) / 2;

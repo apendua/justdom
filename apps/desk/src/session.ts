@@ -1,5 +1,5 @@
-import { xrSession } from "@apendua.dev/headset/session";
-import { Derived } from "@apendua/signal";
+import { xrSession } from "justdom-xr/session";
+import { Derived } from "justdom-signal";
 
 /**
  * Whether a session is showing the desk, for the two things the page does

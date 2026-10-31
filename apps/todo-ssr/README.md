@@ -1,8 +1,8 @@
-# `@apendua.dev/signal-ssr`
+# `todo-ssr`
 
-A minimal server side rendering example for [`@apendua/signal`][signal] and
-[`@apendua/justdom`][dom]: an [express][express] app that renders a component tree inside a
-[jsdom][jsdom] document and sends the serialized HTML to the browser.
+A minimal server side rendering example for [`justdom-signal`][signal] and [`justdom`][dom]: an
+[express][express] app that renders a component tree inside a [jsdom][jsdom] document and sends the
+serialized HTML to the browser.
 
 The rendered page is a todo list. It works with no client side JavaScript at all — every interaction
 is a form submission that express handles by mutating the server side signals and redirecting — and
@@ -17,7 +17,7 @@ rushx test    # typecheck + node:test
 
 ## How it works
 
-`@apendua/justdom` builds real DOM nodes through the ambient `document` (`document.createElement`,
+`justdom` builds real DOM nodes through the ambient `document` (`document.createElement`,
 `document.createComment`, …) — there is no virtual DOM to serialize instead. So all SSR needs is a
 `document` that exists outside a browser, which is exactly what jsdom provides.
 
@@ -69,7 +69,7 @@ pieces make that work:
    would not have produced itself, so it has to start from the state the server rendered from.
 2. **A client bundle.** [`src/client/main.js`](./src/client/main.js) is built by vite into
    `dist/client/`, which express serves. It seeds the same signals from the payload and calls
-   `hydrate()` from `@apendua/justdom/hydrate`.
+   `hydrate()` from `justdom/hydrate`.
 3. **Handlers that intercept.** The toggle button carries an `on("click")` that calls
    `preventDefault()` and flips the todo in place. It is part of the component the _server_ renders
    too — it simply never fires there — so the form stays the behaviour whenever the script has not

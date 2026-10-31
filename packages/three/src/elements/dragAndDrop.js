@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { withComputation } from "@apendua/signal";
+import { withComputation } from "justdom-signal";
 import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
 import { InteractionContext } from "../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";

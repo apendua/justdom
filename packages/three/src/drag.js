@@ -1,10 +1,10 @@
-import { makeNonReactive, onCleanup, useEffect, withComputation } from "@apendua/signal";
+import { makeNonReactive, onCleanup, useEffect, withComputation } from "justdom-signal";
 import { createHold } from "./hold.js";
 import { asReader, InteractionContext, setLocalMatrix } from "./interactions.js";
 import { useFrame } from "./render.js";
 
 /**
- * @import { EntityEffect } from "@apendua/signal";
+ * @import { EntityEffect } from "justdom-signal";
  * @import { Matrix4, Object3D, XRTargetRaySpace } from "three";
  * @import { DragButton, InputEvent, InputCancelEvent, PressEnd, XREventMap } from "./core.js";
  * @import { Reactive } from "./interactions.js";

@@ -1,9 +1,9 @@
-import { $, children, list, set, style, text } from "@apendua/justdom";
-import { Derived, effects, onCleanup, Signal } from "@apendua/signal";
-import { getPortalRoot, scrollElementBy } from "@apendua/freedom/page";
+import { $, children, list, set, style, text } from "justdom";
+import { Derived, effects, onCleanup, Signal } from "justdom-signal";
+import { getPortalRoot, scrollElementBy } from "justdom-three/page";
 
 /**
- * @import {Mountable} from "@apendua/justdom";
+ * @import {Mountable} from "justdom";
  */
 
 /**
@@ -12,22 +12,22 @@ import { getPortalRoot, scrollElementBy } from "@apendua/freedom/page";
  * its own colours would be fought rather than used.
  *
  * @typedef {object} ScrollableClasses
- * @property {import("@apendua/signal").Subscribable<string>} root Content and bar side by side. Wants
+ * @property {import("justdom-signal").Subscribable<string>} root Content and bar side by side. Wants
  *   `display: flex` and a height: a window that sizes to its content is not a
  *   window.
- * @property {import("@apendua/signal").Subscribable<string>} viewport The window itself. Must hide its
+ * @property {import("justdom-signal").Subscribable<string>} viewport The window itself. Must hide its
  *   overflow — that is what makes the content below the fold stop being drawn,
  *   and stop being a ray target.
- * @property {import("@apendua/signal").Subscribable<string>} bar The column the controls live in. Mounted
+ * @property {import("justdom-signal").Subscribable<string>} bar The column the controls live in. Mounted
  *   only while there is something to scroll.
- * @property {import("@apendua/signal").Subscribable<string>} button An arrow. Needs `cursor: pointer` to
+ * @property {import("justdom-signal").Subscribable<string>} button An arrow. Needs `cursor: pointer` to
  *   be a ray target at all.
- * @property {import("@apendua/signal").Subscribable<string>} track What the thumb slides in:
+ * @property {import("justdom-signal").Subscribable<string>} track What the thumb slides in:
  *   `position: relative`, and tall enough to be worth pointing at.
- * @property {import("@apendua/signal").Subscribable<string>} thumb Where the window sits in the content,
+ * @property {import("justdom-signal").Subscribable<string>} thumb Where the window sits in the content,
  *   and how much of it is showing. Positioned absolutely; `top` and `height`
  *   are written onto it as percentages of the track.
- * @property {import("@apendua/signal").Subscribable<string>} [page] The free track above and below the
+ * @property {import("justdom-signal").Subscribable<string>} [page] The free track above and below the
  *   thumb, which jumps a window at a time. Positioned absolutely like the
  *   thumb, and `cursor: pointer`. Omit for arrows and a thumb alone.
  */
@@ -35,7 +35,7 @@ import { getPortalRoot, scrollElementBy } from "@apendua/freedom/page";
 /**
  * @typedef {object} ScrollableProps
  * @property {ScrollableClasses} classes
- * @property {import("@apendua/signal").Subscribable<Mountable>[]} content What is being scrolled.
+ * @property {import("justdom-signal").Subscribable<Mountable>[]} content What is being scrolled.
  * @property {number} [step] How far one press of an arrow moves the content,
  *   in px. A row's height is the number to reach for.
  * @property {readonly [up: string, down: string]} [marks] What the arrows say.
@@ -70,7 +70,7 @@ const DEFAULT_MARKS = /** @type {const} */ (["▲", "▼"]);
  * point at.
  *
  * @param {ScrollableProps} props
- * @returns {import("@apendua/signal").Source<Mountable>}
+ * @returns {import("justdom-signal").Source<Mountable>}
  */
 export function scrollable(props) {
   const {
@@ -247,7 +247,7 @@ export function scrollable(props) {
     });
 
   /**
-   * @param {import("@apendua/signal").Subscribable<string>} className
+   * @param {import("justdom-signal").Subscribable<string>} className
    * @param {string} mark
    * @param {number} delta
    */
@@ -259,7 +259,7 @@ export function scrollable(props) {
     ]);
 
   /**
-   * @param {import("@apendua/signal").Subscribable<string>} className
+   * @param {import("justdom-signal").Subscribable<string>} className
    * @param {number} direction
    * @param {() => number} top
    * @param {() => number} height

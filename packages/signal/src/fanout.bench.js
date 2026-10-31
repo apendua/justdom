@@ -2,7 +2,7 @@
  * Benchmark & efficiency-validation suite for wide, shallow fan-out — the
  * update-queue's hot path.
  *
- * The shape is a case study taken from @apendua/freedom: a portal mirroring a
+ * The shape is a case study taken from justdom-three: a portal mirroring a
  * scrolling list re-derives, on every frame of a drag, one small chain per
  * element — a rect from the scroller's offset, a clip box from the rect, a
  * visibility flag from the clip box — with an effect subscribed to each.

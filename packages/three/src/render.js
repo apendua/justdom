@@ -12,7 +12,7 @@ import {
   Subject,
   useEffect,
   withComputation,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
 import {
   createFrameShareBudget,
@@ -32,7 +32,7 @@ import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 
 /**
- * @import { Source, Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  */
 
 export const RendererContext = createProperty(
@@ -527,7 +527,7 @@ export function frames(ctx) {
  *   Element plugins for every portal in this scene: asked about each
  *   element before the portal's own dispatch, so a scene can teach its
  *   panels a kind of content the package does not draw by default. The
- *   one so far is `svgElements()` from `@apendua/freedom/svg`, kept behind
+ *   one so far is `svgElements()` from `justdom-three/svg`, kept behind
  *   its own entry point because triangulating a path costs three's whole
  *   shape subtree, which a scene without an SVG in it should not carry.
  *   None by default. A single panel adds its own through

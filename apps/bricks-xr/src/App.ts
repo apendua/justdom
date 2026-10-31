@@ -8,9 +8,9 @@
  * Start.
  */
 import * as THREE from "three";
-import { children, $, getScene } from "@apendua/freedom";
-import { effects, effectsOnly, useEffects } from "@apendua/signal";
-import { createDiagnostics, useDiagnostics } from "@apendua/justui";
+import { children, $, getScene } from "justdom-three";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
 import Game from "./Game.js";
 import { CELL, SIZE } from "./grid.js";
 import { palette } from "./palette.js";

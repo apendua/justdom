@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 import {
   getBorderBoxSize,
   getBoxOffset,
@@ -21,7 +21,7 @@ import { getShadowBleed, parseTextShadow } from "./textHelpers.js";
 import { isTextInput } from "./typing.js";
 
 /**
- * @import {Derived} from '@apendua/signal';
+ * @import {Derived} from 'justdom-signal';
  */
 
 /*

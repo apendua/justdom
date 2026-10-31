@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { BehaviorSubject, Subject } from "rxjs";
-import { Signal, just } from "@apendua/signal";
+import { Signal, just } from "justdom-signal";
 import {
   InteractionContext,
   InteractionManager,

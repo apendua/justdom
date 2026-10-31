@@ -1,7 +1,7 @@
-import { className, $, children, stylesheet, CLASS_NAME } from "@apendua/justdom";
-import { set, component } from "@apendua/signal";
-import { keyboard } from "@apendua/justui";
-import type { KeyboardTarget } from "@apendua/freedom";
+import { className, $, children, stylesheet, CLASS_NAME } from "justdom";
+import { set, component } from "justdom-signal";
+import { keyboard } from "justdom-three-ui";
+import type { KeyboardTarget } from "justdom-three";
 import { fontFamily } from "./TodoApp.js";
 
 /**

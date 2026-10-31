@@ -1,4 +1,4 @@
-import { Point, Line, Circle, Vec2 } from "@apendua.dev/euclid-core";
+import { Point, Line, Circle, Vec2 } from "@apendua/euclid-core";
 import {
   Builtin,
   CoordSelector,

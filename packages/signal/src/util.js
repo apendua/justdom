@@ -10,7 +10,7 @@ import { makeNonReactive } from "./core.js";
  * What `MonoTypeOperatorFunction` and `OperatorFunction` were being imported
  * for, spelled so that neither side of a pipeline has to be an RxJS
  * observable. An RxJS operator still applies to what these produce — through
- * `rx()` from `@apendua/signal/rxjs`, which names the crossing.
+ * `rx()` from `justdom-signal/rxjs`, which names the crossing.
  *
  * @template T, U
  * @typedef {(source: Subscribable<T>) => Source<U>} Operator

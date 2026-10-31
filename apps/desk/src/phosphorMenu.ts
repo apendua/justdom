@@ -1,5 +1,5 @@
-import { effect } from "@apendua/signal";
-import { getPortalRoot } from "@apendua/freedom";
+import { effect } from "justdom-signal";
+import { getPortalRoot } from "justdom-three";
 import { isPhosphor, type Terminal } from "./terminal.js";
 
 /**

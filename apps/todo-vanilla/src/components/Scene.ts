@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene, getXRSession } from "@apendua/freedom";
-import { createDiagnostics, useDiagnostics } from "@apendua/justui";
-import { component, effects, effectsOnly, Stream, useEffects } from "@apendua/signal";
-import { xrSession } from "@apendua.dev/headset/session";
-import { Backdrop } from "@apendua.dev/headset/scene";
+import { children, cursors, $, dom, getScene, getXRSession } from "justdom-three";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
+import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
+import { xrSession } from "justdom-xr/session";
+import { Backdrop } from "justdom-xr/scene";
 
 /**
  * What the session is set against: one colour, all the way round, rather

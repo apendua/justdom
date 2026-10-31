@@ -1,19 +1,8 @@
-import {
-  $,
-  attr,
-  children,
-  className,
-  CLASS_NAME,
-  list,
-  on,
-  set,
-  stylesheet,
-  text,
-} from "@apendua/justdom";
-import type { Mountable } from "@apendua/justdom";
-import { component, type Subscribable } from "@apendua/signal";
-import { dropdown, type DropdownClasses } from "@apendua/justui";
-import { canPassThrough, passthrough, xrSession } from "@apendua.dev/headset/session";
+import { $, attr, children, className, CLASS_NAME, list, on, set, stylesheet, text } from "justdom";
+import type { Mountable } from "justdom";
+import { component, type Subscribable } from "justdom-signal";
+import { dropdown, type DropdownClasses } from "justdom-three-ui";
+import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
 import { EXAMPLES } from "../examples";
 import type AppStore from "../store/App";
 import type { Tool } from "../store/App";

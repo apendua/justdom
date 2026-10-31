@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createProperty } from "@apendua/signal";
+import { createProperty } from "justdom-signal";
 import { bandBase, getElevation, PIECE_BAND, setLayerBase } from "./elevation.js";
 import {
   carryHalfPlanes,

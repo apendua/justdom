@@ -157,7 +157,7 @@ export function filtered(source, predicate) {
  * `component(...)`, `toObservable`, `toEffect` and `fromEvent` all answer
  * with one — and it deliberately says nothing about `pipe`: applying an RxJS
  * operator needs an RxJS `Observable`, and the honest way to say so is an
- * explicit crossing. `rx()` from `@apendua/signal/rxjs` is that crossing —
+ * explicit crossing. `rx()` from `justdom-signal/rxjs` is that crossing —
  * today it is the identity, because every `Source` this package builds still
  * is a genuine RxJS `Observable` at runtime; the day that stops being true,
  * `rx()` is where the conversion happens and nothing downstream moves.

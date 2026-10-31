@@ -9,12 +9,12 @@ import {
   waitFor,
   stylesheet,
   CLASS_NAME,
-} from "@apendua/justdom";
-import { Signal, toObservable } from "@apendua/signal";
-import { store, on, set, observable, component } from "@apendua/signal";
-import { scrollable } from "@apendua/justui";
+} from "justdom";
+import { Signal, toObservable } from "justdom-signal";
+import { store, on, set, observable, component } from "justdom-signal";
+import { scrollable } from "justdom-three-ui";
 import ProgressBar from "./ProgressBar.js";
-import { xrSession } from "@apendua.dev/headset/session";
+import { xrSession } from "justdom-xr/session";
 import TodoItem from "./TodoItem.js";
 import { slotBefore } from "./reorder.js";
 

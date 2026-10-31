@@ -4,12 +4,11 @@ Build a castle out of bricks in passthrough AR, then take a slingshot to it and 
 thing down. The game is won when every brick is lying on the ground.
 
 It is built on the same stack as [marblerun](../marblerun/README.md), and the building half is
-deliberately the same to use: `@apendua/signal` for reactivity, `@apendua/freedom` for the reactive
-scene, `@apendua/justdom` projected into it for the panels, and `@dimforge/rapier3d` for the
-physics.
+deliberately the same to use: `justdom-signal` for reactivity, `justdom-three` for the reactive
+scene, `justdom` projected into it for the panels, and `@dimforge/rapier3d` for the physics.
 
 ```
-rush build --to @apendua.dev/castle-xr
+rush build --to castle-xr
 cd apps/castle-xr && npm run dev
 ```
 
@@ -40,15 +39,14 @@ pure grid arithmetic under it has unit tests of its own.
 
 The castle is saved to `localStorage` (key `castle-xr:castle`) a moment after the last change. The
 soundtrack is the house one, `glass_desk_habits.mp3` out of `@apendua.dev/media`, started with the
-session and stopped with it — played by `@apendua.dev/sound/xr`, which every headset app here
-shares.
+session and stopped with it — played by `@apendua/sound/xr`, which every headset app here shares.
 
 A brick that lands clicks, from the cell it landed in — a knock with a little ring in it, the way
-two magnets sound when they meet. Both halves of that come from `@apendua.dev/sound`: the waveform
-is generated rather than loaded, and `createClicks` parks a handful of `PositionalAudio` voices in
-the board to play it, so the click arrives from where the brick is rather than from the middle of
-your head. It is the one piece of feedback that does not need looking at, which is what a brick
-placed behind the one in your hand needs.
+two magnets sound when they meet. Both halves of that come from `@apendua/sound`: the waveform is
+generated rather than loaded, and `createClicks` parks a handful of `PositionalAudio` voices in the
+board to play it, so the click arrives from where the brick is rather than from the middle of your
+head. It is the one piece of feedback that does not need looking at, which is what a brick placed
+behind the one in your hand needs.
 
 ## The board
 
@@ -62,12 +60,12 @@ of the plate picks the whole scene up — board, tray, panels and lighting toget
 with the hand, so it can be put down on the real table in front of you, or off to one side, or
 wherever the room actually has space. Letting go leaves it there.
 
-**It stays level while it is carried** (`carry()` from `@apendua/freedom`). A hand reaching out
-across a board rolls and pitches far more than it feels like it does, and a board handed the wrist's
-whole pose arrives on its side with the castle sliding off it. So the wrist never tilts the board —
-but everything else it does is followed, and the reference for all of it is the **grab point**: the
-spot the ray landed on when the trigger closed. That spot stays pinned to the ray, as far out along
-it as it was taken hold of, so tipping the wrist tows the board where the ray now points instead of
+**It stays level while it is carried** (`carry()` from `justdom-three`). A hand reaching out across
+a board rolls and pitches far more than it feels like it does, and a board handed the wrist's whole
+pose arrives on its side with the castle sliding off it. So the wrist never tilts the board — but
+everything else it does is followed, and the reference for all of it is the **grab point**: the spot
+the ray landed on when the trigger closed. That spot stays pinned to the ray, as far out along it as
+it was taken hold of, so tipping the wrist tows the board where the ray now points instead of
 leaving the cursor to slide across it; and the turn about the vertical pivots the board _about the
 grab point_, so the spot being held is the one spot that never moves.
 

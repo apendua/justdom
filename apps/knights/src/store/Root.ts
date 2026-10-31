@@ -1,4 +1,4 @@
-import { batch, createProperty, store } from "@apendua/signal";
+import { batch, createProperty, store } from "justdom-signal";
 import { ATTACKER, COMPUTER, DEFENDER, HUMAN, MAP_COLUMNS, MAP_ROWS } from "../constants";
 import { generateGame } from "../helpers/generators";
 import { randomId } from "../helpers/random";

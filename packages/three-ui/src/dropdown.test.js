@@ -1,11 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { children } from "@apendua/justdom";
-import { just, Signal } from "@apendua/signal";
+import { children } from "justdom";
+import { just, Signal } from "justdom-signal";
 import { dropdown } from "./dropdown.js";
 
 /**
- * @import {Mountable} from "@apendua/justdom";
+ * @import {Mountable} from "justdom";
  */
 
 /** Class names as a panel would supply them: one observable per part. */
@@ -23,7 +23,7 @@ const classes = {
  * teardown. Nothing here is portal-specific: a dropdown is ordinary DOM, which
  * is the whole reason it can be projected into a scene at all.
  *
- * @param {import("@apendua/signal").Subscribable<Mountable>} tree
+ * @param {import("justdom-signal").Subscribable<Mountable>} tree
  */
 function mount(tree) {
   const host = document.createElement("div");

@@ -9,7 +9,7 @@ ordinary DOM projected into the room — in **five files and 400 lines**, agains
 files and 3400. It is meant to be read start to finish before writing an XR app of your own.
 
 ```
-rush build --to @apendua.dev/bricks-xr
+rush build --to bricks-xr
 cd apps/bricks-xr && npm run dev
 ```
 
@@ -39,7 +39,7 @@ nothing to save, so reloading starts you over.
 | `Panel.ts` |    85 | The interface, as DOM.                                           |
 | `App.ts`   |    59 | The scene: floor, light, and where the board floats.             |
 
-Plus `main.ts` to mount it and to fake a headset behind `?emulator` with `@apendua.dev/headset`, and
+Plus `main.ts` to mount it and to fake a headset behind `?emulator` with `justdom-xr`, and
 `palette.ts` so the colours live in one place.
 
 ## The four ideas in it
@@ -54,7 +54,7 @@ other half of the same idea — the centre of the nearest cell, never below the 
 when it is let go, and the board decides what that means. That is why the same component is the
 brick you pick up, the copy in your hand, and the see-through ghost of where it would land.
 
-The carrying itself is `drag()` from `@apendua/freedom`: while a brick is held it is a child of the
+The carrying itself is `drag()` from `justdom-three`: while a brick is held it is a child of the
 controller, so the hand's own movement is what moves it, and the drag remembers which hand has it —
 a press from the other hand mid-drag is a handover, and only the holding hand's release ends it.
 What `Brick.ts` adds is the one subtle thing: its position comes from its props on every _other_

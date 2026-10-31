@@ -1,4 +1,4 @@
-import { Derived, fromObservable, just, observable, Signal, Stream } from "@apendua/signal";
+import { Derived, fromObservable, just, observable, Signal, Stream } from "justdom-signal";
 import { getTextLayout, trackCharacterEdges } from "./mirror.js";
 import { UNBOUNDED } from "./clip.js";
 
@@ -47,7 +47,7 @@ import { UNBOUNDED } from "./clip.js";
  */
 
 /**
- * @import {Subscribable, Source} from '@apendua/signal';
+ * @import {Subscribable, Source} from 'justdom-signal';
  * @import {Mountable} from '../core.js';
  * @import {RevealLayout, RevealLine} from './textLines.js';
  */

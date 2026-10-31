@@ -13,11 +13,11 @@
  * borders, corner radii and text — no gradients and no shadows — so the whole
  * design is carried by colour, line and type.
  */
-import { fontFace, stylesheet, CLASS_NAME } from "@apendua/justdom";
-import type { DropdownClasses } from "@apendua/justui";
+import { fontFace, stylesheet, CLASS_NAME } from "justdom";
+import type { DropdownClasses } from "justdom-three-ui";
 import titleFontFile from "@apendua.dev/media/fonts/Cinzel-wght.ttf";
 import bodyFontFile from "@apendua.dev/media/fonts/Quicksand-wght.ttf";
-import { fromObservable, observable, type Subscribable } from "@apendua/signal";
+import { fromObservable, observable, type Subscribable } from "justdom-signal";
 import { palette } from "../elements/palette.js";
 
 /** Carved Roman capitals, for what a panel is called. */

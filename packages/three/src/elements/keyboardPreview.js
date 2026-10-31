@@ -1,4 +1,4 @@
-import { Effect, withChannel, withComputation } from "@apendua/signal";
+import { Effect, withChannel, withComputation } from "justdom-signal";
 import { getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
 import { placeCaretIn, touchValue, watchValue } from "./textInput.js";
 

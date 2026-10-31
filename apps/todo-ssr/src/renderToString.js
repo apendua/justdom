@@ -1,13 +1,13 @@
-import { children } from "@apendua/justdom";
+import { children } from "justdom";
 import { setupJsdom } from "@apendua/jsdom-env";
-import { just } from "@apendua/signal";
+import { just } from "justdom-signal";
 
 /**
- * @import { Mountable } from "@apendua/justdom";
+ * @import { Mountable } from "justdom";
  */
 
 /**
- * @typedef {(context: WeakKey) => import("@apendua/signal").Subscribable<Mountable>} Component
+ * @typedef {(context: WeakKey) => import("justdom-signal").Subscribable<Mountable>} Component
  */
 
 const DEFAULT_TEMPLATE = `<!doctype html>
@@ -28,7 +28,7 @@ const DEFAULT_TEMPLATE = `<!doctype html>
  * The whole thing is a plain, synchronous "mount, serialize, unmount" cycle:
  *
  * 1. a fresh JSDOM instance is created and installed as the global `document`,
- *    so that `@apendua/justdom` has a document to create elements in;
+ *    so that `justdom` has a document to create elements in;
  * 2. the component is mounted the exact same way a browser app is mounted in
  *    `apps/todo-vanilla/src/main.ts` — by subscribing to
  *    `just(root, [children(...)])`;

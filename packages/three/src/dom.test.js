@@ -1,8 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { observable, Signal } from "@apendua/signal";
-import { $, attr } from "@apendua/justdom";
+import { observable, Signal } from "justdom-signal";
+import { $, attr } from "justdom";
 import { getPortalRoot } from "./elements/portalRoot.js";
 import { LOADING_ATTRIBUTE } from "./elements/mirror.js";
 import { dom } from "./dom.js";

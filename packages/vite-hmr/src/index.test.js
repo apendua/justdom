@@ -13,11 +13,11 @@ import {
   store,
   Stream,
   Subject,
-} from "@apendua/signal";
+} from "justdom-signal";
 import { $hmr } from "./index.js";
 
 /**
- * @import { Source, Subscribable } from "@apendua/signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  * @import { HotContext } from "./index.js";
  */
 

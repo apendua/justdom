@@ -1,4 +1,4 @@
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 import { PROGRAMS } from "./programs.js";
 
 export const PHOSPHORS = ["green", "amber", "white"] as const;

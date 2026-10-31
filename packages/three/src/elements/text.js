@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Derived, effects, just, onCleanup, selector } from "@apendua/signal";
+import { Derived, effects, just, onCleanup, selector } from "justdom-signal";
 import { children } from "../operators.js";
 import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
 import {
@@ -27,7 +27,7 @@ import { attachRevealNode, detachRevealNode, getRevealCut } from "./reveal.js";
 /**
  * @param {WeakKey} ctx
  * @param {Text} textNode
- * @returns {import("@apendua/signal").Source<THREE.Object3D>}
+ * @returns {import("justdom-signal").Source<THREE.Object3D>}
  */
 export function text(ctx, textNode) {
   const object = new THREE.Object3D();

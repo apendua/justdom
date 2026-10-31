@@ -1,5 +1,5 @@
-import { $$, attr } from "@apendua/justdom";
-import { component } from "@apendua/signal";
+import { $$, attr } from "justdom";
+import { component } from "justdom-signal";
 import { createMapping } from "../helpers/mappings";
 import type { Dimensions } from "./types";
 

@@ -2,7 +2,7 @@
  * Where the game is up to. Two phases and the handful of numbers the panel
  * shows; everything that is actually in the world lives elsewhere.
  */
-import { Signal } from "@apendua/signal";
+import { Signal } from "justdom-signal";
 
 export type Phase = "build" | "siege";
 

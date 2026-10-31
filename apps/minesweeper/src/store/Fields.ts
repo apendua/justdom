@@ -1,5 +1,5 @@
-import { batch, createProperty, memo, store } from "@apendua/signal";
-import { BBox, VectorLike, createRect, getFieldSetBBox, getNeighbors } from "@apendua.dev/geometry";
+import { batch, createProperty, memo, store } from "justdom-signal";
+import { BBox, VectorLike, createRect, getFieldSetBBox, getNeighbors } from "@apendua/geometry";
 import type { FieldData, FieldState, FieldSetup } from "./types";
 
 export * from "./types";

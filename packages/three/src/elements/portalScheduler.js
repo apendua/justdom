@@ -1,4 +1,4 @@
-import { createProperty } from "@apendua/signal";
+import { createProperty } from "justdom-signal";
 
 /**
  * One portal's claim on frame time, as the scheduler sees it.

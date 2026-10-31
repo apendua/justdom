@@ -1,5 +1,5 @@
 {
-  "name": "@apendua.dev/castle-xr",
+  "name": "castle-xr",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,14 +13,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@apendua.dev/headset": "workspace:*",
     "@apendua.dev/media": "workspace:*",
-    "@apendua.dev/sound": "workspace:*",
-    "@apendua/freedom": "workspace:*",
-    "@apendua/justdom": "workspace:*",
-    "@apendua/justui": "workspace:*",
-    "@apendua/signal": "workspace:*",
-    "@apendua/vite-hmr": "workspace:*",
+    "@apendua/sound": "workspace:*",
     "@dimforge/rapier3d": "~0.19.3",
     "@types/lodash": "^4.17.20",
     "@types/node": "^24.7.0",
@@ -29,6 +23,12 @@
     "@vite-pwa/assets-generator": "^1.0.1",
     "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
+    "justdom": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
+    "justdom-three-ui": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
+    "justdom-xr": "workspace:*",
     "lodash": "^4.17.21",
     "stats.js": "^0.17.0",
     "three": "~0.185.0",

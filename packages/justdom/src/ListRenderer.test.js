@@ -1,12 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BehaviorSubject } from "rxjs";
-import { each, just, map, use } from "@apendua/signal";
+import { each, just, map, use } from "justdom-signal";
 import { replaceSegment, toSegment } from "./helpers.js";
 import ListRenderer from "./ListRenderer.js";
 
 /**
- * @import {EntityEffect} from "@apendua/signal"
+ * @import {EntityEffect} from "justdom-signal"
  * @import {Mountable, Container} from "./types.js"
  */
 
@@ -185,7 +185,7 @@ const renderer = new ListRenderer({
 
 /**
  * @template {Node} T
- * @param {Array<import("@apendua/signal").Subscribable<Mountable>>} children
+ * @param {Array<import("justdom-signal").Subscribable<Mountable>>} children
  * @returns {EntityEffect<T>}
  */
 function children(...children) {
@@ -205,8 +205,8 @@ function children(...children) {
 
 /**
  * @template T
- * @param {import("@apendua/signal").Subscribable<Array<T>>} items
- * @param {(item: T) => import("@apendua/signal").Subscribable<Mountable>} renderItem
+ * @param {import("justdom-signal").Subscribable<Array<T>>} items
+ * @param {(item: T) => import("justdom-signal").Subscribable<Mountable>} renderItem
  */
 function list(items, renderItem) {
   return renderer.renderList(items, (item) => item, renderItem);
@@ -243,7 +243,7 @@ function cloneNode(node) {
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
- * @returns {import("@apendua/signal").Source<Mountable>}
+ * @returns {import("justdom-signal").Source<Mountable>}
  */
 function $(tag, effects = []) {
   return map((/** @type {HTMLElementTagNameMap[Tag]} */ node) => toMountable(node))(
@@ -252,7 +252,7 @@ function $(tag, effects = []) {
 }
 
 /**
- * @param {import("@apendua/signal").Subscribable<Mountable>} component
+ * @param {import("justdom-signal").Subscribable<Mountable>} component
  */
 function inspectHTML(component) {
   const container = document.createElement("body");

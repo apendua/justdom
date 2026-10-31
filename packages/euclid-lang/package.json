@@ -1,5 +1,5 @@
 {
-  "name": "@apendua.dev/euclid-lang",
+  "name": "@apendua/euclid-lang",
   "version": "0.1.0",
   "private": true,
   "description": "The euclid construction language: tokenizer, parser, interpreter and code editing helpers",
@@ -27,7 +27,7 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua.dev/euclid-core": "workspace:*"
+    "@apendua/euclid-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.7.0",

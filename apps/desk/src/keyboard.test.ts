@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { typeIntoInput } from "@apendua/freedom";
+import { typeIntoInput } from "justdom-three";
 import { mountKeyboard } from "./keyboard.js";
 
 function board() {

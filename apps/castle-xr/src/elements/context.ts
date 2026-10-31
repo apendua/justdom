@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createProperty } from "@apendua/signal";
+import { createProperty } from "justdom-signal";
 import type CastleStore from "../store/CastleStore.js";
 import type Session from "../store/Session.js";
 

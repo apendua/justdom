@@ -18,8 +18,8 @@
 import { join } from "node:path";
 import { APPS, REPO, chosenApps } from "./emulatorApps.mjs";
 
-const DRAWS = join(REPO, "packages/freedom/src/test/paintOrderDraws.js");
-const COUNTER = join(REPO, "packages/freedom/src/test/paintOrderCount.js");
+const DRAWS = join(REPO, "packages/three/src/test/paintOrderDraws.js");
+const COUNTER = join(REPO, "packages/three/src/test/paintOrderCount.js");
 
 /** How many frames each page's draws are averaged over. */
 const FRAMES = 60;

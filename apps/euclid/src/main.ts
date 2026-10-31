@@ -1,8 +1,8 @@
-import { children } from "@apendua/justdom";
-import { just } from "@apendua/signal";
+import { children } from "justdom";
+import { just } from "justdom-signal";
 import "./index.css";
 import EuclidApp from "./components/EuclidApp";
-import { offerHeadset } from "@apendua.dev/headset/offer";
+import { offerHeadset } from "justdom-xr/offer";
 import AppStore from "./store/App";
 
 const toolbar = document.querySelector<HTMLDivElement>("#toolbar");

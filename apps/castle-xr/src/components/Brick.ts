@@ -9,8 +9,8 @@ import {
   emit,
   component,
   onCleanup,
-} from "@apendua/signal";
-import { $, children, drag, interactions, Nothing, XREventMap } from "@apendua/freedom";
+} from "justdom-signal";
+import { $, children, drag, interactions, Nothing, XREventMap } from "justdom-three";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";
 import {

@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Effect } from "@apendua/signal";
+import { Effect } from "justdom-signal";
 import {
   CameraContext,
   createControllerHandle,

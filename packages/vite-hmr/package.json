@@ -1,7 +1,7 @@
 {
-  "name": "@apendua/vite-hmr",
+  "name": "justdom-vite-hmr",
   "version": "0.5.0",
-  "description": "A Vite plugin that preserves @apendua/signal component state across hot module reloads",
+  "description": "A Vite plugin that preserves justdom-signal component state across hot module reloads",
   "keywords": [
     "vite",
     "vite-plugin",
@@ -11,7 +11,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/apendua/apendua.dev.git",
+    "url": "git+https://github.com/apendua/justdom.git",
     "directory": "packages/vite-hmr"
   },
   "license": "MIT",
@@ -43,7 +43,7 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "@apendua/signal": "workspace:*"
+    "justdom-signal": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.7.0",
@@ -56,7 +56,6 @@
     "vite": "^6.0.1"
   },
   "publishConfig": {
-    "access": "restricted",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }

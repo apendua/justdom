@@ -11,15 +11,7 @@
  * player's hands. The game is won when every brick is lying on the ground.
  */
 import * as THREE from "three";
-import {
-  children,
-  keyedList,
-  Nothing,
-  $,
-  getXRSession,
-  useFrame,
-  getCamera,
-} from "@apendua/freedom";
+import { children, keyedList, Nothing, $, getXRSession, useFrame, getCamera } from "justdom-three";
 import {
   batch,
   component,
@@ -31,7 +23,7 @@ import {
   set,
   store,
   useEffect,
-} from "@apendua/signal";
+} from "justdom-signal";
 import * as RAPIER from "@dimforge/rapier3d";
 import Grid from "./Grid.js";
 import Brick from "./Brick.js";
@@ -40,7 +32,7 @@ import Projectile from "./Projectile.js";
 import Slingshot from "./Slingshot.js";
 import { brickShape, BrickType } from "./types.js";
 import { CastleContext, ListenerContext, SessionContext } from "../elements/context.js";
-import { createClicks } from "@apendua.dev/sound";
+import { createClicks } from "@apendua/sound";
 import { useAsWorldOrigin, useSimulation } from "../elements/rapier.js";
 import { align, QUARTER_TURN, snapToHorizontalAxis, turn, upAxis } from "../utils/rotations.js";
 import { neutralLatch, readStick, StickLatch, stepStick } from "../utils/thumbstick.js";

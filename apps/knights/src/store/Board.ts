@@ -1,4 +1,4 @@
-import { memo, mutate, store } from "@apendua/signal";
+import { memo, mutate, store } from "justdom-signal";
 import {
   ANIMATION_KNOCKOUT,
   ANIMATION_WALK,

@@ -1,14 +1,5 @@
-import {
-  attr,
-  className,
-  text,
-  $,
-  children,
-  style,
-  stylesheet,
-  CLASS_NAME,
-} from "@apendua/justdom";
-import { store, on, set, emit, Op, component } from "@apendua/signal";
+import { attr, className, text, $, children, style, stylesheet, CLASS_NAME } from "justdom";
+import { store, on, set, emit, Op, component } from "justdom-signal";
 
 // While a row is dragged, the slot it would land in is marked by turning
 // the divider above it blue (see `TodoApp`), and the row being carried fades

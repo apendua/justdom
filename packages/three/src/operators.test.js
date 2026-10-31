@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { just, onCleanup, Signal } from "@apendua/signal";
+import { just, onCleanup, Signal } from "justdom-signal";
 import { layoutEffects } from "./operators.js";
 
 /**

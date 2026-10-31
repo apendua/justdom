@@ -1,4 +1,4 @@
-# @apendua/signal
+# justdom-signal
 
 A dependency-tracked reactive library with a **pull-based core** and an explicit split between the
 three things a reactive graph actually does.
@@ -23,7 +23,7 @@ identity, kept for the call sites that like to say what the function is for.
 ## Installation
 
 ```
-npm install @apendua/signal
+npm install justdom-signal
 ```
 
 `rxjs` is a runtime dependency.
@@ -31,7 +31,7 @@ npm install @apendua/signal
 ## Usage
 
 ```js
-import { Signal, Derived, Effect, batch } from "@apendua/signal";
+import { Signal, Derived, Effect, batch } from "justdom-signal";
 
 const count = Signal.of(0);
 const doubled = new Derived(() => count.get() * 2);
@@ -88,7 +88,7 @@ an **effect**, work goes out through an **effect**. Nothing crosses in the middl
 makes the depth problem of the old core impossible to reintroduce.
 
 ```js
-import { fromObservable, toObservable, toEffect } from "@apendua/signal";
+import { fromObservable, toObservable, toEffect } from "justdom-signal";
 
 const incoming = fromObservable(subject); // a Derived fed by a source
 const outgoing = toObservable(derived); // an Effect per subscriber, pushing values
@@ -99,7 +99,7 @@ const work = toEffect(() => sync(el, x.get())); // an Effect per subscriber, pus
 and touches the world, wrapped as something an RxJS pipeline can subscribe to and unsubscribe from.
 It is what `rxEffects()` is built on, and what a `Derived` used to be misused as.
 
-`rx()` and `rxEffects()` live on the `@apendua/signal/rxjs` subpath, which is where everything
+`rx()` and `rxEffects()` live on the `justdom-signal/rxjs` subpath, which is where everything
 RxJS-shaped now lives: `rx(source)` carries a `Source` into an RxJS pipeline, and `rxEffects(fn)` is
 an ordinary RxJS operator that mounts an entity effect on each value. The package root names no RxJS
 type.
@@ -144,7 +144,7 @@ An effect belongs to an `UpdateChannel`, which decides when its queue drains and
 spend:
 
 ```js
-import { Effect, UpdateChannel, withChannel } from "@apendua/signal";
+import { Effect, UpdateChannel, withChannel } from "justdom-signal";
 
 const frame = new UpdateChannel({
   name: "presentation",

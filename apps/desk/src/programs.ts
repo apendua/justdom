@@ -4,7 +4,7 @@
  */
 export const PROGRAMS: Readonly<Record<string, string>> = {
   "DESK.JS": `// desk.js - everything on this desk is a <div>
-import { dom, render } from "@apendua/freedom";
+import { dom, render } from "justdom-three";
 
 const things = ["charts", "monitor", "board", "memo"];
 

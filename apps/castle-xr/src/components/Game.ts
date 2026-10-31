@@ -1,10 +1,10 @@
 /**
  * The board: building the castle, and then knocking it down.
  *
- * Building follows marblerun — a tray of bricks, a drag that shows the brick
- * itself at the pose it would land in, the thumbstick for the turns a wrist
- * cannot comfortably reach — with the port snapping replaced by the half grid,
- * because a castle is stacked rather than plugged together.
+ * Building is a tray of bricks, a drag that shows the brick itself at the
+ * pose it would land in, the thumbstick for the turns a wrist cannot
+ * comfortably reach, and a half grid to snap to, because a castle is stacked
+ * rather than plugged together.
  *
  * The siege is the same board with the bricks handed over to Rapier: they stop
  * being fixed scenery and become dynamic bodies, and a slingshot appears in the

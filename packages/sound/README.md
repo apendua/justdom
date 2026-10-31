@@ -1,10 +1,10 @@
 # @apendua/sound
 
-The noises the demos make. Internal to this repo, and not published.
+The noises the demos make, published as `@apendua/sound`.
 
-`@apendua.dev/media` is the other half of the same subject and holds the files — the soundtracks the
-apps stream. This one holds the sounds that are cheaper to compute than to fetch, and the three.js
-plumbing that puts them somewhere in the room rather than in the middle of your head.
+The soundtracks are not here: they are files, and they belong to the apps that stream them. This
+package holds the sounds that are cheaper to compute than to fetch, and the three.js plumbing that
+puts them somewhere in the room rather than in the middle of your head.
 
 ```
 rush build --to @apendua/sound

@@ -4,7 +4,7 @@ What every app with a headset session repeats, kept in one place: the emulated h
 `?emulator`, the offer of a session to a page that can have one, freedom's theming mode behind
 `?theming` and its outlines mode behind `?outlines`, whether the platform can present at all, the
 session a page reads for the controls that only make sense in a headset, and what a scene draws
-round the panels: the backdrop, and the controller and hand models. Private to this repository.
+round the panels: the backdrop, and the controller and hand models.
 
 It has five entries for a page and no index, so that an app importing one does not pull in the
 others. The emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be

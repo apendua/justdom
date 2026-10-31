@@ -19,6 +19,10 @@ jsdom has no pointer events, so the window gets a stand-in for them: a `PointerE
 the window knows of is the mouse's, whose id is 1, so capturing or releasing any other throws a
 `NotFoundError`, as a browser does for a pointer it has no record of.
 
+`canvas` is a dependency although nothing here imports it. It is jsdom's optional peer, and without
+it `HTMLCanvasElement.getContext("2d")` returns `null`. justdom-three measures text through that
+context, so 73 of its tests fail when `canvas` is missing.
+
 ## Usage
 
 Point `--import` at a module that calls it, so the globals exist before any test file is evaluated:

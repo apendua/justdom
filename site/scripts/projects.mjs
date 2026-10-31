@@ -9,6 +9,13 @@ import { fileURLToPath } from "node:url";
 export const site = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** The repository's root. */
 export const root = join(site, "..");
+/**
+ * The screenshots scripts/screenshots.mjs takes, which the site serves at
+ * /screenshots/.
+ */
+export const screenshots = join(site, "public", "screenshots");
+/** The window each demo's screenshot is taken in, and so the image's size. */
+export const demoViewport = { width: 1280, height: 800 };
 
 /**
  * Reads a JSON file that may hold comments, as rush.json does.

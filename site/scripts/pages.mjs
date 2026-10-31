@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
-import { demos, projects, readJson, root, site } from "./projects.mjs";
+import { demos, demoViewport, projects, readJson, root, screenshots, site } from "./projects.mjs";
 
 /** Where a link to a file the site does not render goes instead. */
 export const repositoryUrl = "https://github.com/apendua/justdom";
@@ -94,6 +94,35 @@ export function readmeSummary(markdown) {
     .replace(/\s*\n\s*/g, " ")
     .trim();
   return { title, summary: summary || undefined };
+}
+
+/**
+ * The lines under a demo's heading on the demos page: its screenshot, when
+ * scripts/screenshots.mjs has taken one, then the links to the demo and to its
+ * source. The screenshot opens the demo too.
+ *
+ * Both links to the demo are plain anchors with a target, so that VitePress's
+ * router leaves them to the browser: the demo is a page of its own, not one
+ * of the site's.
+ *
+ * @param {{ slug: string, title: string, folder: string }} demo
+ * @param {boolean} screenshot whether public/screenshots/demos/<slug>.webp exists
+ * @returns {string[]}
+ */
+export function demoLinks(demo, screenshot) {
+  const href = `/demos/${demo.slug}/`;
+  return [
+    ...(screenshot
+      ? [
+          `<a href="${href}" target="_self"><img src="/screenshots/demos/${demo.slug}.webp" ` +
+            `alt="${demo.title.replace(/"/g, "&quot;")}" width="${demoViewport.width}" height="${demoViewport.height}" loading="lazy"></a>`,
+          "",
+        ]
+      : []),
+    `<a href="${href}" target="_self">Open the demo</a> · ` +
+      `[Source](${repositoryUrl}/tree/develop/${demo.folder})`,
+    "",
+  ];
 }
 
 /** @param {string} path relative to the root */
@@ -189,11 +218,7 @@ function main() {
         `## ${demo.title}`,
         "",
         ...(demo.summary ? [demo.summary, ""] : []),
-        // A plain anchor with a target, so that VitePress's router leaves it
-        // to the browser: the demo is a page of its own, not one of the site's.
-        `<a href="/demos/${demo.slug}/" target="_self">Open the demo</a> · ` +
-          `[Source](${repositoryUrl}/tree/develop/${demo.folder})`,
-        "",
+        ...demoLinks(demo, existsSync(join(screenshots, "demos", `${demo.slug}.webp`))),
       ]),
     ].join("\n"),
   );

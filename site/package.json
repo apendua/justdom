@@ -14,6 +14,7 @@
     "build:watch": "",
     "dev": "node scripts/pages.mjs && vitepress dev",
     "preview": "vitepress preview",
+    "screenshots": "node scripts/screenshots.mjs",
     "test": "node --test \"scripts/*.test.mjs\""
   },
   "devDependencies": {
@@ -23,6 +24,7 @@
     "euclid": "workspace:*",
     "knights": "workspace:*",
     "minesweeper": "workspace:*",
+    "playwright-core": "^1.56.0",
     "showcase-xr": "workspace:*",
     "todo-vanilla": "workspace:*",
     "vitepress": "1.6.4"

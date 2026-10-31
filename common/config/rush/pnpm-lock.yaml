@@ -749,6 +749,9 @@ importers:
       minesweeper:
         specifier: workspace:*
         version: link:../apps/minesweeper
+      playwright-core:
+        specifier: ^1.56.0
+        version: 1.64.1
       showcase-xr:
         specifier: workspace:*
         version: link:../apps/showcase-xr

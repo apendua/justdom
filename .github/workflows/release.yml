@@ -104,18 +104,13 @@ jobs:
             echo
             cat "$RUNNER_TEMP/versions.md"
             echo
-            echo "**Merge this with a merge commit, not a squash or a rebase.** The commit is"
-            echo "marked \`[skip ci]\` so that a version bump does not cost a full build. A merge"
-            echo "commit keeps that marker out of develop's head; a squash or rebase would put"
-            echo "it there, and GitHub would skip every workflow for that push."
-            echo
             echo "Nothing is published by merging. Publish from your own machine afterwards,"
             echo "as the README's \"Releasing\" section says."
           } > "$RUNNER_TEMP/pr-body.md"
 
           git checkout -B "$RELEASE_BRANCH"
           git add --all
-          git commit -m "Bump package versions and update changelogs [skip ci]"
+          git commit -m "Bump package versions and update changelogs"
           # Force, because the branch is regenerated from develop on every run
           # rather than accumulating commits.
           git push --force -u origin "$RELEASE_BRANCH"

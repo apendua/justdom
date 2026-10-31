@@ -99,18 +99,23 @@ export function readmeSummary(markdown) {
 /**
  * The lines under a demo's heading on the demos page: its screenshot, when
  * scripts/screenshots.mjs has taken one, then the links to the demo and to its
- * source. The screenshot opens the demo too.
+ * source. The screenshot opens the demo too. A demo that draws a headset
+ * session also gets a link that opens it in a new tab under `?emulator`, so
+ * it can be played without a headset.
  *
- * Both links to the demo are plain anchors with a target, so that VitePress's
+ * The links to the demo are plain anchors with a target, so that VitePress's
  * router leaves them to the browser: the demo is a page of its own, not one
  * of the site's.
  *
- * @param {{ slug: string, title: string, folder: string }} demo
+ * @param {{ slug: string, title: string, folder: string, headset: boolean }} demo
  * @param {boolean} screenshot whether public/screenshots/demos/<slug>.webp exists
  * @returns {string[]}
  */
 export function demoLinks(demo, screenshot) {
   const href = `/demos/${demo.slug}/`;
+  const emulated = demo.headset
+    ? `<a href="${href}?emulator" target="_blank" rel="noopener">Play in a tab with an emulated headset</a> · `
+    : "";
   return [
     ...(screenshot
       ? [
@@ -120,6 +125,7 @@ export function demoLinks(demo, screenshot) {
         ]
       : []),
     `<a href="${href}" target="_self">Open the demo</a> · ` +
+      emulated +
       `[Source](${repositoryUrl}/tree/develop/${demo.folder})`,
     "",
   ];
@@ -195,7 +201,16 @@ function main() {
       const { title, summary } = existsSync(readme)
         ? readmeSummary(readFileSync(readme, "utf8"))
         : { title: undefined, summary: undefined };
-      return { folder, slug: project.slug, title: title ?? fallback ?? folder, summary };
+      // A demo that draws a headset session does it with justdom-xr, whose
+      // emulator every such demo installs behind `?emulator`.
+      const { dependencies = {} } = readJson(join(root, folder, "package.json"));
+      return {
+        folder,
+        slug: project.slug,
+        title: title ?? fallback ?? folder,
+        summary,
+        headset: "justdom-xr" in dependencies,
+      };
     })
     .sort((a, b) => a.title.localeCompare(b.title));
 
@@ -210,7 +225,8 @@ function main() {
       "# Demos",
       "",
       "Each demo is a full app built on these packages. The ones that draw a headset session",
-      "open in a browser too, with an emulated headset behind `?emulator`.",
+      "open in a browser too, with an emulated headset behind `?emulator`: the link to play one",
+      "in a tab opens it that way.",
       "",
       ...served.flatMap((demo) => [
         // The heading is plain text, since VitePress makes its permalink's

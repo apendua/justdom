@@ -70,12 +70,12 @@ been installed. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chro
 package it imports, other than in docs, unit tests or benchmarks, runs it, with minesweeper's, the
 desk's and Euclid's, from `.github/workflows/driven.yml`.
 
-| File                      | What it is                                                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `justdom-xr/offer`, which loads `xr.ts` only where one can open.                       |
-| `src/xr.ts`               | Makes the renderer with freedom's SVG plugin and the controller and hand models from this app's origin, follows `?theming` and `?outlines`, and adds the Enter button. |
-| `src/components/Scene.ts` | The panel, `justdom-xr/scene`'s backdrop, lights and the cursors.                                                                                                      |
-| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                             |
+| File                      | What it is                                                                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`             | Mounts the game into `#root`, then offers a session through `offerHeadset` from `justdom-xr/offer`, which loads `xr.ts` only where one can open.                                            |
+| `src/xr.ts`               | Makes the renderer with `justdom-three`'s SVG plugin and the controller and hand models from `justdom-xr`'s `inputModels()`, follows `?theming` and `?outlines`, and adds the Enter button. |
+| `src/components/Scene.ts` | The panel, `justdom-xr/scene`'s backdrop, lights and the cursors.                                                                                                                           |
+| `src/placement.ts`        | Where the panel hangs, in plain numbers, shared with `tests/xr-check.mjs`.                                                                                                                  |
 
 ## How it is put together
 

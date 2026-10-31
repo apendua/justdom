@@ -4,10 +4,10 @@
  * in cannot drift apart.
  *
  * The dress is parchment and bronze: plaque-like cards with squared corners,
- * titles in the browser's serif capitals over a ruled line, and readings in
- * its sans-serif. The buttons are the one deliberately different
- * shape — full pills, dark oak with a gilt rim — so the things that can be
- * pressed are told from the things that can only be read at a glance.
+ * titles in the browser's serif capitals over a ruled line, and readings in its
+ * sans-serif. The buttons are the one deliberately different shape — full
+ * pills, dark oak with a gilt rim — so the things that can be pressed are told
+ * from the things that can only be read at a glance.
  *
  * Everything here is drawn by the portal's mirror, which speaks solid colours,
  * borders, corner radii and text — no gradients and no shadows — so the whole

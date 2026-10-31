@@ -44,7 +44,7 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   // A tracked hand points and pinches without a model of its own, so there
   // is none: three's hand models fetch theirs when the hand connects, and
   // one that lands after the hand was replaced hangs in the room (see
-  // apps/paperwings-xr/src/hands.ts).
+  // apps/paperwings-xr/src/hands.ts in apendua.dev).
   const controllerModelFactory = new XRControllerModelFactory();
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);

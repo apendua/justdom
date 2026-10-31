@@ -141,10 +141,10 @@ for (const { folder, to, publish } of packages) {
 const rushJson = join(root, "rush.json");
 const rush = readFileSync(rushJson, "utf8");
 const entries = packages.map(({ folder, to, publish }) => ({
-    packageName: to,
-    projectFolder: folder,
-    ...(publish ? { versionPolicyName: "publishable" } : {}),
-  }));
+  packageName: to,
+  projectFolder: folder,
+  ...(publish ? { versionPolicyName: "publishable" } : {}),
+}));
 // Written as Prettier prints it on commit, so that a second run leaves
 // rush.json as the first run's commit has it: an entry on one line when that
 // line, comma included, fits in 100 columns, and one field per line when not.

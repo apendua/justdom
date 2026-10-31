@@ -1,0 +1,149 @@
+# Prepares a release and stops there. It applies the change files that have
+# accumulated under common/changes/ with `rush version --bump` and opens the
+# version bump pull request. It never publishes and holds no npm token: npm
+# asks the account's second factor on every publish, so the publish runs from
+# the maintainer's machine once the bump pull request is merged. The README's
+# "Releasing" section has the commands.
+name: Release
+on:
+  workflow_dispatch:
+  push:
+    branches: ["develop"]
+    # Merging work that carries a change file gives the bump something to
+    # apply. Merging the bump pull request deletes them, and the run that
+    # follows finds nothing to do. A push that touches no change file has
+    # nothing for this workflow at all.
+    paths:
+      - "common/changes/**"
+      - ".github/workflows/release.yml"
+
+# Two runs must never interleave: the second would regenerate the bump branch
+# while the first is still pushing it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    # workflow_dispatch can be started from any branch, but a bump only makes
+    # sense against develop.
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      RELEASE_BRANCH: release/version-bump
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # GitHub rejects a branch pushed out of a shallow clone
+          # ("shallow update not allowed"), and this job pushes one.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Configure the Git identity
+        # "rush version" reads user.email before it does anything else, and
+        # the bump commit is authored here.
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Apply the pending change files
+        id: bump
+        # No "--target-branch": "rush version" then only rewrites package.json
+        # and the changelogs on disk and skips every Git operation, which
+        # leaves the result for the pull request below rather than pushing it
+        # straight to develop.
+        run: |
+          node common/scripts/install-run-rush.js version --bump
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No pending change files, so there is nothing to bump." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Open the version bump pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The version changes, as a table. Change files of bump type "none"
+          # only add changelog entries, so the table is sometimes empty.
+          node -e '
+            const fs = require("node:fs");
+            const { execFileSync } = require("node:child_process");
+            const files = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" })
+              .split("\n")
+              .filter((file) => file.endsWith("/package.json"));
+            const rows = [];
+            for (const file of files) {
+              const after = JSON.parse(fs.readFileSync(file, "utf8"));
+              const before = JSON.parse(
+                execFileSync("git", ["show", "HEAD:" + file], { encoding: "utf8" })
+              );
+              if (before.version !== after.version) {
+                rows.push("| `" + after.name + "` | " + before.version + " | " + after.version + " |");
+              }
+            }
+            if (rows.length) {
+              console.log("| Package | From | To |");
+              console.log("| --- | --- | --- |");
+              console.log(rows.join("\n"));
+            } else {
+              console.log("No version changes: every pending change file is of bump type `none`, so this only regenerates the changelogs.");
+            }
+          ' > "$RUNNER_TEMP/versions.md"
+
+          {
+            echo "Applies the change files that accumulated under \`common/changes/\` and"
+            echo "regenerates the changelogs. Opened by the Release workflow."
+            echo
+            cat "$RUNNER_TEMP/versions.md"
+            echo
+            echo "**Merge this with a merge commit, not a squash or a rebase.** The commit is"
+            echo "marked \`[skip ci]\` so that a version bump does not cost a full build. A merge"
+            echo "commit keeps that marker out of develop's head; a squash or rebase would put"
+            echo "it there, and GitHub would skip every workflow for that push."
+            echo
+            echo "Nothing is published by merging. Publish from your own machine afterwards,"
+            echo "as the README's \"Releasing\" section says."
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          git checkout -B "$RELEASE_BRANCH"
+          git add --all
+          git commit -m "Bump package versions and update changelogs [skip ci]"
+          # Force, because the branch is regenerated from develop on every run
+          # rather than accumulating commits.
+          git push --force -u origin "$RELEASE_BRANCH"
+
+          pr="$(gh pr list --head "$RELEASE_BRANCH" --base develop --state open \
+            --json number --jq '.[0].number')"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --body-file "$RUNNER_TEMP/pr-body.md"
+            url="$(gh pr view "$pr" --json url --jq .url)"
+          elif ! url="$(gh pr create --base develop --head "$RELEASE_BRANCH" \
+            --title "Release: apply change files and bump versions" \
+            --body-file "$RUNNER_TEMP/pr-body.md")"; then
+            # GITHUB_TOKEN may not open pull requests unless "Allow GitHub
+            # Actions to create and approve pull requests" is enabled, and
+            # that setting is off by default. The branch is pushed by now, so
+            # say which one step is missing and how to finish it by hand.
+            compare="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/develop...${RELEASE_BRANCH}?expand=1"
+            echo "::error::Could not open the version bump pull request. Enable" \
+              "'Allow GitHub Actions to create and approve pull requests' under" \
+              "Settings > Actions > General > Workflow permissions and re-run" \
+              "this workflow, or open it by hand: ${compare}"
+            exit 1
+          fi
+
+          {
+            echo "### Version bump pull request"
+            echo
+            echo "$url"
+            echo
+            cat "$RUNNER_TEMP/versions.md"
+          } >> "$GITHUB_STEP_SUMMARY"

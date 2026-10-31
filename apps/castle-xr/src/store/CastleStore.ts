@@ -4,8 +4,8 @@
  *
  * A brick's entry is a reactive store of its own, so moving one redraws that
  * brick and nothing else. Changes are recorded as what the brick looked like
- * before and after, which is enough to walk either way — the same trick
- * marblerun uses, and the reason placing, moving and removing all funnel
+ * before and after, which is enough to walk either way, and that is why
+ * placing, moving and removing all funnel
  * through here rather than touching the map directly.
  */
 import * as THREE from "three";

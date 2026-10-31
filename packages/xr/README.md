@@ -38,7 +38,7 @@ check scripts drive the headset and controllers in headless Chromium.
 - `keyMap` moves the dev UI's controllers to other keys, by hand and by the dev UI's name for the
   input (`thumbstick-up`, `trigger`, `squeeze`, `pose`, ...). Its defaults are WASD, the arrow keys
   and Q/E/R, so a game that listens to those on a desktop gets every press twice in the dev UI's
-  play mode. `kite-xr` and `blockout-xr` each pass one, from their `src/emulatorKeys.ts`.
+  play mode.
 
 Installing it also answers WebGL's three clear-state queries from a shadow kept by `clearColor`,
 `clearDepth` and `clearStencil` (`src/clearState.js`). IWER reads them around its own clear every
@@ -46,7 +46,7 @@ frame, and each read is a pipeline sync that stalls the emulated session for as 
 takes to finish the frame. Nothing on a headset runs it.
 
 Import it lazily, as above, so that it lands in a chunk of its own, named `emulator-<hash>.js`. A
-service worker that precaches the app should leave that chunk out; `hexboard-xr` and `paperwings-xr`
+service worker that precaches the app should leave that chunk out; `minesweeper` and `todo-vanilla`
 do it with `globIgnores: ["**/emulator-*.js"]`.
 
 ## `justdom-xr/offer`
@@ -116,7 +116,7 @@ rules edited, added or switched off in the browser's developer tools, which they
 "Stylesheets" in freedom's README says what it reads and what that costs. The apps never turn it
 off, so it stays on for the life of the page. Every app built on freedom calls it next to where it
 reads `?emulator`, or where it calls `render()` when the module that reads `?emulator` imports
-nothing from three.js. `paperwings-xr` calls it in its labs edition only.
+nothing from three.js.
 
 `followOutlinesQuery(query)` is the same switch for freedom's `enableOutlinesMode()` and
 `?outlines`: every panel outlines the elements that change, and the ones the mirror measures again

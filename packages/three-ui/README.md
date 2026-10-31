@@ -319,9 +319,9 @@ and presses every key by ray — the argument for the whole package, checked.
 
 [`apps/todo-vanilla`](../../apps/todo-vanilla) scrolls its list with `scrollable` on the page and in
 the headset alike, and dresses the keyboard freedom's portal offers its text field;
-[`apps/rubik`](../../apps/rubik), [`apps/castle-xr`](../../apps/castle-xr),
-[`apps/marblerun`](../../apps/marblerun) and the rest of the headset apps pick an audio output with
-the dropdown and carry the diagnostics button in their own panels.
+[`apps/castle-xr`](../../apps/castle-xr) picks an audio output with the dropdown and carries the
+diagnostics button in its own panel; [`apps/euclid`](../../apps/euclid)'s toolbar uses the dropdown
+too.
 
 ## License
 

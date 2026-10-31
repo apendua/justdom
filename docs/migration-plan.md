@@ -16,7 +16,9 @@ wins.
   other consumer.
 - **The demos move with the library.** The eight apps that apendua.dev lists as announced demos
   (the `announced` list in its `.github/deployed-apps.json`) come here. `desk` tests freedom more
-  than any other app, and the labs games are not needed to validate it.
+  than any other app, and the labs games are not needed to validate it. `apps/signal-ssr` comes
+  too, renamed `todo-ssr`: it is the server-rendering example for `justdom` and `justdom-signal`,
+  and it uses nothing else.
 - **Everything public lives here.** apendua.dev publishes nothing after the move, and there is no
   third repository. One Rush setup publishes two name families: unscoped `justdom-*` for the
   library and `@apendua/*` for packages that are not about justdom. GitHub Packages is retired.
@@ -86,6 +88,10 @@ With the profiles gone, nothing third-party is vendored, so there are no asset l
 | `minesweeper`  | headset, geometry                            |
 | `showcase-xr`  | headset                                      |
 | `todo-vanilla` | headset                                      |
+| `todo-ssr`     | jsdom-env, express                           |
+
+`todo-ssr`, today `apps/signal-ssr`, is an express server, so GitHub Pages cannot host it. It is an
+example to run locally, not a demo on the site, as it is not deployed from apendua.dev either.
 
 ## The site
 
@@ -144,10 +150,10 @@ Before the site can go live:
 8. **Cut over apendua.dev.** The labs apps switch from `workspace:*` to npm ranges under the new
    names. The moved directories are deleted, the `publishable` version policy, `release.yml` and the
    GitHub Packages mapping in `.npmrc-publish` are removed, and `provenance.yml` stops listing the
-   moved package paths. Removing the eight apps from `announced` in `.github/deployed-apps.json`
-   fails `pages/apendua/src/content/deployed-apps.test.ts` until
-   `pages/apendua/src/content/demos.ts` drops or relinks their entries, which is the linking
-   question under Still open.
+   moved package paths. `signal-ssr` leaves the `notDeployed` list. Removing the eight apps from
+   `announced` in `.github/deployed-apps.json` fails
+   `pages/apendua/src/content/deployed-apps.test.ts` until `pages/apendua/src/content/demos.ts`
+   drops or relinks their entries, which is the linking question under Still open.
 9. **Retire the old names.** The `@apendua/*` versions on GitHub Packages are deprecated with a
    pointer to their npm names.
 10. **Make this repository public**, then decide whether to write to npm support about `@justdom`.
@@ -155,8 +161,8 @@ Before the site can go live:
 ## Still open
 
 - The names `justdom-xr` and `justdom-vite-hmr`.
-- Whether `@apendua/jsdom-env` is published. If it is not, `apps/signal-ssr`, which stays in
-  apendua.dev and dev-depends on it, needs its own copy or loses its tests.
+- Whether `@apendua/jsdom-env` is published. Once `signal-ssr` moves as `todo-ssr`, nothing in
+  apendua.dev uses it, so it can also stay a private workspace package here.
 - Whether apendua.dev's demo page links to the demos at justdom.dev once they leave its own site.
 - Whether `rush publish` passes npm's second-factor prompt through for each package. If it does
   not, a short script runs `npm publish --otp` per package instead. The first release settles it.

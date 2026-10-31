@@ -2,6 +2,11 @@
   "name": "todo-vanilla",
   "version": "0.2.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "apps/todo-vanilla"
+  },
   "scripts": {
     "build": "npm run test && npm run compile && vite build",
     "build:watch": "",

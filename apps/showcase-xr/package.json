@@ -2,6 +2,11 @@
   "name": "showcase-xr",
   "version": "1.0.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "apps/showcase-xr"
+  },
   "type": "module",
   "scripts": {
     "bench": "node bench/run.js",

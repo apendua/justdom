@@ -2,6 +2,11 @@
   "name": "castle-xr",
   "version": "0.1.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "apps/castle-xr"
+  },
   "scripts": {
     "build": "npm run test && npm run compile && vite build",
     "build:watch": "",

@@ -112,19 +112,18 @@ for (const file of files) {
 for (const { folder, to, publish } of packages) {
   const manifest = join(root, folder, "package.json");
   const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.repository = {
+    type: "git",
+    url: "git+https://github.com/apendua/justdom.git",
+    directory: folder,
+  };
   if (publish) {
     delete pkg.private;
     if (typeof publish === "string") pkg.version = publish;
-    pkg.repository = {
-      type: "git",
-      url: "git+https://github.com/apendua/justdom.git",
-      directory: folder,
-    };
     pkg.publishConfig = { access: "public" };
   } else {
     pkg.private = true;
     delete pkg.publishConfig;
-    if (pkg.repository) pkg.repository.directory = folder;
   }
   pkg.name = to;
   writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
@@ -143,18 +142,29 @@ for (const { folder, to, publish } of packages) {
 // are gone, which is step 4 of the plan.
 const rushJson = join(root, "rush.json");
 const rush = readFileSync(rushJson, "utf8");
-const projects = packages
+const entries = packages
   .filter(({ folder }) => folder.startsWith("packages/"))
-  .map(({ folder, to, publish }) =>
-    JSON.stringify({
-      packageName: to,
-      projectFolder: folder,
-      ...(publish ? { versionPolicyName: "publishable" } : {}),
-    }),
-  );
+  .map(({ folder, to, publish }) => ({
+    packageName: to,
+    projectFolder: folder,
+    ...(publish ? { versionPolicyName: "publishable" } : {}),
+  }));
+// Written as Prettier prints it on commit, so that a second run leaves
+// rush.json as the first run's commit has it: an entry on one line when that
+// line, comma included, fits in 100 columns, and one field per line when not.
+const projects = entries.map((entry, index) => {
+  const fields = Object.entries(entry).map(([key, value]) => `"${key}": "${value}"`);
+  const comma = index < entries.length - 1 ? "," : "";
+  const line = `    { ${fields.join(", ")} }${comma}`;
+  return line.length <= 100
+    ? line
+    : `    {\n${fields.map((field) => `      ${field}`).join(",\n")}\n    }${comma}`;
+});
+// The list runs from its key to the bracket at its own indentation, so an
+// entry may hold arrays of its own.
 writeFileSync(
   rushJson,
-  rush.replace(/"projects": \[[^\]]*\]/, `"projects": [\n    ${projects.join(",\n    ")}\n  ]`),
+  rush.replace(/"projects": \[[\s\S]*?\n  \]/, `"projects": [\n${projects.join("\n")}\n  ]`),
 );
 
 console.log(`Rewrote ${rewritten} files and ${packages.length} package.json files.`);

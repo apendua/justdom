@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Euclidean geometry primitives on the complex projective plane",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/euclid-core"
+  },
   "author": "apendua",
   "type": "module",
   "exports": {

@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "The euclid construction language: tokenizer, parser, interpreter and code editing helpers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apendua/justdom.git",
+    "directory": "packages/euclid-lang"
+  },
   "author": "apendua",
   "type": "module",
   "exports": {

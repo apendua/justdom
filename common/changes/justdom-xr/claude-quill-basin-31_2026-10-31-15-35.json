@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Load the controller and hand models from three's default CDN; inputModels() takes no base",
+      "type": "none",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

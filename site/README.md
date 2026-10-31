@@ -3,6 +3,12 @@
 [VitePress](https://vitepress.dev) builds the site from the Markdown here, and the Pages workflow
 (`.github/workflows/pages.yml`) deploys it from `develop` to GitHub Pages.
 
+A pull request that changes the site, the demos, the packages or the Rush configuration gets a
+preview: `.github/workflows/ci.yml` deploys the build to the `justdom-dev` Cloudflare Pages project
+and comments its URL on the pull request. The run reads `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` from the repository's `staging` environment. A pull request from a fork gets
+no preview.
+
 Two folders are generated and ignored by Git. `scripts/pages.mjs` writes them, and `build` and `dev`
 run it first:
 

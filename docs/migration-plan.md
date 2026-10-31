@@ -28,6 +28,8 @@ wins.
   paths rather than copying files in one commit.
 - **Versions continue.** Each package keeps its current version number under its new name
   (`justdom-signal` starts at 1.0.0, `justdom-three` at 0.30.0, and so on).
+- **Publishing is done by hand.** GitHub Actions opens the version bump pull request and nothing
+  more. The publish itself runs from Tomasz's own machine after that pull request is merged.
 - **The public packages do not need to work offline.** The apps load the WebXR controller and hand
   models from three's default CDN instead of vendoring them.
 
@@ -116,9 +118,13 @@ Before the site can go live:
    `publishConfig` and `repository`, from the table above. It is mechanical, so it is a script and
    not a hand edit.
 4. **Drop the media dependencies**, as described under Packages.
-5. **Set up the build.** Rush config, `rush build`, `rush change --verify` in CI, and the release
-   workflow publishing to registry.npmjs.org with an `NPM_AUTH_TOKEN` secret. Start from the August
-   branch's versions of these files.
+5. **Set up the build.** Rush config, `rush build` and `rush change --verify` in CI, and a release
+   workflow that only prepares versions: it runs `rush version --bump` and opens the version bump
+   pull request, as apendua.dev's does today. It never runs `rush publish` and holds no npm token.
+   After the bump pull request is merged into `develop`, Tomasz publishes from his own machine
+   with `rush publish --publish --include-all --version-policy publishable`, since npm asks the
+   account's second factor on every publish. Start from the August branch's versions of these
+   files, minus its publish step and its `NPM_AUTH_TOKEN` secret.
 6. **Add the site** and its Pages workflow.
 7. **First release.** All public names go out in one sitting, so that nobody can take one in
    between.
@@ -133,4 +139,6 @@ Before the site can go live:
 
 - The names `justdom-xr` and `justdom-vite-hmr`, and whether `@apendua/jsdom-env` is published.
 - Whether apendua.dev's demo page links to the demos at justdom.dev once they leave its own site.
+- Whether `rush publish` passes npm's second-factor prompt through for each package. If it does
+  not, a short script runs `npm publish --otp` per package instead. The first release settles it.
 - Which of apendua.dev's design docs, review rules and visual tests come along, and in what form.

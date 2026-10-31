@@ -1,7 +1,7 @@
 {
   "changes": [
     {
-      "comment": "Moved from apendua.dev and renamed; first published to npm under this name",
+      "comment": "Renamed from `@apendua.dev/headset`, and moved from apendua.dev to the justdom repository",
       "type": "none",
       "packageName": "justdom-xr"
     }

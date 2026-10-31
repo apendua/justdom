@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Moved from apendua.dev and renamed; first published to npm under this name",
+      "type": "none",
+      "packageName": "@apendua/geometry"
+    }
+  ],
+  "packageName": "@apendua/geometry",
+  "email": "noreply@anthropic.com"
+}

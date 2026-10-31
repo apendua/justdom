@@ -35,4 +35,29 @@ Every change to a published package needs a change file, which CI checks with
 node common/scripts/install-run-rush.js change
 ```
 
-Publishing itself happens by hand, from the maintainer's machine; see step 5 of the migration plan.
+## Releasing
+
+Publishing runs by hand, from the maintainer's machine, because npm asks the account's second factor
+on every publish. GitHub Actions only prepares it:
+
+1. Every push to `develop` that adds change files runs `.github/workflows/release.yml`. It applies
+   them with `rush version --bump` and opens or updates the `release/version-bump` pull request.
+2. Merge that pull request with a merge commit. Its commit carries `[skip ci]`, and a squash or
+   rebase would put the marker on `develop`'s head and skip every workflow for that push.
+3. Then publish from an up-to-date `develop`:
+
+```
+node common/scripts/install-run-rush.js install
+node common/scripts/install-run-rush.js build --to version-policy:publishable
+NPM_AUTH_TOKEN=<token> node common/scripts/install-run-rush.js publish --publish --include-all --version-policy publishable --target-branch develop
+```
+
+`rush publish` publishes each package of the `publishable` policy whose version is not on npm yet,
+and pushes a `<package>_v<version>` tag for it. It runs npm with a home directory of its own, so
+your `~/.npmrc` login is not read: the token comes from `NPM_AUTH_TOKEN`, which
+`common/config/rush/.npmrc-publish` passes to registry.npmjs.org. Whether `rush publish` passes
+npm's second-factor prompt through is not known yet; the first release settles it, and the migration
+plan's open questions say what replaces it if not.
+
+The Release workflow opens a pull request with `GITHUB_TOKEN`, which works only once **Allow GitHub
+Actions to create and approve pull requests** is ticked under Settings → Actions → General.

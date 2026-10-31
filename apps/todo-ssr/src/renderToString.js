@@ -30,7 +30,7 @@ const DEFAULT_TEMPLATE = `<!doctype html>
  * 1. a fresh JSDOM instance is created and installed as the global `document`,
  *    so that `justdom` has a document to create elements in;
  * 2. the component is mounted the exact same way a browser app is mounted in
- *    `apps/todo-vanilla/src/main.ts` — by subscribing to
+ *    `apps/todo/src/main.ts` — by subscribing to
  *    `just(root, [children(...)])`;
  * 3. the document is serialized *while the subscription is still alive*, which
  *    is what makes the `<style>` elements injected by `className` end up in the

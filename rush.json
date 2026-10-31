@@ -63,15 +63,14 @@
     { "packageName": "@apendua/jsdom-env", "projectFolder": "packages/jsdom-env" },
     { "packageName": "@apendua/euclid-core", "projectFolder": "packages/euclid-core" },
     { "packageName": "@apendua/euclid-lang", "projectFolder": "packages/euclid-lang" },
-    { "packageName": "bricks-xr", "projectFolder": "apps/bricks-xr" },
-    { "packageName": "castle-xr", "projectFolder": "apps/castle-xr" },
+    { "packageName": "castle", "projectFolder": "apps/castle" },
     { "packageName": "desk", "projectFolder": "apps/desk" },
     { "packageName": "euclid", "projectFolder": "apps/euclid" },
     { "packageName": "knights", "projectFolder": "apps/knights" },
     { "packageName": "minesweeper", "projectFolder": "apps/minesweeper" },
-    { "packageName": "showcase-xr", "projectFolder": "apps/showcase-xr" },
+    { "packageName": "showcase", "projectFolder": "apps/showcase" },
     { "packageName": "todo-ssr", "projectFolder": "apps/todo-ssr" },
-    { "packageName": "todo-vanilla", "projectFolder": "apps/todo-vanilla" },
+    { "packageName": "todo", "projectFolder": "apps/todo" },
     { "packageName": "justdom-site", "projectFolder": "site" }
   ]
 }

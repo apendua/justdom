@@ -39,7 +39,16 @@ moved=(
   packages/jsdom-env
   packages/euclid-core
   packages/euclid-lang
+  # Deleted again right after the import, since castle-xr (now apps/castle)
+  # is the same game
+  # with more in it. It stays on this list so that a re-run reproduces the
+  # history already merged, which a shorter list would rewrite. If
+  # apendua.dev changed it since, merging the re-run's branch stops on a
+  # modify/delete conflict there; keep the files deleted.
   apps/bricks-xr
+  # castle-xr, showcase-xr and todo-vanilla are renamed castle, showcase and
+  # todo by a later commit, not here, which would rewrite the merged history.
+  # Git's rename detection carries a re-run's changes to them across.
   apps/castle-xr
   apps/desk
   apps/euclid

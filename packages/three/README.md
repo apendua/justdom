@@ -1390,8 +1390,8 @@ dom(
   its own cannot be batched.
 - Clipping composes with it — a revealed run inside a scroller is clipped and cut in one shader pass
   — and so does a transform: the footnote on the _Interactions_ card in
-  [`apps/showcase-xr`](../../apps/showcase-xr) types itself out on a card that can be tilted while
-  it runs.
+  [`apps/showcase`](../../apps/showcase) types itself out on a card that can be tilted while it
+  runs.
 
 Not followed:
 
@@ -2017,24 +2017,24 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
 
 ## Real examples
 
-This package drives every demo in this repository — [`apps/castle-xr`](../../apps/castle-xr),
+This package drives every demo in this repository — [`apps/castle`](../../apps/castle),
 [`apps/desk`](../../apps/desk), [`apps/minesweeper`](../../apps/minesweeper),
-[`apps/todo-vanilla`](../../apps/todo-vanilla) and the rest — worth reading for realistic scenes
-combining lighting, keyed lists (`list`/`keyedList`), controller/hand input, and DOM panels
-projected into 3D space. [`apps/showcase-xr`](../../apps/showcase-xr) is the sampler: six panels in
-a grid demonstrating hover/press transitions, CSS keyframes, a Web Animations API animation, a
-`useFrame(ctx, fn)` loop writing inline styles, animated text colour, a paragraph revealed to a
-moving cursor, static transforms, a layout-tier width transition, every `object-fit` an image can be
-drawn with, a card of inline SVG (a diagram of boxes joined by dashed and dotted arrows with marker
-heads, nodes labelled through `<text>`, two pictures through `<image>`, a bar cut in half by a
-`clip-path`, an icon through a `viewBox` at three sizes, a star spun by a CSS animation on its
-`<g>`, a symbol drawn three times by `<use>`, marching ants and a stroke colour animated by
-keyframes), and a card of bulleted and numbered lists whose steps are numbered as they arrive.
-[`apps/desk`](../../apps/desk) is the same features in one scene, and mirrors a page that already
-exists rather than building panels for the scene: a desk whose monitor reveals its program, whose
-keys are pressed with the ray, whose floppies are dragged from one panel onto another, with a layer
-menu, live SVG charts, draggable cards, a text field with the scene's keyboard and a memo that can
-be picked up and tipped to read.
+[`apps/todo`](../../apps/todo) and the rest — worth reading for realistic scenes combining lighting,
+keyed lists (`list`/`keyedList`), controller/hand input, and DOM panels projected into 3D space.
+[`apps/showcase`](../../apps/showcase) is the sampler: six panels in a grid demonstrating
+hover/press transitions, CSS keyframes, a Web Animations API animation, a `useFrame(ctx, fn)` loop
+writing inline styles, animated text colour, a paragraph revealed to a moving cursor, static
+transforms, a layout-tier width transition, every `object-fit` an image can be drawn with, a card of
+inline SVG (a diagram of boxes joined by dashed and dotted arrows with marker heads, nodes labelled
+through `<text>`, two pictures through `<image>`, a bar cut in half by a `clip-path`, an icon
+through a `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, a symbol drawn
+three times by `<use>`, marching ants and a stroke colour animated by keyframes), and a card of
+bulleted and numbered lists whose steps are numbered as they arrive. [`apps/desk`](../../apps/desk)
+is the same features in one scene, and mirrors a page that already exists rather than building
+panels for the scene: a desk whose monitor reveals its program, whose keys are pressed with the ray,
+whose floppies are dragged from one panel onto another, with a layer menu, live SVG charts,
+draggable cards, a text field with the scene's keyboard and a memo that can be picked up and tipped
+to read.
 
 Five apps are run on every pull request that changes what this package ships, in an emulated headset
 in headless Chromium; a change only to its docs, tests or benchmarks runs none of them.

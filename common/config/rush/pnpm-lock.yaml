@@ -14,46 +14,7 @@ importers:
 
   .: {}
 
-  ../../apps/bricks-xr:
-    dependencies:
-      '@types/three':
-        specifier: ~0.185.0
-        version: 0.185.4
-      '@vite-pwa/assets-generator':
-        specifier: ^1.0.1
-        version: 1.0.4(@types/node@24.19.2)
-      justdom:
-        specifier: workspace:*
-        version: link:../../packages/justdom
-      justdom-signal:
-        specifier: workspace:*
-        version: link:../../packages/signal
-      justdom-three:
-        specifier: workspace:*
-        version: link:../../packages/three
-      justdom-three-ui:
-        specifier: workspace:*
-        version: link:../../packages/three-ui
-      justdom-vite-hmr:
-        specifier: workspace:*
-        version: link:../../packages/vite-hmr
-      justdom-xr:
-        specifier: workspace:*
-        version: link:../../packages/xr
-      three:
-        specifier: ~0.185.0
-        version: 0.185.1
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vite:
-        specifier: ^7.1.9
-        version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.7(@types/node@24.19.2)(jiti@2.7.0)(jsdom@26.1.0(canvas@3.2.3))(terser@5.51.2)
-
-  ../../apps/castle-xr:
+  ../../apps/castle:
     dependencies:
       '@apendua/sound':
         specifier: workspace:*
@@ -320,7 +281,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.19.2)(jiti@2.7.0)(jsdom@26.1.0(canvas@3.2.3))(terser@5.51.2)
 
-  ../../apps/showcase-xr:
+  ../../apps/showcase:
     dependencies:
       '@types/node':
         specifier: ^24.7.0
@@ -371,38 +332,7 @@ importers:
         specifier: ^7.1.9
         version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
 
-  ../../apps/todo-ssr:
-    dependencies:
-      '@apendua/jsdom-env':
-        specifier: workspace:*
-        version: link:../../packages/jsdom-env
-      express:
-        specifier: ^5.2.1
-        version: 5.3.0
-      justdom:
-        specifier: workspace:*
-        version: link:../../packages/justdom
-      justdom-signal:
-        specifier: workspace:*
-        version: link:../../packages/signal
-    devDependencies:
-      '@types/express':
-        specifier: ^5.0.6
-        version: 5.0.6
-      '@types/node':
-        specifier: ^24.7.0
-        version: 24.19.2
-      eslint:
-        specifier: ^9.37.0
-        version: 9.39.5(jiti@2.7.0)
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vite:
-        specifier: ^7.1.9
-        version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
-
-  ../../apps/todo-vanilla:
+  ../../apps/todo:
     dependencies:
       '@testing-library/user-event':
         specifier: ^14.6.1
@@ -458,6 +388,37 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.19.2)(jiti@2.7.0)(jsdom@26.1.0(canvas@3.2.3))(terser@5.51.2)
+
+  ../../apps/todo-ssr:
+    dependencies:
+      '@apendua/jsdom-env':
+        specifier: workspace:*
+        version: link:../../packages/jsdom-env
+      express:
+        specifier: ^5.2.1
+        version: 5.3.0
+      justdom:
+        specifier: workspace:*
+        version: link:../../packages/justdom
+      justdom-signal:
+        specifier: workspace:*
+        version: link:../../packages/signal
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
+      '@types/node':
+        specifier: ^24.7.0
+        version: 24.19.2
+      eslint:
+        specifier: ^9.37.0
+        version: 9.39.5(jiti@2.7.0)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: ^7.1.9
+        version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
 
   ../../packages/euclid-core:
     devDependencies:
@@ -731,12 +692,9 @@ importers:
 
   ../../site:
     devDependencies:
-      bricks-xr:
+      castle:
         specifier: workspace:*
-        version: link:../apps/bricks-xr
-      castle-xr:
-        specifier: workspace:*
-        version: link:../apps/castle-xr
+        version: link:../apps/castle
       desk:
         specifier: workspace:*
         version: link:../apps/desk
@@ -752,12 +710,12 @@ importers:
       playwright-core:
         specifier: ^1.56.0
         version: 1.64.1
-      showcase-xr:
+      showcase:
         specifier: workspace:*
-        version: link:../apps/showcase-xr
-      todo-vanilla:
+        version: link:../apps/showcase
+      todo:
         specifier: workspace:*
-        version: link:../apps/todo-vanilla
+        version: link:../apps/todo
       vitepress:
         specifier: 1.6.4
         version: 1.6.4(@algolia/client-search@5.61.0)(@types/node@24.19.2)(postcss@8.5.32)(terser@5.51.2)(typescript@7.0.2)

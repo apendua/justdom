@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Docs and the emulator driver name the castle, showcase and todo demos by their new folder names",
+      "type": "none",
+      "packageName": "@apendua/sound"
+    }
+  ],
+  "packageName": "@apendua/sound",
+  "email": "noreply@anthropic.com"
+}

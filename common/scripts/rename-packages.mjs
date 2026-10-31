@@ -40,23 +40,28 @@ const packages = [
   { folder: "packages/jsdom-env", from: "@apendua/jsdom-env", to: "@apendua/jsdom-env" },
   { folder: "packages/euclid-core", from: "@apendua.dev/euclid-core", to: "@apendua/euclid-core" },
   { folder: "packages/euclid-lang", from: "@apendua.dev/euclid-lang", to: "@apendua/euclid-lang" },
-  { folder: "apps/bricks-xr", from: "@apendua.dev/bricks-xr", to: "bricks-xr" },
-  { folder: "apps/castle-xr", from: "@apendua.dev/castle-xr", to: "castle-xr" },
+  { folder: "apps/castle", from: "@apendua.dev/castle-xr", to: "castle" },
   { folder: "apps/desk", from: "@apendua.dev/desk", to: "desk" },
   { folder: "apps/euclid", from: "@apendua.dev/euclid", to: "euclid" },
   { folder: "apps/knights", from: "@apendua.dev/knights", to: "knights" },
   { folder: "apps/minesweeper", from: "@apendua.dev/minesweeper", to: "minesweeper" },
-  { folder: "apps/showcase-xr", from: "@apendua.dev/showcase-xr", to: "showcase-xr" },
+  { folder: "apps/showcase", from: "@apendua.dev/showcase-xr", to: "showcase" },
   { folder: "apps/todo-ssr", from: "@apendua.dev/signal-ssr", to: "todo-ssr" },
-  { folder: "apps/todo-vanilla", from: "@apendua.dev/todo-vanilla", to: "todo-vanilla" },
+  { folder: "apps/todo", from: "@apendua.dev/todo-vanilla", to: "todo" },
 ];
 
-/** The directories import-apendua-dev.sh renamed, as a path names them. */
+/**
+ * The directories renamed since apendua.dev, as a path names them: the first
+ * four by import-apendua-dev.sh, the apps by a commit after the import.
+ */
 const folders = [
   ["packages/freedom", "packages/three"],
   ["packages/justui", "packages/three-ui"],
   ["packages/headset", "packages/xr"],
   ["apps/signal-ssr", "apps/todo-ssr"],
+  ["apps/castle-xr", "apps/castle"],
+  ["apps/showcase-xr", "apps/showcase"],
+  ["apps/todo-vanilla", "apps/todo"],
 ];
 
 const escape = (/** @type {string} */ text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");

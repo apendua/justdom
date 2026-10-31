@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The README no longer mentions bricks-xr, which left the repository",
+      "type": "none",
+      "packageName": "@apendua/sound"
+    }
+  ],
+  "packageName": "@apendua/sound",
+  "email": "noreply@anthropic.com"
+}

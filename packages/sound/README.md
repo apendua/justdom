@@ -97,7 +97,7 @@ Music(ctx, listener, music);
 
 Held apart like this because the two ends are rarely near each other: the music starts wherever the
 scene is built, while the panel that turns it down is often several routes away, so both reach it
-through the controls object — passed down, as `castle-xr` does, or put in a context.
+through the controls object — passed down, as `castle` does, or put in a context.
 
 ## Three things worth knowing
 
@@ -118,10 +118,6 @@ frame would put the click wherever the _last_ one landed.
 
 ## Used by
 
-`castle-xr` plays the click on a brick coming to rest, and plays its soundtrack through the player
-and the output picker, behind a Music section on a panel it already had. `knights` has its own
-player, and should, being a flat page with an `<audio>` element rather than a session to hang the
-track on.
-
-Not `bricks-xr`: that one is a worked example, kept to the smallest thing that still builds
-something, and a sound is not part of what it is there to show.
+`castle` plays the click on a brick coming to rest, and plays its soundtrack through the player and
+the output picker, behind a Music section on a panel it already had. `knights` has its own player,
+and should, being a flat page with an `<audio>` element rather than a session to hang the track on.

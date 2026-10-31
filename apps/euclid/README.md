@@ -52,7 +52,7 @@ construction from the picker and leaves by the ×, and fails if any of that does
 page throws. The whole check takes about half a minute under SwiftShader. `SHOTS=<dir>` also
 photographs the page and the session, and `STACKS=1` prints a stack for anything the page throws. It
 drives the browser and the controller through `justdom-xr/driver`, which borrows Playwright from
-`apps/showcase-xr`, so that project has to have been installed. It launches the Chromium at
+`apps/showcase`, so that project has to have been installed. It launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
 tests or benchmarks, runs it, with minesweeper's, the desk's and Knights', from

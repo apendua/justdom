@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Castle">
+  <defs>
+    <linearGradient id="castle-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c3a4c" />
+      <stop offset="1" stop-color="#161d27" />
+    </linearGradient>
+    <linearGradient id="castle-stone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2ece0" />
+      <stop offset="1" stop-color="#c8c0ae" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#castle-bg)" />
+  <g stroke="#d8a13c" stroke-width="2.6" stroke-linejoin="round">
+    <path d="M46 27 46 11" stroke-linecap="round" />
+    <path d="M46 11 53 14.5 46 18Z" fill="#d8a13c" />
+  </g>
+  <path
+    d="M11 27h10.5v5h5.25v-5h10.5v5h5.25v-5H53v26H11Z"
+    fill="url(#castle-stone)"
+  />
+  <path
+    d="M26 53v-9a6 6 0 0 1 12 0v9Z"
+    fill="#1b2430"
+  />
+  <g fill="#1b2430">
+    <rect x="16" y="37" width="5" height="7" rx="2.5" />
+    <rect x="43" y="37" width="5" height="7" rx="2.5" />
+  </g>
+</svg>

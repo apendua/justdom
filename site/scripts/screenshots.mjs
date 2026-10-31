@@ -13,7 +13,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { serve } from "vitepress";
-import { castle } from "../../apps/castle-xr/tests/castle.mjs";
+import { castle } from "../../apps/castle/tests/castle.mjs";
 import { demos, demoViewport as viewport, screenshots, site } from "./projects.mjs";
 
 /**
@@ -88,11 +88,11 @@ async function save(page, png, file) {
  */
 const setups = {
   // A castle already built on the board, put where the game keeps the castle
-  // between visits. It is the castle castle-xr's own screenshots show.
-  "castle-xr": {
+  // between visits. It is the one the app's own screenshots show.
+  castle: {
     before: (page) =>
       page.addInitScript((seed) => {
-        localStorage.setItem("castle-xr:castle", seed);
+        localStorage.setItem("castle:castle", seed);
       }, JSON.stringify(castle())),
   },
   // Richmond's exact pentagon, one of the app's examples.
@@ -170,7 +170,7 @@ async function guide(browser, origin) {
   const page = await browser.newPage({ viewport });
   try {
     // `bare` asks for the emulated headset without its controls on the page.
-    await page.goto(`${origin}/demos/todo-vanilla/?emulator=bare`, { waitUntil: "networkidle" });
+    await page.goto(`${origin}/demos/todo/?emulator=bare`, { waitUntil: "networkidle" });
     const card = await page.locator("#root > *").first().boundingBox();
     if (!card) throw new Error("the todo app drew nothing");
     const margin = 32;

@@ -64,8 +64,8 @@ field the white stack can reach and checks that the route is drawn, pulls the tr
 that the click reached the board at that place and the turn passed on, then turns the passthrough on
 and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
 a stack for anything the page throws. It drives the browser and the controller through
-`justdom-xr/driver`, which borrows Playwright from `apps/showcase-xr`, so that project has to have
-been installed. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+`justdom-xr/driver`, which borrows Playwright from `apps/showcase`, so that project has to have been
+installed. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
 `CHROMIUM=<path>` points it at one installed elsewhere. A pull request that changes this app or a
 package it imports, other than in docs, unit tests or benchmarks, runs it, with minesweeper's, the
 desk's and Euclid's, from `.github/workflows/driven.yml`.

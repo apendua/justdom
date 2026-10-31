@@ -103,9 +103,9 @@ export const APPS = {
   },
 
   async showcase(visit) {
-    /** @type {typeof import("../../../apps/showcase-xr/tests/harness.js")} */
-    const harness = await import(join(REPO, "apps/showcase-xr/tests/harness.js"));
-    const { url, server } = await serve("showcase-xr");
+    /** @type {typeof import("../../../apps/showcase/tests/harness.js")} */
+    const harness = await import(join(REPO, "apps/showcase/tests/harness.js"));
+    const { url, server } = await serve("showcase");
     const browser = await launch();
     try {
       const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: harness.VIEWPORT });

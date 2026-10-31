@@ -36,7 +36,7 @@ README spells commands as `rush …`, meaning `node common/scripts/install-run-r
   as `claude/cedar-plover-66`, not one taken from the change. Names taken from the change come out
   nearly the same for every PR in a stack and are hard to tell apart.
 - **Prettier runs on commit** over `.js/.jsx/.mjs/.cjs/.ts/.tsx/.json` and the `.md` files outside
-  `.prettierignore`, and wraps their prose at 100 columns. `.scss`, the `CHANGELOG.md` files and the
+  `.prettierignore`, and wraps their prose at 100 columns. `.css`, the `CHANGELOG.md` files and the
   vendored unslop skill are not reformatted, so match the file you are editing.
 
 ## What a change is reviewed for
@@ -63,8 +63,8 @@ through a review: a blocking finding opens a round, polish rides along and never
   branches agree, and helpers that reduce to a tautology.
 - **Prefer types to runtime checks.** Refuse a bad option by its type (and test it with
   `@ts-expect-error`), not with a thrown `TypeError`. Avoid non-null `!` where the type can say it.
-- **Every rule holds in every place it applies.** The game, the editor, the server and what is drawn
-  must agree. A change to one is a change to all.
+- **Every rule holds in every place it applies.** The library, each demo that uses it and what is
+  drawn must agree. A change to one is a change to all.
 - **Mind the headset's frame budget.** No per-frame allocations in the render loop, and nothing
   running before an XR session actually starts.
 - **Hand-wrap comments**, and the `.md` files Prettier skips, to the file's width (usually 80).
@@ -220,13 +220,15 @@ Both:
   or through step 4 of _The review loop_, which marks a PR ready once a review finds nothing. Never
   mark one ready otherwise, or turn a ready one back into a draft, unasked.
 - **A commit on a PR that changes only `.md` files ends its subject with `[skip ci]`**, as the
-  release commit does (`Bump package versions and update changelogs [skip ci]`). GitHub then runs no
-  workflow for the push, and a build has nothing to check in prose. GitHub reads the head commit
-  alone, for a push and for marking a PR ready alike, so every commit on such a PR carries the
-  marker, a round of review fixes included, and such a PR need not be a draft. On a PR that changes
-  anything else, no commit carries it, even one that touches only a README: as the head, it would
-  keep CI off the code under it. The marker is for `.md` files only: a comment in a `.js` file is a
-  type to `tsc` when it is JSDoc, and a change to anything else is what the build is for.
+  release workflow's version bump commit will once step 5 of the migration plan lands. GitHub then
+  runs no workflow for the push, and a build has nothing to check in prose. GitHub reads the head
+  commit alone, for a push and for marking a PR ready alike, so every commit on such a PR carries
+  the marker, a round of review fixes included, and such a PR need not be a draft. On a PR that
+  changes anything else, no commit carries it, even one that touches only a README: as the head, it
+  would keep CI off the code under it. The marker is for `.md` files only: a comment in a `.js` file
+  is a type to `tsc` when it is JSDoc, and a change to anything else is what the build is for. Such
+  a PR is merged with a merge commit: a squash or rebase merge puts the marker on `develop`'s head,
+  and GitHub then skips every workflow for that push, the deploy among them.
 - **Review fixes follow _The review loop_ above**: wait for the round to end, then one commit for
   the whole round.
 

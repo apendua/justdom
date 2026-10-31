@@ -6,8 +6,8 @@
 // It rewrites every package specifier and every path to a renamed directory in
 // the tracked files under packages/ and apps/, then sets each package.json's
 // version, publishConfig and repository from the table below and lists the
-// packages in rush.json. Running it again changes nothing, so it can follow
-// each re-run of import-apendua-dev.sh.
+// packages and apps in rush.json. Running it again changes nothing, so it can
+// follow each re-run of import-apendua-dev.sh.
 //
 // The CHANGELOG files are left alone apart from the "name" in CHANGELOG.json:
 // they record what each package was called when the entry was written.
@@ -138,13 +138,9 @@ for (const { folder, to, publish } of packages) {
   }
 }
 
-// The apps are listed once their dependencies on apendua.dev's media package
-// are gone, which is step 4 of the plan.
 const rushJson = join(root, "rush.json");
 const rush = readFileSync(rushJson, "utf8");
-const entries = packages
-  .filter(({ folder }) => folder.startsWith("packages/"))
-  .map(({ folder, to, publish }) => ({
+const entries = packages.map(({ folder, to, publish }) => ({
     packageName: to,
     projectFolder: folder,
     ...(publish ? { versionPolicyName: "publishable" } : {}),

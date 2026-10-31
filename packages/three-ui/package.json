@@ -1,0 +1,68 @@
+{
+  "name": "@apendua/justui",
+  "version": "0.3.5",
+  "description": "The widgets a panel is made of -- dropdown, keyboard, scrollable and a frame rate readout -- built out of ordinary DOM so they work on a page and inside a @apendua/freedom portal alike",
+  "keywords": [
+    "ui",
+    "widgets",
+    "dropdown",
+    "keyboard",
+    "scrollbar",
+    "webxr",
+    "three",
+    "signals"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/justui"
+  },
+  "license": "MIT",
+  "author": "apendua",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "test": "npm run test:syntax && npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@apendua/freedom": "workspace:*",
+    "@apendua/jsdom-env": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
+    "esbuild": "^0.27.4",
+    "eslint": "^9.37.0",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@apendua/freedom": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "three": ">=0.180.0"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  }
+}

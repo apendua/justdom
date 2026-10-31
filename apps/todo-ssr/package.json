@@ -1,0 +1,33 @@
+{
+  "name": "@apendua.dev/signal-ssr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Server side rendering example based on jsdom, express and @apendua/justdom",
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "scripts": {
+    "build": "npm run compile && npm run test",
+    "build:watch": "",
+    "compile": "vite build",
+    "dev": "npm run compile && node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "npm run test:syntax && npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --test --watch \"src/**/*.test.js\""
+  },
+  "dependencies": {
+    "@apendua/jsdom-env": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.7.0",
+    "eslint": "^9.37.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9"
+  }
+}

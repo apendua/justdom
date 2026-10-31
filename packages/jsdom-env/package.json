@@ -1,0 +1,52 @@
+{
+  "name": "@apendua/jsdom-env",
+  "version": "0.2.0",
+  "description": "Installs a JSDOM window on globalThis, for running DOM code under node:test",
+  "keywords": [
+    "jsdom",
+    "dom",
+    "testing",
+    "node-test",
+    "test-environment",
+    "ssr"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apendua/apendua.dev.git",
+    "directory": "packages/jsdom-env"
+  },
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "test": "npm run test:syntax && npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "jsdom": "^26.1.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^24.7.0",
+    "typescript": "^7.0.2"
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  }
+}

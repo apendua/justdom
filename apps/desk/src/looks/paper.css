@@ -1,0 +1,216 @@
+/* ======================================================================
+   Paper Studio
+   Daylight, birch ply and paper. The computer is a compact all-in-one
+   whose screen is a 1-bit desktop with the green terminal in a window.
+   The left panel is a spiral notebook whose tabs mount one page at a
+   time; the right is a linen pinboard held with washi tape whose colour
+   swatches recolour the whole desk; the letter lies on its envelope with
+   a wax seal and a few lines set right to left. Same rules as the other two desks.
+   ====================================================================== */
+
+[data-accent=tomato] { --accent: #e4572e; --accent-ink: #9e3214; }
+[data-accent=cobalt] { --accent: #2a5fd6; --accent-ink: #163a8a; }
+[data-accent=saffron] { --accent: #f2b134; --accent-ink: #9a6a0c; }
+[data-accent=teal] { --accent: #17a398; --accent-ink: #0b6159; }
+
+.wall { position: absolute; inset: 0 0 360px 0; background: linear-gradient(180deg, #e8e6dc 0%, #dcd9cc 100%); }
+.sun { position: absolute; z-index: 1; left: 980px; top: 0; width: 620px; height: 640px; pointer-events: none;
+  background: linear-gradient(115deg, transparent 0 30%, rgba(255, 244, 214, .45) 30% 44%, transparent 44% 52%, rgba(255, 244, 214, .35) 52% 62%, transparent 62%); }
+.tabletop { position: absolute; left: 0; right: 0; bottom: 0; height: 360px; border-top: 10px solid #c9ad7c;
+  background: repeating-linear-gradient(177deg, #ead6ae 0 10px, #e3cc9e 10px 13px, #ecd9b4 13px 24px, #dfc697 24px 27px); }
+
+/* ---------- the all-in-one -------------------------------------------- */
+#monitor { left: 520px; top: 74px; width: 560px; }
+.aio { background: linear-gradient(180deg, #f1eee6, #dfdbd0); border: 2px solid #b9b4a7; border-radius: 16px 16px 10px 10px; padding: 26px 34px 0; }
+.glass { position: relative; background: #2b2a27; border-radius: 10px; padding: 14px; border: 2px solid #1c1b19; }
+.desktop { position: relative; height: 352px; border-radius: 6px; overflow: hidden; background: #fff repeating-conic-gradient(#c9c9c9 0 25%, #ffffff 0 50%) 0 0 / 4px 4px; }
+.menubar { position: relative; display: flex; align-items: center; gap: 16px; height: 22px; padding: 0 10px; background: #fff; border-bottom: 1.5px solid #000; font: 700 11px/1 "Space Grotesk", sans-serif; color: #000; }
+.menubar .logo { width: 14px; height: 14px; }
+.menubar .item { cursor: pointer; padding: 3px 6px; transition: background-color .1s, color .1s; }
+.menubar .item:hover, .menubar .item[data-xr-hover] { background: #000; color: #fff; }
+.menubar .clock { margin-left: auto; font: 600 10px/1 "Fira Code", monospace; }
+.menu { position: absolute; z-index: 3; top: 100%; left: 0; margin-top: 3px; width: 170px; background: #fff; border: 1.5px solid #000; padding: 3px 0; }
+.menu div { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 12px; font: 700 11px/1 "Space Grotesk", sans-serif; transition: background-color .1s, color .1s; }
+.menu div:hover, .menu div[data-xr-hover] { background: #000; color: #fff; }
+.menu i { width: 10px; height: 10px; border: 1px solid #000; }
+.icons { position: absolute; right: 12px; top: 34px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.icon { display: flex; flex-direction: column; align-items: center; gap: 3px; font: 700 9px/1 "Space Grotesk", sans-serif; }
+.icon span { background: #fff; padding: 1px 3px; }
+.icon svg { width: 30px; height: 30px; }
+.window { position: absolute; left: 10px; top: 34px; width: 376px; height: 300px; background: #fff; border: 1.5px solid #000; display: flex; flex-direction: column; }
+.titlebar { position: relative; height: 20px; flex: none; display: flex; align-items: center; justify-content: center; border-bottom: 1.5px solid #000;
+  background: #fff repeating-linear-gradient(180deg, #000 0 1px, transparent 1px 3px) 0 4px / 100% 11px no-repeat; }
+.titlebar .box { position: absolute; left: 8px; top: 4px; width: 11px; height: 11px; background: #fff; border: 1.5px solid #000; cursor: pointer; }
+.titlebar .box:hover, .titlebar .box[data-xr-hover] { background: #000; }
+.titlebar b { background: #fff; padding: 0 8px; font: 700 11px/1 "Space Grotesk", sans-serif; }
+.screen { position: relative; flex: 1; overflow: hidden; padding: 10px 12px; background: #0d1410; }
+.screen[data-phosphor=amber] { background: #160f04; } .screen[data-phosphor=white] { background: #111214; }
+.crt { font: 10.5px/1.45 "Fira Code", monospace; color: #7dff9b; transition: color .5s; }
+.screen[data-phosphor=amber] .crt { color: #ffb84a; } .screen[data-phosphor=white] .crt { color: #eef2f3; }
+.cursor { background: #7dff9b; } .screen[data-phosphor=amber] .cursor { background: #ffb84a; } .screen[data-phosphor=white] .cursor { background: #eef2f3; }
+.grow { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; background: #fff; border-left: 1.5px solid #000; border-top: 1.5px solid #000; }
+.chin { display: flex; align-items: center; justify-content: space-between; height: 66px; }
+.bauhaus { display: flex; align-items: center; gap: 4px; }
+.bauhaus i:nth-child(1) { width: 14px; height: 14px; border-radius: 50%; background: #e4572e; }
+.bauhaus i:nth-child(2) { width: 13px; height: 13px; background: #2a5fd6; }
+.bauhaus i:nth-child(3) { width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 14px solid #f2b134; }
+.bauhaus b { margin-left: 6px; font: 700 12px/1 "Space Grotesk", sans-serif; color: #7a766b; letter-spacing: .08em; }
+.slot { display: flex; align-items: center; gap: 10px; width: 150px; height: 26px; border-radius: 13px; background: #d4cfc3; border: 1px solid #b0aa9c; padding: 0 12px; transition: background-color .2s; }
+.slot[data-over] { background: var(--accent); border-color: var(--accent-ink); }
+.slot .mouth { flex: 1; height: 5px; border-radius: 3px; background: #3a3833; }
+.slot .led { width: 7px; height: 7px; border-radius: 50%; background: #a8a296; }
+.slot .led[data-busy] { background: var(--accent); animation: busy .2s steps(1) infinite; }
+.stand { width: 200px; height: 30px; margin: 0 auto; background: linear-gradient(180deg, #d4cfc3, #e6e2d8); border-radius: 0 0 6px 6px; }
+
+/* ---------- the notebook (left) ---------------------------------------- */
+#charts { left: 52px; top: 52px; width: 400px; transform: perspective(1600px) rotateY(18deg); transform-origin: 100% 50%; }
+.notebook { position: relative; background: #2f3b4c; border-radius: 6px; padding: 26px 10px 10px; }
+.spiral { position: absolute; left: 18px; right: 18px; top: 6px; height: 26px; z-index: 1;
+  background: repeating-linear-gradient(90deg, transparent 0 7px, #9aa1aa 7px 10px, #e6e9ee 10px 12px, #9aa1aa 12px 14px, transparent 14px 22px); pointer-events: none; }
+.tabs { display: flex; gap: 4px; padding: 6px 12px 0; }
+.tab { cursor: pointer; padding: 7px 12px 5px; border-radius: 6px 6px 0 0; font: 700 11px/1 "Space Grotesk", sans-serif; letter-spacing: .1em; color: #2f3b4c; background: #cfd6de; transition: transform .15s, background-color .15s; transform: translateY(3px); }
+.tab:nth-child(1) { background: #ffd6c9; } .tab:nth-child(2) { background: #cfe0ff; } .tab:nth-child(3) { background: #fff0b8; }
+.tab:hover, .tab[data-xr-hover] { transform: translateY(0); }
+.tab[data-selected] { transform: translateY(0); background: #fbfbf6; }
+.page { position: relative; height: 520px; padding: 18px 18px 14px; overflow: hidden; border-radius: 0 0 4px 4px;
+  background: #fbfbf6 conic-gradient(from 90deg at 1px 1px, transparent 25%, #d6e3f0 0) 0 0 / 16px 16px; }
+.page h2 { margin: 0 0 2px; font: 700 30px/1 "Caveat", cursive; color: var(--accent-ink); }
+.page .sub { margin: 0 0 10px; font: 500 18px/1 "Caveat", cursive; color: #5a6270; }
+.mark { background: linear-gradient(180deg, transparent 0 45%, rgba(255, 220, 60, .65) 45% 90%, transparent 90%); padding: 0 2px; }
+svg.chart { display: block; width: 100%; height: 150px; overflow: visible; }
+svg.chart .axis { fill: none; stroke: #2f3b4c; stroke-width: 1.5; stroke-linecap: round; }
+svg.chart .area { fill: var(--accent); fill-opacity: .14; }
+svg.chart .line { fill: none; stroke: var(--accent-ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+svg.chart .dots circle { fill: #fbfbf6; stroke: var(--accent-ink); stroke-width: 1.8; }
+svg.chart text { fill: #5a6270; font: 600 15px "Caveat", cursive; }
+.cols { display: flex; align-items: flex-end; gap: 14px; height: 170px; margin-top: 22px; padding: 0 6px; border-bottom: 2px solid #2f3b4c; }
+.colbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+.colbar .hatch { width: 100%; height: 100%; transform-origin: 50% 100%; transition: transform .9s cubic-bezier(.3, 1.4, .5, 1); border: 2px solid #2f3b4c; border-bottom-width: 0;
+  background: repeating-linear-gradient(45deg, transparent 0 5px, var(--accent) 5px 7px); }
+.colbar:nth-child(even) .hatch { background: repeating-linear-gradient(-45deg, transparent 0 5px, #2f3b4c 5px 6px); }
+.colbar span { font: 700 16px/1 "Caveat", cursive; color: #2f3b4c; }
+.pie-row { display: grid; grid-template-columns: 190px 1fr; gap: 14px; align-items: center; margin-top: 12px; }
+.pie { --a: 40%; --b: 72%; width: 190px; height: 190px; border-radius: 50%; border: 2.5px solid #2f3b4c;
+  background: conic-gradient(var(--accent) 0 var(--a), #9cc3ff var(--a) var(--b), #ffe07a var(--b) 100%); transition: background-color .3s; }
+.legend { margin: 0; padding-left: 22px; font: 600 20px/1.3 "Caveat", cursive; color: #2f3b4c; }
+.legend li::marker { font: 700 16px "Space Grotesk", sans-serif; }
+.legend li:nth-child(1)::marker { color: var(--accent-ink); } .legend li:nth-child(2)::marker { color: #3f7be0; } .legend li:nth-child(3)::marker { color: #c99a10; }
+.legend small { display: block; font: 500 15px/1 "Caveat", cursive; color: #7a8290; }
+.big { margin-top: 18px; font: 800 64px/1 "Fraunces", serif; color: var(--accent-ink); }
+.big small { font: 600 20px/1 "Caveat", cursive; color: #5a6270; margin-left: 6px; }
+svg.flow { display: block; width: 100%; height: 300px; margin-top: 6px; }
+svg.flow .node { cursor: pointer; }
+svg.flow .node rect, svg.flow .node circle { fill: #fbfbf6; stroke: #2f3b4c; stroke-width: 2; transition: fill .15s; }
+svg.flow .node:hover rect, svg.flow .node[data-xr-hover] rect, svg.flow .node:hover circle, svg.flow .node[data-xr-hover] circle { fill: var(--accent); }
+svg.flow .node text { fill: #2f3b4c; font: 700 18px "Caveat", cursive; text-anchor: middle; }
+svg.flow .edge { fill: none; stroke: #2f3b4c; stroke-width: 2; stroke-linecap: round; }
+svg.flow .edge.live { stroke: var(--accent-ink); stroke-dasharray: 7 6; animation: march .9s linear infinite; }
+svg.flow .edge.dotted { stroke-dasharray: 0 7; stroke-width: 3; }
+svg.flow marker path { fill: #2f3b4c; }
+svg.flow .note { fill: #5a6270; font: 600 16px "Caveat", cursive; }
+
+/* ---------- the pinboard (right) --------------------------------------- */
+#board { left: 1150px; top: 52px; width: 410px; transform: perspective(1600px) rotateY(-18deg); transform-origin: 0 50%; }
+.linen { position: relative; height: 520px; border-radius: 4px; overflow: hidden; border: 10px solid #f4f1ea;
+  background: #d8d0bf repeating-linear-gradient(45deg, transparent 0 2px, rgba(255, 255, 255, .18) 2px 3px); }
+.card { position: absolute; transform: rotate(var(--tilt, 0deg)); transition: transform .2s; }
+.card:hover, .card[data-xr-hover] { transform: rotate(var(--tilt, 0deg)) translateZ(8px) scale(1.04); }
+.washi { position: absolute; z-index: 1; top: -9px; left: 50%; width: 64px; height: 18px; margin-left: -32px; transform: rotate(-4deg); pointer-events: none; opacity: .85;
+  background: repeating-linear-gradient(90deg, #f6a6a6 0 6px, #fbd0d0 6px 12px); }
+.washi.b { background: repeating-linear-gradient(135deg, #a6c8f6 0 5px, #d6e6fb 5px 10px); }
+.washi.y { background: repeating-linear-gradient(90deg, #f6dc8a 0 3px, #fbecc0 3px 9px); }
+.swatches { width: 132px; background: #fff; padding: 8px 8px 4px; border: 1px solid #ddd8cc; }
+.swatch { cursor: pointer; margin-bottom: 6px; border: 1px solid #e3ded2; transition: transform .15s; }
+.swatch:hover, .swatch[data-xr-hover] { transform: translateX(4px); }
+.swatch[data-selected] { border-color: #2f3b4c; }
+.swatch i { display: block; height: 30px; }
+.swatch span { display: block; padding: 3px 5px; font: 700 8px/1.2 "Space Grotesk", sans-serif; color: #2f3b4c; letter-spacing: .04em; }
+.calendar { width: 186px; background: #fff; border: 1px solid #ddd8cc; padding: 0 0 8px; }
+.calendar header { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 10px 6px; background: var(--accent); color: #fff; font: 800 16px/1 "Fraunces", serif; }
+.calendar header small { font: 700 10px/1 "Space Grotesk", sans-serif; letter-spacing: .1em; }
+.days { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); padding: 4px 8px 0; font: 600 10px/20px "Space Grotesk", sans-serif; color: #2f3b4c; text-align: center; }
+.days .dow { color: #9a9488; font-size: 8px; }
+.days .off { color: #c9c3b6; }
+.days svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.days svg ellipse { fill: none; stroke: #d0342c; stroke-width: 2; }
+.photo { width: 160px; background: #fff; padding: 8px 8px 26px; border: 1px solid #ddd8cc; }
+.photo img { display: block; width: 144px; height: 112px; object-fit: cover; object-position: 30% 60%; }
+.photo p { position: absolute; left: 0; right: 0; bottom: 6px; margin: 0; text-align: center; font: 700 16px/1 "Caveat", cursive; color: #555; }
+.stub { width: 176px; height: 70px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 18px;
+  background: radial-gradient(circle at 0 50%, transparent 0 9px, #ffe08a 9.5px); }
+.stub b { font: 800 18px/1 "Fraunces", serif; color: #2f3b4c; }
+.stub small { display: block; font: 700 8px/1.3 "Space Grotesk", sans-serif; color: #6a5a20; letter-spacing: .1em; }
+.stub .no { margin-left: auto; padding-left: 10px; border-left: 1.5px solid #c9a84a; font: 600 10px/1.2 "Fira Code", monospace; color: #6a5a20; }
+.scrap { width: 170px; padding: 14px 12px 12px; background: #fffef8; border: 1px solid #ddd8cc; font: 700 20px/1 "Caveat", cursive; color: #2f3b4c; }
+.scrap input { width: 100%; margin-top: 8px; padding: 5px 6px; font: 600 18px/1 "Caveat", cursive; color: #2f3b4c; background: #fbfbf6; border: 1.5px solid #2f3b4c; border-radius: 3px; }
+.scrap input::placeholder { color: #a39c8e; }
+.note { width: 140px; min-height: 90px; padding: 14px 10px 10px; background: #fff7c4; font: 700 20px/1.05 "Caveat", cursive; color: #2f3b4c; }
+
+/* ---------- keyboard --------------------------------------------------- */
+#keyboard { left: 478px; top: 650px; width: 644px; transform: perspective(1400px) rotateX(34deg); transform-origin: 50% 0; }
+.keyboard { background: #f1eee6; border: 2px solid #c9c4b7; border-radius: 10px; padding: 12px 14px 16px; }
+.keys { display: flex; flex-direction: column; gap: 6px; }
+.key { height: 36px; border-radius: 6px; background: #fdfcf8; border: 1px solid #c9c4b7; border-bottom-width: 4px; transition: transform .06s, background-color .15s; }
+.key .cap { font: 700 11px/1 "Space Grotesk", sans-serif; color: #2f3b4c; }
+.key.mod { background: #e6e2d8; }
+.key[data-key=CapsLock] { background: #2a5fd6; border-color: #163a8a; } .key[data-key=CapsLock] .cap { color: #fff; }
+.key[data-key=Shift] { background: #f2b134; border-color: #9a6a0c; }
+.key.accent { background: var(--accent); border-color: var(--accent-ink); } .key.accent .cap { color: #fff; }
+.key:hover, .key[data-xr-hover] { background: #fff; }
+.key.accent:hover, .key.accent[data-xr-hover] { background: var(--accent); }
+.key:active, .key[data-xr-active], .key[data-down] { transform: translateY(3px); }
+
+/* ---------- cartridges ------------------------------------------------- */
+#carts { left: 120px; top: 690px; width: 330px; height: 230px; transform: perspective(1400px) rotateX(34deg); }
+.cart { position: absolute; width: 112px; height: 132px; border-radius: 6px 6px 3px 3px; padding: 22px 9px 0; transform: rotate(var(--tilt)); transition: transform .2s;
+  background: #6b6f78 repeating-linear-gradient(180deg, rgba(0, 0, 0, .25) 0 2px, transparent 2px 5px) 0 4px / 100% 14px no-repeat; }
+.cart:hover, .cart[data-xr-hover] { transform: rotate(var(--tilt)) translateY(-6px); }
+.cart.c2 { background-color: #2f3b4c; } .cart.c3 { background-color: #b33c2a; }
+.cart .art { height: 72px; border-radius: 3px; padding: 6px; display: flex; align-items: flex-end; background: linear-gradient(160deg, #ffd27a, #e4572e 55%, #5b2a86); }
+.cart.c2 .art { background: linear-gradient(160deg, #9cf0d0, #17a398 55%, #0b3a5a); }
+.cart.c3 .art { background: radial-gradient(circle at 70% 30%, #fff6c4, #f2b134 30%, #2a5fd6 80%); }
+.cart .art b { font: 800 13px/1 "Fraunces", serif; color: #fff; }
+
+/* ---------- the letter on its envelope --------------------------------- */
+#memo { left: 1150px; top: 612px; width: 330px; transform: perspective(1400px) rotateX(34deg) rotate(-5deg); transform-origin: 50% 0; }
+.envelope { position: absolute; left: 30px; top: 60px; width: 300px; height: 190px; background: #efe5cf; border: 1px solid #cdbf9f; transform: rotate(9deg); }
+.envelope svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.envelope svg polyline { fill: none; stroke: #cdbf9f; stroke-width: 1.5; }
+.postage { position: absolute; right: 12px; top: 12px; width: 48px; height: 58px; padding: 4px; background: radial-gradient(circle, transparent 0 2px, #fff 2.5px) -4px -4px / 8px 8px; }
+.postage div { height: 100%; background: linear-gradient(160deg, #9cf0d0, #17a398 55%, #0b3a5a); }
+.letter { position: relative; height: 410px; overflow: hidden; padding: 22px 24px; color: #2b2a27; font: 9.5px/1.55 "Newsreader", serif;
+  background: #fdfbf5 repeating-linear-gradient(90deg, transparent 0 3px, rgba(160, 140, 100, .07) 3px 4px); border: 1px solid #ddd3bd; }
+.lhead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.lhead svg { width: 42px; height: 42px; flex: none; }
+.lhead h1 { margin: 0; font: 800 20px/1 "Fraunces", serif; color: #2b2a27; }
+.lhead p { margin: 3px 0 0; font: 700 7px/1 "Space Grotesk", sans-serif; letter-spacing: .2em; color: #8a8270; text-transform: uppercase; }
+.date { text-align: right; font-style: italic; color: #8a8270; margin-bottom: 8px; }
+.letter p { margin: 0 0 7px; text-align: justify; hyphens: auto; }
+.letter .drop { font: 800 26px/.8 "Fraunces", serif; color: var(--accent-ink); }
+.letter ul { margin: 0 0 7px; padding-left: 14px; list-style-type: square; }
+.letter ul li::marker { color: var(--accent); }
+.rtl { direction: rtl; font-family: "Noto Serif Hebrew", serif; border-right: 2px solid var(--accent); padding-right: 8px; margin-bottom: 7px; }
+.rtl p { margin: 0; text-align: right; }
+.rtl ol { margin: 2px 0 0; padding-right: 16px; padding-left: 0; }
+.sign { font: 700 24px/1 "Caveat", cursive; color: #163a8a; margin-top: 4px; }
+.seal { position: absolute; right: 22px; bottom: 22px; width: 64px; height: 64px; pointer-events: none; }
+.seal .wax { fill: var(--accent-ink); }
+.seal .rim { fill: none; stroke: rgba(255, 255, 255, .35); stroke-width: 2; }
+.seal text { fill: rgba(255, 255, 255, .8); font: 800 22px "Fraunces", serif; text-anchor: middle; }
+
+/* ---------- plant ------------------------------------------------------ */
+#plant { left: 1462px; top: 520px; width: 130px; height: 200px; }
+#plant svg { width: 130px; height: 150px; overflow: visible; }
+.leaves { transform-origin: 65px 150px; animation: sway 5s ease-in-out infinite alternate; }
+.leaves path { fill: #3f8a5a; stroke: #2a5f3c; stroke-width: 1.5; }
+.leaves path:nth-child(even) { fill: #5aa874; }
+@keyframes sway { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+.pot { width: 84px; height: 66px; margin: -6px auto 0; border-radius: 4px 4px 22px 22px; background: linear-gradient(90deg, #c96a3c, #e4875a 40%, #b85a2e); border-top: 8px solid #a84e24; }
+
+/* ---------- in a session ---------------------------------------------- */
+/* The terminal window's close box ends the session (src/power.ts), and is
+   made big enough to aim a ray at. */
+html[data-presenting] .titlebar .box { left: 4px; top: 1px; width: 16px; height: 16px; }
+/* A cartridge lifts as the ray reaches it: up the screen on the page, up off
+   the desk in the room, where the cartridges lie flat. */
+html[data-presenting] .cart:hover, html[data-presenting] .cart[data-xr-hover] { transform: rotate(var(--tilt)) translateZ(6px); }

@@ -1,0 +1,60 @@
+{
+  "name": "@apendua.dev/sound",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The noises the demos make: waveforms generated in code, and the three.js voices that place them in the room",
+  "keywords": [
+    "audio",
+    "sound",
+    "three",
+    "webxr"
+  ],
+  "license": "MIT",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./lib-types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./xr": {
+      "types": "./lib-types/xr/index.d.ts",
+      "import": "./src/xr/index.js"
+    }
+  },
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "files": [
+    "src",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "test": "npm run test:syntax && npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run test:typecheck && node --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --test --watch \"src/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@apendua/freedom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
+    "eslint": "^9.37.0",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@apendua/freedom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "three": ">=0.180.0"
+  },
+  "peerDependenciesMeta": {
+    "@apendua/freedom": {
+      "optional": true
+    }
+  }
+}

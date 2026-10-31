@@ -1,0 +1,35 @@
+{
+  "name": "@apendua.dev/showcase-xr",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "node bench/run.js",
+    "bench:against": "node bench/run.js --against origin/develop",
+    "build": "tsc && vite build",
+    "build:watch": "",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "",
+    "test:visual": "node --test tests/*.test.js",
+    "test:visual:update": "UPDATE_BASELINES=1 node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@apendua.dev/headset": "workspace:*",
+    "@apendua/freedom": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/justui": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
+    "@types/node": "^24.7.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/three": "~0.185.0",
+    "@webgpu/types": "^0.1.65",
+    "eslint": "^9.37.0",
+    "playwright-core": "^1.56.0",
+    "pngjs": "^7.0.0",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9"
+  }
+}

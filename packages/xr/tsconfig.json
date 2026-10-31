@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.types.json",
+  "compilerOptions": {
+    "types": ["node", "webxr"],
+    "noEmit": true
+  },
+  "include": ["src"],
+  "exclude": []
+}

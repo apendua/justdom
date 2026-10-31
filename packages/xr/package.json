@@ -1,0 +1,60 @@
+{
+  "name": "@apendua.dev/headset",
+  "version": "1.0.0",
+  "private": true,
+  "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
+  "author": "apendua",
+  "type": "module",
+  "exports": {
+    "./emulator": {
+      "types": "./lib-types/emulator.d.ts",
+      "import": "./src/emulator.js"
+    },
+    "./offer": {
+      "types": "./lib-types/offer.d.ts",
+      "import": "./src/offer.js"
+    },
+    "./session": {
+      "types": "./lib-types/session.d.ts",
+      "import": "./src/session.js"
+    },
+    "./scene": {
+      "types": "./lib-types/scene.d.ts",
+      "import": "./src/scene.js"
+    },
+    "./theming": {
+      "types": "./lib-types/theming.d.ts",
+      "import": "./src/theming.js"
+    },
+    "./driver": "./driver/index.mjs"
+  },
+  "files": [
+    "src",
+    "driver",
+    "lib-types"
+  ],
+  "scripts": {
+    "build": "npm run test && npm run build:types",
+    "build:types": "tsc --project tsconfig.types.json",
+    "test": "npm run test:syntax && npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
+    "test:typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:watch": "node --test --watch \"src/**/*.test.js\""
+  },
+  "dependencies": {
+    "@apendua/freedom": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@iwer/devui": "^2.4.0",
+    "iwer": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
+    "@types/webxr": "^0.5.24",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "three": ">=0.180.0"
+  }
+}

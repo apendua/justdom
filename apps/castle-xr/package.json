@@ -1,0 +1,40 @@
+{
+  "name": "@apendua.dev/castle-xr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run test && npm run compile && vite build",
+    "build:watch": "",
+    "compile": "tsc",
+    "dev": "vite",
+    "generate:pwa-assets": "pwa-assets-generator",
+    "preview": "vite preview",
+    "test": "if find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | grep -q .; then vitest run; else echo 'No tests found, skipping'; fi",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@apendua.dev/headset": "workspace:*",
+    "@apendua.dev/media": "workspace:*",
+    "@apendua.dev/sound": "workspace:*",
+    "@apendua/freedom": "workspace:*",
+    "@apendua/justdom": "workspace:*",
+    "@apendua/justui": "workspace:*",
+    "@apendua/signal": "workspace:*",
+    "@apendua/vite-hmr": "workspace:*",
+    "@dimforge/rapier3d": "~0.19.3",
+    "@types/lodash": "^4.17.20",
+    "@types/node": "^24.7.0",
+    "@types/stats.js": "^0.17.4",
+    "@types/three": "~0.185.0",
+    "@vite-pwa/assets-generator": "^1.0.1",
+    "@webgpu/types": "^0.1.65",
+    "eslint": "^9.37.0",
+    "lodash": "^4.17.21",
+    "stats.js": "^0.17.0",
+    "three": "~0.185.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9",
+    "vite-plugin-wasm": "^3.5.0",
+    "vitest": "^3.2.4"
+  }
+}

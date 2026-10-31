@@ -1,0 +1,359 @@
+{
+  "name": "@apendua/signal",
+  "entries": [
+    {
+      "version": "1.0.0",
+      "tag": "@apendua/signal_v1.0.0",
+      "date": "Sun, 18 Oct 2026 19:57:45 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "READMEs and changelogs no longer feed the build cache key, so a docs edit does not rebuild every dependent project"
+          },
+          {
+            "comment": "Rewrap the README at 100 columns with Prettier's proseWrap."
+          },
+          {
+            "comment": "The build now checks that every file under src parses as native JavaScript"
+          },
+          {
+            "comment": "The package no longer ships a compiled lib directory, which nothing imported; main points at src like the exports do"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "An array in a store is a store: its mutating methods are reactive and a hot reload reconciles it. A store assigned to a key is held as itself, and Object.hasOwn() on a store is reactive"
+          },
+          {
+            "comment": "A write to a store key whose getter has no setter now does nothing, and a key with a getter or a setter stays for the store's life. The new reconfigure() makes a store what a definition defines: its getters, setters, data values and keys, with no setter run. store() now reads accessors from the enumerable keys only, as a spread does, keeps a nested store's getters and setters, and makes a store of a plain object at a symbol key. Building a store is faster"
+          },
+          {
+            "comment": "reshape(store, definition) gives a kept store the definition's getters, setters and keys and keeps what the program wrote to the data keys both have; a hot reload of an ordinary store reshapes it, so a getter added or edited in source takes effect"
+          }
+        ],
+        "major": [
+          {
+            "comment": "trackWrites(store) records the data keys the program writes or deletes, and reshape() keeps those on a hot reload while every other key follows the definition, values included. volatileStore(), isVolatile() and reconfigure() are removed: a store nobody writes to is reshaped in full, which is what a volatileStore was for, and reconfigure() was reshape() with nothing recorded."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Make a store about twice as fast to build, and a read outside any computation cheaper"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.10.0",
+      "tag": "@apendua/signal_v0.10.0",
+      "date": "Sat, 26 Sep 2026 15:05:41 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "A warm no longer tears down a value an atomic channel's effects still hold: a replaced Derived value's cleanups are set aside and run once the lane's effects have been handed the new value or disposed. Fixes GL buffers leaked by panel text drawn after its geometry was disposed."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.9.0",
+      "tag": "@apendua/signal_v0.9.0",
+      "date": "Thu, 24 Sep 2026 14:56:56 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Update channels can be atomic: a pass spends its budget resolving what the queued effects read (Effect.warm) and runs them all at once, unbudgeted, once every one of them is warm, so an output made of many effects never changes in instalments. UpdateChannel takes an atomic option and gains warm(); Effect gains warm() and a warmed flag the queue owns. The portal's channel is atomic, and it holds the objects of rows that arrived or left for the same frame as the moves around them."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.8.1",
+      "tag": "@apendua/signal_v0.8.1",
+      "date": "Sat, 19 Sep 2026 16:40:06 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "A lane's array was only let go of when a drain reached its end, which needs the last slot to be live: a spent tail, and every slot before it, stayed and held its tasks -- and everything they closed over -- for as long as the queue lived. The array is dropped the moment nothing in the lane is left to run."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.8.0",
+      "tag": "@apendua/signal_v0.8.0",
+      "date": "Sun, 06 Sep 2026 21:40:37 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add volatileStore(): a store in every respect but one — hot reload does not preserve it. An ordinary store() is state, which a reload has to keep; a volatileStore holds what comes from source rather than from the running program, such as a theme or a palette, so @apendua/vite-hmr keeps the object but replaces its contents with the re-evaluated definition, and the readers of the keys that changed re-run while nobody else does. isVolatile() reports which kind a store is. store() itself is unchanged."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.7.0",
+      "tag": "@apendua/signal_v0.7.0",
+      "date": "Thu, 03 Sep 2026 07:23:24 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Add isStore and isProperty, so that a store (a Proxy) and a context property (a bare object) can be told from the objects they resemble. Hot reload uses them to keep state across a module update."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.6.0",
+      "tag": "@apendua/signal_v0.6.0",
+      "date": "Tue, 01 Sep 2026 20:21:51 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Derived: EvaluationContext gains fail — a failure channel for work an evaluation starts rather than does; after the evaluation it fails the node terminally, during it the evaluation itself fails as if it had thrown. New Derived.live factory: work started by the first reader and torn down with the last, handed { setValue, fail }; Derived.from is now live() applied to an observable. justdom's stylesheet routes its style-element errors through the evaluation context instead of failing the node mid-evaluation."
+          },
+          {
+            "comment": "Review the effectMap call sites: a reactive getter now goes straight to a Derived and an Effect, the way set already did, instead of being wrapped in an observable and fed through effectMap. effectMap itself is unchanged, and documents why use() is not a substitute."
+          },
+          {
+            "comment": "Hold a fixed source with `use` in set() and copy() instead of effectMap, and run each()'s callback untracked so a value's arrival cannot make the callback's reads the pusher's dependencies."
+          },
+          {
+            "comment": "Hold children and the observable branch of write() with `use` instead of effectMap: the release-before-claim a DOM slot needs comes from onEachValue inside the source, not from the operator holding it."
+          },
+          {
+            "comment": "BREAKING: `effectMap` is removed. It held whatever observable its callback chose, re-choosing it reactively and dropping the old subscription before taking the new one, and no caller wanted both halves. A fixed source is `use(source)` from an entity effect's body -- one dependency edge instead of a Derived, an inner Effect and a switch that never fires -- and a mounting chosen reactively is `useEffects(entity, ops)` inside an `effects` body, which orders the swap the same way because a computation runs its cleanups on the way into a re-run. The ordering `justdom`'s `children` was said to need turned out to belong to `onEachValue` inside the source it holds, not to the operator holding it, and is pinned in `flatMap`'s tests; the two failure contracts are cases A and A' of `mounting-failures.test.js`, written against `use`."
+          },
+          {
+            "comment": "Add `effectsOnly(fn)`: a component that produces nothing, all of its work being what it mounts on the way through. `component` is for the thing that has something to hand back -- a mesh, a panel, a scene -- and plenty do not: a root reads the scene from its context and decorates it, a behaviour attaches listeners and moves things about, and both were finished by the time they returned and had to say so by returning `Nothing()`, a value invented to satisfy a caller with no use for it. This is the same shape with the value taken out, built on `toEffect`: a factory, subscribed for as long as its work should stand and unsubscribed to take it down. That it remains a factory returning an observable is the point, and not only for the caller -- it is the shape `$reloadable` swaps, so a module built out of these is one hot reload can replace."
+          },
+          {
+            "comment": "Add `memoizeWithTTL(ttl, fn, options?)`, and `MINUTE` to pass it. A memoized entry is released the instant its last reader leaves, and a key that follows a piece of interaction state is stranded on every flip of that state — for a value that owns something, such as a three.js material, that is a dispose and a rebuild per flip, with a fresh GLSL compile behind it. `memoize` also takes `cacheTTL` directly now, which is what the new helper passes; the knob existed only on `Derived` before, so the call sites that wanted it had to go through `memoizeDerived`."
+          },
+          {
+            "comment": "Move `rxjs` from a dependency to an optional `peerDependency`: only the `./rxjs` subpath imports it, and the core has not built an RxJS observable since step 1 of the removal. It stays a devDependency, because `rxjs.js` and the tests that exercise the seam need it. The description no longer says the library is built on RxJS."
+          },
+          {
+            "comment": "Drop the unused `devDependency` on `@apendua/vite-hmr`. No source file in the package ever imported it, and `vite-hmr` now depends on this package, which would have made the edge a cycle."
+          },
+          {
+            "comment": "Remove the RxJS dependency from justdom and freedom: streams, subjects and operators are now the core's own. Adds mountEach, and exports filtered and the operator types, from @apendua/signal."
+          },
+          {
+            "comment": "A read of a Derived that a failure killed now throws that failure instead of recomputing; a cycle reached through a held-open Derived raises CircularDependencyError instead of a TypeError; and an Effect failed from upstream is disposed, as one that reports its own failure already was."
+          },
+          {
+            "comment": "A read of a Signal that a failure killed now reports that failure instead of the value it was holding, and failing a Signal drops that value."
+          },
+          {
+            "comment": "Close the mounting failure-channel holes, with onError as the one place an effect's failures land: it now also hears the effect failing outright (a dependency dying) when no dependent or error-handling subscriber heard it first, and a failure landing while a run is still on the stack is delivered once the run unwinds — to onError, or rethrown from the constructor without one, so a first-run failure travels the builder's stack like a thrown one. useEffect carries a nested effect's later failures to the computation that built it by default, with standalone: true to opt out; failuresOf moved to Effect.js and is re-exported from operators.js."
+          },
+          {
+            "comment": "Mount entity effects instead of piping operators. just(valueOrFactory, effects), store(data, effects) and useEffects(value, effects) take arrays of EntityEffect — (entity) => void functions run as Effects while the entity stays mounted — in place of MonoTypeOperatorFunction arrays. just is cold now: a subscription is a mounting, built on subscribe and torn down on unsubscribe, and a factory first argument is run per subscription, at mount time — the share/ReplaySubject idempotence guard is gone, and sharing a mounting among subscribers is memoize's job (stylesheet keeps its sharing explicitly, through a Derived). set/on/attr/data/style/effectMap/children/copy/makeInteractive/layoutEffects become effect factories; effects(fn) is the identity; a plain lambda is a valid entry; justdom's $ loses its defer, since a cold just gives every subscriber its own element by construction. Errors: a mounting failing on the way in fails synchronously to whoever is subscribing (hydration mismatches are caught before subscribe returns); later failures end the mounting through the error channel. Constructing a store with one operator gets ~50% faster; piping these factories onto an RxJS observable no longer works — mount them instead."
+          },
+          {
+            "comment": "Add a native Stream — a cold source with RxJS's subscription semantics — and build the package's own sources on it instead of rxjs's Observable. Stream and Subject are now exported; rx() lifts a Stream into RxJS through the interop key."
+          },
+          {
+            "comment": "Decouple public types from RxJS: inputs are typed Subscribable, outputs Source; new @apendua/signal/rxjs subpath exports rx() as the explicit crossing into RxJS pipelines. No runtime change."
+          },
+          {
+            "comment": "Add `timer` and `interval`. `timer(ms)` emits 0 after the delay and completes; `timer(ms, period)` carries on counting; `interval(period)` is the second form with both numbers the same. They are RxJS's shape so a call site moves without changing, and they are cold like everything else here -- a subscriber gets a timer of its own and unsubscribing clears it. A clock several readers share is a node over one of them, `toObservable(fromObservable(interval(...)))`, which holds a single timer however many read it and drops it when the last one goes; that is what `share()` was doing at the one site in this repo that needed it."
+          },
+          {
+            "comment": "BREAKING: `onError` is an Effect's failure channel only once it stands. A failure that arrives while the constructor's own run is on the stack -- the body throwing, `context.fail`, a dependency dying on the way in -- is no longer handed to `onError`; it comes out of `new Effect` instead, with the half-built effect disposed on the way past, which is what an effect without an `onError` already did. Passing one used to suppress that, so `just` and `useEffects` each restored it by hand with a mutable `standing` flag and a rethrow; both are gone, and `just`'s mounting loop is now the same three lines as `toEffect`. It also makes `onError: (err) => effect.fail(err)` sound rather than merely lucky, since a handler that cannot be reached before the constructor returns cannot read the binding early. `deferred` is exempt: its first run arrives out of a drain, with no caller to throw at. What this costs is an effect with an `onError` surviving a failure during its own mounting and retrying -- `NoValueError` (\"not yet\") is a separate path and unchanged, and a caller who wants the old behaviour writes the `try`/`catch` that says so. `toObservable` now hands its node subscription to `subscriber.add` rather than returning it, since a constructor that throws never returns a teardown."
+          },
+          {
+            "comment": "Fix: a failure that ends an Effect while one of its runs is on the stack now waits for that run to unwind. Ending an effect disposes it, and disposing sweeps its cleanups, so doing it mid-run left the rest of the run building against a corpse -- everything it registered afterwards landed on a fresh list nothing would ever sweep, so a `useEffect` built after the failure outlived the effect that owned it and went on running, and a subscription taken after it was never unsubscribed. `Effect.fail` parks instead and `#execute` applies the ending once the run has unwound and its teardown is registered, which is the same park-until-the-run-unwinds policy `handleUnheardFailure` already used for the news of a death. Both doors are covered: `context.fail` called from inside a run, and a dependency dying on the way in. `fail` still does not abort the run -- `throw` is how a run stops where it stands -- and the returned teardown is still paid. The teardown special case in `#execute` now covers only a run that disposed its own effect outright, and `handleUnheardFailure` parks on `#ending` rather than on `#running`, which is the one way `Node.fail`'s observer loop is now reached during a run. The ending is applied from a `finally`, because settling a run's teardown can throw -- one that takes arguments is refused, and one called because the run disposed its own effect can throw on its own account -- and off the queue there is no constructor to catch that, so the effect was left a zombie: not disposed, still queueable, still subscribed, holding a failure nothing would ever act on."
+          },
+          {
+            "comment": "Fix two ways an exception raised while *delivering* a failure could interrupt the ending that was under way. An observer's `error` handler that throws used to escape `Node.fail`'s notification loop and skip the disposal on the next line, leaving an effect that had recorded its failure and released every edge but still answered `isDisposed` false and `isLive` true for good -- keeping its queue slot, and re-enqueued and re-run by `markStale` on a graph it had parted ways with; disposal moved into a `finally`. And a run that both parked a failure and returned a refused teardown had the refusal's throw jump over the delivery that hands a death to `onError`, so the effect died with its cause never reported; the ending now delivers before letting that exception leave, to `onError` where there is one and otherwise to the unhandled-failure report -- reported rather than rethrown, because the exception already travelling would be replaced rather than joined by a second."
+          },
+          {
+            "comment": "Fix: `ReactiveNode.cleanup` pays every teardown it is owed even when one of them throws, raising the first failure once they have all run -- the policy `Stream` already states for the same job. The list is emptied before any of them runs, so a sweep that stopped at the first throw owed the rest forever and paid them never: a subscription nobody unsubscribes, an inner effect nobody disposes, stranded by an unrelated teardown's bug. It lands on both callers -- a `disconnect`, and a run clearing the previous run's cleanups on its way in -- and on every node type, `Derived` as much as `Effect`."
+          },
+          {
+            "comment": "Fix: `runCleanups` pays every teardown even when one throws, raising the first failure once they have all run. This is the second of the two sweeps in `Node.js` and the one `Derived` uses on a *recompute* -- the abandoned branches of a rebuild, and the previous evaluation's cleanups on the way into the next -- so the entry above, which fixed only `ReactiveNode.cleanup`, left it stranding teardowns despite claiming to cover every node type; a `Derived` letting go was fixed, a `Derived` recomputing was not. Stranding is unrecoverable on this path in particular, because the list handed here has already been detached from the node, so nothing ever comes back for what a throw skipped. `ReactiveNode.cleanup` now delegates to `runCleanups` instead of repeating the loop, leaving one implementation of the policy rather than two to keep in step."
+          },
+          {
+            "comment": "`use()` no longer takes a callback. It ran one as an effect and kept whatever observable the callback handed back subscribed until the next run, and that second half is the only thing it could do that `useEffect(fn)` cannot -- so every caller who was not switching between observables was paying for an `Observable` built per call, a `takeNothing()` pipe, a dependency edge and the subscription that attaches it, to reach an `Effect` that `useEffect` hands them directly. No caller in this monorepo was switching. The two shapes mark the same pair of moments -- created while the host evaluates, disposed when the host lets go -- so what is left of `use()` is the dependency edge alone: `addDependency(observable.pipe(takeNothing()))`, for holding a foreign observable open for its side effects, which is what all thirty or so remaining call sites pass it. A function arriving there now throws a `TypeError` naming `useEffect`, rather than the one the old path produced from inside the first run that returned something: `use` read a returned function as an observable and tried to `subscribe` it, where an effect reads it as a teardown. `useEffect` is also where a run's failure has somewhere to go, through the `fail` its context hands it. Two tests pin `useEffect` under a `component` -- a `Derived` host, which is the shape the converted callers rely on and which the existing tests, built on an `Effect` host, did not reach -- and `use()`'s own tests now cover what it still guarantees: the observable is held open for exactly as long as the host stands, its values are dropped rather than invalidating the host, and what it reads while subscribing is not adopted as the host's own -- that last one being the only coverage anywhere of `ReactiveNode#attach`'s `withComputation(null, ...)`."
+          },
+          {
+            "comment": "An effect's run now happens in the effect's own channel, so that what a run *builds* lands in the region the effect belongs to. A run builds things -- a nested `useEffect`, a region, anything reached through a helper that takes no channel -- and on the first run that worked already, construction being inside whatever `withChannel` the caller was in with `activeChannel` still pointing at it. A re-run comes off a queue with no such caller on the stack, so the same `useEffect(...)` line yielded the region's channel the first time and the default channel every time after: half an update applied as soon as it could be and the other half a frame later, which is the exact failure `activeChannel` exists to prevent. `withChannel(null, ...)` inside a run still parks something in the default channel deliberately, as it always did, and an explicit `channel` option still wins. Nesting is otherwise already sound and is now covered: each run of an outer effect gets its own inner effect, disposed before the run that would replace it rather than left alongside it; an inner effect's reads re-run the inner alone, since `useEffect` registers an `onCleanup` rather than a dependency, and the outer owns its lifetime and nothing else; a nest disposes all the way down with its root; and an inner effect built by a run that then threw is still owned by the outer, so the next run or the outer's disposal takes it."
+          },
+          {
+            "comment": "Add `useEffect(run, options)`: the same `Effect`, with its lifetime handed to the computation that built it. An effect is a root of demand -- nothing reads it, so nothing lets go of it, and it holds everything it reads awake until somebody disposes it -- which makes \"somebody\" the only real question, and the surrounding computation is almost always the answer. Pairing the two through `onCleanup` means the caller no longer holds the handle only to dispose it later, and cannot forget to. Called with no computation active there is nothing to pair with, so `onCleanup` says so and the effect is disposed on the spot rather than left where nobody can reach it; `new Effect` stays the way to own the lifetime yourself. A run is now handed an `EffectContext` -- one method, `fail(err)` -- so that work it merely *starts* has somewhere to fail. A synchronous failure throws and the stack carries it out; a subscription that errors later, a listener whose source dies, a request that comes back a rejection have no such stack, and `fail` lands them exactly where a thrown one lands: `onError` if the effect has one and the effect carries on, otherwise the effect fails -- cleanups run, whatever watches it is told, and it stops. It is passed in rather than reached for because the alternative is reaching for the effect itself, and the run is the one place it is not yet available: `const effect = new Effect(() => ... effect.fail(err) ...)` closes over a binding its own initialiser is still evaluating, which holds only for as long as nothing calls it during the run. A run that does fail itself on the way through now has its returned teardown called rather than registered, since the sweep that would have run it has already been and gone. Existing runs take no argument and are unaffected. A failure that reaches the end of the graph with nobody listening is now logged through `console.error` rather than dropped. `ReactiveNode#fail` is the only place that can know this: an error thrown where something is reading travels up the stack until somebody catches it, but a failure arriving there has already left every stack it could have travelled, and a node with no dependents and no error-handling observer is the end of the line -- an `Effect` nothing subscribes to, most often, which is what an effect usually is. Propagation counts as being told, so a chain logs once, at the end nobody was listening to, rather than at every link; an observer with no `error` does not count, since subscribing says \"tell me when this moves\" and only `error` says \"and tell me when it dies\". `console.error` rather than a colour code because the level is the colour in both places this runs -- devtools renders it red with a stack, Node puts it on stderr -- and rather than a re-thrown microtask, because an uncaught exception from a graph that is otherwise still running is a heavier claim than one dead node supports. Nothing in this monorepo logs one: every existing suite is silent. A run may still evaluate to anything, but if that anything is a function it is going to be called as a teardown with no arguments, so it had better not need any. `effect` and `useEffect` now say that in their types: a `Teardown<T>` conditional leaves every non-function return exactly as permissive as it was and narrows only the branch with a contract to break, intersected with `T` at the call site so `T` stays inferrable and a bad teardown is asked to be both itself and the sentence explaining the rule. A plain `void | (() => void)` would have done it too, and would have cost the one-liner the `unknown` exists for: `() => list.push(x)` evaluates to a number, and a number is not a `void`. `new Effect` cannot carry the rule at all, a constructor taking no type parameter of its own, so `#execute` checks the same thing at runtime and throws. It reads `length`, which counts what a function *requires* -- a rest parameter or a default makes it zero, and both of those can be called with nothing -- so it fires on exactly the functions that cannot be called as a teardown, which in practice means one returned by accident."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "Add a dedicated test suite for how errors thrown inside a Derived or Effect body propagate, including effects nested inside other effects and inside a Derived."
+          },
+          {
+            "comment": "The internals no longer touch RxJS at runtime. What they were buying from it was a shape -- something with a `subscribe` that takes a partial observer and hands back an `unsubscribe` -- and that shape is now declared locally in `subscribable.js`, with a minimal multicast `Subject` and a `filtered` helper alongside it. `UpdateChannel`'s depth toggles, `ReactiveMap` and `ReactiveSet`'s per-key events, and `skipSynchronousValues` / `valueOf` in core are rewritten on those, so nodes, scheduling, channels, stores and the reactive collections import nothing from `rxjs` that survives into a bundle. `Derived.from` is typed against the local `Subscribable` too, which took one deliberate oddity: an RxJS `Observable` declares `subscribe` as an overload set, TypeScript infers from the last overload, and the last one is the deprecated `(next, error, complete)` form -- so the value type inferred through `subscribe` lands on `unknown`, and RxJS's own `Subscribable` fails the same way. The local typedef therefore carries an optional `forEach` member that nothing calls: it is the member RxJS observables have whose type is plain enough to infer from, and anything with only a `subscribe` still qualifies. What remains of `rxjs` in the graph's types is the two pre-existing type-only imports for the operator arrays `store` and `Op` accept, which genuinely are RxJS values. Nothing changes at the boundary: an RxJS observable still satisfies `Subscribable` structurally and is accepted everywhere it was, and the interop, factory and operator layer keeps producing genuine RxJS observables, so downstream pipelines through RxJS operators are untouched. Measured on the package's own bundles: an entry point using only `Signal`, `Derived`, `Effect` and `batch` drops from 8.1 kB to 5.1 kB gzipped and from 18 RxJS modules to none, and one using only the reactive collections from 7.7 kB to 4.4 kB and 21 modules to none. A bundle that reaches the operator layer is unchanged, RxJS being what that layer is."
+          },
+          {
+            "comment": "A store no longer builds an operator pipeline it was given no operators for. `store(data, operators)` ended in `useEffects(entity, operators)` unconditionally, and with an empty list that is `use(just(entity, []))` -- an `Observable`, a `ReplaySubject`, a `share`, a subscription, and a dependency edge on a pipeline that emits once into a `takeNothing` and can never fire again. Per store, held for as long as the store lives. That matters because of what a store is used for here: an element owns one, a panel owns a few hundred elements, and most of them hold state without piping the entity through anything. Measured on twenty thousand stores built inside a live computation, which is how an application builds them: 21.5 to 11.6 microseconds each, and 6907 to 3255 bytes retained each -- 53% of the heap a store costs. Nothing changes for a store that does pass operators; they are applied exactly as before, in the same order, through the same pipeline. `store.bench.js` is added to keep both halves of that honest."
+          }
+        ],
+        "none": [
+          {
+            "comment": "Pin the just() contract with tests before reworking its implementation: one mounting shared by all subscribers with the value replayed to late ones, teardown with the last subscriber and a fresh mounting for the next, no re-emission when a mounted effect re-runs, mounting failures reported to subscribers, and a retry after failure. Tests only; no behavior changes."
+          },
+          {
+            "comment": "Document what mountEffect is for now that onError is the effect's one failure ear: a run failing once the mounting stands ends the mounting rather than escaping at the writer, and the first run is exempt because the throw restores a default that having an onError at all suppresses. Comment-only."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.5.0",
+      "tag": "@apendua/signal_v0.5.0",
+      "date": "Mon, 24 Aug 2026 21:52:07 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Rewritten around a pull model, with a third node kind. Ordering used to be a number: every node carried its depth in the graph and an update queue drained shallowest-first, which works only while the queue can see the shape of the graph -- and it could not. `toObservable(derived)` returned a plain Observable, which carries no depth, so anything reading one was scheduled as though it sat directly above a source; a diamond with one side through such a wrapper computed against values several levels out of date and published numbers the graph never held. There is now no number to lose. A write marks and stops, values are produced when somebody asks, and `Derived#get` resolves its dependencies before returning -- so the call stack of a read is the topological order, exact rather than approximate, and able to see through anything. BREAKING: a `Derived` must be pure, and side effects inside one no longer run -- they belong in the new `Effect`, which is the only kind of node that is scheduled and the only one that belongs to an `UpdateChannel`. `subscribe()` is now an invalidation channel rather than a value stream: it fires when a node goes from clean to stale, evaluates nothing, and does not batch, so anything that wants a value on a schedule wants an `Effect`. `getPriority`, `setPriority` and `getChannelOrder` are gone. `effect()` now builds an `Effect`; the old teardown-only helper of that name is `resource()`, and `Computation#addSideEffect` is `addResource`. Channel order is no longer a promise the author has to keep -- an effect invalidating an earlier channel moves that channel above it, permanently, instead of being warned about. Also: teardowns registered with `onCleanup` now follow whichever value survives an evaluation, so a `Derived` that owns an expensive resource and has an `isEqual` that calls a rebuild interchangeable keeps the resource it holds and releases the rebuild, rather than swapping a live handle for a dead one."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.4.1",
+      "tag": "@apendua/signal_v0.4.1",
+      "date": "Thu, 20 Aug 2026 20:52:32 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Performance: invalidate dependent computations through direct method calls, store queue entries and priorities on the nodes instead of WeakMaps, and avoid a per-recomputation array copy."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.4.0",
+      "tag": "@apendua/signal_v0.4.0",
+      "date": "Tue, 18 Aug 2026 21:22:37 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "`Computation` no longer routes its own notifications through RxJS. It was a `Subject` behind `share()`, which is a fair description of what it does and an expensive way to say it: what `share()` was buying is multicast to the current observers, connect on the first and disconnect after the last, and -- with `cacheTTL` -- wait a while before that disconnect, each a few lines written out. Dependencies are untouched and may still be any `Subscribable` an application hands to `addDependency`; those are subscribed through `skipSynchronousValues` exactly as before. What went away is the wrapper around the overwhelmingly common case, a computation depending on another computation, where the source emits nothing during `subscribe` and needs no machinery to establish it. Measured on the package's own benchmarks: a signal write with one subscriber 2.2x, a hundred-way fan-out 1.5x, a ten-level chain 1.5x, `batch()` of a hundred writes 1.7x, and the scrolling-list case `fanout.bench.js` was distilled from 1.7-2.0x; reads are unchanged. In a browser, a hundred mirrored rows arriving in one frame went from about 2.5 seconds to about 1.5. One breaking change for anyone constructing a `Computation` directly: the `resetOnRefCountZero` option, which took an observable factory, is replaced by `resetDelay`, which takes a function returning milliseconds -- negative for the default of dropping the connection immediately."
+          },
+          {
+            "comment": "Work with a teardown is no longer spelled as a stream. Several things a computation hangs off its own lifetime are not streams of anything -- they run when it activates and undo themselves when it lets go: a `Derived` recomputing and dropping its cached value, and a memo putting itself in a cache and taking itself out again. Each was an `Observable` whose subscribe function returned a teardown and never emitted, which costs an Observable, a Subscriber, a Subscription, and a `skipSynchronousValues` wrapper around it to establish that the thing which emits nothing did not emit anything during subscribe. `effect(start)` is the same idea spelled as what it is, and `Computation` takes it on the same fast path it already takes another computation on. What RxJS behaviour it keeps is the one that matters: work throwing on the way in tells the subscriber rather than throwing back out of `subscribe`. Every `Derived` builds one of these, so a panel builds tens of thousands. Measured on twenty thousand `Derived` built and activated: 6.28 to 4.40 microseconds each, and 3067 to 2122 bytes retained each. On a mirrored panel of 800 rows -- 2400 nodes, some hundred and fifty thousand computations -- retained heap fell from 991 MB to 744 MB, a quarter of it. It does not measurably change the frame a panel takes to mount, that frame no longer being dominated by construction; what it changes is what the panel costs to keep. `effect` is exported for callers doing the same thing through `addSideEffect`."
+          },
+          {
+            "comment": "Update channels: a scheduling class for invalidations, so that expensive work can be told to run at a frame boundary and within a frame's worth of time rather than the instant its inputs move. `new UpdateChannel({ order, trigger, budget })` and `new Derived(fn, { channel })`. The queue drains by `(channel order, depth)` with the channel as the major key — every task in an earlier channel before any task in a later one, depth deciding within a channel — and a channel that drains on demand never drains because something was queued in it, only when it is asked to, for at most `budget` milliseconds. Whatever does not fit waits and resumes at the depth the pass stopped at, so a mirrored panel lags its inputs by up to a frame instead of stalling one. `channel.hasPendingUpdates` is a reactive boolean for \"is this channel holding work\", `channel.flush({ budget: Infinity })` settles it — for tests, or before measuring anything. Two channels may share an order and are then simply not ordered relative to each other. Nothing changes for a graph that creates no channels: the queue's bucket grid and its per-channel drain are as they were, only a budgeted pass reads a clock, the check that keeps channels terminal is skipped outright while no channel is in use, and a channel nothing observes does not announce its depth."
+          },
+          {
+            "comment": "`withChannel(channel, fn)` builds everything `fn` constructs into `channel`, the way `withComputation` sets the computation reads are tracked against. A channel is a property of the reader, and a reader is usually built rather than configured — a region of a graph is constructed node by node through helpers that do not take a channel and should not have to. Threading one through every operator that happens to build a `Derived` would mean every such helper growing a parameter for it, and would still miss whichever one was forgotten; and the forgotten ones are the dangerous ones, since a computation left in the default channel while the values it reads are deferred applies half of an update as soon as it can and the other half a frame later. Pass `null` for something shared between regions, which belongs to none of them."
+          },
+          {
+            "comment": "`new UpdateChannel({ manual: true })` drains only when `flush()` is called, with no trigger of its own. A channel with a trigger drives itself and spends its own budget, which is the wrong shape when several channels share one deadline: a frame is one thing with one allowance, however many regions are drawn in it. A manual channel lets the thing that knows how much of the frame is left — a render loop — hand each channel what remains in turn."
+          },
+          {
+            "comment": "A budget bounds the tasks a pass starts, not the time it takes: one slow recomputation can overrun it, and nothing in the queue can preempt it. A budget can also starve deep work, because continuous input keeps re-queueing the shallow nodes and depth ordering keeps preferring them — so after `maxStalePasses` passes cut short in a row (three by default) the next one ignores the budget. A hitch, rather than a subtree that stays wrong indefinitely."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "A store's per-key dependency is a signal rather than a filtered stream. Reading one key registered a dependency on `changes.pipe(filter(...))` -- one `Subject` for the whole store, a piped observable per key on top of it, and a memoized computation holding that. The filtering was the point, a reader of `width` not waking for a write to `height`, and a counter per key does the same by construction without the stream. It is also something `Computation` recognizes, so subscribing to it touches no RxJS at all: across a mirrored panel, `Observable.subscribe` calls fell from 78 per node to 42, and the `skipSynchronousValues` wrapper from 24.7 per node to 0.7. Retained heap for a panel of 800 mirrored rows fell from 744 MB to 655 MB, 12% of it, and 34% below where the same panel sat two changes ago. It does not measurably change the frame a panel takes to mount -- five bursts either side interleave -- and the reason is worth recording: RxJS's own self time in that frame was about 2%, the rest of what a profiler bills to it being our callbacks running underneath. One tradeoff: a signal is created per key on first read and kept for the store's life, where the old cache dropped a key's machinery when nothing was reading it. That is bounded for a store of fixed shape, which is every store in this repository; a store used as a dictionary of unbounded keys wants `ReactiveMap`, which is what it is for."
+          },
+          {
+            "comment": "A computation warns, once, when it reads a dependency from a later update channel than its own. Channels are drained in order, so such a node is scheduled before the value it reads and lags it by a pass, every pass. The practical rule this enforces: put the whole region into the channel, not only the node at its boundary. Deferral reaches the whole subtree from the boundary alone — nothing below is told anything until the boundary runs — but a node left in the default channel is not counted against the channel's budget, and a pass cut short leaves it for the next unrelated write to run."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.3.0",
+      "tag": "@apendua/signal_v0.3.0",
+      "date": "Thu, 13 Aug 2026 21:23:25 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Adds a benchmark measuring what invalidation coalescing is worth: the fan-out shape a mirrored panel produces, driven with one, two, four and eight writes per flush, counting recomputations with and without a batch. No library code changes."
+          }
+        ],
+        "minor": [
+          {
+            "comment": "A `Signal` no longer goes through the update queue. It is a source — nothing depends on it being ordered after anything else — so `set()` now notifies its subscribers directly, and the queue holds only computations. The write wraps that notification in a batch, which is what keeps the graph glitch-free: telling a dependent queues it, and outside a batch a queued dependent drains immediately, so an unbatched notification would let the first dependent recompute, and everything below it with it, before the second dependent had been told, and a diamond would update once per branch instead of once in total. The visible change is that repeated writes to the same signal inside one `batch()` notify a *direct* subscriber once per write rather than once in total; every value reported is a value the signal really held, and computations below are still deduped by the queue and recompute once. Writes got substantially cheaper for dropping the round trip: with no subscriber about 2.7x, with one subscriber about 1.2x, a 100-way fan-out about 1.4x."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "`store()` property writes and `ReactiveMap`/`ReactiveSet` mutations announce a change as one update rather than one per dependent. They are sources too, and had the same problem `Signal.set()` did — but for the collections it was not merely an extra recomputation, it was a torn read: a computation reading a map key and that map's `size` saw the key deleted while `size` still reported 1, `clear()` showed one key gone and the next still present, and a store write reached the key's readers before the `ownKeys` readers heard about it. Seven such shapes across the three now report a single, consistent update."
+          },
+          {
+            "comment": "The update queue's end-of-flush sweep of stale bucket entries only runs when the drain completed. The sweep cannot tell an abandoned entry from a live one — an empty queue is what tells it — so running it with work still queued would strand that work permanently, the tasks keeping their membership entries with no bucket entry left to reach them by and `#push` refusing to re-enqueue a task already queued at the same priority. Today's drain loop only ever exits empty, so this makes an existing precondition explicit rather than repairing a live bug; it is what will let a drain stop early, on a time budget or otherwise."
+          },
+          {
+            "comment": "The benchmark harness shared by `Signal.bench.js` and `fanout.bench.js` measures what it claims to. It previously warmed up 200 iterations, ran a single 500 ms window and printed one number, which was enough to report a 3% improvement as a 2x regression. It now warms up to steady state, runs iterations in chunks sized so that reading the clock costs a negligible share of a sample — the old loop read it every iteration, which cost about as much as the cheapest operations being timed and understated them by an order of magnitude — takes five windows, and reports the median with the spread so an untrustworthy number says so. Warm-up, calibration and sampling share one loop, since the optimiser works per call site and a separate warm-up leaves the timed loop cold. Also fixes a benchmark that measured nothing: `batch() — 100 signal writes` wrote each signal's existing value back, so every write short-circuited on `isEqual`. Numbers from this harness are not comparable with the previous one's."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.2.0",
+      "tag": "@apendua/signal_v0.2.0",
+      "date": "Mon, 10 Aug 2026 22:34:42 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Remove deprecated setPriorityFn"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.1.2",
+      "tag": "@apendua/signal_v0.1.2",
+      "date": "Mon, 10 Aug 2026 07:14:43 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "The update queue drains from priority buckets instead of a binary heap. Priorities are graph depths — small consecutive integers — so a heap paid comparator calls and index bookkeeping on every sift to maintain an order the priorities never had; buckets make push and pop O(1) with no comparisons, and drain each level in insertion order. Wide fan-out — one hot signal driving thousands of small computations, the shape a scrolling list projected by @apendua/freedom produces every frame — runs about twice as fast end to end, and the shape now has a benchmark (fanout.bench.js) and the queue its own semantic tests."
+          },
+          {
+            "comment": "Delete Heap.js and its tests, which the bucketed update queue left with no callers anywhere in the repo. Two corner cases the queue's new test suite exposed are fixed along the way: a batch body that threw used to leave the batching flag set, wedging the queue so that every later invalidation was silently swallowed; and a priority too large to index a bucket with used to leave the drain cursor climbing levels forever. Such priorities — Infinity included, which a hand-written priority function may reasonably pass to mean \"after everything\" — are now held aside and drained after every ordinary level, in priority order, so Infinity really does run last rather than merely running late."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.1.1",
+      "tag": "@apendua/signal_v0.1.1",
+      "date": "Thu, 06 Aug 2026 07:34:16 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Built with TypeScript 7. Each @overload in operators.js now sits in its own JSDoc block; packing several into one block made every @template share a scope, which TypeScript 7 rejects as a duplicate identifier. No API change."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"@apendua/vite-hmr\" to `0.1.1`"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.1.0",
+      "tag": "@apendua/signal_v0.1.0",
+      "date": "Tue, 04 Aug 2026 21:29:33 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Configure publishing to GitHub Packages"
+          },
+          {
+            "comment": "Add repository metadata for GitHub Packages linkage"
+          },
+          {
+            "comment": "Non-functional change: enable Rush build cache configuration."
+          }
+        ]
+      }
+    }
+  ]
+}

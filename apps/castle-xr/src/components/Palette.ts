@@ -1,0 +1,159 @@
+import * as THREE from "three";
+import { $, children, dom, drag, interactions, Nothing, XREventMap } from "@apendua/freedom";
+import { component, effects, emit, on, Op, set, Signal, store } from "@apendua/signal";
+import { children as domChildren, $ as $dom, text } from "@apendua/justdom";
+import Brick from "./Brick.js";
+import { BrickType } from "./types.js";
+import { boxGeometry } from "../elements/geometry.js";
+import { basicMaterial } from "../elements/material.js";
+import { palette } from "../elements/palette.js";
+import { layoutPalette, PALETTE_BRICK_SCALE } from "../utils/paletteLayout.js";
+import { paletteLabel } from "../views/styles.js";
+
+interface BrickEvent {
+  brickType: BrickType;
+  matrixWorld: THREE.Matrix4;
+  inputSource: XRInputSource;
+}
+
+interface PaletteEvents {
+  dragstart: BrickEvent;
+  dragend: BrickEvent;
+  dragmove: BrickEvent;
+}
+
+interface PaletteProps {
+  position: THREE.Vector3;
+  rotation: THREE.Euler;
+}
+
+const defaults: PaletteProps = {
+  position: new THREE.Vector3(),
+  rotation: new THREE.Euler(),
+};
+
+const PLATE_THICKNESS = 0.15;
+
+/**
+ * A tray holding one of every brick, laid out in a row so the whole catalogue
+ * can be taken in at a glance. Pulling a brick off it hands over a copy and
+ * leaves the tray as it was. The tray is carried by its side rails, so a ray
+ * that misses a brick never picks the whole thing up.
+ */
+export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, PaletteEvents>) => {
+  const props = store<PaletteProps, PaletteEvents>(defaults, operators);
+  const layout = layoutPalette();
+  const { makeInteractive } = interactions(ctx);
+  // Carried by the hand that pressed on a rail, and handed to the other hand
+  // by a press from it. The rails bubble their presses up to here.
+  const { draggable } = drag(ctx);
+
+  return $(new THREE.Group<XREventMap>(), [
+    effects((o) => {
+      o.position.copy(props.position);
+      o.rotation.copy(props.rotation);
+    }),
+    draggable(),
+    children(
+      $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
+        effects((o) => {
+          o.position.set(0, -PLATE_THICKNESS / 2, 0);
+        }),
+        set({
+          get geometry() {
+            return boxGeometry(layout.plateWidth, PLATE_THICKNESS, layout.plateDepth);
+          },
+          get material() {
+            return basicMaterial(palette.trayPlate);
+          },
+        }),
+      ]),
+      ...layout.handles.map((handle) => {
+        return $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
+          effects((o) => {
+            o.position.set(handle.x, handle.y, handle.z);
+          }),
+          set({
+            get geometry() {
+              return boxGeometry(handle.width, handle.height, handle.depth);
+            },
+            get material() {
+              return basicMaterial(palette.trayRail);
+            },
+          }),
+          makeInteractive(),
+        ]);
+      }),
+      ...layout.labels.map(({ label, x, y, z }) => {
+        return dom(
+          ctx,
+          $dom("div", [set("className", paletteLabel), domChildren(text`${label}`)]),
+          [
+            effects((o) => {
+              // Laid flat on the tray, reading away from the player.
+              o.position.set(x, y, z);
+              o.rotation.set(-Math.PI / 2, 0, 0);
+            }),
+          ],
+        );
+      }),
+      ...layout.slots.flatMap(({ type, x, y, z }) => {
+        const position = new THREE.Vector3(x, y, z);
+        /** Whether this slot's brick is currently away in somebody's hand. */
+        const taken = Signal.of(false);
+        return [
+          // What comes off the tray is a copy — the tray always keeps its
+          // brick — but what the hand actually carries away is the tray
+          // brick's own object, so the slot sat empty for the length of the
+          // drag and the tray looked raided. A stand-in holds the slot
+          // instead, and goes when the brick itself comes back to it.
+          component(() => {
+            if (!taken.get()) {
+              return Nothing();
+            }
+            return Brick(ctx, [
+              set({ type, scale: PALETTE_BRICK_SCALE, position, interactive: false }),
+            ]);
+          })(),
+          Brick(ctx, [
+            set({
+              type,
+              draggable: true,
+              hitbox: true,
+              scale: PALETTE_BRICK_SCALE,
+              position,
+            }),
+            on("dragstart", (e) => {
+              taken.set(true);
+              emit(props, "dragstart", {
+                brickType: type,
+                matrixWorld: e.matrixWorld,
+                inputSource: e.inputSource,
+              });
+            }),
+            on("dragmove", (e) => {
+              emit(props, "dragmove", {
+                brickType: type,
+                matrixWorld: e.matrixWorld,
+                inputSource: e.inputSource,
+              });
+            }),
+            on("dragend", (e) => {
+              // The tray always keeps its brick; only the copy is placed. The
+              // stand-in steps aside now that the brick itself is back.
+              taken.set(false);
+              e.reset();
+              emit(props, "dragend", {
+                brickType: type,
+                matrixWorld: e.matrixWorld,
+                inputSource: e.inputSource,
+              });
+            }),
+          ]),
+        ];
+      }),
+    ),
+  ]);
+});
+
+export default Palette;

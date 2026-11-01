@@ -21,6 +21,7 @@
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { clickButton, frames, pose } from "./emulator.mjs";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const { chromium } = await import(
@@ -87,51 +88,6 @@ function castle() {
   return bricks;
 }
 
-const frames = (page, count) =>
-  page.evaluate(
-    (n) =>
-      new Promise((done) => {
-        let left = n;
-        const tick = () => (left-- > 0 ? requestAnimationFrame(tick) : done());
-        tick();
-      }),
-    count,
-  );
-
-/** Pose the emulated head, and park the hands out of the picture. */
-const pose = (page, pitch, yaw = 0, offset = [0, 0, 0]) =>
-  page.evaluate(
-    ([p, y, dx, dy, dz]) => {
-      const device = window.xrDevice;
-      if (window.__home === undefined) {
-        window.__home = { x: device.position.x, y: device.position.y, z: device.position.z };
-      }
-      device.position.x = window.__home.x + dx;
-      device.position.y = window.__home.y + dy;
-      device.position.z = window.__home.z + dz;
-      const cp = Math.cos(p / 2);
-      const sp = Math.sin(p / 2);
-      const cy = Math.cos(y / 2);
-      const sy = Math.sin(y / 2);
-      device.quaternion.x = cy * sp;
-      device.quaternion.y = sy * cp;
-      device.quaternion.z = -sy * sp;
-      device.quaternion.w = cy * cp;
-      for (const side of ["left", "right"]) {
-        const controller = device.controllers[side];
-        if (!controller) continue;
-        controller.position.x = side === "left" ? -0.3 : 0.3;
-        controller.position.y = 0.9;
-        controller.position.z = 0.25;
-        controller.quaternion.x = Math.sin(-Math.PI / 4);
-        controller.quaternion.y = 0;
-        controller.quaternion.z = 0;
-        controller.quaternion.w = Math.cos(-Math.PI / 4);
-      }
-    },
-    [pitch, yaw, ...offset],
-  );
-
 /**
  * Point the right controller so its ray runs from `from` through `at`, both
  * given in scene coordinates. IWER drives the target-ray space straight from
@@ -169,24 +125,6 @@ const trigger = (page, value) =>
   page.evaluate((v) => {
     window.xrDevice.controllers.right.updateButtonValue("trigger", v);
   }, value);
-
-/** Presses a panel button by the text it starts with, through the DOM. */
-const clickButton = (page, label) =>
-  page.evaluate((wanted) => {
-    const portals = Array.from(document.querySelectorAll("[data-xr-portal]"));
-    const panel = portals.find((portal) => (portal.textContent || "").includes("Music"));
-    if (!panel) return "no panel";
-    const candidates = Array.from(panel.querySelectorAll("div")).filter((el) =>
-      (el.textContent || "").trim().startsWith(wanted),
-    );
-    const leaves = candidates.filter(
-      (el) => !candidates.some((other) => other !== el && el.contains(other)),
-    );
-    const target = leaves[leaves.length - 1];
-    if (!target) return `no button ${wanted}`;
-    target.click();
-    return "clicked";
-  }, label);
 
 /** Reads a `Label: value` line off the panel, e.g. "Bricks" or "Standing". */
 const readValue = (page, label) =>

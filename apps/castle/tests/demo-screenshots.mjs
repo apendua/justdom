@@ -21,6 +21,7 @@
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
+import { clickButton, frames, hideFurniture, pose } from "./emulator.mjs";
 import { castle } from "./castle.mjs";
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,80 +42,6 @@ const OUT =
   );
 const SIZE = MODE === "build" ? { width: 1280, height: 960 } : { width: 780, height: 585 };
 const CHROMIUM = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-
-const frames = async (page, count) => {
-  await page.evaluate(
-    (n) =>
-      new Promise((done) => {
-        let left = n;
-        const tick = () => (left-- > 0 ? requestAnimationFrame(tick) : done());
-        tick();
-      }),
-    count,
-  );
-};
-
-/**
- * Pose the emulated head, and keep the hands out of the picture. The offset is
- * from wherever the head started, which under a `local` reference space is
- * also the scene's origin — so these numbers read as scene coordinates.
- */
-const pose = (page, pitch, yaw = 0, offset = [0, 0, 0]) =>
-  page.evaluate(
-    ([p, y, dx, dy, dz]) => {
-      const device = window.xrDevice;
-      if (window.__home === undefined) {
-        window.__home = {
-          x: device.position.x,
-          y: device.position.y,
-          z: device.position.z,
-        };
-      }
-      device.position.x = window.__home.x + dx;
-      device.position.y = window.__home.y + dy;
-      device.position.z = window.__home.z + dz;
-      const cp = Math.cos(p / 2);
-      const sp = Math.sin(p / 2);
-      const cy = Math.cos(y / 2);
-      const sy = Math.sin(y / 2);
-      // q = qyaw * qpitch
-      device.quaternion.x = cy * sp;
-      device.quaternion.y = sy * cp;
-      device.quaternion.z = -sy * sp;
-      device.quaternion.w = cy * cp;
-      for (const side of ["left", "right"]) {
-        const controller = device.controllers[side];
-        if (!controller) continue;
-        controller.position.x = side === "left" ? -0.3 : 0.3;
-        controller.position.y = 0.9;
-        controller.position.z = 0.25;
-        // Straight down, so no ray crosses the frame.
-        controller.quaternion.x = Math.sin(-Math.PI / 4);
-        controller.quaternion.y = 0;
-        controller.quaternion.z = 0;
-        controller.quaternion.w = Math.cos(-Math.PI / 4);
-      }
-    },
-    [pitch, yaw, ...offset],
-  );
-
-/** Presses a panel button by the text it starts with, through the DOM. */
-const clickButton = (page, label) =>
-  page.evaluate((wanted) => {
-    const portals = Array.from(document.querySelectorAll("[data-xr-portal]"));
-    const panel = portals.find((portal) => (portal.textContent || "").includes("Music"));
-    if (!panel) return "no panel";
-    const candidates = Array.from(panel.querySelectorAll("div")).filter((el) =>
-      (el.textContent || "").trim().startsWith(wanted),
-    );
-    const leaves = candidates.filter(
-      (el) => !candidates.some((other) => other !== el && el.contains(other)),
-    );
-    const target = leaves[leaves.length - 1];
-    if (!target) return `no button ${wanted}`;
-    target.click();
-    return "clicked";
-  }, label);
 
 async function main() {
   const server = await createServer({
@@ -150,22 +77,7 @@ async function main() {
   // button and the stats.js chip are hidden, the in-scene diagnostics panel is
   // switched off through its own button, and the page behind the transparent
   // canvas goes passthrough-dark.
-  await page.evaluate(() => {
-    const isScene = (el) => {
-      if (el.tagName === "CANVAS") {
-        return el.clientWidth > 400;
-      }
-      // stats.js is a div of small canvases; the scene is one big one.
-      return Array.from(el.querySelectorAll("canvas")).some((c) => c.clientWidth > 400);
-    };
-    // A portal hides itself; hiding it again would hide every panel in it.
-    for (const el of document.body.children) {
-      if (!isScene(el) && !el.hasAttribute("data-xr-portal")) {
-        el.style.visibility = "hidden";
-      }
-    }
-    document.body.style.background = "#0c0d10";
-  });
+  await hideFurniture(page);
   console.log("[diagnostics]", await clickButton(page, "Hide diagnostics"));
 
   // Framed a step up and to the left of where the player started, looking

@@ -15,6 +15,7 @@ html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
 .look-picker { display: flex; align-items: center; gap: 8px; }
 .look-picker select { color: inherit; background: transparent; border: 0; font: inherit; cursor: pointer; }
 .look-picker option { color: #111; }
+.chrome .notice { color: #ffd27a; background: rgba(0,0,0,.55); padding: 7px 10px; border-radius: 6px; }
 .tag {
   display: none; position: absolute; z-index: 40; max-width: 260px;
   background: #fffbe6; color: #222; border: 1px solid #d4a017; border-radius: 6px;
@@ -35,10 +36,12 @@ body.tags .tag { display: block; }
 html[data-presenting] .zone { transform: none !important; }
 html[data-presenting] .tag { display: none; }
 html[data-presenting] .chrome { display: none; }
-/* The cursor sits after the text, and in a session the whole program is in
-   the text from the start, revealed by the scene: while it is being typed
-   the cursor would blink at its end rather than at the cut. */
-html[data-presenting] .screen[data-typing] .cursor { visibility: hidden; }
+/* The cursor sits after the text, and in a mirrored session the whole
+   program is in the text from the start, revealed by the scene: while it is
+   being typed the cursor would blink at its end rather than at the cut. A
+   desk drawn into a texture (`?panels=texture`) types into the text as the
+   page does, so its cursor stays. */
+html[data-presenting]:not([data-panels=texture]) .screen[data-typing] .cursor { visibility: hidden; }
 /* A key pressed on the page moves down the screen, which is how a keycap
    going down looks from above. In the room the keyboard lies on the desk,
    and down the screen is along the desk, so there the caps stand proud of
@@ -64,3 +67,9 @@ html[data-presenting] .knob:active, html[data-presenting] .knob[data-xr-active] 
 @keyframes march { to { stroke-dashoffset: -20; } }
 @keyframes busy { 50% { opacity: .25; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* `?panels=texture`: in a session the whole desk is drawn into one texture
+   and each zone's panel is cut from it (src/texture/Scene.ts). What lies
+   between the zones, the wall and the tabletop, is hidden, so a panel shows
+   its zone and nothing round it, and the room has its own. */
+html[data-panels=texture][data-presenting] .desk > :not(.zone) { visibility: hidden; }

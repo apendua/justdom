@@ -3,7 +3,8 @@
 A desk drawn in HTML and CSS, in three looks: a computer typing out its program on its screen, a
 keyboard that types on it, a panel of live charts, a board of cards, something to load programs
 from, and a paper to read. On a page it is a page. In a headset `justdom-three` mirrors each object
-into a panel of its own and sets them out on a desk in a room.
+into a panel of its own and sets them out on a desk in a room; `?panels=texture` has the browser
+draw them into a texture instead (below).
 
 It is the sampler for what freedom can mirror, written as one scene rather than a grid of specimens.
 `apps/showcase` stays as it is, because its visual suite is a regression test for freedom and needs
@@ -120,6 +121,69 @@ memo takes the hand's whole rotation, so it can be tipped up to read. The power 
 screen ends the session; on Night Ops it is PWR, and on Paper Studio the terminal window's close
 box.
 
+## Drawn by the browser: `?panels=texture`
+
+`?panels=texture` is an experiment. It puts the same desk in the same room, but the browser draws
+each zone into a texture instead of `justdom-three` mirroring it. The page is the same justdom page,
+and only the way it reaches the headset changes. `?panels=texture&emulator` tries it on a desktop.
+
+It needs [HTML-in-Canvas](https://github.com/WICG/html-in-canvas), which only Chromium has, behind a
+flag: turn on `chrome://flags/#canvas-draw-element`, or start Chromium with
+`--enable-blink-features=CanvasDrawElement`. Without it the page says so in the corner and offers no
+session. It was tried in Chromium 153 under the emulator. The proposal is still moving: its README
+has since renamed the canvas's `layoutsubtree` attribute to `content="drawable"`, and Chromium has
+changed `texElementImage2D`'s arguments once already. three r185's `HTMLTexture` does the upload and
+knows both forms of that call, but a Chromium that follows the README further may need changes here.
+There is no flag in the Quest Browser, and the Quest stops rendering the page during a session,
+which is when the canvas's `paint` event fires, so the panels would not change there.
+
+How it draws (`src/texture/Scene.ts`):
+
+- When a session starts, the desk's element (`[data-desk]`) is moved into the renderer's canvas,
+  which gets `layoutsubtree`. The browser lays it out there and draws it nowhere on the page. The
+  staging comes off as it does for the mirror, and the wall and the tabletop between the zones are
+  hidden, so the texture is the zones on a transparent ground.
+- The canvas fires `paint` when the browser has painted the desk again. On the first one three's
+  `HTMLTexture` is made from the desk; on each one it is marked for upload, and three uploads it
+  with `texElementImage2D` on the next frame. Made before the first paint, three uploads on every
+  frame and throws until the paint arrives.
+- The whole desk is one texture. Each zone the look places is a flat plane, posed as the mirror
+  poses it, whose UVs are the zone's rect in the desk, measured again on every paint.
+- When the session ends the desk goes back into `.stage`, and the canvas loses `layoutsubtree`.
+
+How input reaches the DOM (`src/texture/forwarding.ts`): a ray on a panel lands at a UV, which is a
+point of the desk in client px. The page is asked which element is there by a walk over the zone's
+boxes (`elementAt`), not by `elementFromPoint`, which answers only for points inside the window.
+Each hand then sends that element the events a mouse would: `pointerover`/`pointerout` and
+`pointermove` as the ray moves, `pointerdown`/`mousedown` and `pointerup`/`mouseup` and `click` for
+the trigger, and for a `draggable` element moved 4 px with the trigger held, `dragstart`,
+`dragenter`, `dragover`, `dragleave`, `drop` and `dragend` across any panel. So the desk's handlers
+run unchanged, and the floppy dragged from its panel onto the monitor's loads. A press focuses the
+nearest focusable element, as a real one does, unless `mousedown` was cancelled. `:hover` and
+`:active` cannot be set by a script, so the elements under the ray carry `data-xr-hover` and the
+pressed ones `data-xr-active`, as the mirror marks them, and the looks' stylesheets already answer
+both.
+
+What it does not do that the mirror does:
+
+- The note field has no keyboard of its own. A press focuses it, and the desk's keyboard then types
+  into it, as it does on the page.
+- Panels cannot be picked up, and nothing buzzes the controller.
+- The texture is the desk's px at the page's pixel ratio, so text is softer close up than the
+  mirror's, which draws it in the scene.
+- Every paint uploads the whole desk, so a blinking cursor uploads 1600 by 1000 px a frame.
+- The walk takes a rotated box as the box round it, and an element overlapping a zone on the desk
+  would show in that zone's panel.
+- The events are untrusted (`isTrusted` is false), and the drag carries a `new DataTransfer()`,
+  which keeps data but ignores `effectAllowed` and `dropEffect`. The desk reads neither.
+
+`node tests/texture-check.mjs` checks it on the emulated headset, in Chromium with the flag turned
+on: for each look the desk is drawn from the canvas, the ray marks the power control and its trigger
+ends the session and puts the desk back; on Beige Box '84 a key types on the monitor and a floppy
+dragged onto the drive loads its program. It is not run on pull requests, since a Chromium that
+drops or renames the flag would fail it for no change here. `SHOTS=<dir>` photographs each session,
+and `CHROMIUM` works as it does for `tests/xr-check.mjs`.
+
 ## How it is put together
 
 Each look is its markup and its stylesheet in `src/looks/`, and an entry in `src/looks.ts` that says
@@ -148,6 +212,7 @@ rules for a session. Each object is a `.zone` with an id, and the modules in `sr
 | `src/xr.ts`                      | The offer: the renderer, the Enter button, the SVG plugin and the note field's keyboard.                                                                                                                                                                        |
 | `src/components/Scene.ts`        | The room in the look's colours, and each zone posed where the look places it.                                                                                                                                                                                   |
 | `src/components/NoteKeyboard.ts` | What the note field's keyboard looks like in a session.                                                                                                                                                                                                         |
+| `src/texture/`                   | `?panels=texture`, above: which panels a session uses, the scene drawn from a texture, and the ray's input sent to the page as a mouse's events.                                                                                                                |
 | `src/probe/`                     | The paint-order probe's scenes, its recorder and its page's script, above; `paint-order-probe.html` is its page and `vite/probeResults.js` the route that saves its results.                                                                                    |
 
 Four things the page does differently while it is mirrored.

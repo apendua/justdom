@@ -2007,10 +2007,11 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
   its own. `isTextInput(node)` is the rule the portal draws a field by. `solveCut(layout, cursor)`
   is the arithmetic behind `makeReveal`.
 - From `justdom-three/page`: `getPortalRoot` and `scrollElementBy` again, the two functions a widget
-  on a page asks of a portal, and `FOCUS_ATTRIBUTE`, from an entry point that imports nothing from
-  three.js. A widget a page shows before any session, and a panel may mirror during one, imports
-  them from there, so that the page's own bundle does not carry the renderer; the dropdown and the
-  scrolling list in `justdom-three-ui` do.
+  on a page asks of a portal, and `FOCUS_ATTRIBUTE`, `HOVER_ATTRIBUTE` and `ACTIVE_ATTRIBUTE`, the
+  names of `data-xr-focus`, `data-xr-hover` and `data-xr-active`, from an entry point that imports
+  nothing from three.js. A widget a page shows before any session, and a panel may mirror during
+  one, imports them from there, so that the page's own bundle does not carry the renderer; the
+  dropdown and the scrolling list in `justdom-three-ui` do.
 - From `justdom-three/svg`: `shape`, `group`, `image` and `drawText` are the builders
   `svgElements()` dispatches to, for a plugin that draws one SVG element its own way and hands the
   rest to them.

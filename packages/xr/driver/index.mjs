@@ -27,13 +27,16 @@ const { chromium } = await import(
 
 /**
  * Chromium on SwiftShader, which is what draws a session with no GPU.
+ * `args` are passed to it besides, such as a Blink feature a check needs
+ * turned on.
  *
+ * @param {{ args?: readonly string[] }} [options]
  * @returns {Promise<import("playwright-core").Browser>}
  */
-export function launch() {
+export function launch({ args = [] } = {}) {
   return chromium.launch({
     executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", ...args],
   });
 }
 

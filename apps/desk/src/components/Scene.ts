@@ -11,14 +11,14 @@ import type { Readable } from "../session.js";
  * A source that says nothing and never finishes: what a mounting is handed
  * while there is nothing to mount.
  */
-const NOTHING = new Stream<never>(() => {});
+export const NOTHING = new Stream<never>(() => {});
 
 /**
  * The room the desk is set in, in the look's colours: a wall behind, a desk
  * on legs, a floor, and a sky in one colour all the way round, which is what
  * an AR session clears to rather than the passthrough.
  */
-function room(colors: Room): THREE.Object3D {
+export function room(colors: Room): THREE.Object3D {
   const group = new THREE.Group();
   // Lambert: the wall and the floor fill most of the view, and at this
   // roughness the specular term `MeshStandardMaterial` adds is a faint
@@ -61,7 +61,7 @@ function room(colors: Room): THREE.Object3D {
  * page's steam rises across a flat panel, and a mug lying on its side
  * would not do.
  */
-function mug(): THREE.Object3D {
+export function mug(): THREE.Object3D {
   const group = new THREE.Group();
   const china = new THREE.MeshStandardMaterial({ color: "#f3efe6", roughness: 0.4 });
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.095, 32, 1, true), china);
@@ -90,7 +90,7 @@ function mug(): THREE.Object3D {
  * without this each session left the last one's behind. A material or
  * geometry two meshes share is disposed twice, which three takes as once.
  */
-const disposedWithIt = effects((root: THREE.Object3D) => {
+export const disposedWithIt = effects((root: THREE.Object3D) => {
   onCleanup(() => {
     root.traverse((object) => {
       if (object instanceof THREE.Mesh) {
@@ -103,12 +103,22 @@ const disposedWithIt = effects((root: THREE.Object3D) => {
   });
 });
 
+/** The room's light: an even fill, and a lamp over the desk to its right. */
+export const lights = () => [
+  $(new THREE.AmbientLight(0xffffff, 1.6)),
+  $(new THREE.PointLight(0xfff1d6, 6, 4), [
+    effects((light) => {
+      light.position.set(0.3, 0.6, -0.2);
+    }),
+  ]),
+];
+
 /**
  * A group posed where `placement` says, scaled so that its panel is drawn at
  * the placement's px. Posed once: nothing here moves unless a hand moves it,
  * and a hand moves the portal's own group, not this one.
  */
-function pose(group: THREE.Group, placement: Placement): void {
+export function pose(group: THREE.Group, placement: Placement): void {
   const { x, z } = placement;
   if (placement.lying) {
     group.rotation.set(-Math.PI / 2 + (placement.tilt ?? 0), 0, placement.roll ?? 0, "YXZ");
@@ -154,12 +164,7 @@ export const Scene = (desk: Readable<MountedDesk>) =>
         }
       }),
       children(
-        $(new THREE.AmbientLight(0xffffff, 1.6)),
-        $(new THREE.PointLight(0xfff1d6, 6, 4), [
-          effects((light) => {
-            light.position.set(0.3, 0.6, -0.2);
-          }),
-        ]),
+        ...lights(),
         component(() => {
           if (!getXRSession(ctx)) {
             return NOTHING;

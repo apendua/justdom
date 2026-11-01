@@ -141,11 +141,12 @@ The signals are module state, one set per page.
 
 What an app's `tests/xr-check.mjs` imports to drive a session on the emulated headset from Node,
 through the device `install` leaves on `window.xrDevice`: `launch()` for Chromium on SwiftShader,
-`frames(page, n)` to wait for frames, `observeThree(page)` to keep the scenes and renderers three
-makes in `window.threeScenes` and `window.threeRenderers`, `headPosition(page)` for the origin of
-the `local` space, `aimAt(page, head, target)` to point the right controller's ray through a point,
-while the left one stays turned away as `install` left it, `rotate(v, pitch, yaw)` to turn a point
-on a panel into the scene by the panel's angles, `press(page, "trigger" | "squeeze")`,
+with `launch({ args })` for flags a check needs on top, such as a Blink feature, `frames(page, n)`
+to wait for frames, `observeThree(page)` to keep the scenes and renderers three makes in
+`window.threeScenes` and `window.threeRenderers`, `headPosition(page)` for the origin of the `local`
+space, `aimAt(page, head, target)` to point the right controller's ray through a point, while the
+left one stays turned away as `install` left it, `rotate(v, pitch, yaw)` to turn a point on a panel
+into the scene by the panel's angles, `press(page, "trigger" | "squeeze")`,
 `hold(page, button, 1 | 0)` to close or open a button for a drag, and `check`, `finish` and
 `closeAll` for the tally, the exit code and the teardown. It is in `driver/` rather than `src/`,
 since it runs in Node and never in a page. It borrows Playwright from `apps/showcase` and launches

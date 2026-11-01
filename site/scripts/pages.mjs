@@ -97,39 +97,57 @@ export function readmeSummary(markdown) {
 }
 
 /**
- * The lines under a demo's heading on the demos page: its clip, when
- * scripts/screenshots.mjs has recorded one, then the links to the demo and to
- * its source. The clip opens the demo too, and a reader who asks for reduced
- * motion gets its last frame, the still, in its place. A demo that draws a
- * headset session also gets a link that opens it in a new tab under
- * `?emulator`, so it can be played without a headset.
+ * The lines under a demo's heading on the demos page: its clips, the ones
+ * scripts/screenshots.mjs has recorded, then the links to the demo and to its
+ * source. The page clip shows the demo as a page and opens it. The headset
+ * clip shows it in a session in the emulated headset and opens it that way,
+ * under `?emulator`, in a new tab. Each clip is captioned with which of the
+ * two it is. A clip is a muted video that plays and loops by itself, and
+ * beside it is its last frame, the still, which the site's stylesheet, in
+ * .vitepress/config.mjs, shows in its place to a reader who asks for
+ * reduced motion. A demo that draws a headset session also gets a link that
+ * opens it under the emulator, so it can be played without a headset.
  *
  * The links to the demo are plain anchors with a target, so that VitePress's
  * router leaves them to the browser: the demo is a page of its own, not one
  * of the site's.
  *
  * @param {{ slug: string, title: string, folder: string, headset: boolean }} demo
- * @param {boolean} recorded whether public/screenshots/demos/ holds the
- *   demo's clip, `<slug>.anim.webp`, and its still, `<slug>.webp`
+ * @param {{ page: boolean, headset: boolean }} recorded whether
+ *   public/screenshots/demos/ holds each clip and its still: the page's
+ *   `<slug>.mp4` and `<slug>.webp`, and the headset's `<slug>.headset.mp4`
+ *   and `<slug>.headset.webp`
  * @returns {string[]}
  */
 export function demoLinks(demo, recorded) {
   const href = `/demos/${demo.slug}/`;
-  const emulated = demo.headset
-    ? `<a href="${href}?emulator" target="_blank" rel="noopener">Play in a tab with an emulated headset</a> · `
-    : "";
+  const opens = `href="${href}" target="_self"`;
+  const opensEmulated = `href="${href}?emulator" target="_blank" rel="noopener"`;
+  /**
+   * @param {string} name the clip's file name, less its ending
+   * @param {string} anchor the attributes of the link it is
+   * @param {string} caption
+   */
+  const clip = (name, anchor, caption) => {
+    const label = `${demo.title} ${caption}`.replace(/"/g, "&quot;");
+    const size = `width="${demoViewport.width}" height="${demoViewport.height}"`;
+    const still = `/screenshots/demos/${name}.webp`;
+    return [
+      `<figure class="demo-clip"><a ${anchor}>` +
+        `<video src="/screenshots/demos/${name}.mp4" poster="${still}" aria-label="${label}" ${size} ` +
+        "autoplay muted loop playsinline></video>" +
+        `<img src="${still}" alt="${label}" ${size} loading="lazy"></a>` +
+        `<figcaption>${caption[0].toUpperCase()}${caption.slice(1)}</figcaption></figure>`,
+      "",
+    ];
+  };
   return [
-    ...(recorded
-      ? [
-          `<a href="${href}" target="_self"><picture>` +
-            `<source srcset="/screenshots/demos/${demo.slug}.webp" media="(prefers-reduced-motion: reduce)">` +
-            `<img src="/screenshots/demos/${demo.slug}.anim.webp" alt="${demo.title.replace(/"/g, "&quot;")}" ` +
-            `width="${demoViewport.width}" height="${demoViewport.height}" loading="lazy"></picture></a>`,
-          "",
-        ]
+    ...(recorded.page ? clip(demo.slug, opens, "as a page") : []),
+    ...(recorded.headset
+      ? clip(`${demo.slug}.headset`, opensEmulated, "in the emulated headset")
       : []),
-    `<a href="${href}" target="_self">Open the demo</a> · ` +
-      emulated +
+    `<a ${opens}>Open the demo</a> · ` +
+      (demo.headset ? `<a ${opensEmulated}>Play in a tab with an emulated headset</a> · ` : "") +
       `[Source](${repositoryUrl}/tree/develop/${demo.folder})`,
     "",
   ];
@@ -196,6 +214,9 @@ function main() {
     ].join("\n"),
   );
 
+  /** Whether a clip and its still are both under public/screenshots/demos/. */
+  const recorded = (/** @type {string} */ name) =>
+    [".mp4", ".webp"].every((ending) => existsSync(join(screenshots, "demos", `${name}${ending}`)));
   const served = demos()
     .map((project) => {
       const folder = project.projectFolder;
@@ -239,12 +260,10 @@ function main() {
         `## ${demo.title}`,
         "",
         ...(demo.summary ? [demo.summary, ""] : []),
-        ...demoLinks(
-          demo,
-          [".anim.webp", ".webp"].every((ending) =>
-            existsSync(join(screenshots, "demos", `${demo.slug}${ending}`)),
-          ),
-        ),
+        ...demoLinks(demo, {
+          page: recorded(demo.slug),
+          headset: recorded(`${demo.slug}.headset`),
+        }),
       ]),
     ].join("\n"),
   );

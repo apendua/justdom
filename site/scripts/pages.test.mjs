@@ -71,15 +71,18 @@ test("a summary is the title and the first paragraph, links taken out", () => {
   });
 });
 
-test("a recorded demo shows its clip, or its still to a reader who wants less motion, linked to the demo", () => {
+test("a recorded demo shows its page clip, a looping video beside its still, linked to the demo", () => {
   const demo = { slug: "desk", title: 'The "Desk"', folder: "apps/desk", headset: false };
   const links = `<a href="/demos/desk/" target="_self">Open the demo</a> · [Source](${repositoryUrl}/tree/develop/apps/desk)`;
-  assert.deepEqual(demoLinks(demo, false), [links, ""]);
-  assert.deepEqual(demoLinks(demo, true), [
-    '<a href="/demos/desk/" target="_self"><picture>' +
-      '<source srcset="/screenshots/demos/desk.webp" media="(prefers-reduced-motion: reduce)">' +
-      '<img src="/screenshots/demos/desk.anim.webp" alt="The &quot;Desk&quot;" ' +
-      'width="1280" height="800" loading="lazy"></picture></a>',
+  assert.deepEqual(demoLinks(demo, { page: false, headset: false }), [links, ""]);
+  assert.deepEqual(demoLinks(demo, { page: true, headset: false }), [
+    '<figure class="demo-clip"><a href="/demos/desk/" target="_self">' +
+      '<video src="/screenshots/demos/desk.mp4" poster="/screenshots/demos/desk.webp" ' +
+      'aria-label="The &quot;Desk&quot; as a page" width="1280" height="800" ' +
+      "autoplay muted loop playsinline></video>" +
+      '<img src="/screenshots/demos/desk.webp" alt="The &quot;Desk&quot; as a page" ' +
+      'width="1280" height="800" loading="lazy"></a>' +
+      "<figcaption>As a page</figcaption></figure>",
     "",
     links,
     "",
@@ -88,10 +91,36 @@ test("a recorded demo shows its clip, or its still to a reader who wants less mo
 
 test("a demo that draws a headset session links to it under the emulator, in a new tab", () => {
   const demo = { slug: "euclid", title: "Euclid", folder: "apps/euclid", headset: true };
-  assert.deepEqual(demoLinks(demo, false), [
+  assert.deepEqual(demoLinks(demo, { page: false, headset: false }), [
     '<a href="/demos/euclid/" target="_self">Open the demo</a> · ' +
       '<a href="/demos/euclid/?emulator" target="_blank" rel="noopener">Play in a tab with an emulated headset</a> · ' +
       `[Source](${repositoryUrl}/tree/develop/apps/euclid)`,
     "",
   ]);
+});
+
+test("a recorded headset clip follows the page clip and opens the demo under the emulator", () => {
+  const demo = { slug: "euclid", title: "Euclid", folder: "apps/euclid", headset: true };
+  const lines = demoLinks(demo, { page: true, headset: true });
+  assert.equal(lines.length, 6);
+  assert.match(lines[0], /^<figure class="demo-clip"><a href="\/demos\/euclid\/" target="_self">/);
+  assert.match(lines[0], /<video src="\/screenshots\/demos\/euclid\.mp4"/);
+  assert.equal(
+    lines[2],
+    '<figure class="demo-clip"><a href="/demos/euclid/?emulator" target="_blank" rel="noopener">' +
+      '<video src="/screenshots/demos/euclid.headset.mp4" poster="/screenshots/demos/euclid.headset.webp" ' +
+      'aria-label="Euclid in the emulated headset" width="1280" height="800" ' +
+      "autoplay muted loop playsinline></video>" +
+      '<img src="/screenshots/demos/euclid.headset.webp" alt="Euclid in the emulated headset" ' +
+      'width="1280" height="800" loading="lazy"></a>' +
+      "<figcaption>In the emulated headset</figcaption></figure>",
+  );
+});
+
+test("a demo with only a headset clip shows that one alone", () => {
+  const demo = { slug: "castle", title: "Castle", folder: "apps/castle", headset: true };
+  const [clip, , links] = demoLinks(demo, { page: false, headset: true });
+  assert.match(clip, /castle\.headset\.mp4/);
+  assert.doesNotMatch(clip, /castle\.mp4/);
+  assert.match(links, /^<a href="\/demos\/castle\/" target="_self">Open the demo/);
 });

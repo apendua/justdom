@@ -65,39 +65,42 @@ a headset also open in a desktop browser, with an emulated headset.
 
 - [Todo](https://justdom.dev/demos/todo/): everyone's first app, written once. In a headset the
   page's own DOM is mirrored into a panel, keyboard and all.
-- [Hex Minesweeper](https://justdom.dev/demos/minesweeper/): minesweeper on a hexagonal grid, one
-  `<svg>` wired to signals.
+- [Desk](https://justdom.dev/demos/desk/): a desk drawn in HTML and CSS, which a headset sets out as
+  panels on a desk in a room.
+- [Showcase](https://justdom.dev/demos/showcase/): the DOM a headset panel can draw, such as lists,
+  images, motion and SVG, side by side.
 - [Euclid](https://justdom.dev/demos/euclid/): an editor for Euclidean constructions, where the code
   is the source of truth and the drawing is its evaluation.
 - [Knights](https://justdom.dev/demos/knights/): a turn-based hex battle, ported from React, Redux
   and Meteor.
-- [Desk](https://justdom.dev/demos/desk/): a desk drawn in HTML and CSS, which a headset sets out as
-  panels on a desk in a room.
 - [Castle](https://justdom.dev/demos/castle/): build a castle out of bricks in passthrough AR, then
   knock it down with a slingshot.
-- [Showcase](https://justdom.dev/demos/showcase/): the DOM a headset panel can draw, such as lists,
-  images, motion and SVG, side by side.
+- [Hex Minesweeper](https://justdom.dev/demos/minesweeper/): minesweeper on a hexagonal grid, one
+  `<svg>` wired to signals.
 
 ## Why justdom
 
-justdom started at the end of 2024 as the renderer for one game, a minesweeper on a hexagonal grid
-that had to run on a page and in a VR headset from the same state. A virtual DOM was a poor fit for
-the headset half. A Three.js scene has no markup to diff, and a headset that misses its frame budget
-makes its wearer feel it, so work that only finds out nothing changed is work worth not doing. The
-renderer that came out of it was a set of RxJS operators that create a DOM node or a Three.js object
-once and then subscribe each of its properties to the value it shows.
+justdom grew out of freedom, a reactive system for 3D apps. Its idea was to treat a Three.js scene
+the way a reactive interface treats a page: create each object once and wire each of its properties
+to the value it shows, with no virtual tree and no diffing. A scene has no markup to diff, and a
+headset that misses its frame budget makes its wearer feel it, so work that only finds out nothing
+changed is work worth not doing. The first version, from early 2025, was a set of RxJS operators
+that did this for Three.js objects and, with the same vocabulary, for DOM nodes.
 
-Three changes since then made it what it is now:
+freedom then grew from a renderer for 3D scenes into a UI library for XR. An interface in a headset
+needs what an interface on a page already has: layout, text, scrolling, text fields, a keyboard.
+Rather than build those again in the scene, freedom learned to mirror real DOM into it. An app keeps
+its page as it is, and in a headset `justdom-three` draws the element the app is mounted in as a
+panel in the room, which the controllers point at and type into. That is how the todo and desk demos
+are each one app on a page and in a headset, and the showcase demo shows what a panel can draw.
+
+The rest of the stack grew with it:
 
 - In October 2025 the state moved from plain RxJS to a signals library of its own. It was later
   rebuilt around a pull-based core, after the first version, which ordered updates by each node's
   depth in the graph, was found to publish values the graph never held once a signal passed through
   an RxJS wrapper. A write now only marks what may be stale, and a value is computed when something
   reads it.
-- Through 2026 the Three.js side learned to mirror real DOM into the scene. An app keeps its page as
-  it is, and in a headset `justdom-three` draws the element the app is mounted in as a panel in the
-  room, with pointers, text fields and a keyboard. That is how the todo demo is one app on a page
-  and in a headset.
 - In the summer of 2026 the DOM side gained server rendering and hydration: the same components
   render to markup on a server, and the browser claims that markup instead of building it again.
 

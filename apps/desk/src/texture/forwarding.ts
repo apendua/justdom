@@ -71,12 +71,51 @@ function zIndexOf(element: Element): number {
   return Number.parseInt(style.zIndex, 10) || 0;
 }
 
+/**
+ * How many hands hold each flag on each element. Two hands on one key are
+ * two hovers, and the first to leave or let go takes neither the other's
+ * hover nor its press off it, as the mirror's flags count them
+ * (`createFlag` in `justdom-three`'s `pointerForwarding.js`).
+ */
+const holders = new Map<string, WeakMap<Element, number>>();
+
+/** Hold the flag `name` on every element of `chain`, or let go of it. */
+function holdFlag(chain: readonly Element[], name: string, on: boolean): void {
+  let counts = holders.get(name);
+  if (!counts) {
+    counts = new WeakMap();
+    holders.set(name, counts);
+  }
+  for (const element of chain) {
+    const count = Math.max(0, (counts.get(element) ?? 0) + (on ? 1 : -1));
+    counts.set(element, count);
+    element.toggleAttribute(name, count > 0);
+  }
+}
+
+/**
+ * `element` and its ancestors up to `panel`, which are what match `:hover`
+ * and `:active` with it, within the panel.
+ */
+function chainOf(element: Element, panel: Element): Element[] {
+  const chain: Element[] = [];
+  for (let el: Element | null = element; el; el = el.parentElement) {
+    chain.push(el);
+    if (el === panel) {
+      break;
+    }
+  }
+  return chain;
+}
+
 /** How far a press moves, in client px, before it lifts what it pressed. */
 export const DRAG_THRESHOLD = 4;
 
 /** What a press is doing: pressing, or carrying something by drag and drop. */
 interface Press {
   target: Element;
+  /** What carries `data-xr-active` for this press. */
+  active: Element[];
   x: number;
   y: number;
   drag: Drag | null;
@@ -124,52 +163,57 @@ export interface PointerForwarder {
  *   release a `drop` where the last `dragover` was cancelled and a
  *   `dragend` on the source. There is no `click` after a drag, as there is
  *   none after a real one.
+ *
+ * Each hand is a pointer of its own to the page: `pointerId` tells two
+ * hands' events apart, and `isPrimary` is the hand whose pointer stands for
+ * the mouse.
  */
-export function createPointerForwarder(): PointerForwarder {
+export function createPointerForwarder({
+  pointerId = 1,
+  isPrimary = true,
+}: { pointerId?: number; isPrimary?: boolean } = {}): PointerForwarder {
   let at: PagePoint | null = null;
   let hovered: Element | null = null;
+  let hoveredChain: Element[] = [];
   let press: Press | null = null;
 
   const fire = <E extends Event>(target: Element, event: E): boolean => target.dispatchEvent(event);
 
-  const pointerInit = (point: PagePoint | null, buttons: number) => ({
+  /**
+   * `button` is the button that changed: 0, the primary one, for a press
+   * and its release, and -1, none, for a move, as a mouse sends them.
+   */
+  const pointerInit = (point: PagePoint | null, buttons: number, button = 0) => ({
     bubbles: true,
     cancelable: true,
     composed: true,
     clientX: point?.clientX ?? 0,
     clientY: point?.clientY ?? 0,
-    button: 0,
+    button,
     buttons,
-    pointerId: 1,
+    pointerId,
     pointerType: "mouse",
-    isPrimary: true,
+    isPrimary,
   });
 
   const buttons = () => (press ? 1 : 0);
-
-  const mark = (element: Element | null, panel: Element | null, name: string, on: boolean) => {
-    for (let el = element; el; el = el.parentElement) {
-      el.toggleAttribute(name, on);
-      if (el === panel) {
-        break;
-      }
-    }
-  };
 
   const hover = (next: Element | null, point: PagePoint | null) => {
     if (next === hovered) {
       return;
     }
-    const init = pointerInit(point, buttons());
+    const init = pointerInit(point, buttons(), -1);
     if (hovered) {
-      mark(hovered, null, HOVER_ATTRIBUTE, false);
+      holdFlag(hoveredChain, HOVER_ATTRIBUTE, false);
+      hoveredChain = [];
       fire(hovered, new PointerEvent("pointerout", { ...init, relatedTarget: next }));
       fire(hovered, new MouseEvent("mouseout", { ...init, relatedTarget: next }));
     }
     const previous = hovered;
     hovered = next;
     if (next && point) {
-      mark(next, point.panel, HOVER_ATTRIBUTE, true);
+      hoveredChain = chainOf(next, point.panel);
+      holdFlag(hoveredChain, HOVER_ATTRIBUTE, true);
       fire(next, new PointerEvent("pointerover", { ...init, relatedTarget: previous }));
       fire(next, new MouseEvent("mouseover", { ...init, relatedTarget: previous }));
     }
@@ -206,7 +250,7 @@ export function createPointerForwarder(): PointerForwarder {
     // The press is the drag's now: the pressed element is let go of as a
     // real press is once the browser takes it for a drag.
     fire(current.target, new PointerEvent("pointercancel", init));
-    mark(current.target, null, ACTIVE_ATTRIBUTE, false);
+    holdFlag(current.active, ACTIVE_ATTRIBUTE, false);
     hover(null, point);
     return { source, data, over: null, accepted: false };
   };
@@ -224,7 +268,7 @@ export function createPointerForwarder(): PointerForwarder {
       }
       hover(target, point);
       if (target) {
-        const init = pointerInit(point, buttons());
+        const init = pointerInit(point, buttons(), -1);
         fire(target, new PointerEvent("pointermove", init));
         fire(target, new MouseEvent("mousemove", init));
       }
@@ -235,13 +279,19 @@ export function createPointerForwarder(): PointerForwarder {
       if (!target || !at || press) {
         return;
       }
-      press = { target, x: at.clientX, y: at.clientY, drag: null };
+      press = {
+        target,
+        active: chainOf(target, at.panel),
+        x: at.clientX,
+        y: at.clientY,
+        drag: null,
+      };
       const init = pointerInit(at, 1);
       fire(target, new PointerEvent("pointerdown", init));
       if (fire(target, new MouseEvent("mousedown", init))) {
         focusFrom(target);
       }
-      mark(target, at.panel, ACTIVE_ATTRIBUTE, true);
+      holdFlag(press.active, ACTIVE_ATTRIBUTE, true);
     },
 
     release() {
@@ -262,7 +312,7 @@ export function createPointerForwarder(): PointerForwarder {
         this.move(at);
         return;
       }
-      mark(current.target, null, ACTIVE_ATTRIBUTE, false);
+      holdFlag(current.active, ACTIVE_ATTRIBUTE, false);
       const target = at ? elementAt(at.panel, at.clientX, at.clientY) : null;
       if (!target) {
         return;
@@ -286,7 +336,7 @@ export function createPointerForwarder(): PointerForwarder {
         }
         fire(current.drag.source, new DragEvent("dragend", init));
       } else if (current) {
-        mark(current.target, null, ACTIVE_ATTRIBUTE, false);
+        holdFlag(current.active, ACTIVE_ATTRIBUTE, false);
         fire(current.target, new PointerEvent("pointercancel", pointerInit(at, 0)));
       }
       hover(null, at);

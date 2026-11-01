@@ -149,7 +149,7 @@ How it draws (`src/texture/Scene.ts`):
   frame and throws until the paint arrives.
 - The whole desk is one texture. Each zone the look places is a flat plane, posed as the mirror
   poses it, whose UVs are the zone's rect in the desk, measured again on every paint.
-- When the session ends the desk goes back into `.stage`.
+- When the session ends the desk goes back into `.stage`, and the canvas loses `layoutsubtree`.
 
 How input reaches the DOM (`src/texture/forwarding.ts`): a ray on a panel lands at a UV, which is a
 point of the desk in client px. The page is asked which element is there by a walk over the zone's

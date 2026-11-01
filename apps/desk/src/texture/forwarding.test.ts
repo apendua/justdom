@@ -11,8 +11,9 @@ function box(element: Element, left: number, top: number, width: number, height:
 }
 
 /**
- * jsdom has no `DragEvent` and no `DataTransfer`: a drag event here is a
- * mouse event that carries one, and the transfer keeps its data in a map.
+ * jsdom has no `DragEvent`, `DataTransfer` or `PointerEvent`: a drag event
+ * here is a mouse event that carries a transfer, which keeps its data in a
+ * map, and a pointer event is a mouse event with an id.
  */
 beforeAll(() => {
   class TestDataTransfer {
@@ -35,7 +36,16 @@ beforeAll(() => {
   }
   globalThis.DataTransfer ??= TestDataTransfer as unknown as typeof DataTransfer;
   globalThis.DragEvent ??= TestDragEvent as unknown as typeof DragEvent;
-  globalThis.PointerEvent ??= MouseEvent as unknown as typeof PointerEvent;
+  class TestPointerEvent extends MouseEvent {
+    pointerId: number;
+    isPrimary: boolean;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.isPrimary = init.isPrimary ?? false;
+    }
+  }
+  globalThis.PointerEvent ??= TestPointerEvent as unknown as typeof PointerEvent;
 });
 
 afterEach(() => {
@@ -140,6 +150,41 @@ describe("createPointerForwarder", () => {
 
     hand.move(null);
     expect(root.querySelector("[data-xr-hover]")).toBeNull();
+  });
+
+  it("keeps a flag on an element while either of two hands holds it", () => {
+    const { root, $ } = panel();
+    const left = createPointerForwarder({ pointerId: 1 });
+    const right = createPointerForwarder({ pointerId: 2, isPrimary: false });
+    left.move({ panel: root, clientX: 10, clientY: 10 });
+    right.move({ panel: root, clientX: 40, clientY: 10 });
+    left.press();
+    right.press();
+
+    left.release();
+    left.move(null);
+    expect($(".a").hasAttribute("data-xr-hover")).toBe(true);
+    expect($(".a").hasAttribute("data-xr-active")).toBe(true);
+    expect($(".label").hasAttribute("data-xr-hover")).toBe(false);
+
+    right.release();
+    right.move(null);
+    expect(root.querySelector("[data-xr-hover], [data-xr-active]")).toBeNull();
+  });
+
+  it("sends each hand's events as its own pointer, with no button changed by a move", () => {
+    const { root } = panel();
+    const seen: string[] = [];
+    for (const type of ["pointermove", "pointerdown"]) {
+      root.addEventListener(type, (event) => {
+        const { pointerId, isPrimary, button } = event as PointerEvent;
+        seen.push(`${type}:${pointerId}:${isPrimary}:${button}`);
+      });
+    }
+    const right = createPointerForwarder({ pointerId: 2, isPrimary: false });
+    right.move({ panel: root, clientX: 10, clientY: 10 });
+    right.press();
+    expect(seen).toEqual(["pointermove:2:false:-1", "pointerdown:2:false:0"]);
   });
 
   it("clicks what was pressed and let go of", () => {

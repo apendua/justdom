@@ -116,11 +116,15 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           canvas.append(root);
           canvas.requestPaint?.();
 
+          // A pointer for each hand, the first to point the primary one.
           const forwarders = new Map<object, PointerForwarder>();
           const forwarderOf = (controller: object) => {
             let forwarder = forwarders.get(controller);
             if (!forwarder) {
-              forwarder = createPointerForwarder();
+              forwarder = createPointerForwarder({
+                pointerId: forwarders.size + 1,
+                isPrimary: forwarders.size === 0,
+              });
               forwarders.set(controller, forwarder);
             }
             return forwarder;
@@ -131,11 +135,9 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           // first frame and asks for a paint, and on every frame after it
           // uploads again, which throws until the paint has come ("No
           // cached paint record"): a session's frames do not wait for the
-          // page's. Every paint after that is the desk's, the one element
-          // in the canvas, so each one uploads it again. three marks the
-          // texture for that only when the paint names the desk among the
-          // elements it changed, and the first, which `requestPaint` asks
-          // for, names none.
+          // page's. Made from an element the canvas already holds, the
+          // `HTMLTexture` sets the canvas's `onpaint` to mark it for upload
+          // on every paint after, so here a paint only fits the panels.
           let texture: THREE.HTMLTexture | null = null;
           const meshes: PanelMesh[] = [];
           const fits: (() => void)[] = [];
@@ -153,7 +155,6 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
                 mesh.visible = true;
               }
             }
-            texture.needsUpdate = true;
             fits.forEach((fit) => fit());
           };
           canvas.addEventListener("paint", onPaint);
@@ -165,6 +166,7 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
             if (home && root.parentElement !== home) {
               home.append(root);
             }
+            canvas.removeAttribute("layoutsubtree");
           });
 
           const panel = (zone: HTMLElement) => {

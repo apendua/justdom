@@ -278,11 +278,16 @@ describe("createPointerForwarder", () => {
   it("lets go of a press and leaves the hover when the hand goes", () => {
     const { root, $ } = panel();
     const seen = record(root, ["pointercancel", "click"]);
+    let cancel: PointerEvent | null = null;
+    root.addEventListener("pointercancel", (event) => {
+      cancel = event as PointerEvent;
+    });
     const hand = createPointerForwarder();
     hand.move({ panel: root, clientX: 10, clientY: 10 });
     hand.press();
     hand.cancel();
     expect(seen).toEqual(["pointercancel:label"]);
+    expect(cancel).toMatchObject({ button: -1, buttons: 0 });
     expect($(".a").hasAttribute("data-xr-active")).toBe(false);
     expect(root.querySelector("[data-xr-hover]")).toBeNull();
   });

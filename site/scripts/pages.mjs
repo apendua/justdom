@@ -100,9 +100,9 @@ export function readmeSummary(markdown) {
  * The lines under a demo's heading on the demos page: its clip, when
  * scripts/screenshots.mjs has recorded one, then the links to the demo and to
  * its source. The clip opens the demo too, and a reader who asks for reduced
- * motion gets its last frame, the still, in its place. A demo that draws a headset
- * session also gets a link that opens it in a new tab under `?emulator`, so
- * it can be played without a headset.
+ * motion gets its last frame, the still, in its place. A demo that draws a
+ * headset session also gets a link that opens it in a new tab under
+ * `?emulator`, so it can be played without a headset.
  *
  * The links to the demo are plain anchors with a target, so that VitePress's
  * router leaves them to the browser: the demo is a page of its own, not one

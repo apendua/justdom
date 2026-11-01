@@ -92,6 +92,18 @@ function seedRandom(page, seed) {
 }
 
 /**
+ * Presses a button on castle's panel, and throws when it is not there, so a
+ * renamed button fails the run rather than recording a castle nobody shoots.
+ *
+ * @param {import("playwright-core").Page} page
+ * @param {string} label what the button's text starts with
+ */
+async function press(page, label) {
+  const result = await clickButton(page, label);
+  if (result !== "clicked") throw new Error(`castle: ${result}`);
+}
+
+/**
  * Draws an arrow where the mouse is, since a headless browser draws none and a
  * clip should show where each click lands. It starts off the page.
  *
@@ -176,7 +188,8 @@ async function save(page, png, file) {
  *
  * @param {import("playwright-core").Page} page
  * @param {() => Promise<void>} act
- * @returns {Promise<{ data: Buffer, time: number }[]>} JPEG frames, times in seconds
+ * @returns {Promise<{ data: Buffer, time: number }[]>} JPEG frames, with
+ *   their times in seconds
  */
 async function record(page, act) {
   const cdp = await page.context().newCDPSession(page);
@@ -209,7 +222,8 @@ async function record(page, act) {
  * Encodes recorded frames as a looping animated WebP with ffmpeg, at `FPS`
  * frames a second and the page's own size.
  *
- * @param {{ data: Buffer, time: number }[]} frames the last one only marks the end
+ * @param {{ data: Buffer, time: number }[]} frames of which the last only
+ *   marks the end
  * @param {string} file under public/screenshots/
  */
 function encode(frames, file) {
@@ -282,10 +296,10 @@ const setups = {
     },
     act: async (page) => {
       await page.waitForTimeout(1000);
-      await clickButton(page, "Ready");
+      await press(page, "Ready");
       await page.waitForTimeout(600);
       // Aim with the head, which is the one aim a script has.
-      await clickButton(page, "Aim:");
+      await press(page, "Aim:");
       let yaw = 0;
       for (const target of [0.1, -0.04]) {
         // Turned to over a few frames, since a cut from one aim to the next
@@ -347,12 +361,25 @@ const setups = {
       }
     },
   },
+  // White's first stack walks into the middle, and the computer answers.
+  // The stacks are placed with Math.random, so a seeded game places them the
+  // same way every run, and the field clicked is in the first stack's reach
+  // on that board.
   knights: {
     before: (page) => seedRandom(page, 7),
     act: async (page) => {
       await page.waitForTimeout(500);
       await glideAndClick(page, { x: 586, y: 270 });
-      await page.waitForTimeout(7000);
+      // The toolbar reads "Thinking…" while the computer works out its move,
+      // and "Skip" once it is white's turn again.
+      const toolbar = (/** @type {string} */ label) =>
+        page.getByText(label, { exact: true }).waitFor({ timeout: 20_000 });
+      await toolbar("Thinking…").catch(() => {
+        throw new Error(
+          "knights: the click moved nothing; the board is not the one it was picked for",
+        );
+      });
+      await toolbar("Skip");
     },
   },
   // A todo added and ticked off.
@@ -462,6 +489,13 @@ async function main() {
     );
   }
   const slugs = all.filter((slug) => only.length === 0 || only.includes(slug));
+  if (slugs.length) {
+    try {
+      execFileSync("ffmpeg", ["-hide_banner", "-version"], { stdio: "ignore" });
+    } catch {
+      throw new Error("the clips are encoded with ffmpeg, which is not on the PATH");
+    }
+  }
 
   const server = await serve({ root: site, port: 0 });
   // Closed whatever fails below, Chromium's launch included: a server left

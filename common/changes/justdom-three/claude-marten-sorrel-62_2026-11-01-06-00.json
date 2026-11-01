@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A positioned box now draws after every flow sibling it covers, earlier or later in the tree",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -66,10 +66,12 @@ import { isTextInput } from "./typing.js";
  *   overhang is ink, and an item it overlaps can share its level and draw
  *   over or under it.
  * - Flow siblings are not ordered against each other. Only an element that
- *   is positioned or transformed clears its siblings, and only those that
- *   are too. A box pulled over a neighbour by a negative margin keeps its
- *   tree level, and so does a positioned box over a flow sibling, which
- *   then draws under that sibling's descendants.
+ *   is positioned or transformed clears its siblings, so a box pulled over
+ *   a neighbour by a negative margin keeps its tree level.
+ * - A positioned box clears a flow sibling it covers whole, descendants
+ *   included. A page paints that sibling's positioned descendants in tree
+ *   order with the box, so one later in the tree than the box draws under
+ *   it here and over it on a page.
  * - Only the sign of `z-index` counts. Two overlays stack in tree order,
  *   whatever their numbers.
  * - A child that overflows its parent is not counted. Overlap is tested on
@@ -532,11 +534,12 @@ const clearedCache = nodeCache();
 /**
  * The siblings an element draws after, in tree order. An element in a
  * painting layer (see `getPaintLayer`) clears every sibling it overlaps
- * that a page paints under it: the earlier siblings in its own layer and
- * every sibling in a lower one. Without that, the text of one card would
- * draw over a later card that covers it. Siblings that do not overlap are
- * not cleared, so a board of separate cards shares its levels however many
- * cards it holds. A box with a negative `z-index` clears nothing, and nor
+ * that a page paints under it: the earlier siblings in its own layer,
+ * every sibling in a lower one and every flow sibling, earlier or later,
+ * since a page paints the flow first. Without that, the text of one card
+ * would draw over a later card that covers it. Siblings that do not overlap
+ * are not cleared, so a board of separate cards shares its levels however
+ * many cards it holds. A box with a negative `z-index` clears nothing, and nor
  * does the portal's root.
  *
  * This is the one place the paint-layer and overlap rules are applied.
@@ -549,7 +552,9 @@ const clearedCache = nodeCache();
  * layer once per recompute, and the bounds of those painted under it, so a
  * parent with n positioned children costs O(n²) cached reads when it is
  * built, and again when its first child moves, since every later child's
- * scan read that child's bounds. Behind an equality gate, so a sibling that
+ * scan read that child's bounds. Flow siblings are painted under it too, so
+ * one badge in a list of n rows reads n bounds, and its scan reruns when
+ * any row's layout changes. Behind an equality gate, so a sibling that
  * moved without changing what is cleared stops here.
  *
  * @param {Element} element
@@ -587,7 +592,9 @@ export function getClearedSiblings(element) {
           }
           const sibling = /** @type {HTMLElement} */ (node);
           const below = getPaintLayer(sibling);
-          if (below === null || below > layer || (below === layer && !earlier)) {
+          // A flow sibling is under the element in either tree order: a
+          // page paints the flow before any positioned box.
+          if (below !== null && (below > layer || (below === layer && !earlier))) {
             continue;
           }
           if (!overlaps(bounds, getPaintedBounds(sibling))) {

@@ -122,8 +122,8 @@ const BLOCKER_OFFSET = 2;
  * @property {PaintLayer} paintLayer `getPaintLayer`.
  * @property {PaintedBounds | null} bounds The bounds its siblings' draw
  *   levels were worked out against, while those can depend on them: null for
- *   a layer, which the walk orders, and for a box in the flow, which clears
- *   nothing and is cleared by nothing.
+ *   a layer, which the walk orders. A box in the flow has them, since a
+ *   positioned sibling over it clears it.
  */
 
 /**
@@ -481,7 +481,7 @@ export function box(ctx, element, options = {}) {
         depth: depth.get(),
         layer,
         paintLayer,
-        bounds: layer || paintLayer === null ? null : getPaintedBounds(element),
+        bounds: layer ? null : getPaintedBounds(element),
       };
     },
     { isEqual: placementEqual },
@@ -520,8 +520,9 @@ export function box(ctx, element, options = {}) {
    * Whether every sibling the element overlapped, by the bounds its order
    * was written from, it still overlaps at `bounds`, and no other: tested
    * against the bounds each sibling's order was written from. A sibling that
-   * is a layer, or in the flow, is skipped, since an overlap with it changes
-   * no draw level (`getDrawLevel`, `getClearedSiblings`).
+   * is a layer is skipped, since an overlap with it changes no draw level
+   * (`getDrawLevel`). One in the flow is not: the element clears it
+   * (`getClearedSiblings`).
    *
    * @param {PaintedBounds} was
    * @param {PaintedBounds} bounds

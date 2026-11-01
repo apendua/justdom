@@ -4974,8 +4974,9 @@ describe("a panel that is always busy", () => {
       },
     }));
 
-  test("a step onto a sibling in the flow is drawn at once", () =>
-    // A box in the flow is never cleared and clears nothing.
+  test("a step onto a sibling in the flow holds until the commit", () =>
+    // The transformed card clears a flow sibling it covers, so covering one
+    // changes its draw level.
     whileWaiting({
       prepare(list, card) {
         const other = /** @type {HTMLElement} */ (card.nextElementSibling);
@@ -4984,11 +4985,9 @@ describe("a panel that is always busy", () => {
       },
       from: shifted(10),
       to: shifted(45),
-      during(object) {
-        assert.equal(object.matrix.elements[12], 45, "drawn where it went");
-      },
+      during: held,
       after(object) {
-        assert.equal(object.matrix.elements[12], 45);
+        assert.equal(object.matrix.elements[12], 45, "the live transform, once committed");
       },
     }));
 

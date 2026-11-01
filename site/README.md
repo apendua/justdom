@@ -9,6 +9,12 @@ and comments its URL on the pull request. CI skips a draft, so the preview first
 pull request is marked ready. The run reads `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from
 the repository's `staging` environment. A pull request from a fork gets no preview.
 
+The guide (`guide/`) and the API reference (`api/`) are written by hand and committed. The guide
+introduces one idea per page; the reference has a page per package, and six for `justdom-three`, and
+is where every option, default and rule is stated. A package's README is a short overview that links
+to both, so a claim about how something behaves lives on one reference page and nowhere else. The
+sidebar for each is in `.vitepress/config.mjs`.
+
 Two folders are generated and ignored by Git. `scripts/pages.mjs` writes them, and `build` and `dev`
 run it first:
 

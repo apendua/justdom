@@ -54,9 +54,10 @@ after `rush build --to justdom-site`. With app folder names after `--` it record
 The clips are H.264 MP4, 960 pixels wide, encoded by `ffmpeg`, which has to be on the `PATH` and
 built with libx264 (the Debian and Ubuntu packages are). Each plays muted and loops in a `<video>`
 with its still as the poster, and a style in `.vitepress/config.mjs` shows the still in its place
-under reduced motion. The eleven clips come to about 1.5 MB; as animated WebP they came to 7.5 MB,
-since the headset's view moves in every frame. Playwright looks for the Chromium build it was
-released with; where that is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+under reduced motion. That swaps the picture, not the download: the hidden video is still fetched.
+The eleven clips come to about 1.5 MB; as animated WebP they came to 7.5 MB, since the headset's
+view moves in every frame. Playwright looks for the Chromium build it was released with; where that
+is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 To work on the site:
 

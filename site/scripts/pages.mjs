@@ -105,10 +105,8 @@ export function readmeSummary(markdown) {
  * two it is. A clip is a muted video that plays and loops by itself, and
  * beside it is its last frame, the still, which the site's stylesheet, in
  * .vitepress/config.mjs, shows in its place to a reader who asks for
- * reduced motion. A demo that draws a headset
- * session also gets a
- * link that opens it under the emulator, so it can be played without a
- * headset.
+ * reduced motion. A demo that draws a headset session also gets a link that
+ * opens it under the emulator, so it can be played without a headset.
  *
  * The links to the demo are plain anchors with a target, so that VitePress's
  * router leaves them to the browser: the demo is a page of its own, not one

@@ -16,7 +16,6 @@ html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
 .look-picker select { color: inherit; background: transparent; border: 0; font: inherit; cursor: pointer; }
 .look-picker option { color: #111; }
 .chrome .notice { color: #ffd27a; background: rgba(0,0,0,.55); padding: 7px 10px; border-radius: 6px; }
-.chrome .notice[hidden] { display: none; }
 .tag {
   display: none; position: absolute; z-index: 40; max-width: 260px;
   background: #fffbe6; color: #222; border: 1px solid #d4a017; border-radius: 6px;

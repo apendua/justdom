@@ -97,30 +97,34 @@ export function readmeSummary(markdown) {
 }
 
 /**
- * The lines under a demo's heading on the demos page: its screenshot, when
- * scripts/screenshots.mjs has taken one, then the links to the demo and to its
- * source. The screenshot opens the demo too. A demo that draws a headset
- * session also gets a link that opens it in a new tab under `?emulator`, so
- * it can be played without a headset.
+ * The lines under a demo's heading on the demos page: its clip, when
+ * scripts/screenshots.mjs has recorded one, then the links to the demo and to
+ * its source. The clip opens the demo too, and a reader who asks for reduced
+ * motion gets its last frame, the still, in its place. A demo that draws a
+ * headset session also gets a link that opens it in a new tab under
+ * `?emulator`, so it can be played without a headset.
  *
  * The links to the demo are plain anchors with a target, so that VitePress's
  * router leaves them to the browser: the demo is a page of its own, not one
  * of the site's.
  *
  * @param {{ slug: string, title: string, folder: string, headset: boolean }} demo
- * @param {boolean} screenshot whether public/screenshots/demos/<slug>.webp exists
+ * @param {boolean} recorded whether public/screenshots/demos/ holds the
+ *   demo's clip, `<slug>.anim.webp`, and its still, `<slug>.webp`
  * @returns {string[]}
  */
-export function demoLinks(demo, screenshot) {
+export function demoLinks(demo, recorded) {
   const href = `/demos/${demo.slug}/`;
   const emulated = demo.headset
     ? `<a href="${href}?emulator" target="_blank" rel="noopener">Play in a tab with an emulated headset</a> · `
     : "";
   return [
-    ...(screenshot
+    ...(recorded
       ? [
-          `<a href="${href}" target="_self"><img src="/screenshots/demos/${demo.slug}.webp" ` +
-            `alt="${demo.title.replace(/"/g, "&quot;")}" width="${demoViewport.width}" height="${demoViewport.height}" loading="lazy"></a>`,
+          `<a href="${href}" target="_self"><picture>` +
+            `<source srcset="/screenshots/demos/${demo.slug}.webp" media="(prefers-reduced-motion: reduce)">` +
+            `<img src="/screenshots/demos/${demo.slug}.anim.webp" alt="${demo.title.replace(/"/g, "&quot;")}" ` +
+            `width="${demoViewport.width}" height="${demoViewport.height}" loading="lazy"></picture></a>`,
           "",
         ]
       : []),
@@ -235,7 +239,12 @@ function main() {
         `## ${demo.title}`,
         "",
         ...(demo.summary ? [demo.summary, ""] : []),
-        ...demoLinks(demo, existsSync(join(screenshots, "demos", `${demo.slug}.webp`))),
+        ...demoLinks(
+          demo,
+          [".anim.webp", ".webp"].every((ending) =>
+            existsSync(join(screenshots, "demos", `${demo.slug}${ending}`)),
+          ),
+        ),
       ]),
     ].join("\n"),
   );

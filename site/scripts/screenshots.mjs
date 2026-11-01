@@ -138,21 +138,18 @@ async function drawn(page) {
 async function tap(page, x, y) {
   const found = await page.evaluate(
     ([x, y]) => {
-      // Everything over the portals is let through, and the portals, which
-      // hide themselves, are shown for as long as the lookup takes.
-      /** @type {[HTMLElement, string, string][]} */
+      // The session's canvas, and whatever else is laid over the app's
+      // root, let the lookup through to it for as long as it takes.
+      /** @type {[HTMLElement, string][]} */
       const restore = [];
       for (const child of document.body.children) {
         const element = /** @type {HTMLElement} */ (child);
-        restore.push([element, element.style.visibility, element.style.pointerEvents]);
-        if (element.hasAttribute("data-xr-portal")) element.style.visibility = "visible";
-        else element.style.pointerEvents = "none";
+        if (element.hasAttribute("data-xr-portal")) continue;
+        restore.push([element, element.style.pointerEvents]);
+        element.style.pointerEvents = "none";
       }
       const target = document.elementFromPoint(x, y);
-      for (const [element, visibility, pointerEvents] of restore) {
-        element.style.visibility = visibility;
-        element.style.pointerEvents = pointerEvents;
-      }
+      for (const [element, pointerEvents] of restore) element.style.pointerEvents = pointerEvents;
       if (!target?.closest("[data-xr-portal]")) return false;
       const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window };
       const pointer = { ...init, pointerId: 1, isPrimary: true };
@@ -364,6 +361,12 @@ function encode(frames, file) {
  */
 
 /**
+ * How far the head turns left from the todo panel, so that the panel stands
+ * at an angle, in space, rather than face-on like the page.
+ */
+const TODO_TURN = (20 * Math.PI) / 180;
+
+/**
  * Each demo's two clips: `page`, the demo as a page, and `headset`, the same
  * app in a session in the emulated headset. `before` runs before either page
  * is opened. A demo with no entry gets both clips of it idling, and `false`
@@ -435,7 +438,7 @@ const setups = {
       },
     },
     headset: {
-      view: { yaw: 0.08, zoom: 0.85 },
+      view: { yaw: 0.15, zoom: 0.7 },
       start: (page) => pentagon(page, (text) => tapLocator(page, page.getByText(text).first())),
       // A panel cannot type into a textarea, so the program is set the way
       // the page's own input sets it, a few lines at a time. Each step waits
@@ -494,7 +497,7 @@ const setups = {
       },
     },
     headset: {
-      view: { zoom: 0.5 },
+      view: { pitch: 0.06, yaw: TODO_TURN, offset: [0, 0, -0.25], zoom: 0.85 },
       act: async (page) => {
         await page.waitForTimeout(500);
         await page.getByPlaceholder("Add a new todo").evaluate(async (field, text) => {
@@ -557,7 +560,7 @@ async function sweep(page, click) {
     await click(x, y);
     await page.waitForTimeout(500);
   }
-  if ((await page.getByText("Good luck!").count()) === 0) {
+  if (!(await page.getByText("Good luck!").isVisible())) {
     throw new Error(
       "minesweeper: a click hit a mine; the board is not the one these clicks were picked for",
     );
@@ -577,7 +580,7 @@ async function march(page, click) {
   // The toolbar reads "Thinking…" while the computer works out its move, and
   // "Skip" once it is white's turn again.
   const toolbar = (/** @type {string} */ label) =>
-    page.getByText(label, { exact: true }).waitFor({ state: "attached", timeout: 20_000 });
+    page.getByText(label, { exact: true }).waitFor({ timeout: 20_000 });
   await toolbar("Thinking…").catch(() => {
     throw new Error("knights: the click moved nothing; the board is not the one it was picked for");
   });
@@ -675,14 +678,7 @@ async function guide(browser, origin) {
     // The readout hangs off the camera, left of the middle of the view, and
     // the todo app has no button to hide it. Turning the head a little to the
     // left and stepping closer moves the panel clear of it, to the right.
-    await page.evaluate(
-      (turn) => {
-        const device = /** @type {any} */ (window).xrDevice;
-        device.quaternion.set(0, Math.sin(turn / 2), 0, Math.cos(turn / 2));
-        device.position.z -= 0.25;
-      },
-      (20 * Math.PI) / 180,
-    );
+    await look(page, { yaw: TODO_TURN, offset: [0, 0, -0.25] });
     await page.waitForTimeout(1500);
     // Where the panel lands in the view after that turn.
     const headset = { x: 600, y: 70, width: 480, height: 480 };

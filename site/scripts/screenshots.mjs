@@ -55,6 +55,16 @@ async function tidy(page) {
         /** @type {HTMLElement} */ (element).click();
       }
     }
+    // The apps with no button for it: the readout is a panel of its own,
+    // mirrored from a portal of its own, which goes blank once its content
+    // is taken out of the layout.
+    for (const portal of document.querySelectorAll("[data-xr-portal]")) {
+      const text = portal.textContent?.trim() ?? "";
+      if (text.length < 50 && /full height \d+ fps$/.test(text)) {
+        for (const child of portal.children)
+          /** @type {HTMLElement} */ (child).style.display = "none";
+      }
+    }
   });
 }
 
@@ -101,6 +111,85 @@ function seedRandom(page, seed) {
 async function press(page, label) {
   const result = await clickButton(page, label);
   if (result !== "clicked") throw new Error(`castle: ${result}`);
+}
+
+/**
+ * Waits until every panel has drawn what its DOM holds: a panel's portal
+ * carries `data-xr-busy` while changes are queued for it.
+ *
+ * @param {Page} page
+ */
+async function drawn(page) {
+  await page.waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
+    timeout: 30_000,
+  });
+}
+
+/**
+ * Clicks a point of the page as it is laid out, in a session. The app's DOM is
+ * still laid out where it was, behind the canvas, in the portals the panels
+ * mirror, so the element under a point is found there and sent the events a
+ * click sends, with the point's coordinates, as a ray's trigger would.
+ *
+ * @param {Page} page
+ * @param {number} x
+ * @param {number} y
+ */
+async function tap(page, x, y) {
+  const found = await page.evaluate(
+    ([x, y]) => {
+      // Everything over the portals is let through, and the portals, which
+      // hide themselves, are shown for as long as the lookup takes.
+      /** @type {[HTMLElement, string, string][]} */
+      const restore = [];
+      for (const child of document.body.children) {
+        const element = /** @type {HTMLElement} */ (child);
+        restore.push([element, element.style.visibility, element.style.pointerEvents]);
+        if (element.hasAttribute("data-xr-portal")) element.style.visibility = "visible";
+        else element.style.pointerEvents = "none";
+      }
+      const target = document.elementFromPoint(x, y);
+      for (const [element, visibility, pointerEvents] of restore) {
+        element.style.visibility = visibility;
+        element.style.pointerEvents = pointerEvents;
+      }
+      if (!target?.closest("[data-xr-portal]")) return false;
+      const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window };
+      const pointer = { ...init, pointerId: 1, isPrimary: true };
+      target.dispatchEvent(new PointerEvent("pointerdown", pointer));
+      target.dispatchEvent(new MouseEvent("mousedown", init));
+      target.dispatchEvent(new PointerEvent("pointerup", pointer));
+      target.dispatchEvent(new MouseEvent("mouseup", init));
+      target.dispatchEvent(new MouseEvent("click", init));
+      return true;
+    },
+    [x, y],
+  );
+  if (!found) throw new Error(`nothing of the app's at (${x}, ${y}) to click`);
+}
+
+/**
+ * Clicks the middle of an element, in a session.
+ *
+ * @param {Page} page
+ * @param {import("playwright-core").Locator} locator
+ */
+async function tapLocator(page, locator) {
+  const { x, y } = await locator.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await tap(page, x, y);
+}
+
+/**
+ * Clicks the element whose text this is, in a session.
+ *
+ * @param {Page} page
+ * @param {string} text
+ */
+function tapText(page, text) {
+  return tapLocator(page, page.getByText(text, { exact: true }).first());
 }
 
 /**
@@ -259,83 +348,111 @@ function encode(frames, file) {
 }
 
 /**
- * What a demo's clip shows it doing. `before` runs before the page is opened,
- * `start` once it has loaded and before the recording starts, and `act` is
- * what is recorded. A demo with no `act` is recorded doing what it does on
- * its own for `IDLE` ms.
+ * @typedef {import("playwright-core").Page} Page
+ *
+ * @typedef {object} Clip what one of a demo's clips shows it doing
+ * @property {(page: Page) => Promise<void>} [start] runs once the demo is
+ *   showing, before the recording starts
+ * @property {(page: Page) => Promise<void>} [act] is what is recorded; with
+ *   none, the demo is recorded doing what it does on its own for `IDLE` ms
+ *
+ * @typedef {object} View where the emulated head stands and looks
+ * @property {number} [pitch] radians, down below zero
+ * @property {number} [yaw] radians, left above zero
+ * @property {[number, number, number]} [offset] from where the head starts
+ * @property {number} [zoom] how much narrower the view is than the headset's
+ */
+
+/**
+ * Each demo's two clips: `page`, the demo as a page, and `headset`, the same
+ * app in a session in the emulated headset. `before` runs before either page
+ * is opened. A demo with no entry gets both clips of it idling, and `false`
+ * drops a clip: the page clip of a demo whose page has nothing to show, or
+ * the headset clip of one the headset does not draw right yet.
  *
  * @type {Record<string, {
- *   query?: string,
- *   before?: (page: import("playwright-core").Page) => Promise<void>,
- *   start?: (page: import("playwright-core").Page) => Promise<void>,
- *   act?: (page: import("playwright-core").Page) => Promise<void>,
+ *   before?: (page: Page) => Promise<void>,
+ *   page?: Clip | false,
+ *   headset?: (Clip & { view?: View }) | false,
  * }>}
  */
 const setups = {
   // A castle already built, put where the game keeps the castle between
-  // visits, and then knocked about with the slingshot in an emulated headset.
-  // The stones are really fired, so the rubble lies differently every run.
+  // visits, and then knocked about with the slingshot. The stones are really
+  // fired, so the rubble lies differently every run. The game is a headset
+  // game, and its page is the same scene with nothing to do in it.
   castle: {
-    query: "?emulator=bare",
     before: (page) =>
       page.addInitScript((seed) => {
         localStorage.setItem("castle:castle", seed);
       }, JSON.stringify(castle())),
-    start: async (page) => {
-      await page.click("#ARButton, #VRButton");
-      await page.waitForFunction(() => document.querySelector("canvas"));
-      await frames(page, 90);
-      await hideFurniture(page);
-      await pose(page, AIM_PITCH);
-      // A narrower view than the headset's own, so the castle fills the clip.
-      await page.evaluate(() => {
-        const device = /** @type {any} */ (window).xrDevice;
-        device.fovy *= 0.6;
-      });
-      await frames(page, 30);
-    },
-    act: async (page) => {
-      await page.waitForTimeout(1000);
-      await press(page, "Ready");
-      await page.waitForTimeout(600);
-      // Aim with the head, which is the one aim a script has.
-      await press(page, "Aim:");
-      let yaw = 0;
-      for (const target of [0.1, -0.04]) {
-        // Turned to over a few frames, since a cut from one aim to the next
-        // jolts the whole picture.
-        for (let step = 1; step <= 10; step++) {
-          await pose(page, AIM_PITCH, yaw + ((target - yaw) * step) / 10);
-          await frames(page, 1);
+    page: false,
+    headset: {
+      view: { pitch: AIM_PITCH, zoom: 0.6 },
+      // The game is played in passthrough, so the page shows behind the
+      // scene: everything on it but the scene goes, and it goes dark.
+      start: hideFurniture,
+      act: async (page) => {
+        await page.waitForTimeout(1000);
+        await press(page, "Ready");
+        await page.waitForTimeout(600);
+        // Aim with the head, which is the one aim a script has.
+        await press(page, "Aim:");
+        let yaw = 0;
+        for (const target of [0.1, -0.04]) {
+          // Turned to over a few frames, since a cut from one aim to the
+          // next jolts the whole picture.
+          for (let step = 1; step <= 10; step++) {
+            await pose(page, AIM_PITCH, yaw + ((target - yaw) * step) / 10);
+            await frames(page, 1);
+          }
+          yaw = target;
+          // The space bar draws the pouch all the way back in 1.2 s.
+          await page.keyboard.down("Space");
+          await page.waitForTimeout(1300);
+          await page.keyboard.up("Space");
+          await page.waitForTimeout(2500);
         }
-        yaw = target;
-        // The space bar draws the pouch all the way back in 1.2 s.
-        await page.keyboard.down("Space");
-        await page.waitForTimeout(1300);
-        await page.keyboard.up("Space");
-        await page.waitForTimeout(2500);
-      }
+      },
     },
   },
   // Richmond's exact pentagon, one of the app's examples, written out a line
   // at a time, with the drawing following the code.
   euclid: {
-    start: async (page) => {
-      await page.getByText("Equilateral triangle (Elements I.1)").first().click();
-      await page.getByText("Pentagon (Richmond, exact)").first().click();
-      await page.getByText("Fit view").click();
+    page: {
+      start: (page) => pentagon(page, (text) => page.getByText(text).first().click()),
+      act: async (page) => {
+        const editor = page.locator("textarea").first();
+        const program = await editor.inputValue();
+        await editor.fill("");
+        await editor.focus();
+        await page.waitForTimeout(500);
+        for (const line of program.split("\n")) {
+          await page.keyboard.insertText(`${line}\n`);
+          // Comments are shown whole; the code a line at a time.
+          if (!line.startsWith("//")) await page.waitForTimeout(350);
+        }
+      },
     },
-    act: async (page) => {
-      const editor = page.locator("textarea").first();
-      const program = await editor.inputValue();
-      await editor.fill("");
-      await editor.focus();
-      await page.waitForTimeout(500);
-      for (const line of program.split("\n")) {
-        await page.keyboard.insertText(`${line}\n`);
-        // Comments are shown whole; the code a line at a time.
-        if (!line.startsWith("//")) await page.waitForTimeout(350);
-      }
+    headset: {
+      view: { yaw: 0.08, zoom: 0.85 },
+      start: (page) => pentagon(page, (text) => tapLocator(page, page.getByText(text).first())),
+      // A panel cannot type into a textarea, so the program is set the way
+      // the page's own input sets it, a few lines at a time. Each step waits
+      // for the panels to have drawn it, which under SwiftShader takes
+      // seconds, so that the drawing keeps up with the code.
+      act: async (page) => {
+        const editor = page.locator("textarea").first();
+        const lines = (await editor.inputValue()).split("\n");
+        await page.waitForTimeout(500);
+        for (let end = 0; end < lines.length + 6; end += 6) {
+          await editor.evaluate((textarea, code) => {
+            /** @type {HTMLTextAreaElement} */ (textarea).value = code;
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          }, lines.slice(0, end).join("\n"));
+          await drawn(page);
+        }
+      },
     },
   },
   // The board is laid with Math.random, so a seeded one lays the same board
@@ -343,23 +460,10 @@ const setups = {
   // on that board.
   minesweeper: {
     before: (page) => seedRandom(page, 4),
-    act: async (page) => {
-      for (const [x, y] of [
-        [640, 400],
-        [900, 250],
-        [450, 650],
-        [1100, 600],
-        [700, 150],
-      ]) {
-        await glideAndClick(page, { x, y });
-        await page.waitForTimeout(500);
-      }
-      if (!(await page.getByText("Good luck!").isVisible())) {
-        throw new Error(
-          "minesweeper: a click hit a mine; the board is not the one these clicks were picked for",
-        );
-      }
-    },
+    page: { act: (page) => sweep(page, (x, y) => glideAndClick(page, { x, y })) },
+    // The headset draws the board's first change and none after it: with
+    // these five clicks the page's board shows 51 numbers, the panel's one.
+    headset: false,
   },
   // White's first stack walks into the middle, and the computer answers.
   // The stacks are placed with Math.random, so a seeded game places them the
@@ -367,68 +471,177 @@ const setups = {
   // on that board.
   knights: {
     before: (page) => seedRandom(page, 7),
-    act: async (page) => {
-      await page.waitForTimeout(500);
-      await glideAndClick(page, { x: 586, y: 270 });
-      // The toolbar reads "Thinking…" while the computer works out its move,
-      // and "Skip" once it is white's turn again.
-      const toolbar = (/** @type {string} */ label) =>
-        page.getByText(label, { exact: true }).waitFor({ timeout: 20_000 });
-      await toolbar("Thinking…").catch(() => {
-        throw new Error(
-          "knights: the click moved nothing; the board is not the one it was picked for",
-        );
-      });
-      await toolbar("Skip");
-    },
+    page: { act: (page) => march(page, (x, y) => glideAndClick(page, { x, y })) },
+    // The headset draws the hexes filled with a pattern black, and the
+    // see-through reach of a stack not at all.
+    headset: false,
   },
   // A todo added and ticked off.
   todo: {
-    act: async (page) => {
-      await page.waitForTimeout(500);
-      await glideAndClick(page, page.getByPlaceholder("Add a new todo"));
-      await page.keyboard.type("Record the demos", { delay: 70 });
-      await page.waitForTimeout(300);
-      await glideAndClick(page, page.getByText("Add", { exact: true }));
-      await page.waitForTimeout(600);
-      // The list's own scroll-down arrow, right of the list, which brings the
-      // new todo, the last, into its window.
-      for (let i = 0; i < 2; i++) {
-        await glideAndClick(page, { x: 820, y: 437 });
-        await page.waitForTimeout(400);
-      }
-      await glideAndClick(page, page.locator("input[type=checkbox]").last());
+    page: {
+      act: async (page) => {
+        await page.waitForTimeout(500);
+        await glideAndClick(page, page.getByPlaceholder("Add a new todo"));
+        await page.keyboard.type(TODO, { delay: 70 });
+        await page.waitForTimeout(300);
+        await glideAndClick(page, page.getByText("Add", { exact: true }));
+        await page.waitForTimeout(600);
+        for (let i = 0; i < 2; i++) {
+          await glideAndClick(page, TODO_SCROLL_DOWN);
+          await page.waitForTimeout(400);
+        }
+        await glideAndClick(page, page.locator("input[type=checkbox]").last());
+      },
+    },
+    headset: {
+      view: { zoom: 0.5 },
+      act: async (page) => {
+        await page.waitForTimeout(500);
+        await page.getByPlaceholder("Add a new todo").evaluate(async (field, text) => {
+          const input = /** @type {HTMLInputElement} */ (field);
+          for (let i = 1; i <= text.length; i++) {
+            input.value = text.slice(0, i);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            await new Promise((done) => setTimeout(done, 70));
+          }
+        }, TODO);
+        await page.waitForTimeout(300);
+        await tapText(page, "Add");
+        await page.waitForTimeout(600);
+        for (let i = 0; i < 2; i++) {
+          await tap(page, TODO_SCROLL_DOWN.x, TODO_SCROLL_DOWN.y);
+          await page.waitForTimeout(400);
+        }
+        await tapLocator(page, page.locator("input[type=checkbox]").last());
+      },
     },
   },
 };
 
+/** The todo the todo clips add. */
+const TODO = "Record the demos";
 /**
- * Records a demo's clip and keeps its last frame as the still, which shows
- * where there is no motion wanted.
+ * The todo list's own scroll-down arrow, right of the list, which brings the
+ * new todo, the last, into its window.
+ */
+const TODO_SCROLL_DOWN = { x: 820, y: 437 };
+
+/**
+ * Picks Richmond's pentagon from Euclid's examples and fits the view to it.
+ *
+ * @param {Page} page
+ * @param {(text: string) => Promise<unknown>} click clicks the element with
+ *   that text
+ */
+async function pentagon(page, click) {
+  await click("Equilateral triangle (Elements I.1)");
+  await click("Pentagon (Richmond, exact)");
+  await click("Fit view");
+}
+
+/**
+ * Opens part of the seeded minesweeper board, and throws when a click hit a
+ * mine.
+ *
+ * @param {Page} page
+ * @param {(x: number, y: number) => Promise<unknown>} click
+ */
+async function sweep(page, click) {
+  for (const [x, y] of [
+    [640, 400],
+    [900, 250],
+    [450, 650],
+    [1100, 600],
+    [700, 150],
+  ]) {
+    await click(x, y);
+    await page.waitForTimeout(500);
+  }
+  if ((await page.getByText("Good luck!").count()) === 0) {
+    throw new Error(
+      "minesweeper: a click hit a mine; the board is not the one these clicks were picked for",
+    );
+  }
+}
+
+/**
+ * Walks white's first stack into the middle of the seeded knights board and
+ * waits for the computer's answer. Throws when the click moved nothing.
+ *
+ * @param {Page} page
+ * @param {(x: number, y: number) => Promise<unknown>} click
+ */
+async function march(page, click) {
+  await page.waitForTimeout(500);
+  await click(586, 270);
+  // The toolbar reads "Thinking…" while the computer works out its move, and
+  // "Skip" once it is white's turn again.
+  const toolbar = (/** @type {string} */ label) =>
+    page.getByText(label, { exact: true }).waitFor({ state: "attached", timeout: 20_000 });
+  await toolbar("Thinking…").catch(() => {
+    throw new Error("knights: the click moved nothing; the board is not the one it was picked for");
+  });
+  await toolbar("Skip");
+}
+
+/**
+ * Records one of a demo's clips and keeps its last frame as the still, which
+ * shows where there is no motion wanted.
  *
  * @param {import("playwright-core").Browser} browser
  * @param {string} origin
  * @param {string} slug
+ * @param {"page" | "headset"} kind
  */
-async function demo(browser, origin, slug) {
+async function demo(browser, origin, slug, kind) {
+  const setup = setups[slug];
+  const clip = setup?.[kind];
+  if (clip === false) return;
   const page = await browser.newPage({ viewport });
   try {
-    const setup = setups[slug];
     await setup?.before?.(page);
-    await page.goto(`${origin}/demos/${slug}/${setup?.query ?? ""}`, { waitUntil: "networkidle" });
-    await setup?.start?.(page);
-    await settle(page);
-    await tidy(page);
-    await pointer(page);
+    if (kind === "page") {
+      await page.goto(`${origin}/demos/${slug}/`, { waitUntil: "networkidle" });
+      await settle(page);
+      await clip?.start?.(page);
+      await tidy(page);
+      await pointer(page);
+    } else {
+      // `bare` asks for the emulated headset without its controls on the page.
+      await page.goto(`${origin}/demos/${slug}/?emulator=bare`, { waitUntil: "networkidle" });
+      await page.click("#ARButton, #VRButton");
+      await page.waitForFunction(() => document.querySelector("canvas"));
+      await frames(page, 60);
+      await settle(page);
+      await clip?.start?.(page);
+      await tidy(page);
+      const view = /** @type {{ view?: View } | undefined} */ (clip)?.view;
+      if (view) await look(page, view);
+    }
     await page.waitForTimeout(500);
-    const act = setup?.act;
-    const clip = await record(page, act ? () => act(page) : () => page.waitForTimeout(IDLE));
+    const act = clip?.act;
+    const recorded = await record(page, act ? () => act(page) : () => page.waitForTimeout(IDLE));
     await page.evaluate(() => document.getElementById("clip-pointer")?.remove());
-    await save(page, await page.screenshot(), `demos/${slug}.webp`);
-    encode(clip, `demos/${slug}.anim.webp`);
+    const name = kind === "page" ? slug : `${slug}.headset`;
+    await save(page, await page.screenshot(), `demos/${name}.webp`);
+    encode(recorded, `demos/${name}.anim.webp`);
   } finally {
     await page.close();
   }
+}
+
+/**
+ * Stands and turns the emulated head, and narrows its view.
+ *
+ * @param {Page} page
+ * @param {View} view
+ */
+async function look(page, { pitch = 0, yaw = 0, offset = [0, 0, 0], zoom = 1 }) {
+  await pose(page, pitch, yaw, offset);
+  await page.evaluate((zoom) => {
+    /** @type {any} */ (window).xrDevice.fovy *= zoom;
+  }, zoom);
+  await frames(page, 30);
 }
 
 /**
@@ -514,7 +727,10 @@ async function main() {
       args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
     });
     try {
-      for (const slug of slugs) await demo(browser, origin, slug);
+      for (const slug of slugs) {
+        await demo(browser, origin, slug, "page");
+        await demo(browser, origin, slug, "headset");
+      }
       if (only.length === 0 || only.includes("guide")) await guide(browser, origin);
     } finally {
       await browser.close();

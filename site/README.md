@@ -29,23 +29,30 @@ another demo, add the app here as a dependency and set its `base` to match.
 Rush counts anything on stderr as a warning, which fails `rush build`.
 
 The clips and screenshots are committed under `public/screenshots/`, which VitePress serves at
-`/screenshots/`. `demos/` shows a looping clip of a demo,
-`public/screenshots/demos/<app>.anim.webp`, above its links when it and the still beside it,
-`<app>.webp`, exist; a reader whose system asks for reduced motion gets the still, which is the
-clip's last frame. The guide shows the two pictures in `public/screenshots/guide/`.
+`/screenshots/`. `demos/` shows up to two looping clips of a demo above its links: the demo as a
+page, `public/screenshots/demos/<app>.anim.webp`, and the demo in a session in the emulated headset,
+`<app>.headset.anim.webp`, which opens it under `?emulator`. Each clip shows when it and the still
+beside it, `<app>.webp` or `<app>.headset.webp`, exist; a reader whose system asks for reduced
+motion gets the still, which is the clip's last frame. The guide shows the two pictures in
+`public/screenshots/guide/`.
+
 `npm run screenshots` makes them again from the last build: it serves `dist` and records each demo
-in headless Chromium doing what it is for (the castle knocked about with the slingshot in an
-emulated headset, Euclid writing out a pentagon a line at a time, Minesweeper and Knights a few
-moves in, a todo added and ticked off, and the desk and the showcase running on their own), and
+in headless Chromium doing what it is for, on a page and then in the emulated headset (Euclid
+writing out a pentagon, a todo added and ticked off, and the desk and the showcase running on their
+own). Castle has the headset clip alone, of the castle knocked about with the slingshot, since its
+page is the same scene with nothing to do in it. Minesweeper and Knights, a few moves in, have the
+page clip alone, since the headset does not draw their boards right yet; `setups` in
+`scripts/screenshots.mjs` says what it gets wrong. In the headset the script presses an app's
+controls through their DOM, which the panels mirror, so no controller ray shows in a clip. It also
 takes the todo app on a page and in an emulated headset for the guide. Run it by hand when a demo
 changes how it looks or behaves, after `rush build --to justdom-site`. With app folder names after
 `--` it records only those, and `guide` names the guide's two.
 
 The clips are animated WebP, encoded by `ffmpeg`, which has to be on the `PATH` and built with
 libwebp (the Debian and Ubuntu packages are). Animated WebP is an `<img>`, so a clip loads lazily,
-carries its alt text, and can fall back to the still in a `<picture>`. The seven clips come to about
-3 MB, a fifth of what they weigh as GIFs. Playwright looks for the Chromium build it was released
-with; where that is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+carries its alt text, and can fall back to the still in a `<picture>`. The eleven clips come to
+about 3 MB; seven of them came to about 16 MB as GIFs. Playwright looks for the Chromium build it
+was released with; where that is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 To work on the site:
 

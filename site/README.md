@@ -43,10 +43,12 @@ own). Castle has the headset clip alone, of the castle knocked about with the sl
 page is the same scene with nothing to do in it. Minesweeper and Knights, a few moves in, have the
 page clip alone, since the headset does not draw their boards right yet; `setups` in
 `scripts/screenshots.mjs` says what it gets wrong. In the headset the script presses an app's
-controls through their DOM, which the panels mirror, so no controller ray shows in a clip. It also
-takes the todo app on a page and in an emulated headset for the guide. Run it by hand when a demo
-changes how it looks or behaves, after `rush build --to justdom-site`. With app folder names after
-`--` it records only those, and `guide` names the guide's two.
+controls through their DOM, which the panels mirror, so no controller ray shows in a clip. The head
+sways slowly from side to side while it records, except in Castle, where it aims the slingshot, and
+a wait for the panels to redraw is cut short in the clip. It also takes the todo app on a page and
+in an emulated headset for the guide. Run it by hand when a demo changes how it looks or behaves,
+after `rush build --to justdom-site`. With app folder names after `--` it records only those, and
+`guide` names the guide's two.
 
 The clips are animated WebP, encoded by `ffmpeg`, which has to be on the `PATH` and built with
 libwebp (the Debian and Ubuntu packages are). Animated WebP is an `<img>`, so a clip loads lazily,

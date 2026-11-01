@@ -36,6 +36,18 @@ const FPS = 15;
 const AIM_PITCH = -0.08;
 /** libwebp's quality for a clip's frames, from 0 to 100. */
 const QUALITY = 60;
+/**
+ * The longest a headset clip holds one frame mid-clip, in seconds. Under
+ * SwiftShader the panels take seconds to redraw a change, and a clip that
+ * kept those waits would stand still for them.
+ */
+const STALL = 0.25;
+/**
+ * The head's sway in a headset clip: it steps from side to side by `SIDE`
+ * metres either way and turns by `TURN` radians to keep looking at the
+ * panels, once every `PERIOD` seconds.
+ */
+const SWAY = { SIDE: 0.12, TURN: 0.06, PERIOD: 10 };
 
 /**
  * Hides what is page furniture rather than the demo: the button that starts a
@@ -61,11 +73,25 @@ async function tidy(page) {
     for (const portal of document.querySelectorAll("[data-xr-portal]")) {
       const text = portal.textContent?.trim() ?? "";
       if (text.length < 50 && /full height \d+ fps$/.test(text)) {
+        portal.setAttribute("data-clip-hidden", "");
         for (const child of portal.children)
           /** @type {HTMLElement} */ (child).style.display = "none";
       }
     }
   });
+  // A hidden readout still shows until its panel has redrawn, which in a
+  // session can take a second or more. The panel's portal is busy until
+  // then, and the readout's alone, since in a demo that animates the other
+  // panels never stop being busy.
+  await frames(page, 5);
+  await page.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll("[data-clip-hidden]")).every(
+        (portal) => !portal.closest("[data-xr-busy]") && !portal.querySelector("[data-xr-busy]"),
+      ),
+    undefined,
+    { timeout: 30_000 },
+  );
 }
 
 /**
@@ -311,14 +337,18 @@ async function record(page, act) {
  * @param {{ data: Buffer, time: number }[]} frames of which the last only
  *   marks the end
  * @param {string} file under public/screenshots/
+ * @param {number} [stall] the longest any frame but the last is held, in
+ *   seconds
  */
-function encode(frames, file) {
+function encode(frames, file, stall = Infinity) {
   const scratch = mkdtempSync(join(tmpdir(), "justdom-clip-"));
   try {
     const list = frames.slice(0, -1).flatMap((frame, i) => {
       const name = `${String(i).padStart(5, "0")}.jpg`;
       writeFileSync(join(scratch, name), frame.data);
-      return [`file '${name}'`, `duration ${(frames[i + 1].time - frame.time).toFixed(4)}`];
+      const duration = frames[i + 1].time - frame.time;
+      const held = i < frames.length - 2 ? Math.min(duration, stall) : duration;
+      return [`file '${name}'`, `duration ${held.toFixed(4)}`];
     });
     // The concat demuxer drops the last entry's duration unless the entry is
     // given again after it.
@@ -353,6 +383,11 @@ function encode(frames, file) {
  * @property {(page: Page) => Promise<void>} [act] is what is recorded; with
  *   none, the demo is recorded doing what it does on its own for `IDLE` ms
  *
+ * @typedef {object} Headset what a headset clip adds to a clip
+ * @property {View} [view] where the head stands and looks
+ * @property {boolean} [steady] keeps the head from swaying, for a demo whose
+ *   act moves the head itself
+ *
  * @typedef {object} View where the emulated head stands and looks
  * @property {number} [pitch] radians, down below zero
  * @property {number} [yaw] radians, left above zero
@@ -376,7 +411,7 @@ const TODO_TURN = (20 * Math.PI) / 180;
  * @type {Record<string, {
  *   before?: (page: Page) => Promise<void>,
  *   page?: Clip | false,
- *   headset?: (Clip & { view?: View }) | false,
+ *   headset?: (Clip & Headset) | false,
  * }>}
  */
 const setups = {
@@ -392,6 +427,8 @@ const setups = {
     page: false,
     headset: {
       view: { pitch: AIM_PITCH, zoom: 0.6 },
+      // The head aims the slingshot.
+      steady: true,
       // The game is played in passthrough, so the page shows behind the
       // scene: everything on it but the scene goes, and it goes dark.
       start: hideFurniture,
@@ -441,14 +478,16 @@ const setups = {
       view: { yaw: 0.15, zoom: 0.7 },
       start: (page) => pentagon(page, (text) => tapLocator(page, page.getByText(text).first())),
       // A panel cannot type into a textarea, so the program is set the way
-      // the page's own input sets it, a few lines at a time. Each step waits
-      // for the panels to have drawn it, which under SwiftShader takes
-      // seconds, so that the drawing keeps up with the code.
+      // the page's own input sets it, a line of code at a time, with the
+      // comments above a line shown whole, as on the page. Each step waits
+      // for the panels to have drawn it, so that the drawing keeps up with
+      // the code; the clip skips the wait itself (`STALL`).
       act: async (page) => {
         const editor = page.locator("textarea").first();
         const lines = (await editor.inputValue()).split("\n");
         await page.waitForTimeout(500);
-        for (let end = 0; end < lines.length + 6; end += 6) {
+        for (let end = 1; end <= lines.length; end++) {
+          if (lines[end - 1].startsWith("//") && end < lines.length) continue;
           await editor.evaluate((textarea, code) => {
             /** @type {HTMLTextAreaElement} */ (textarea).value = code;
             textarea.dispatchEvent(new Event("input", { bubbles: true }));
@@ -618,19 +657,55 @@ async function demo(browser, origin, slug, kind) {
       await settle(page);
       await clip?.start?.(page);
       await tidy(page);
-      const view = /** @type {{ view?: View } | undefined} */ (clip)?.view;
-      if (view) await look(page, view);
+      await look(page, /** @type {Headset | undefined} */ (clip)?.view ?? {});
     }
     await page.waitForTimeout(500);
+    const headset = kind === "headset" ? /** @type {Headset | undefined} */ (clip) : undefined;
+    const still = kind === "page" || headset?.steady ? undefined : sway(page, headset?.view ?? {});
     const act = clip?.act;
     const recorded = await record(page, act ? () => act(page) : () => page.waitForTimeout(IDLE));
+    await still?.();
     await page.evaluate(() => document.getElementById("clip-pointer")?.remove());
     const name = kind === "page" ? slug : `${slug}.headset`;
     await save(page, await page.screenshot(), `demos/${name}.webp`);
-    encode(recorded, `demos/${name}.anim.webp`);
+    encode(recorded, `demos/${name}.anim.webp`, kind === "page" ? Infinity : STALL);
   } finally {
     await page.close();
   }
+}
+
+/**
+ * Sways the emulated head about its view, by `SWAY`, until the function it
+ * returns is called. Its clock runs a frame at a time, at most a tenth of a
+ * second a frame, so that a frame the page took long to draw does not jolt
+ * the head on.
+ *
+ * @param {Page} page
+ * @param {View} view
+ * @returns {() => Promise<void>}
+ */
+function sway(page, { pitch = 0, yaw = 0, offset = [0, 0, 0] }) {
+  let swaying = true;
+  const done = (async () => {
+    let time = 0;
+    let last = Date.now();
+    while (swaying) {
+      const now = Date.now();
+      time += Math.min((now - last) / 1000, 0.1);
+      last = now;
+      const phase = Math.sin((2 * Math.PI * time) / SWAY.PERIOD);
+      await pose(page, pitch, yaw + SWAY.TURN * phase, [
+        offset[0] + SWAY.SIDE * phase,
+        offset[1],
+        offset[2],
+      ]);
+      await frames(page, 1);
+    }
+  })();
+  return async () => {
+    swaying = false;
+    await done;
+  };
 }
 
 /**

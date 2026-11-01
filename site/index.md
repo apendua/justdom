@@ -9,6 +9,9 @@ hero:
       text: Get started
       link: /guide/getting-started
     - theme: alt
+      text: API reference
+      link: /api/
+    - theme: alt
       text: Packages
       link: /packages/
     - theme: alt
@@ -18,13 +21,13 @@ hero:
 features:
   - title: justdom-signal
     details: Dependency-tracked signals with a pull-based core.
-    link: /packages/signal
+    link: /guide/reactivity
   - title: justdom
     details:
       Every reactive value wired straight to a DOM write, with server rendering and hydration.
-    link: /packages/justdom
+    link: /guide/rendering-the-dom
   - title: justdom-three
     details:
       The same model for a Three.js scene graph, with WebXR helpers and DOM panels in the scene.
-    link: /packages/three
+    link: /guide/rendering-a-scene
 ---

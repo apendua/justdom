@@ -13,7 +13,7 @@ export default defineConfig({
   cleanUrls: true,
   themeConfig: {
     nav: [
-      { text: "Guide", link: "/guide/getting-started", activeMatch: "/guide/" },
+      { text: "Guide", link: "/guide/", activeMatch: "/guide/" },
       { text: "API", link: "/api/", activeMatch: "/api/" },
       { text: "Packages", link: "/packages/" },
       { text: "Demos", link: "/demos/" },
@@ -23,6 +23,7 @@ export default defineConfig({
         {
           text: "Guide",
           items: [
+            { text: "Overview", link: "/guide/" },
             { text: "Getting started", link: "/guide/getting-started" },
             { text: "Reactivity", link: "/guide/reactivity" },
             { text: "Rendering the DOM", link: "/guide/rendering-the-dom" },

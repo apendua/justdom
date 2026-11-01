@@ -17,9 +17,8 @@ npm install justdom justdom-signal
 ```
 
 ```js
-import { Signal } from "justdom-signal";
+import { Signal, just } from "justdom-signal";
 import { $, children, set, on, text } from "justdom";
-import { just } from "justdom-signal";
 
 const count = Signal.of(0);
 

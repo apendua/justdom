@@ -1,8 +1,8 @@
 # justdom
 
 A reactive, non-VDOM DOM renderer built on [`justdom-signal`](../signal). No virtual tree, no
-diffing pass — every reactive value is wired directly to a concrete, imperative DOM mutation through
-an RxJS subscription.
+diffing pass: every reactive value is wired directly to a concrete DOM mutation through a signal
+effect.
 
 ## Installation
 
@@ -35,18 +35,18 @@ dependency order, running every registered cleanup.
 ## Server rendering and hydration
 
 `justdom` builds real DOM nodes through the ambient `document`, so server rendering only needs a
-`document` outside the browser (see [`@apendua/jsdom-env`](../jsdom-env)) — the exact same component
-tree mounts on the server and in the browser. `hydrate(root, ...content)`, exported from the
-`justdom/hydrate` subpath, mounts against markup that's already in the page by _claiming_ existing
-nodes instead of creating new ones.
-
-See [`apps/todo-ssr`](../../apps/todo-ssr) for a complete server-rendering + hydration example.
+`document` outside the browser (see [`@apendua/jsdom-env`](../jsdom-env)), and the exact same
+component tree mounts on the server and in the browser. `hydrate(root, ...content)`, exported from
+the `justdom/hydrate` subpath, mounts against markup that is already in the page by _claiming_
+existing nodes instead of creating new ones. [`apps/todo-ssr`](../../apps/todo-ssr) is a complete
+example.
 
 ## Learn more
 
-[`docs/signal-user-guide.md`](../../docs/signal-user-guide.md) covers the DOM layer in depth (§3):
-elements as observables, keyed list rendering, text/stylesheet bindings, suspense-like async gating,
-and SSR/hydration.
+- [Rendering the DOM](https://justdom.dev/guide/rendering-the-dom) and
+  [Server rendering](https://justdom.dev/guide/server-rendering) in the guide.
+- The [API reference](https://justdom.dev/api/justdom) lists every export: elements, operators,
+  keyed lists, text and stylesheet bindings, suspense and hydration.
 
 ## License
 

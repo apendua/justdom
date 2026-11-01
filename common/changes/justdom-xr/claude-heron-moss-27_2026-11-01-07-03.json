@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The README is a short overview that links to the guide and the API reference on justdom.dev, which now hold what it used to say; its stale claims about peer dependencies and old package names are fixed",
+      "type": "patch",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

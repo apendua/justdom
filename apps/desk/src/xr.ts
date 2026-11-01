@@ -6,6 +6,7 @@ import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
 import type { MountedDesk } from "./desk.js";
 import type { Readable } from "./session.js";
+import { canDrawHtmlInCanvas, type Panels } from "./texture/panels.js";
 
 /**
  * Offer the page a headset: a scene that mirrors the objects of whichever
@@ -19,8 +20,13 @@ import type { Readable } from "./session.js";
  *
  * `?trace` records each session's frames and saves them as it ends
  * (`deskTrace.ts`), under the dev server.
+ *
+ * `panels` says how the zones reach the room: mirrored object by object
+ * (`components/Scene.ts`), or drawn into a texture by the browser
+ * (`texture/Scene.ts`), which needs HTML-in-Canvas and is offered only
+ * where the browser has it.
  */
-export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
+export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Promise<void> {
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
@@ -35,11 +41,10 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   if (!(await canPresent())) {
     return;
   }
-
-  // The charts, the memo and the plant are inline SVG, which a portal draws
-  // only with the plugin that does. It is a separate entry point, so it is
-  // loaded only once a session can be offered.
-  const { svgElements } = await import("justdom-three/svg");
+  const scene = panels === "texture" ? await textureScene(desk) : await mirrorScene(desk);
+  if (!scene) {
+    return;
+  }
 
   // A tracked hand points and pinches without a model of its own, so there
   // is none: three's hand models fetch theirs when the hand connects, and
@@ -49,17 +54,10 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
   const createControllerModel =
     controllerModelFactory.createControllerModel.bind(controllerModelFactory);
 
-  render(Scene(desk), {
+  render(scene.scene, {
     createControllerModel,
     presentingOnly: true,
-    portalPlugins: [svgElements()],
-    panelOptions: {
-      // The note field on the board is typed into with a board of its own;
-      // the desk's keyboard types on the monitor. Every key is felt as a
-      // key, on the desk's keyboard too, which is a panel like any other.
-      keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
-      haptics: { flavor: "key" },
-    },
+    ...scene.options,
   }).subscribe({
     next: (renderer) => {
       // The canvas is the session's. Under the emulator the session is drawn
@@ -94,4 +92,45 @@ export async function offerXR(desk: Readable<MountedDesk>): Promise<void> {
       console.error("Could not start the scene:", err);
     },
   });
+}
+
+type SceneOptions = Omit<NonNullable<Parameters<typeof render>[1]>, "createControllerModel">;
+
+interface DeskScene {
+  scene: Parameters<typeof render>[0];
+  options: SceneOptions;
+}
+
+/** The desk mirrored by `justdom-three`, with what its panels need. */
+async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
+  // The charts, the memo and the plant are inline SVG, which a portal draws
+  // only with the plugin that does. It is a separate entry point, so it is
+  // loaded only once a session can be offered.
+  const { svgElements } = await import("justdom-three/svg");
+  return {
+    scene: Scene(desk),
+    options: {
+      portalPlugins: [svgElements()],
+      panelOptions: {
+        // The note field on the board is typed into with a board of its
+        // own; the desk's keyboard types on the monitor. Every key is felt
+        // as a key, on the desk's keyboard too, which is a panel like any
+        // other.
+        keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
+        haptics: { flavor: "key" },
+      },
+    },
+  };
+}
+
+/**
+ * The desk drawn into a texture, or nothing where the browser cannot draw
+ * HTML into a canvas: the page says so and offers no session.
+ */
+async function textureScene(desk: Readable<MountedDesk>): Promise<DeskScene | null> {
+  if (!canDrawHtmlInCanvas()) {
+    return null;
+  }
+  const { TextureScene } = await import("./texture/Scene.js");
+  return { scene: TextureScene(desk), options: {} };
 }

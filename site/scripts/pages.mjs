@@ -102,8 +102,11 @@ export function readmeSummary(markdown) {
  * source. The page clip shows the demo as a page and opens it. The headset
  * clip shows it in a session in the emulated headset and opens it that way,
  * under `?emulator`, in a new tab. Each clip is captioned with which of the
- * two it is, and a reader who asks for reduced motion gets its last frame,
- * the still, in its place. A demo that draws a headset session also gets a
+ * two it is. A clip is a muted video that plays and loops by itself, and
+ * beside it is its last frame, the still, which the site's stylesheet, in
+ * .vitepress/config.mjs, shows in its place to a reader who asks for
+ * reduced motion. A demo that draws a headset
+ * session also gets a
  * link that opens it under the emulator, so it can be played without a
  * headset.
  *
@@ -114,8 +117,8 @@ export function readmeSummary(markdown) {
  * @param {{ slug: string, title: string, folder: string, headset: boolean }} demo
  * @param {{ page: boolean, headset: boolean }} recorded whether
  *   public/screenshots/demos/ holds each clip and its still: the page's
- *   `<slug>.anim.webp` and `<slug>.webp`, and the headset's
- *   `<slug>.headset.anim.webp` and `<slug>.headset.webp`
+ *   `<slug>.mp4` and `<slug>.webp`, and the headset's `<slug>.headset.mp4`
+ *   and `<slug>.headset.webp`
  * @returns {string[]}
  */
 export function demoLinks(demo, recorded) {
@@ -127,14 +130,19 @@ export function demoLinks(demo, recorded) {
    * @param {string} anchor the attributes of the link it is
    * @param {string} caption
    */
-  const clip = (name, anchor, caption) => [
-    `<figure><a ${anchor}><picture>` +
-      `<source srcset="/screenshots/demos/${name}.webp" media="(prefers-reduced-motion: reduce)">` +
-      `<img src="/screenshots/demos/${name}.anim.webp" alt="${`${demo.title} ${caption}`.replace(/"/g, "&quot;")}" ` +
-      `width="${demoViewport.width}" height="${demoViewport.height}" loading="lazy"></picture></a>` +
-      `<figcaption>${caption[0].toUpperCase()}${caption.slice(1)}</figcaption></figure>`,
-    "",
-  ];
+  const clip = (name, anchor, caption) => {
+    const label = `${demo.title} ${caption}`.replace(/"/g, "&quot;");
+    const size = `width="${demoViewport.width}" height="${demoViewport.height}"`;
+    const still = `/screenshots/demos/${name}.webp`;
+    return [
+      `<figure class="demo-clip"><a ${anchor}>` +
+        `<video src="/screenshots/demos/${name}.mp4" poster="${still}" aria-label="${label}" ${size} ` +
+        "autoplay muted loop playsinline></video>" +
+        `<img src="${still}" alt="${label}" ${size} loading="lazy"></a>` +
+        `<figcaption>${caption[0].toUpperCase()}${caption.slice(1)}</figcaption></figure>`,
+      "",
+    ];
+  };
   return [
     ...(recorded.page ? clip(demo.slug, opens, "as a page") : []),
     ...(recorded.headset
@@ -210,9 +218,7 @@ function main() {
 
   /** Whether a clip and its still are both under public/screenshots/demos/. */
   const recorded = (/** @type {string} */ name) =>
-    [".anim.webp", ".webp"].every((ending) =>
-      existsSync(join(screenshots, "demos", `${name}${ending}`)),
-    );
+    [".mp4", ".webp"].every((ending) => existsSync(join(screenshots, "demos", `${name}${ending}`)));
   const served = demos()
     .map((project) => {
       const folder = project.projectFolder;

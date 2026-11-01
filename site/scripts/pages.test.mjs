@@ -71,13 +71,15 @@ test("a summary is the title and the first paragraph, links taken out", () => {
   });
 });
 
-test("a demo with a screenshot shows it, linked to the demo", () => {
+test("a recorded demo shows its clip, or its still to a reader who wants less motion, linked to the demo", () => {
   const demo = { slug: "desk", title: 'The "Desk"', folder: "apps/desk", headset: false };
   const links = `<a href="/demos/desk/" target="_self">Open the demo</a> · [Source](${repositoryUrl}/tree/develop/apps/desk)`;
   assert.deepEqual(demoLinks(demo, false), [links, ""]);
   assert.deepEqual(demoLinks(demo, true), [
-    '<a href="/demos/desk/" target="_self"><img src="/screenshots/demos/desk.webp" ' +
-      'alt="The &quot;Desk&quot;" width="1280" height="800" loading="lazy"></a>',
+    '<a href="/demos/desk/" target="_self"><picture>' +
+      '<source srcset="/screenshots/demos/desk.webp" media="(prefers-reduced-motion: reduce)">' +
+      '<img src="/screenshots/demos/desk.anim.webp" alt="The &quot;Desk&quot;" ' +
+      'width="1280" height="800" loading="lazy"></picture></a>',
     "",
     links,
     "",

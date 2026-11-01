@@ -53,8 +53,9 @@ after `rush build --to justdom-site`. With app folder names after `--` it record
 The clips are animated WebP, encoded by `ffmpeg`, which has to be on the `PATH` and built with
 libwebp (the Debian and Ubuntu packages are). Animated WebP is an `<img>`, so a clip loads lazily,
 carries its alt text, and can fall back to the still in a `<picture>`. The eleven clips come to
-about 3 MB; seven of them came to about 16 MB as GIFs. Playwright looks for the Chromium build it
-was released with; where that is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+about 7.5 MB, most of it the headset clips, whose view moves in every frame; the seven page clips
+came to about 16 MB as GIFs. Playwright looks for the Chromium build it was released with; where
+that is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 To work on the site:
 

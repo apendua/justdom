@@ -140,15 +140,27 @@ async function press(page, label) {
 }
 
 /**
+ * How many `drawn` waits are under way. The head holds still while any is,
+ * so that nothing moves in a clip but the panels catching up, and `encode`
+ * cuts the wait down to `STALL`.
+ */
+let redrawing = 0;
+
+/**
  * Waits until every panel has drawn what its DOM holds: a panel's portal
  * carries `data-xr-busy` while changes are queued for it.
  *
  * @param {Page} page
  */
 async function drawn(page) {
-  await page.waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
-    timeout: 30_000,
-  });
+  redrawing++;
+  try {
+    await page.waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
+      timeout: 30_000,
+    });
+  } finally {
+    redrawing--;
+  }
 }
 
 /**
@@ -343,11 +355,18 @@ async function record(page, act) {
 function encode(frames, file, stall = Infinity) {
   const scratch = mkdtempSync(join(tmpdir(), "justdom-clip-"));
   try {
-    const list = frames.slice(0, -1).flatMap((frame, i) => {
+    // The screencast sends a frame whenever the page composites, changed or
+    // not, and one the same as the frame before only lengthens that frame.
+    const shown = frames
+      .slice(0, -1)
+      .filter((frame, i) => i === 0 || !frame.data.equals(frames[i - 1].data));
+    const end = frames[frames.length - 1].time;
+    const list = shown.flatMap((frame, i) => {
       const name = `${String(i).padStart(5, "0")}.jpg`;
       writeFileSync(join(scratch, name), frame.data);
-      const duration = frames[i + 1].time - frame.time;
-      const held = i < frames.length - 2 ? Math.min(duration, stall) : duration;
+      const final = i === shown.length - 1;
+      const duration = (final ? end : shown[i + 1].time) - frame.time;
+      const held = final ? duration : Math.min(duration, stall);
       return [`file '${name}'`, `duration ${held.toFixed(4)}`];
     });
     // The concat demuxer drops the last entry's duration unless the entry is
@@ -678,7 +697,7 @@ async function demo(browser, origin, slug, kind) {
  * Sways the emulated head about its view, by `SWAY`, until the function it
  * returns is called. Its clock runs a frame at a time, at most a tenth of a
  * second a frame, so that a frame the page took long to draw does not jolt
- * the head on.
+ * the head on, and stops while `drawn` waits.
  *
  * @param {Page} page
  * @param {View} view
@@ -691,7 +710,7 @@ function sway(page, { pitch = 0, yaw = 0, offset = [0, 0, 0] }) {
     let last = Date.now();
     while (swaying) {
       const now = Date.now();
-      time += Math.min((now - last) / 1000, 0.1);
+      if (!redrawing) time += Math.min((now - last) / 1000, 0.1);
       last = now;
       const phase = Math.sin((2 * Math.PI * time) / SWAY.PERIOD);
       await pose(page, pitch, yaw + SWAY.TURN * phase, [

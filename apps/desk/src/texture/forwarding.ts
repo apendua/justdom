@@ -181,7 +181,8 @@ export function createPointerForwarder({
 
   /**
    * `button` is the button that changed: 0, the primary one, for a press
-   * and its release, and -1, none, for a move, as a mouse sends them.
+   * and its release, and -1, none, for a move or a cancel, as a browser
+   * sends them.
    */
   const pointerInit = (point: PagePoint | null, buttons: number, button = 0) => ({
     bubbles: true,
@@ -249,7 +250,7 @@ export function createPointerForwarder({
     }
     // The press is the drag's now: the pressed element is let go of as a
     // real press is once the browser takes it for a drag.
-    fire(current.target, new PointerEvent("pointercancel", init));
+    fire(current.target, new PointerEvent("pointercancel", pointerInit(point, 0, -1)));
     holdFlag(current.active, ACTIVE_ATTRIBUTE, false);
     hover(null, point);
     return { source, data, over: null, accepted: false };
@@ -337,7 +338,7 @@ export function createPointerForwarder({
         fire(current.drag.source, new DragEvent("dragend", init));
       } else if (current) {
         holdFlag(current.active, ACTIVE_ATTRIBUTE, false);
-        fire(current.target, new PointerEvent("pointercancel", pointerInit(at, 0)));
+        fire(current.target, new PointerEvent("pointercancel", pointerInit(at, 0, -1)));
       }
       hover(null, at);
       at = null;

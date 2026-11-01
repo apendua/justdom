@@ -9,7 +9,7 @@ page's own DOM in a panel, so an app's interface is written once for both.
 
 - [Getting started](https://justdom.dev/guide/getting-started): which packages to install for what
   you render, and a first app.
-- [API reference](https://justdom.dev/api/): every package in detail.
+- [Packages](https://justdom.dev/packages/): a reference page for each package.
 - [Demos](https://justdom.dev/demos/): full apps built on these packages, each linked to its source.
 
 ## A first example
@@ -52,15 +52,16 @@ the app, and `app.unsubscribe()` removes it and runs every cleanup its parts reg
 
 The repository also holds [`@apendua/sound`](packages/sound),
 [`@apendua/geometry`](packages/geometry) and [`@apendua/jsdom-env`](packages/jsdom-env), smaller
-packages the demos and the tests use.
+packages the demos and the tests use, and the two private `@apendua/euclid-*` packages behind the
+Euclid demo.
 
 The packages are not on npm under these names yet. They are moving here from another repository, and
 the install commands above work from their first release under these names.
 
 ## Demos
 
-Each demo is a full app, and its folder under [`apps/`](apps) has its source and a README. The ones
-that run in a headset also open in a desktop browser, with an emulated headset.
+Each demo is a full app, and its source is in its folder under [`apps/`](apps). The ones that run in
+a headset also open in a desktop browser, with an emulated headset.
 
 - [Todo](https://justdom.dev/demos/todo/): everyone's first app, written once. In a headset the
   page's own DOM is mirrored into a panel, keyboard and all.

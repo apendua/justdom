@@ -370,6 +370,59 @@ describe("a panel's layers and levels", () => {
     }
   });
 
+  test("draws a positioned box after everything a flow sibling it covers draws", () => {
+    // Night Ops' whiteboard: the scribble is positioned, and its flow
+    // sibling holds the column it lies over. A page paints every flow
+    // background before any positioned box, so the column's tint has to
+    // draw before the scribble. Goes red with flow siblings left uncleared,
+    // which leaves the scribble level with the grid and under the column.
+    const { get, remove } = page([
+      {
+        id: "grid",
+        at: [0, 0, 300, 200],
+        children: [
+          { id: "column", style: "background: rgba(29, 79, 184, 0.04)", at: [200, 0, 100, 200] },
+        ],
+      },
+      { id: "scribble", style: "position: absolute", at: [210, 150, 80, 40] },
+    ]);
+    try {
+      assert.ok(getDrawLevel(get("scribble")) > getDrawLevel(get("column")));
+    } finally {
+      remove();
+    }
+  });
+
+  test("draws a positioned box after a later flow sibling it covers too", () => {
+    // Tree order does not count between the two: the page paints the flow
+    // first whichever comes first.
+    const { get, remove } = page([
+      { id: "badge", style: "position: absolute", at: [10, 10, 40, 20] },
+      {
+        id: "card",
+        at: [0, 0, 200, 100],
+        children: [{ id: "title", at: [0, 0, 200, 30] }],
+      },
+    ]);
+    try {
+      assert.ok(getDrawLevel(get("badge")) > getDrawLevel(get("title")));
+    } finally {
+      remove();
+    }
+  });
+
+  test("keeps a box with a negative z-index from climbing past the flow it overlaps", () => {
+    const { get, remove } = page([
+      { id: "under", style: "position: absolute; z-index: -1", at: [0, 0, 100, 100] },
+      { id: "flow", at: [0, 0, 100, 100] },
+    ]);
+    try {
+      assert.ok(getDrawLevel(get("under")) <= getDrawLevel(get("flow")));
+    } finally {
+      remove();
+    }
+  });
+
   test("counts the shadow of an element's own text in what it covers", () => {
     const shadow = "text-shadow: 30px 30px 0px rgb(0, 0, 0)";
     /** @param {string} text */

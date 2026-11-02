@@ -43,9 +43,9 @@ importers:
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -91,9 +91,9 @@ importers:
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0(canvas@3.2.3)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -142,9 +142,9 @@ importers:
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0(canvas@3.2.3)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -187,9 +187,9 @@ importers:
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -244,9 +244,9 @@ importers:
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -298,9 +298,9 @@ importers:
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -352,9 +352,9 @@ importers:
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -397,9 +397,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.3.0
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../../packages/justdom
+        version: link:../../packages/core
       justdom-signal:
         specifier: workspace:*
         version: link:../../packages/signal
@@ -419,6 +419,40 @@ importers:
       vite:
         specifier: ^7.1.9
         version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
+
+  ../../packages/core:
+    dependencies:
+      justdom-signal:
+        specifier: workspace:*
+        version: link:../signal
+    devDependencies:
+      '@apendua/jsdom-env':
+        specifier: workspace:*
+        version: link:../jsdom-env
+      '@testing-library/dom':
+        specifier: ^10.4.0
+        version: 10.4.2
+      '@testing-library/user-event':
+        specifier: ^14.6.1
+        version: 14.6.8(@testing-library/dom@10.4.2)
+      '@types/node':
+        specifier: ^24.7.0
+        version: 24.19.2
+      eslint:
+        specifier: ^9.37.0
+        version: 9.39.5(jiti@2.7.0)
+      fast-check:
+        specifier: ^4.3.0
+        version: 4.10.2
+      justdom-vite-hmr:
+        specifier: workspace:*
+        version: link:../vite-hmr
+      rxjs:
+        specifier: ^7.8.2
+        version: 7.8.2
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   ../../packages/euclid-core:
     devDependencies:
@@ -479,40 +513,6 @@ importers:
       '@types/node':
         specifier: ^24.7.0
         version: 24.19.2
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-
-  ../../packages/justdom:
-    dependencies:
-      justdom-signal:
-        specifier: workspace:*
-        version: link:../signal
-    devDependencies:
-      '@apendua/jsdom-env':
-        specifier: workspace:*
-        version: link:../jsdom-env
-      '@testing-library/dom':
-        specifier: ^10.4.0
-        version: 10.4.2
-      '@testing-library/user-event':
-        specifier: ^14.6.1
-        version: 14.6.8(@testing-library/dom@10.4.2)
-      '@types/node':
-        specifier: ^24.7.0
-        version: 24.19.2
-      eslint:
-        specifier: ^9.37.0
-        version: 9.39.5(jiti@2.7.0)
-      fast-check:
-        specifier: ^4.3.0
-        version: 4.10.2
-      justdom-vite-hmr:
-        specifier: workspace:*
-        version: link:../vite-hmr
-      rxjs:
-        specifier: ^7.8.2
-        version: 7.8.2
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -582,9 +582,9 @@ importers:
       fast-check:
         specifier: ^4.3.0
         version: 4.10.2
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../justdom
+        version: link:../core
       justdom-signal:
         specifier: workspace:*
         version: link:../signal
@@ -618,9 +618,9 @@ importers:
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
-      justdom:
+      justdom-core:
         specifier: workspace:*
-        version: link:../justdom
+        version: link:../core
       justdom-signal:
         specifier: workspace:*
         version: link:../signal

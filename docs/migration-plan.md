@@ -16,11 +16,11 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 - **The demos move with the library.** The eight apps that apendua.dev lists as announced demos (the
   `announced` list in its `.github/deployed-apps.json`) come here. `desk` tests freedom more than
   any other app, and the labs games are not needed to validate it. `apps/signal-ssr` comes too,
-  renamed `todo-ssr`: it is the server-rendering example for `justdom` and `justdom-signal`, and it
-  uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31 October
-  2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the import,
-  `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo` (Tomasz,
-  31 October 2026).
+  renamed `todo-ssr`: it is the server-rendering example for `justdom-core` and `justdom-signal`,
+  and it uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31
+  October 2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the
+  import, `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo`
+  (Tomasz, 31 October 2026).
 - **Everything public lives here.** apendua.dev publishes nothing after the move, and there is no
   third repository. One Rush setup publishes two name families: unscoped `justdom-*` for the library
   and `@apendua/*` for packages that are not about justdom. GitHub Packages is retired.
@@ -43,7 +43,7 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 
 | Today in apendua.dev       | Published as            |
 | -------------------------- | ----------------------- |
-| `@apendua/justdom`         | `justdom`               |
+| `@apendua/justdom`         | `justdom-core`          |
 | `@apendua/signal`          | `justdom-signal`        |
 | `@apendua/freedom`         | `justdom-three`         |
 | `@apendua/justui`          | `justdom-three-ui`      |
@@ -57,6 +57,10 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 
 Every published package gets `"publishConfig": { "access": "public" }`, because a scoped package is
 private by default, and a `repository` field pointing at this repository with a `directory`.
+
+`@apendua/justdom` was meant to publish as plain `justdom`, but npm refuses that name as too similar
+to the existing `just-dom`, so it publishes as `justdom-core` from `packages/core`. If npm support
+allows `justdom` later, the package can move back to it.
 
 The names of `justdom-vite-hmr` and `justdom-xr`, and whether `jsdom-env` is published at all, are
 proposals that have not been confirmed.

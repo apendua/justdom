@@ -1,4 +1,4 @@
-import { $$, attr, children, text } from "justdom";
+import { $$, attr, children, text } from "justdom-core";
 import {
   component,
   Derived,

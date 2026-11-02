@@ -1,4 +1,4 @@
-import { $$, attr } from "justdom";
+import { $$, attr } from "justdom-core";
 import { component, memo } from "justdom-signal";
 import { Complex } from "../helpers/complex";
 import { generateFields } from "../helpers/map";

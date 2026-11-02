@@ -1,14 +1,14 @@
 # justdom-vite-hmr
 
-A Vite plugin that lets modules built on [`justdom-signal`](../signal) and [`justdom`](../justdom)
+A Vite plugin that lets modules built on [`justdom-signal`](../signal) and [`justdom-core`](../core)
 survive hot module reloads without losing their live reactive state.
 
-Vite's default HMR replaces an edited module wholesale. A tree built on `justdom` has no virtual DOM
-and no re-render step: a component is a subscription that closes over signals and already-mounted
-DOM or Three.js nodes. Reloading the module naively would tear down and remount the whole subtree,
-losing whatever state lived only in memory: an open panel, a scroll position, an in-progress drag.
-The plugin instead makes every export of a module a stand-in that follows the module, so a reload
-swaps the definition in place and the state stays.
+Vite's default HMR replaces an edited module wholesale. A tree built on `justdom-core` has no
+virtual DOM and no re-render step: a component is a subscription that closes over signals and
+already-mounted DOM or Three.js nodes. Reloading the module naively would tear down and remount the
+whole subtree, losing whatever state lived only in memory: an open panel, a scroll position, an
+in-progress drag. The plugin instead makes every export of a module a stand-in that follows the
+module, so a reload swaps the definition in place and the state stays.
 
 ## Installation
 

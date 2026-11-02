@@ -27,7 +27,7 @@
     "@vite-pwa/assets-generator": "^1.0.1",
     "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
-    "justdom": "workspace:*",
+    "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*",
     "justdom-three": "workspace:*",
     "justdom-three-ui": "workspace:*",

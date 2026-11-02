@@ -25,7 +25,7 @@
   "dependencies": {
     "@apendua/jsdom-env": "workspace:*",
     "express": "^5.2.1",
-    "justdom": "workspace:*",
+    "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*"
   },
   "devDependencies": {

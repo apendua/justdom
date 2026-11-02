@@ -2,8 +2,8 @@
 
 [`justdom-three`](/api/three/) is the same model for a Three.js scene graph. `$` takes an `Object3D`
 instead of a tag name, `children` adds objects to it, and `set`, `effects` and `on` are the ones
-`justdom` uses, from `justdom-signal`. Every reactive value is wired directly to a Three.js mutation
-through a signal effect.
+`justdom-core` uses, from `justdom-signal`. Every reactive value is wired directly to a Three.js
+mutation through a signal effect.
 
 ```
 npm install justdom-three justdom-signal three
@@ -67,9 +67,9 @@ source's values into a property with a `copy` method, a `Vector3` or a `Color`; 
 object's events, the interaction events among them. `children(...)` adds the objects the sources
 emit and removes them when a source emits something else or the parent goes.
 
-`list` and `keyedList` are the keyed lists `justdom` has, for Three objects, and `Nothing()` is a
-component that mounts nothing, for a branch that has nothing to show yet. `component(() => …)` picks
-between them reactively, as the demos do to mount a panel only while a session is presenting.
+`list` and `keyedList` are the keyed lists `justdom-core` has, for Three objects, and `Nothing()` is
+a component that mounts nothing, for a branch that has nothing to show yet. `component(() => …)`
+picks between them reactively, as the demos do to mount a panel only while a session is presenting.
 
 ## Placing things
 

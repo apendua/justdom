@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished } from "vitest";
-import { children } from "justdom";
+import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import type { Field } from "../store/Fields";
 import Viewport, { ViewportContext } from "../store/Viewport";

@@ -5,7 +5,7 @@ justdom is a family of small packages. Pick the ones for what you render:
 | To render                                 | Install                                                          |
 | ----------------------------------------- | ---------------------------------------------------------------- |
 | Reactive state only                       | [`justdom-signal`](/packages/signal)                             |
-| The DOM, on a page or on a server         | [`justdom`](/packages/justdom) and `justdom-signal`              |
+| The DOM, on a page or on a server         | [`justdom-core`](/packages/core) and `justdom-signal`            |
 | A Three.js scene                          | [`justdom-three`](/packages/three), `justdom-signal` and `three` |
 | DOM panels in a scene, such as a keyboard | [`justdom-three-ui`](/packages/three-ui) and the above           |
 | A WebXR session                           | [`justdom-xr`](/packages/xr) with `justdom-three`                |
@@ -13,12 +13,12 @@ justdom is a family of small packages. Pick the ones for what you render:
 For example, a page that renders the DOM:
 
 ```
-npm install justdom justdom-signal
+npm install justdom-core justdom-signal
 ```
 
 ```js
 import { Signal, just } from "justdom-signal";
-import { $, children, set, on, text } from "justdom";
+import { $, children, set, on, text } from "justdom-core";
 
 const count = Signal.of(0);
 

@@ -6,11 +6,11 @@ it matters.
 
 ## Hot reloading with live state
 
-Vite's default HMR replaces an edited module wholesale. A tree built on `justdom` has no re-render
-step: a component is a subscription that closes over signals and already-mounted nodes, so reloading
-the module naively would tear the subtree down and lose whatever lived only in memory, an open panel
-or an in-progress drag. [`justdom-vite-hmr`](/api/vite-hmr) is a Vite plugin that swaps definitions
-in place instead:
+Vite's default HMR replaces an edited module wholesale. A tree built on `justdom-core` has no
+re-render step: a component is a subscription that closes over signals and already-mounted nodes, so
+reloading the module naively would tear the subtree down and lose whatever lived only in memory, an
+open panel or an in-progress drag. [`justdom-vite-hmr`](/api/vite-hmr) is a Vite plugin that swaps
+definitions in place instead:
 
 ```js
 // vite.config.mts

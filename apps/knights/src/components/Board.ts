@@ -1,4 +1,4 @@
-import { $$, attr, children, list, on } from "justdom";
+import { $$, attr, children, list, on } from "justdom-core";
 import { component } from "justdom-signal";
 import { ANIMATION_IDLE, KNIGHT } from "../constants";
 import { areTheSameField } from "../helpers/map";

@@ -1,9 +1,9 @@
-import { $, attr, children, list, on, renderText, set, text } from "justdom";
+import { $, attr, children, list, on, renderText, set, text } from "justdom-core";
 import { effects, flatMap, observable, onCleanup, Signal } from "justdom-signal";
 import { getPortalRoot } from "justdom-three/page";
 
 /**
- * @import {Mountable} from "justdom";
+ * @import {Mountable} from "justdom-core";
  */
 
 /**

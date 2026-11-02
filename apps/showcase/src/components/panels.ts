@@ -1,5 +1,5 @@
 import { fromObservable, observable, type Source, type Subscribable } from "justdom-signal";
-import { stylesheet, className, CLASS_NAME } from "justdom";
+import { stylesheet, className, CLASS_NAME } from "justdom-core";
 
 /**
  * Whatever the machine already has. The panels used to be set in Zen Dots,

@@ -7,8 +7,7 @@ import { keepSubtreeMatrices } from "./elements/place.js";
 
 /**
  * @import {Source, Subscribable} from 'justdom-signal';
- * @import {Mountable} from 'justdom';
- * @import {Component} from './core.js';
+ * @import {Component, Mountable} from './core.js';
  */
 
 /**

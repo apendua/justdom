@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-signal",
+      "comment": "Docs refer to the DOM package as justdom-core",
+      "type": "none"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

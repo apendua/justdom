@@ -1,4 +1,4 @@
-import { $, attr, children, className, set, style, text } from "justdom";
+import { $, attr, children, className, set, style, text } from "justdom-core";
 import { component, makeNonReactive, on } from "justdom-signal";
 import { removeTodo } from "../todos.js";
 
@@ -43,7 +43,7 @@ const buttonStyle = className`
  * renders -- it simply never fires there -- so the form remains the behaviour
  * for a browser that has not run, or cannot run, the script.
  */
-/** @type {(todo: Todo, getIndex: () => number, filter: Filter) => import("justdom-signal").Source<import("justdom").Mountable>} */
+/** @type {(todo: Todo, getIndex: () => number, filter: Filter) => import("justdom-signal").Source<import("justdom-core").Mountable>} */
 const TodoItem = component(
   /**
    * @param {Todo} todo

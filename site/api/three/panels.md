@@ -7,19 +7,19 @@ CSS it follows. The [guide](/guide/dom-panels) is the introduction.
 
 ## Projecting DOM into the scene
 
-`dom(ctx, source, effects, options)` mounts a [`justdom`](../justdom) component tree, or mirrors an
-element the page already has, onto a Three.js `Group` through a portal, so ordinary DOM-based UI
+`dom(ctx, source, effects, options)` mounts a [`justdom-core`](../core) component tree, or mirrors
+an element the page already has, onto a Three.js `Group` through a portal, so ordinary DOM-based UI
 (menus, HUDs, forms) is composited into a 3D or WebXR scene and still receives pointer events routed
 through `interactions(ctx)`. `source` is a `Mountable`, a subscribable of them, an element or a
 subscribable of elements; each emission is a fresh portal with the previous one taken down.
 `effects` go on the group, as for any `$()`. `createPortal(ctx, options)` is the same thing without
 the group, for a scene that drives portals by hand.
 
-It does that without depending on `justdom`. A `Mountable` — a tree that has not been put anywhere
-yet, exposing one method that swaps it into a span of sibling nodes — is declared here rather than
-imported, so `justdom` is not a peer dependency of this package. A justdom tree satisfies it,
-because the two declarations are the same shape and TypeScript compares them structurally; so does
-anything else that builds real DOM nodes and knows how to hand them over.
+It does that without depending on `justdom-core`. A `Mountable` — a tree that has not been put
+anywhere yet, exposing one method that swaps it into a span of sibling nodes — is declared here
+rather than imported, so `justdom-core` is not a peer dependency of this package. A justdom tree
+satisfies it, because the two declarations are the same shape and TypeScript compares them
+structurally; so does anything else that builds real DOM nodes and knows how to hand them over.
 
 The options, each with the section that says what it does:
 

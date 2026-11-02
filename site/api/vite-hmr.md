@@ -1,6 +1,6 @@
 # justdom-vite-hmr
 
-A Vite plugin that lets modules built on [`justdom-signal`](./signal) and [`justdom`](./justdom)
+A Vite plugin that lets modules built on [`justdom-signal`](./signal) and [`justdom-core`](./core)
 survive hot module reloads without losing their live reactive state.
 
 ```
@@ -101,8 +101,8 @@ with its holder depends on what kind of thing the module defined:
   always propagated rather than swapped.
 
 The transform needs no knowledge of what a definition is or which package constructed it, so nothing
-is hardcoded about `justdom-signal` or `justdom`; any module whose exports are functions, nodes,
-streams and state is one hot reload can replace in place.
+is hardcoded about `justdom-signal` or `justdom-core`; any module whose exports are functions,
+nodes, streams and state is one hot reload can replace in place.
 
 ## What the transform does to a module
 

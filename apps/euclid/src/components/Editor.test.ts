@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { children } from "justdom";
+import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import { xrSession } from "justdom-xr/session";
 import AppStore from "../store/App";

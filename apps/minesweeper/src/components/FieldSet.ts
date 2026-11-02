@@ -1,5 +1,5 @@
 import { findBorder, getNodes, grow, VectorLike } from "@apendua/geometry";
-import { attr, $$ } from "justdom";
+import { attr, $$ } from "justdom-core";
 import Viewport, { ViewportContext } from "../store/Viewport";
 import { component, memo } from "justdom-signal";
 

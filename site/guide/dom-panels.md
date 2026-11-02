@@ -1,7 +1,7 @@
 # DOM panels
 
 A menu, a HUD, a form, a keyboard: the interface of a headset app is ordinary DOM, built with
-[`justdom`](./rendering-the-dom) and styled with CSS, and [`justdom-three`](/api/three/panels)
+[`justdom-core`](./rendering-the-dom) and styled with CSS, and [`justdom-three`](/api/three/panels)
 projects it into the scene through a **portal**. The panel is drawn from the elements' computed
 style, a ray on it sends the page the events a mouse would, and the DOM stays the thing that is
 true: a ray's click is a click, so the app's handlers are the ones a page would have.

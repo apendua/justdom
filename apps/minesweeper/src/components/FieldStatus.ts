@@ -1,4 +1,4 @@
-import { $$, attr, children, text } from "justdom";
+import { $$, attr, children, text } from "justdom-core";
 import { component } from "justdom-signal";
 import { Field } from "../store/Fields";
 import { ViewportContext } from "../store/Viewport";

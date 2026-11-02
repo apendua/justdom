@@ -1,4 +1,4 @@
-import { className, $, children, stylesheet, CLASS_NAME } from "justdom";
+import { className, $, children, stylesheet, CLASS_NAME } from "justdom-core";
 import { set, component } from "justdom-signal";
 import { keyboard } from "justdom-three-ui";
 import type { KeyboardTarget } from "justdom-three";

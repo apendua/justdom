@@ -9,7 +9,7 @@ import {
   waitFor,
   stylesheet,
   CLASS_NAME,
-} from "justdom";
+} from "justdom-core";
 import { Signal, toObservable } from "justdom-signal";
 import { store, on, set, observable, component } from "justdom-signal";
 import { scrollable } from "justdom-three-ui";

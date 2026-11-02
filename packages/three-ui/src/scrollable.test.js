@@ -1,12 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { just } from "justdom-signal";
-import { $, children, text } from "justdom";
+import { $, children, text } from "justdom-core";
 import { scrollable } from "./scrollable.js";
 import { sampleRenderingUpdates } from "justdom-three";
 
 /**
- * @import {Mountable} from "justdom";
+ * @import {Mountable} from "justdom-core";
  */
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which

@@ -1,5 +1,5 @@
 {
-  "name": "justdom",
+  "name": "justdom-core",
   "version": "0.3.7",
   "description": "Reactive, non-VDOM DOM renderer built on justdom-signal, with SSR and hydration support",
   "keywords": [
@@ -14,7 +14,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apendua/justdom.git",
-    "directory": "packages/justdom"
+    "directory": "packages/core"
   },
   "license": "MIT",
   "author": "apendua",

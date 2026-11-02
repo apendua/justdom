@@ -80,7 +80,7 @@ with no re-layout and no re-rasterized text. Prefer it for motion, as on the fla
 A panel follows its document's stylesheets, not only its own elements. Rewriting a `<style>`
 element's text, adding or removing a `<style>` or a `<link rel="stylesheet">`, and a `<link>`
 finishing its load each restyle the panels, which is how the `className` and `stylesheet` tags in
-[`justdom`](../justdom) reach a panel.
+[`justdom-core`](../core) reach a panel.
 
 How much a change costs depends on what its rules start from:
 
@@ -148,7 +148,7 @@ import { makeReveal } from "justdom-three";
 // The element builders are justdom's, as they are for any panel; `$` and
 // `children` here are that package's, not the ones justdom-three hands out for
 // Three objects.
-import { $, children, set } from "justdom";
+import { $, children, set } from "justdom-core";
 
 const reveal = makeReveal(() => letter.typed.get());
 

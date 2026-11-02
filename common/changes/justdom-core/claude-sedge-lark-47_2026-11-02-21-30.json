@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-core",
+      "comment": "Published as justdom-core from packages/core: npm refuses the name justdom as too similar to just-dom",
+      "type": "none"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

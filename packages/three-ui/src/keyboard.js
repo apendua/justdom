@@ -1,9 +1,9 @@
-import { $, attr, children, on, renderText, set, style, text } from "justdom";
+import { $, attr, children, on, renderText, set, style, text } from "justdom-core";
 import { Derived, flatMap, observable, Signal } from "justdom-signal";
 
 /**
  * @import {EntityEffect} from "justdom-signal";
- * @import {Mountable} from "justdom";
+ * @import {Mountable} from "justdom-core";
  */
 
 /**

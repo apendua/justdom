@@ -3,7 +3,7 @@ import { component, effects, set, emit, observable, on, Op, store } from "justdo
 import { dom } from "justdom-three";
 import type { AudioOutputSelection } from "@apendua/sound";
 import { diagnosticsButton, type DiagnosticsControls } from "justdom-three-ui";
-import { children, list, $, text } from "justdom";
+import { children, list, $, text } from "justdom-core";
 import {
   actionButton,
   actionButtonClass,

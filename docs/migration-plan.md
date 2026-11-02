@@ -158,7 +158,9 @@ Before the site can go live:
    November 2026, settled the second factor: the token is the session token `npm login` saves, npm
    asks for the second factor once per package, and Rush passes that prompt through. A token that
    bypasses the second factor is not an option, since npm stops those from publishing directly in
-   January 2027.
+   January 2027. Later releases run `common/scripts/publish.mjs` instead of `rush publish`: Rush
+   misread npm 11's `npm view --json` output and tried to publish versions already on npm. The
+   README's _Releasing_ section has the commands.
 8. **Cut over apendua.dev.** The labs apps switch from `workspace:*` to npm ranges under the new
    names. The moved directories are deleted, the `publishable` version policy, `release.yml` and the
    GitHub Packages mapping in `.npmrc-publish` are removed, and `provenance.yml` stops listing the

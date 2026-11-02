@@ -143,20 +143,23 @@ on every publish. GitHub Actions only prepares it:
 
 ```
 node common/scripts/install-run-rush.js install
-node common/scripts/install-run-rush.js build --to version-policy:publishable
 npm login
-export NPM_AUTH_TOKEN="$(sed -n 's#^//registry.npmjs.org/:_authToken=##p' ~/.npmrc)"
-node common/scripts/install-run-rush.js publish --publish --include-all --version-policy publishable --target-branch develop
-unset NPM_AUTH_TOKEN
+node common/scripts/publish.mjs --dry-run
+node common/scripts/publish.mjs
 ```
 
-`rush publish` publishes each package of the `publishable` policy whose version is not on npm yet,
-and pushes a `<package>_v<version>` tag for it. It runs npm with a home directory of its own, so
-your `~/.npmrc` login is not read: the token comes from `NPM_AUTH_TOKEN`, which
-`common/config/rush/.npmrc-publish` passes to registry.npmjs.org. The `sed` line copies the session
-token that `npm login` saved in `~/.npmrc` into that variable. A session token does not bypass the
-second factor, so npm asks for it once for each package it uploads, and the prompt reaches your
-terminal through Rush. The first release, on 2 November 2026, published this way.
+[`common/scripts/publish.mjs`](common/scripts/publish.mjs) checks that the checkout is a clean,
+up-to-date `develop`, builds the `publishable` policy, and asks npm about each package's exact
+version. It publishes the ones npm does not have yet with `pnpm publish`, which turns `workspace:*`
+into the versions it points at, tags each as `<package>_v<version>` and pushes those tags. It uses
+your own `npm login`. A login session does not bypass the second factor, so npm asks for it once for
+each package it uploads. `--dry-run` only lists what is on npm and what would be published. A
+publish that stops partway can be run again: it skips what is already on npm.
+
+The script replaces `rush publish`, which the first release used. Rush ran npm with a home directory
+of its own, so the login had to be copied into an environment variable, and it read
+`npm view <name> time --json` as an object. npm 11 prints an array there, so Rush saw no published
+versions and tried to publish over them.
 
 Do not switch to a granular access token with **Bypass two-factor authentication**. From January
 2027 npm stops such tokens from publishing directly: they can only stage a version, which a

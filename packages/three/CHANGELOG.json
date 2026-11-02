@@ -2,6 +2,46 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.30.1",
+      "tag": "justdom-three_v0.30.1",
+      "date": "Mon, 02 Nov 2026 22:24:26 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Docs and the emulator driver name the castle, showcase and todo demos by their new folder names"
+          },
+          {
+            "comment": "Renamed from `@apendua/freedom`, and moved from apendua.dev to the justdom repository"
+          },
+          {
+            "comment": "Docs and tests refer to the DOM package as justdom-core"
+          }
+        ],
+        "patch": [
+          {
+            "comment": "The README is a short overview that links to the guide and the API reference on justdom.dev, which now hold what it used to say; its stale claims about peer dependencies and old package names are fixed"
+          },
+          {
+            "comment": "The published types no longer import Mountable from justdom-core, which this package does not depend on; bakery.d.ts takes it from core.d.ts"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.3.8`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.0.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.0.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.30.0",
       "tag": "@apendua/freedom_v0.30.0",
       "date": "Fri, 30 Oct 2026 14:51:18 GMT",

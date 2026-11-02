@@ -1,0 +1,17 @@
+{
+  "name": "@apendua/geometry",
+  "entries": [
+    {
+      "version": "0.1.0",
+      "tag": "@apendua/geometry_v0.1.0",
+      "date": "Mon, 02 Nov 2026 22:24:26 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Renamed from `@apendua.dev/geometry`, and moved from apendua.dev to the justdom repository"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-# justdom
+# justdom-core
 
 A reactive, non-VDOM DOM renderer built on [`justdom-signal`](./signal). No virtual tree, no diffing
 pass: every reactive value is wired directly to a concrete DOM mutation through a signal effect. The

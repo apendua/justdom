@@ -16,11 +16,11 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 - **The demos move with the library.** The eight apps that apendua.dev lists as announced demos (the
   `announced` list in its `.github/deployed-apps.json`) come here. `desk` tests freedom more than
   any other app, and the labs games are not needed to validate it. `apps/signal-ssr` comes too,
-  renamed `todo-ssr`: it is the server-rendering example for `justdom` and `justdom-signal`, and it
-  uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31 October
-  2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the import,
-  `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo` (Tomasz,
-  31 October 2026).
+  renamed `todo-ssr`: it is the server-rendering example for `justdom-core` and `justdom-signal`,
+  and it uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31
+  October 2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the
+  import, `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo`
+  (Tomasz, 31 October 2026).
 - **Everything public lives here.** apendua.dev publishes nothing after the move, and there is no
   third repository. One Rush setup publishes two name families: unscoped `justdom-*` for the library
   and `@apendua/*` for packages that are not about justdom. GitHub Packages is retired.

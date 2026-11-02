@@ -15,9 +15,9 @@ export default defineConfig({
     [
       "style",
       {},
-      // A clip on the demos page is a video with its still beside it, from
-      // scripts/pages.mjs; the still stands in for it where the reader asks
-      // for reduced motion.
+      // A clip on the demos page, from scripts/pages.mjs, or on the landing
+      // page, from theme/HomeMirror.vue, is a video with its still beside it;
+      // the still stands in for it where the reader asks for reduced motion.
       [
         ".demo-clip video, .demo-clip img { display: block; width: 100%; height: auto; }",
         ".demo-clip img { display: none; }",

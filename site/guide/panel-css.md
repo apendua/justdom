@@ -39,7 +39,7 @@ from `justdom-three/svg`, from the shapes' computed style, so a class on a `<pat
 
 - **Start every rule from a class.** A `<style>` whose rules all start from a class restyles only
   the panels that class can reach when it changes, which is what `className` and `stylesheet` from
-  `justdom` write. A rule from a tag, an attribute or `:root` restyles every panel on the page.
+  `justdom-core` write. A rule from a tag, an attribute or `:root` restyles every panel on the page.
 - **Give images a size.** An `<img>` given no size takes the picture's when it arrives, and the
   panel re-measures.
 - **Prefer percentage stops in a gradient** on anything that resizes: a `px` stop bakes a new

@@ -1,4 +1,4 @@
-import { $$, attr, children } from "justdom";
+import { $$, attr, children } from "justdom-core";
 
 interface PatternProps {
   name: string;

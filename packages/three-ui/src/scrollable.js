@@ -1,9 +1,9 @@
-import { $, children, list, set, style, text } from "justdom";
+import { $, children, list, set, style, text } from "justdom-core";
 import { Derived, effects, onCleanup, Signal } from "justdom-signal";
 import { getPortalRoot, scrollElementBy } from "justdom-three/page";
 
 /**
- * @import {Mountable} from "justdom";
+ * @import {Mountable} from "justdom-core";
  */
 
 /**

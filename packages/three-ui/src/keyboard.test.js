@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { children } from "justdom";
+import { children } from "justdom-core";
 import { just, Signal } from "justdom-signal";
 import * as THREE from "three";
 import { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
@@ -57,7 +57,7 @@ function dressBoard() {
 }
 
 /**
- * @import {Mountable} from "justdom";
+ * @import {Mountable} from "justdom-core";
  * @import {KeyPress, KeyboardLayout} from "./keyboard.js";
  */
 

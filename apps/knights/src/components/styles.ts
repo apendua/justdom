@@ -1,4 +1,4 @@
-import { CLASS_NAME, stylesheet } from "justdom";
+import { CLASS_NAME, stylesheet } from "justdom-core";
 
 /**
  * The blocky, monospaced button the whole interface is built from.

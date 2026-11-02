@@ -1,6 +1,6 @@
 # Rendering the DOM
 
-[`justdom`](/api/justdom) renders the DOM with no virtual tree and no diffing pass. An element is
+[`justdom-core`](/api/core) renders the DOM with no virtual tree and no diffing pass. An element is
 built once, and every reactive value in it is wired to the one DOM write it stands for: a property,
 an attribute, a style, a listener, a span of child nodes. The reactive machinery is
 [`justdom-signal`](./reactivity)'s; this package adds the element builders and the operators that
@@ -8,7 +8,7 @@ write to elements.
 
 ```js
 import { Signal } from "justdom-signal";
-import { $, children, set, on, text, style } from "justdom";
+import { $, children, set, on, text, style } from "justdom-core";
 
 const count = Signal.of(0);
 
@@ -112,7 +112,7 @@ interpolates its own generated name wherever `CLASS_NAME` appears, for a sheet w
 selector:
 
 ```js
-import { className, stylesheet, CLASS_NAME } from "justdom";
+import { className, stylesheet, CLASS_NAME } from "justdom-core";
 
 const label = className`
   flex-grow: 1;

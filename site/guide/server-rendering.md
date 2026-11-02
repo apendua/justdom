@@ -1,6 +1,6 @@
 # Server rendering
 
-`justdom` builds real DOM nodes through the ambient `document`, and there is no virtual DOM to
+`justdom-core` builds real DOM nodes through the ambient `document`, and there is no virtual DOM to
 serialize instead. So rendering on a server needs only a `document` outside the browser, and the
 exact same component tree mounts there and in the browser.
 
@@ -13,7 +13,7 @@ tests run against. Rendering a page is a synchronous mount, serialize, unmount c
 ```js
 import { setupJsdom } from "@apendua/jsdom-env";
 import { just } from "justdom-signal";
-import { children } from "justdom";
+import { children } from "justdom-core";
 
 export function renderToString(component) {
   const dom = setupJsdom({
@@ -46,12 +46,12 @@ and also hydrates.
 
 ## Hydration
 
-`hydrate(root, ...content)`, from the `justdom/hydrate` subpath, mounts a tree against markup that
-is already in the page by claiming the existing nodes instead of creating new ones, left to right,
-in document order:
+`hydrate(root, ...content)`, from the `justdom-core/hydrate` subpath, mounts a tree against markup
+that is already in the page by claiming the existing nodes instead of creating new ones, left to
+right, in document order:
 
 ```js
-import { hydrate } from "justdom/hydrate";
+import { hydrate } from "justdom-core/hydrate";
 
 hydrate(document.querySelector("#root"), App({})).subscribe();
 ```

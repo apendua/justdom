@@ -68,7 +68,7 @@ export default defineConfig({
           items: [
             { text: "Overview", link: "/api/" },
             { text: "justdom-signal", link: "/api/signal" },
-            { text: "justdom", link: "/api/justdom" },
+            { text: "justdom-core", link: "/api/core" },
             {
               text: "justdom-three",
               link: "/api/three/",

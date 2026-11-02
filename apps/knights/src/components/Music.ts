@@ -1,4 +1,4 @@
-import { $, set } from "justdom";
+import { $, set } from "justdom-core";
 import { component, effects, onCleanup } from "justdom-signal";
 import stepsToTheThrone from "../assets/steps_to_the_throne.mp3";
 

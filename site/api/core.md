@@ -5,11 +5,11 @@ pass: every reactive value is wired directly to a concrete DOM mutation through 
 [guide](/guide/rendering-the-dom) introduces it; this page lists what the package exports.
 
 ```
-npm install justdom justdom-signal
+npm install justdom-core justdom-signal
 ```
 
-`justdom-signal` is a dependency. The package has two entry points: `justdom`, and `justdom/hydrate`
-for mounting against server-rendered markup.
+`justdom-signal` is a dependency. The package has two entry points: `justdom-core`, and
+`justdom-core/hydrate` for mounting against server-rendered markup.
 
 ## Elements
 
@@ -86,7 +86,7 @@ hydrating. A template whose values move re-renders its rule in place.
 Under hydration the content builds its own nodes and the fallback is what claims the markup, since a
 synchronous server render can only ever have serialized the fallback.
 
-## `justdom/hydrate`
+## `justdom-core/hydrate`
 
 `hydrate(root, ...content)` returns a source that, when subscribed, mounts `content` into `root` by
 claiming the nodes already there instead of creating new ones: elements by tag, text nodes, and the

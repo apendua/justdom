@@ -41,7 +41,7 @@ effect.dispose();
   values, effects and channels.
 - The [API reference](https://justdom.dev/api/signal) lists every export, its options and defaults:
   `UpdateChannel`, `store`, `createProperty`, the RxJS interop and the entity layer that
-  [`justdom`](../justdom) and [`justdom-three`](../three) build on.
+  [`justdom-core`](../core) and [`justdom-three`](../three) build on.
 
 ## License
 

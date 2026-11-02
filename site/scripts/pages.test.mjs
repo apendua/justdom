@@ -14,7 +14,7 @@ const tree = {
 };
 const lookup = (/** @type {string} */ path) => tree[path];
 const rewrite = (/** @type {string} */ markdown) =>
-  rewriteLinks(markdown, { from: "packages/justdom", pages, lookup });
+  rewriteLinks(markdown, { from: "packages/core", pages, lookup });
 
 test("a link to a package with a page goes to that page, anchor kept", () => {
   assert.equal(rewrite("[signal](../signal)").markdown, "[signal](/packages/signal)");

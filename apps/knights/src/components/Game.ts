@@ -1,4 +1,4 @@
-import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "justdom";
+import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "justdom-core";
 import { component, makeNonReactive, store } from "justdom-signal";
 import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
 import { RootContext } from "../store/Root";

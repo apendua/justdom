@@ -19,7 +19,7 @@
   "dependencies": {
     "@types/three": "~0.185.0",
     "jsdom": "^26.1.0",
-    "justdom": "workspace:*",
+    "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*",
     "justdom-three": "workspace:*",
     "justdom-three-ui": "workspace:*",

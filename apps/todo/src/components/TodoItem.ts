@@ -1,4 +1,4 @@
-import { attr, className, text, $, children, style, stylesheet, CLASS_NAME } from "justdom";
+import { attr, className, text, $, children, style, stylesheet, CLASS_NAME } from "justdom-core";
 import { store, on, set, emit, Op, component } from "justdom-signal";
 
 // While a row is dragged, the slot it would land in is marked by turning

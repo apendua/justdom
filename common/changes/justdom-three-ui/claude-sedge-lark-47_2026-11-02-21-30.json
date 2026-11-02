@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three-ui",
+      "comment": "The DOM peer dependency is justdom-core, the name the DOM package now publishes under",
+      "type": "patch"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { $, children, dom, drag, interactions, Nothing, XREventMap } from "justdom-three";
 import { component, effects, emit, on, Op, set, Signal, store } from "justdom-signal";
-import { children as domChildren, $ as $dom, text } from "justdom";
+import { children as domChildren, $ as $dom, text } from "justdom-core";
 import Brick from "./Brick.js";
 import { BrickType } from "./types.js";
 import { boxGeometry } from "../elements/geometry.js";

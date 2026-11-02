@@ -222,7 +222,7 @@ import { addDependency, batch, Derived } from "justdom-signal";
  */
 
 /**
- * A DOM tree that has not been put anywhere yet: what `justdom`
+ * A DOM tree that has not been put anywhere yet: what `justdom-core`
  * builds and what a portal mounts.
  *
  * A *segment* is the pair of sibling nodes a tree spans — its first and its
@@ -230,9 +230,9 @@ import { addDependency, batch, Derived } from "justdom-signal";
  * occupies that span for this tree's own nodes, handing back the span they
  * now occupy. That one method is the entire protocol between the two
  * packages, which is why it is written out here rather than imported: this
- * is `justdom`'s `Mountable` to the letter, TypeScript compares the two
+ * is `justdom-core`'s `Mountable` to the letter, TypeScript compares the two
  * structurally, and `freedom` therefore describes its own signatures without
- * depending on `justdom` at all. Pass a justdom tree to `dom()` exactly as
+ * depending on `justdom-core` at all. Pass a justdom tree to `dom()` exactly as
  * before.
  *
  * @typedef {object} Mountable

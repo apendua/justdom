@@ -257,7 +257,7 @@ function toMountable(node) {
 }
 
 /**
- * `justdom`'s interpolation, over the same signal primitives — a derivation
+ * `justdom-core`'s interpolation, over the same signal primitives — a derivation
  * that reads every part and renders the first time all of them can be read.
  *
  * @param {TemplateStringsArray} strings

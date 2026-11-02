@@ -3,8 +3,8 @@
 Build a castle out of bricks in passthrough AR, then take a slingshot to it and knock the whole
 thing down. The game is won when every brick is lying on the ground.
 
-It is built on `justdom-signal` for reactivity, `justdom-three` for the reactive scene, `justdom`
-projected into it for the panels, and `@dimforge/rapier3d` for the physics.
+It is built on `justdom-signal` for reactivity, `justdom-three` for the reactive scene,
+`justdom-core` projected into it for the panels, and `@dimforge/rapier3d` for the physics.
 
 ```
 rush build --to castle

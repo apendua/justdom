@@ -1,7 +1,7 @@
 # justdom-three
 
 A reactive Three.js scene graph, built on [`justdom-signal`](../signal) with the same operator
-vocabulary as [`justdom`](../justdom) — `$`, `set`, `children`, `effects`, `on` — except targeting
+vocabulary as [`justdom-core`](../core) — `$`, `set`, `children`, `effects`, `on` — except targeting
 `THREE.Object3D` instead of DOM nodes. No VDOM, no diffing: every reactive value is wired directly
 to a Three.js mutation through a signal effect.
 

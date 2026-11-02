@@ -4,21 +4,21 @@ The widgets a panel is made of, for panels that have to work in a room as well a
 dropdown, a keyboard, a scrolling window with a bar, and the frame rate readout every headset app in
 the demos wears.
 
-All of it is ordinary DOM. [`justdom`](./justdom) builds the trees and [`justdom-signal`](./signal)
-keeps them current, which is what lets the same widget be a control on a flat page and a control in
-a scene: a [`justdom-three`](./three/) portal mirrors elements, so anything built out of elements
-can be pointed at with a ray.
+All of it is ordinary DOM. [`justdom-core`](./core) builds the trees and
+[`justdom-signal`](./signal) keeps them current, which is what lets the same widget be a control on
+a flat page and a control in a scene: a [`justdom-three`](./three/) portal mirrors elements, so
+anything built out of elements can be pointed at with a ray.
 
 ```
-npm install justdom-three-ui justdom-three justdom justdom-signal three
+npm install justdom-three-ui justdom-three justdom-core justdom-signal three
 ```
 
-`justdom-three`, `justdom`, `justdom-signal` and `three` are peer dependencies. Only the diagnostics
-panel reaches for three.js; the three widgets are DOM and nothing else, and work on a page with no
-scene anywhere near them. A page that bundles only them carries none of three.js either: what they
-ask of `justdom-three` they ask of `justdom-three/page`, which imports none of it, and the package
-says it has no side effects, so a bundler leaves the diagnostics out of a page that does not use
-them. `src/pageWidgets.test.js` holds the widgets to both.
+`justdom-three`, `justdom-core`, `justdom-signal` and `three` are peer dependencies. Only the
+diagnostics panel reaches for three.js; the three widgets are DOM and nothing else, and work on a
+page with no scene anywhere near them. A page that bundles only them carries none of three.js
+either: what they ask of `justdom-three` they ask of `justdom-three/page`, which imports none of it,
+and the package says it has no side effects, so a bundler leaves the diagnostics out of a page that
+does not use them. `src/pageWidgets.test.js` holds the widgets to both.
 
 ## Nothing here ships colours
 

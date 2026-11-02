@@ -15,12 +15,12 @@ page's own DOM in a panel, so an app's interface is written once for both.
 ## A first example
 
 ```
-npm install justdom justdom-signal
+npm install justdom-core justdom-signal
 ```
 
 ```js
 import { Signal, just } from "justdom-signal";
-import { $, children, on, text } from "justdom";
+import { $, children, on, text } from "justdom-core";
 
 const count = Signal.of(0);
 
@@ -44,7 +44,7 @@ the app, and `app.unsubscribe()` removes it and runs every cleanup its parts reg
 | Package                                 | What it is for                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------ |
 | [`justdom-signal`](packages/signal)     | Reactive state: `Signal`, `Derived` and `Effect`, with a pull-based core.            |
-| [`justdom`](packages/justdom)           | The DOM, in a browser or on a server, with hydration of server-rendered markup.      |
+| [`justdom-core`](packages/core)         | The DOM, in a browser or on a server, with hydration of server-rendered markup.      |
 | [`justdom-three`](packages/three)       | A Three.js scene with the same operators, and DOM mirrored into the scene as panels. |
 | [`justdom-three-ui`](packages/three-ui) | Widgets for those panels: a dropdown, a keyboard, a scrolling window.                |
 | [`justdom-xr`](packages/xr)             | What a headset app repeats, including an emulated headset for a desktop browser.     |

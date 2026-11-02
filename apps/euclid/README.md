@@ -1,7 +1,7 @@
 # Euclid
 
-An interactive editor for Euclidean constructions, built with `justdom-signal` and `justdom` on top
-of `@apendua/euclid-lang`.
+An interactive editor for Euclidean constructions, built with `justdom-signal` and `justdom-core` on
+top of `@apendua/euclid-lang`.
 
 The code is the single source of truth: the drawing on the right is always the evaluation of the
 program on the left, and the construction tools work by _editing the program_ — so everything done

@@ -9,7 +9,7 @@ import {
   stylesheet,
   text,
   type Mountable,
-} from "justdom";
+} from "justdom-core";
 import { component, type Subscribable } from "justdom-signal";
 import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
 import { ATTACKER } from "../constants";

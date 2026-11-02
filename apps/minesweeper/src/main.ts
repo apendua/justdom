@@ -1,5 +1,5 @@
 import { just } from "justdom-signal";
-import { children } from "justdom";
+import { children } from "justdom-core";
 import Game from "./components/Game";
 import { offerHeadset } from "justdom-xr/offer";
 import Root, { RootContext } from "./store/Root";

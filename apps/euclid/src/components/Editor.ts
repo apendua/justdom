@@ -1,4 +1,4 @@
-import { $, children, className, list, on, set } from "justdom";
+import { $, children, className, list, on, set } from "justdom-core";
 import { Derived, component, effects } from "justdom-signal";
 import { tokenize, KEYWORDS, BUILTINS } from "@apendua/euclid-lang";
 import { xrSession } from "justdom-xr/session";

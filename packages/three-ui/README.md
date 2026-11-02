@@ -4,7 +4,7 @@ The widgets a panel is made of, for panels that have to work in a room as well a
 dropdown, a keyboard, a scrolling window with a bar, and the frame rate readout every headset app in
 the demos wears.
 
-All of it is ordinary DOM. [`justdom`](../justdom) builds the trees and
+All of it is ordinary DOM. [`justdom-core`](../core) builds the trees and
 [`justdom-signal`](../signal) keeps them current, which is what lets the same widget be a control on
 a flat page and a control in a scene: a [`justdom-three`](../three) portal mirrors elements, so
 anything built out of elements can be pointed at with a ray.
@@ -12,18 +12,18 @@ anything built out of elements can be pointed at with a ray.
 ## Installation
 
 ```
-npm install justdom-three-ui justdom-three justdom justdom-signal three
+npm install justdom-three-ui justdom-three justdom-core justdom-signal three
 ```
 
-`justdom-three`, `justdom`, `justdom-signal` and `three` are peer dependencies. Only the diagnostics
-panel reaches for three.js; the three widgets are DOM and nothing else, and a page that bundles only
-them carries none of three.js either.
+`justdom-three`, `justdom-core`, `justdom-signal` and `three` are peer dependencies. Only the
+diagnostics panel reaches for three.js; the three widgets are DOM and nothing else, and a page that
+bundles only them carries none of three.js either.
 
 ## Usage
 
 ```js
 import { Signal } from "justdom-signal";
-import { className } from "justdom";
+import { className } from "justdom-core";
 import { dropdown } from "justdom-three-ui";
 
 const chosen = Signal.of("medium");

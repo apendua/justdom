@@ -1,5 +1,5 @@
 import { component, on, set } from "justdom-signal";
-import { children, $, text } from "justdom";
+import { children, $, text } from "justdom-core";
 import { dropdown } from "justdom-three-ui";
 import type { AudioOutputSelection } from "@apendua/sound";
 import { musicRow, outputClasses, panelCard, panelTitle, stepButton, stepValue } from "./styles.js";

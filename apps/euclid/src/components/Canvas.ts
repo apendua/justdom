@@ -1,4 +1,4 @@
-import { $, $$, attr, children, className, keyedList, on } from "justdom";
+import { $, $$, attr, children, className, keyedList, on } from "justdom-core";
 import { Signal, component, observable, set } from "justdom-signal";
 import { Circle, Line, Point } from "@apendua/euclid-core";
 import type { SceneItem } from "@apendua/euclid-lang";

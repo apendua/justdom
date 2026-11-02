@@ -43,7 +43,7 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 
 | Today in apendua.dev       | Published as            |
 | -------------------------- | ----------------------- |
-| `@apendua/justdom`         | `justdom`               |
+| `@apendua/justdom`         | `justdom-core`          |
 | `@apendua/signal`          | `justdom-signal`        |
 | `@apendua/freedom`         | `justdom-three`         |
 | `@apendua/justui`          | `justdom-three-ui`      |
@@ -57,6 +57,10 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 
 Every published package gets `"publishConfig": { "access": "public" }`, because a scoped package is
 private by default, and a `repository` field pointing at this repository with a `directory`.
+
+`@apendua/justdom` was meant to publish as plain `justdom`, but npm refuses that name as too similar
+to the existing `just-dom`, so it publishes as `justdom-core` from `packages/core`. If npm support
+allows `justdom` later, the package can move back to it.
 
 The names of `justdom-vite-hmr` and `justdom-xr`, and whether `jsdom-env` is published at all, are
 proposals that have not been confirmed.

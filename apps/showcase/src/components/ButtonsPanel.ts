@@ -1,5 +1,5 @@
-import { className, stylesheet, text, $, children, attr, CLASS_NAME } from "justdom";
-import { set, on } from "justdom";
+import { className, stylesheet, text, $, children, attr, CLASS_NAME } from "justdom-core";
+import { set, on } from "justdom-core";
 import { Signal, component, effects, observable } from "justdom-signal";
 import { makeReveal, useFrame } from "justdom-three";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";

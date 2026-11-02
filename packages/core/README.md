@@ -7,14 +7,14 @@ effect.
 ## Installation
 
 ```
-npm install justdom justdom-signal
+npm install justdom-core justdom-signal
 ```
 
 ## Usage
 
 ```js
 import { Signal, just } from "justdom-signal";
-import { $, children, set, on, text } from "justdom";
+import { $, children, set, on, text } from "justdom-core";
 
 const count = Signal.of(0);
 
@@ -34,10 +34,10 @@ dependency order, running every registered cleanup.
 
 ## Server rendering and hydration
 
-`justdom` builds real DOM nodes through the ambient `document`, so server rendering only needs a
-`document` outside the browser (see [`@apendua/jsdom-env`](../jsdom-env)), and the exact same
+`justdom-core` builds real DOM nodes through the ambient `document`, so server rendering only needs
+a `document` outside the browser (see [`@apendua/jsdom-env`](../jsdom-env)), and the exact same
 component tree mounts on the server and in the browser. `hydrate(root, ...content)`, exported from
-the `justdom/hydrate` subpath, mounts against markup that is already in the page by _claiming_
+the `justdom-core/hydrate` subpath, mounts against markup that is already in the page by _claiming_
 existing nodes instead of creating new ones. [`apps/todo-ssr`](../../apps/todo-ssr) is a complete
 example.
 
@@ -45,8 +45,8 @@ example.
 
 - [Rendering the DOM](https://justdom.dev/guide/rendering-the-dom) and
   [Server rendering](https://justdom.dev/guide/server-rendering) in the guide.
-- The [API reference](https://justdom.dev/api/justdom) lists every export: elements, operators,
-  keyed lists, text and stylesheet bindings, suspense and hydration.
+- The [API reference](https://justdom.dev/api/core) lists every export: elements, operators, keyed
+  lists, text and stylesheet bindings, suspense and hydration.
 
 ## License
 

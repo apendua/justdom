@@ -1,4 +1,4 @@
-import { $$, attr } from "justdom";
+import { $$, attr } from "justdom-core";
 import { component } from "justdom-signal";
 import { createMapping } from "../helpers/mappings";
 import type { Dimensions } from "./types";

@@ -4,13 +4,13 @@
  */
 import * as THREE from "three";
 import { component, effects } from "justdom-signal";
-import { $, children, set, style, text } from "justdom";
+import { $, children, set, style, text } from "justdom-core";
 import { dom, useFrame } from "justdom-three";
 import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
 import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
 
 /**
- * @import {Mountable} from 'justdom';
+ * @import {Mountable} from 'justdom-core';
  * @import {Component} from 'justdom-three';
  * @import {DiagnosticsControls} from './diagnostics.js';
  */

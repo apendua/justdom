@@ -1,11 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { children } from "justdom";
+import { children } from "justdom-core";
 import { just, Signal } from "justdom-signal";
 import { dropdown } from "./dropdown.js";
 
 /**
- * @import {Mountable} from "justdom";
+ * @import {Mountable} from "justdom-core";
  */
 
 /** Class names as a panel would supply them: one observable per part. */

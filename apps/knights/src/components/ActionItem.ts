@@ -1,4 +1,4 @@
-import { $, attr, children, on, set, text } from "justdom";
+import { $, attr, children, on, set, text } from "justdom-core";
 import { component, makeNonReactive, store } from "justdom-signal";
 import branch from "./branch";
 import { menuItem, spinner } from "./styles";

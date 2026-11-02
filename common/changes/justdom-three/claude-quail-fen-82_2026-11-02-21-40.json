@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three",
+      "comment": "The published types no longer import Mountable from justdom-core, which this package does not depend on; bakery.d.ts takes it from core.d.ts",
+      "type": "patch"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -14,8 +14,7 @@ export const root = join(site, "..");
  * /screenshots/.
  */
 export const screenshots = join(site, "public", "screenshots");
-/** The window each demo's screenshot is taken in, and so the image's size. */
-export const demoViewport = { width: 1280, height: 800 };
+export { demoViewport } from "./viewport.mjs";
 
 /**
  * Reads a JSON file that may hold comments, as rush.json does.

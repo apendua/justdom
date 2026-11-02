@@ -3,6 +3,8 @@
 // headset, side by side, and what the pair shows. Each clip is a
 // `.demo-clip`, the markup scripts/pages.mjs writes on the demos page, so
 // the style in config.mjs swaps it for its still under reduced motion.
+import { demoViewport } from "../../scripts/viewport.mjs";
+
 const clips = [
   {
     name: "desk",
@@ -15,6 +17,7 @@ const clips = [
     name: "desk.headset",
     href: "/demos/desk/?emulator",
     target: "_blank",
+    rel: "noopener",
     label: "The Desk demo in the emulated headset",
     caption: "In a headset: the same elements, each mirrored into a panel.",
   },
@@ -25,13 +28,13 @@ const clips = [
   <section class="home-mirror">
     <div class="clips">
       <figure v-for="clip in clips" :key="clip.name" class="demo-clip">
-        <a :href="clip.href" :target="clip.target" rel="noopener">
+        <a :href="clip.href" :target="clip.target" :rel="clip.rel">
           <video
             :src="`/screenshots/demos/${clip.name}.mp4`"
             :poster="`/screenshots/demos/${clip.name}.webp`"
             :aria-label="clip.label"
-            width="1280"
-            height="800"
+            :width="demoViewport.width"
+            :height="demoViewport.height"
             autoplay
             muted
             loop
@@ -40,8 +43,8 @@ const clips = [
           <img
             :src="`/screenshots/demos/${clip.name}.webp`"
             :alt="clip.label"
-            width="1280"
-            height="800"
+            :width="demoViewport.width"
+            :height="demoViewport.height"
             loading="lazy"
           />
         </a>
@@ -62,9 +65,8 @@ const clips = [
         justdom keeps one interface, and it is the DOM. <code>justdom-three</code> mirrors elements
         the page already has into panels in the scene, drawn from their computed style. A change to
         the page, a class, an attribute or a line of text, shows in the panel, which re-measures
-        only what that change can move. A ray on a panel sends the page the events a mouse would,
-        so the handlers that run are the page's own. Under both sits the same reactive core: each
-        signal is wired to the one write it needs, with no virtual DOM to diff.
+        only what that change can move. A ray on a panel sends the page the events a mouse would, so
+        the handlers that run are the page's own.
       </p>
       <p>
         <a href="/guide/dom-panels">DOM panels</a> in the guide shows how, and the

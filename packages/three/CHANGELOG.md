@@ -1,6 +1,14 @@
-# Change Log - @apendua/freedom
+# Change Log - justdom-three
 
-This log was last generated on Fri, 30 Oct 2026 14:51:18 GMT and should not be manually modified.
+This log was last generated on Mon, 02 Nov 2026 22:24:26 GMT and should not be manually modified.
+
+## 0.30.1
+Mon, 02 Nov 2026 22:24:26 GMT
+
+### Patches
+
+- The README is a short overview that links to the guide and the API reference on justdom.dev, which now hold what it used to say; its stale claims about peer dependencies and old package names are fixed
+- The published types no longer import Mountable from justdom-core, which this package does not depend on; bakery.d.ts takes it from core.d.ts
 
 ## 0.30.0
 Fri, 30 Oct 2026 14:51:18 GMT

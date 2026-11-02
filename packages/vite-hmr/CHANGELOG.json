@@ -2,6 +2,31 @@
   "name": "justdom-vite-hmr",
   "entries": [
     {
+      "version": "0.5.1",
+      "tag": "justdom-vite-hmr_v0.5.1",
+      "date": "Mon, 02 Nov 2026 22:24:26 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "The README is a short overview that links to the guide and the API reference on justdom.dev, which now hold what it used to say; its stale claims about peer dependencies and old package names are fixed"
+          }
+        ],
+        "none": [
+          {
+            "comment": "Renamed from `@apendua/vite-hmr`, and moved from apendua.dev to the justdom repository"
+          },
+          {
+            "comment": "Docs refer to the DOM package as justdom-core"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.0.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.5.0",
       "tag": "@apendua/vite-hmr_v0.5.0",
       "date": "Sun, 18 Oct 2026 19:57:45 GMT",

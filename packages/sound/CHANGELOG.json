@@ -1,0 +1,46 @@
+{
+  "name": "@apendua/sound",
+  "entries": [
+    {
+      "version": "0.1.1",
+      "tag": "@apendua/sound_v0.1.1",
+      "date": "Mon, 02 Nov 2026 22:24:26 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "The README no longer mentions bricks-xr, which left the repository"
+          },
+          {
+            "comment": "Docs and the emulator driver name the castle, showcase and todo demos by their new folder names"
+          },
+          {
+            "comment": "Renamed from `@apendua.dev/sound`, and moved from apendua.dev to the justdom repository"
+          },
+          {
+            "comment": "The music docs say the track is the app's own mp3, not one from apendua.dev's media package"
+          },
+          {
+            "comment": "The README refers to the DOM package as justdom-core"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.0.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.30.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.0.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.30.1`"
+          }
+        ]
+      }
+    }
+  ]
+}

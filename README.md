@@ -144,15 +144,23 @@ on every publish. GitHub Actions only prepares it:
 ```
 node common/scripts/install-run-rush.js install
 node common/scripts/install-run-rush.js build --to version-policy:publishable
-NPM_AUTH_TOKEN=<token> node common/scripts/install-run-rush.js publish --publish --include-all --version-policy publishable --target-branch develop
+npm login
+export NPM_AUTH_TOKEN="$(sed -n 's#^//registry.npmjs.org/:_authToken=##p' ~/.npmrc)"
+node common/scripts/install-run-rush.js publish --publish --include-all --version-policy publishable --target-branch develop
+unset NPM_AUTH_TOKEN
 ```
 
 `rush publish` publishes each package of the `publishable` policy whose version is not on npm yet,
 and pushes a `<package>_v<version>` tag for it. It runs npm with a home directory of its own, so
 your `~/.npmrc` login is not read: the token comes from `NPM_AUTH_TOKEN`, which
-`common/config/rush/.npmrc-publish` passes to registry.npmjs.org. Whether `rush publish` passes
-npm's second-factor prompt through is not known yet; the first release settles it, and the migration
-plan's open questions say what replaces it if not.
+`common/config/rush/.npmrc-publish` passes to registry.npmjs.org. The `sed` line copies the session
+token that `npm login` saved in `~/.npmrc` into that variable. A session token does not bypass the
+second factor, so npm asks for it once for each package it uploads, and the prompt reaches your
+terminal through Rush. The first release, on 2 November 2026, published this way.
+
+Do not switch to a granular access token with **Bypass two-factor authentication**. From January
+2027 npm stops such tokens from publishing directly: they can only stage a version, which a
+maintainer then approves with the second factor.
 
 The Release workflow opens a pull request with `GITHUB_TOKEN`, which works only once **Allow GitHub
 Actions to create and approve pull requests** is ticked under Settings → Actions → General.

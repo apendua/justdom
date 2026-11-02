@@ -150,7 +150,11 @@ Before the site can go live:
    between. It is a local `rush publish`, like every release after it, and
    `common/config/rush/.npmrc-publish` points at registry.npmjs.org. Rush runs the publish with a
    home directory of its own, so the publisher's `~/.npmrc` login is not read; the token comes from
-   `NPM_AUTH_TOKEN` in the publisher's shell, and no workflow holds one.
+   `NPM_AUTH_TOKEN` in the publisher's shell, and no workflow holds one. The first release, on 2
+   November 2026, settled the second factor: the token is the session token `npm login` saves, npm
+   asks for the second factor once per package, and Rush passes that prompt through. A token that
+   bypasses the second factor is not an option, since npm stops those from publishing directly in
+   January 2027.
 8. **Cut over apendua.dev.** The labs apps switch from `workspace:*` to npm ranges under the new
    names. The moved directories are deleted, the `publishable` version policy, `release.yml` and the
    GitHub Packages mapping in `.npmrc-publish` are removed, and `provenance.yml` stops listing the
@@ -169,6 +173,4 @@ Before the site can go live:
 - Whether `@apendua/jsdom-env` is published. Once `signal-ssr` moves as `todo-ssr`, nothing in
   apendua.dev uses it, so it can also stay a private workspace package here.
 - Whether apendua.dev's demo page links to the demos at justdom.dev once they leave its own site.
-- Whether `rush publish` passes npm's second-factor prompt through for each package. If it does not,
-  a short script runs `npm publish --otp` per package instead. The first release settles it.
 - Which of apendua.dev's design docs, review rules and visual tests come along, and in what form.

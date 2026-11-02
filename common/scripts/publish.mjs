@@ -55,8 +55,10 @@ const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" })
 
 /**
  * Whether npm has this exact version. `npm view <name>@<version> version`
- * prints the version when it exists, prints nothing when the package exists
- * without it, and fails with E404 when the package does not exist at all.
+ * prints the version when it exists, and fails with E404 when the version
+ * or the whole package is missing, on npm 10 and 11 alike. The empty-output
+ * test is only a guard, so that an npm which answered a missing version with
+ * nothing would read as unpublished rather than as published.
  *
  * @param {string} name
  * @param {string} version
@@ -117,7 +119,9 @@ function checkCheckout() {
 
 function main() {
   if (!existsSync(pnpm)) {
-    throw new Error("pnpm is not installed yet. Run `node common/scripts/install-run-rush.js install`.");
+    throw new Error(
+      "pnpm is not installed yet. Run `node common/scripts/install-run-rush.js install`.",
+    );
   }
   if (!dryRun) {
     checkCheckout();
@@ -140,28 +144,40 @@ function main() {
 
   /** @type {string[]} */
   const tags = [];
+  /** @type {unknown} */
+  let failure;
   try {
     for (const p of pending) {
-    console.log(`\nPublishing ${p.name}@${p.version}`);
-    // pnpm rewrites `workspace:*` to the versions it points at. The registry
-    // flags override anything in the publisher's ~/.npmrc, such as an
-    // "@apendua" scope mapped to GitHub Packages.
-    run(
-      pnpm,
-      ["publish", "--no-git-checks", "--registry", registry, `--@apendua:registry=${registry}`],
-      p.folder,
-    );
-    const tag = `${p.name}_v${p.version}`;
-    if (git(["tag", "--list", tag]) === "") {
-      git(["tag", "-a", tag, "-m", `${p.name} v${p.version}`]);
+      console.log(`\nPublishing ${p.name}@${p.version}`);
+      // pnpm rewrites `workspace:*` to the versions it points at. The
+      // registry flags override anything in the publisher's ~/.npmrc, such
+      // as an "@apendua" scope mapped to GitHub Packages.
+      run(
+        pnpm,
+        ["publish", "--no-git-checks", "--registry", registry, `--@apendua:registry=${registry}`],
+        p.folder,
+      );
+      const tag = `${p.name}_v${p.version}`;
+      if (git(["tag", "--list", tag]) === "") {
+        git(["tag", "-a", tag, "-m", `${p.name} v${p.version}`]);
+      }
+      tags.push(tag);
     }
-    tags.push(tag);
-    }
-  } finally {
-    // Even when a later package fails, the ones already on npm keep their
-    // tags: a rerun skips them, so it would never tag them again.
-    if (tags.length > 0) run("git", ["push", "origin", ...tags]);
+  } catch (error) {
+    failure = error;
   }
+  // Even when a later package failed, the ones already on npm get their tags
+  // pushed: a rerun skips them, so it would never tag them again. A failed
+  // push is reported beside the failed publish, not in its place.
+  if (tags.length > 0) {
+    try {
+      run("git", ["push", "origin", ...tags]);
+    } catch (error) {
+      console.error(`\nThe tags were not pushed: ${tags.join(" ")}`);
+      failure ??= error;
+    }
+  }
+  if (failure) throw failure;
   console.log(`\nPublished and tagged ${tags.length}: ${tags.join(", ")}`);
 }
 

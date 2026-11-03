@@ -22,6 +22,7 @@ import {
   px,
 } from "./textHelpers.js";
 import { surfaceRun } from "./surfaceRun.js";
+import { generatedContent } from "./generatedContent.js";
 
 /**
  * @import {Component} from '../core.js';
@@ -422,6 +423,9 @@ function markerRun(ctx, element, surface, marker) {
  * in a hidden tab panel, but nothing of it is laid out, and the mirror's
  * sign for that is a box measured at nothing, as it is for text.
  *
+ * Its `::before` and `::after` are drawn inside it too, for as long as a
+ * rule gives it either (`generatedContent`).
+ *
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @returns {Source<THREE.Object3D>}
@@ -452,6 +456,7 @@ export function markedBox(ctx, element) {
       flatMap((/** @type {boolean} */ shown) =>
         shown ? markerRun(ctx, element, surface, marker) : Nothing(),
       )(observable(() => marker.get() !== null)),
+      generatedContent(ctx, element, surface),
     ],
   });
 }

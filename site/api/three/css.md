@@ -2,8 +2,8 @@
 
 A panel is drawn from its elements' computed style, and this page says which of it: lists and their
 markers, transforms, the document's stylesheets, hover and press, animation, text revealed to a
-cursor, the paint order, images, gradients, background pictures, clipping and scrolling, and inline
-SVG. Each section ends with what is followed and what is not.
+cursor, the paint order, images, gradients, background pictures, `::before` and `::after`, clipping
+and scrolling, and inline SVG. Each section ends with what is followed and what is not.
 [Writing CSS for a panel](/guide/panel-css) in the guide is the short version.
 
 ## Lists
@@ -457,6 +457,74 @@ Not followed:
   an `<img>`'s does.
 - A checkbox does not draw a `url()` background: it draws its own tick, which is what a page with
   `appearance: none` gives as one.
+
+## Before and after
+
+An element's `::before` and `::after` are drawn as boxes of their own inside it, with their
+background, border and `background-image`, and the text or the `content: url()` picture they
+generate:
+
+```css
+.tag::before {
+  content: "★";
+  display: inline-block;
+  width: 1.5em;
+  margin-right: 0.5em;
+  background: #d00;
+  color: #fff;
+}
+
+.tab {
+  position: relative;
+}
+
+.tab:hover::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #007bff;
+}
+```
+
+A pseudo-element has no client rect, so the portal lays it out where the page does by measuring a
+copy of its element that holds a real `<span>` in its place, dressed in its resolved style. The copy
+is measured again when the element's children, its size, what restyles it from above, or the
+pseudo-element's own style change, and not on a hover that leaves them as they were. Only an element
+that some rule of the document's styles gives a `::before` or an `::after` reads the
+pseudo-element's style at all; the `:hover` in such a rule answers the ray as every other `:hover`
+does ([Hover, press and focus](#hover-press-and-focus)).
+
+It paints inside its element as a page paints it: a `::before` over the element's own box and under
+its children, an `::after` over its children. Its box is drawn by the panel's batch, as an element's
+is, unless it has a picture, and then it is one draw call of its own. A ray that meets it meets its
+element, as a click on a page's `::before` icon is a click on the element.
+
+Followed:
+
+- `content`: strings, an `attr()`, which the browser resolves, and a single `url()`, drawn at the
+  picture's own size in the content box. `""` draws the box alone, the usual way to draw a bar or a
+  dot.
+- Inline, block, inline-block, flex and grid items laid out among the element's children, and a box
+  positioned `absolute` against its element: an element that is `position`ed or transformed.
+- `display: none` and a `content` of `none` or `normal` draw nothing.
+
+Not followed:
+
+- **A positioned pseudo-element against another box.** One that is `absolute` in an element that is
+  not its containing block, and one that is `fixed`, is not drawn. Give its element
+  `position: relative`.
+- **A `z-index`**, and an overlap with the element's positioned children: the paint order does not
+  see pseudo-elements yet, so a `::before` is always under its element's children and an `::after`
+  over them. An element's `::after` and one of its descendant's can draw level, in no set order.
+- `counter()`, `counters()` and the quotes, which the browser leaves for the page to count. The text
+  of such a `content` is not drawn, its box is. Text and a `url()` in one `content` draw the text.
+- A transition or an animation on a pseudo-element: its end is drawn.
+- `::first-letter`, `::first-line`, `::selection`, `::backdrop`, and a pseudo-element on a replaced
+  element, such as an `<img>` or an `<input>`.
+- A rule added through the CSSOM, as for every rule (see [Stylesheets](#stylesheets)).
 
 ## Clipping and scrolling
 

@@ -173,6 +173,25 @@ export function getContentRenderOrder(element) {
 }
 
 /**
+ * Where what a page paints after an element's children sits in the draw
+ * order: one level past the last its subtree draws at (`getDrawReach`), so
+ * after its own content and its children's. An `::after` is drawn here
+ * (`generatedContent.js`). A sibling drawn after the element's subtree
+ * (`getDrawLevel`) starts at this level, and its box is laid half a level
+ * later, over it.
+ *
+ * The reach does not count this level, so an ancestor's own `::after` can
+ * land level with a descendant's, and the two are then in no set order. The
+ * paint-order walk does not see pseudo-elements yet.
+ *
+ * @param {HTMLElement} element
+ * @returns {number}
+ */
+export function getClosingRenderOrder(element) {
+  return getRenderBand(element) + getDrawLevel(element) + getDrawReach(element) + 1;
+}
+
+/**
  * How many draw levels a piece of a layer has to itself (`getLayerBase`):
  * more than the deepest pile of cards a layer climbs through, a level a
  * card. A box's content and a batched box's bias (`BOX_BUCKET_BIAS`) stay

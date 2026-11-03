@@ -272,6 +272,17 @@ export function getDrawnBorderColor(style) {
 }
 
 /**
+ * A style's own `opacity`, 1 where it gives none.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {number}
+ */
+function opacityOf(style) {
+  const own = parseFloat(style.opacity);
+  return Number.isNaN(own) ? 1 : own;
+}
+
+/**
  * @implements {IVisualProperties}
  */
 export default class VisualProperties {
@@ -292,21 +303,38 @@ export default class VisualProperties {
   }
 
   /**
+   * Read the element's box, or with `pseudoElement` the box of its
+   * `::before` or `::after`, which has no client rect and is measured by the
+   * caller (`measureGeneratedBox`), so it gives the size.
+   *
+   * @overload
    * @param {HTMLElement} element
-   * @param {string | null} [pseudoElement]
+   * @returns {void}
    */
-  setFromElement(element, pseudoElement = null) {
-    const style = getComputedStyleCached(element, pseudoElement);
+  /**
+   * @overload
+   * @param {HTMLElement} element
+   * @param {string} pseudoElement
+   * @param {{ width: number, height: number }} size
+   * @returns {void}
+   */
+  /**
+   * @param {HTMLElement} element
+   * @param {string} [pseudoElement]
+   * @param {{ width: number, height: number }} [size]
+   */
+  setFromElement(element, pseudoElement, size) {
+    const style = getComputedStyleCached(element, pseudoElement ?? null);
     // The mirror answers with layout offsets instead of client rects when a
     // transform sits anywhere on the chain — the box's object carries the
     // transform itself, and a transformed client rect would apply it a
     // second time. Reading the size is also the dependency that re-runs
     // this when the layout moves it.
-    const size = getBorderBoxSize(element);
+    const { width, height } = size ?? getBorderBoxSize(element);
     const fontSize = parseFloat(style.fontSize || "0");
     // The element's own and every ancestor's in the panel, as a page fades
-    // a subtree (see `getOpacity`).
-    const opacity = getOpacity(element);
+    // a subtree (see `getOpacity`), and a pseudo-element's own on top.
+    const opacity = getOpacity(element) * (pseudoElement ? opacityOf(style) : 1);
     // Every box pays for reading `background-image`; only a box that has one
     // pays for the properties that lay it out. They are all left empty
     // otherwise, which is a value that does not change and so notifies
@@ -315,8 +343,8 @@ export default class VisualProperties {
     const hasImage = backgroundImage !== "none";
     /** @type {RawVisualProperties} */
     const properties = {
-      totalWidth: size.width,
-      totalHeight: size.height,
+      totalWidth: width,
+      totalHeight: height,
       opacity,
       fontSize,
       fontFamily: style.fontFamily,

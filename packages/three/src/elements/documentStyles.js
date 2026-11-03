@@ -54,9 +54,15 @@
  * (`userActionRules.js`): once when the first panel starts watching, again
  * for whatever each announcement brought, and back to the page's own text
  * when the last panel stops.
+ *
+ * The same rules say which elements can have a `::before` or an `::after` at
+ * all (`getGeneratedSelectors`), so that a panel reads the style of a
+ * pseudo-element only where a rule gives it one.
  */
 
+import { Signal } from "justdom-signal";
 import { originalSelector, restoreUserActions, rewriteUserActions } from "./userActionRules.js";
+import { generatedHost, splitSelectorList, walkStyleRules } from "./styleRules.js";
 
 /**
  * What a style change can restyle: the classes every changed rule starts
@@ -547,11 +553,104 @@ function announce(scope) {
  * @returns {void}
  */
 function notify(scope) {
+  refreshGeneratedSelectors();
   // A copy, because a listener is free to stop watching from inside the call —
   // a portal disposed by something a restyle triggered would otherwise mutate
   // the set being iterated.
   for (const listener of [...listeners]) {
     listener(scope);
+  }
+}
+
+/**
+ * The elements the document's rules give a `::before` or an `::after`: for
+ * each, one selector list that an element matches when some rule styles that
+ * pseudo-element of it, or null when no rule does.
+ *
+ * @typedef {object} GeneratedSelectors
+ * @property {string | null} before
+ * @property {string | null} after
+ */
+
+/** No rule gives any element a generated box. */
+const NO_GENERATED = Object.freeze({ before: null, after: null });
+
+/**
+ * The selectors as the rules last announced say, while a panel watches.
+ *
+ * @type {Signal<GeneratedSelectors>}
+ */
+const generatedSelectors = Signal.of(/** @type {GeneratedSelectors} */ (NO_GENERATED));
+
+/**
+ * Which elements the document's rules give a `::before` or an `::after` (see
+ * `GeneratedSelectors`). Each rule whose selector ends in one of them, as
+ * `::before` or as CSS 2's `:before`, gives its selector with the
+ * pseudo-element taken off (`generatedHost`). The rules are read as they
+ * stand, so a `:hover` in them has been rewritten to answer the ray's flag
+ * too, and `.link:hover::after` matches the link the ray is on.
+ *
+ * While a panel watches, this is a dependency, read again after every
+ * announcement and changed only when the lists did. An element's computed
+ * style is restyled by every announcement that can reach it, so a reader
+ * that reads the element's style too sees a rule that started to match it;
+ * a reader that finds no list needs no style read at all, and hears of the
+ * first rule through this. While no panel watches, the rules are read on
+ * every call, since nothing would say that they changed.
+ *
+ * @returns {GeneratedSelectors}
+ */
+export function getGeneratedSelectors() {
+  return listeners.size > 0 ? generatedSelectors.get() : readGeneratedSelectors();
+}
+
+/**
+ * @returns {void}
+ */
+function refreshGeneratedSelectors() {
+  const next = readGeneratedSelectors();
+  const current = generatedSelectors.peek();
+  if (next.before !== current.before || next.after !== current.after) {
+    generatedSelectors.set(next);
+  }
+}
+
+/**
+ * @returns {GeneratedSelectors}
+ */
+function readGeneratedSelectors() {
+  /** @type {Record<"before" | "after", string[]>} */
+  const hosts = { before: [], after: [] };
+  walkStyleRules(documentSheets(), (rule) => {
+    for (const selector of splitSelectorList(rule.selectorText)) {
+      const generated = generatedHost(selector);
+      if (generated && isSelector(generated.host)) {
+        hosts[generated.kind].push(generated.host);
+      }
+    }
+  });
+  if (hosts.before.length === 0 && hosts.after.length === 0) {
+    return NO_GENERATED;
+  }
+  return {
+    before: hosts.before.length > 0 ? hosts.before.join(", ") : null,
+    after: hosts.after.length > 0 ? hosts.after.join(", ") : null,
+  };
+}
+
+/**
+ * Whether the browser reads `selector`. One it does not would make the whole
+ * list it is joined into throw at every `matches`.
+ *
+ * @param {string} selector
+ * @returns {boolean}
+ */
+function isSelector(selector) {
+  try {
+    document.documentElement.matches(selector);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -586,6 +685,9 @@ export function watchDocumentStyles(listener) {
     // so the rewrite needs no announcing. It goes before the poller takes
     // its first read, which would otherwise announce it.
     rewriteRules();
+    // Read while nobody watched, so nothing says they are still the rules',
+    // and read after the rewrite, whose selectors they are now.
+    refreshGeneratedSelectors();
   }
   syncPoller();
   if (!observer) {

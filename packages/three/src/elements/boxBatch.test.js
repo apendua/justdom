@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { BOX_BUCKET_BIAS, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
+import { BOX_BUCKET_BIAS, GENERATED_BOX_BIAS, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { CARET_ORDER_BIAS } from "./textInput.js";
@@ -106,9 +106,9 @@ const microtasks = () => Promise.resolve();
 
 describe("the draw order within one level", () => {
   test("keeps the rungs of the table at BOX_BUCKET_BIAS in order, under the next level", () => {
-    // Text at 0, then the caret, a picture's box, the batched boxes, and the
-    // next level's text at 1.
-    const rungs = [0, CARET_ORDER_BIAS, UNBATCHED_BOX_BIAS, BOX_BUCKET_BIAS, 1];
+    // Text at 0, then the caret, a picture's box, the batched boxes, a
+    // generated box with a picture, and the next level's text at 1.
+    const rungs = [0, CARET_ORDER_BIAS, UNBATCHED_BOX_BIAS, BOX_BUCKET_BIAS, GENERATED_BOX_BIAS, 1];
     assert.deepEqual(
       [...rungs].sort((a, b) => a - b),
       rungs,

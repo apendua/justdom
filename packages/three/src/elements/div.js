@@ -230,6 +230,59 @@ const committedPlacements = new WeakMap();
  */
 
 /**
+ * How a box's quad is drawn: by the batch `batch` names, from the numbers in
+ * `uniforms`, or, while it names none, by the quad itself, from a material
+ * of its own that reads them. Read reactively, so a quad moves between the
+ * two as its picture comes and goes. The hit test finds the quad at the
+ * order it draws at (`registerDrawOrder`). Shared by an element's box and
+ * the boxes of its `::before` and `::after` (`generatedContent.js`).
+ *
+ * @param {THREE.Mesh} mesh
+ * @param {ReturnType<typeof createRectUniforms>} uniforms
+ * @param {() => import('./boxBatch.js').BoxBatch | null} batch
+ * @returns {EntityEffect<THREE.Mesh>[]}
+ */
+export function drawQuad(mesh, uniforms, batch) {
+  return [
+    set("material", () => {
+      const drawnBy = batch();
+      // Where the hit test finds this box in the draw order follows the
+      // draw it is in.
+      registerDrawOrder(mesh, drawnBy ? BOX_BUCKET_BIAS : 0);
+      if (drawnBy) {
+        // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
+        // The numbers live in `uniforms` instead, which is what the batch
+        // reads.
+        return batchedBoxMaterial();
+      }
+      // No batch to draw this box: one with a picture, which is a texture
+      // binding and so a draw of its own, or a panel built outside a
+      // portal. Those still draw themselves, from a material of their own.
+      const material = createRectMaterial(uniforms);
+      // The panel's depth is one quad over its root's
+      // (`createDepthQuad`), and no box writes any.
+      material.depthWrite = false;
+      onCleanup(() => {
+        material.dispose();
+      });
+      return material;
+    }),
+    // After the material, which is what carries the flag that takes this
+    // mesh out of the draw.
+    effects(() => {
+      const drawnBy = batch();
+      if (!drawnBy) {
+        return;
+      }
+      drawnBy.add(mesh, uniforms);
+      onCleanup(() => {
+        drawnBy.remove(mesh);
+      });
+    }),
+  ];
+}
+
+/**
  * The CSS box: the border, the background, the position within its parent, and
  * the pointer events the element is entitled to hear about — everything an
  * element is drawn as before anything specific to what it *is* comes into it.
@@ -832,42 +885,7 @@ export function box(ctx, element, options = {}) {
       // scale write, everything else a uniform write, which is what makes a
       // layout animation affordable and a style change nearly free.
       $(boxMesh, [
-        set("material", () => {
-          const drawnBy = batch();
-          // Where the hit test finds this box in the draw order follows the
-          // draw it is in.
-          registerDrawOrder(boxMesh, drawnBy ? BOX_BUCKET_BIAS : 0);
-          if (drawnBy) {
-            // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
-            // The numbers live in `uniforms` instead, which is what the batch
-            // reads.
-            return batchedBoxMaterial();
-          }
-          // No batch to draw this box: an `<img>`, whose picture is a texture
-          // binding and so a draw of its own, or a panel built outside a
-          // portal. Those still draw themselves, from a material of their own.
-          const material = createRectMaterial(uniforms);
-          // The panel's depth is one quad over its root's
-          // (`createDepthQuad`), and no box writes any.
-          material.depthWrite = false;
-          onCleanup(() => {
-            material.dispose();
-          });
-          return material;
-        }),
-        // After the material, which is what carries the flag that takes this
-        // mesh out of the draw — and which is built once, since its factory
-        // reads nothing that changes while the box is in its panel.
-        effects(() => {
-          const drawnBy = batch();
-          if (!drawnBy) {
-            return;
-          }
-          drawnBy.add(boxMesh, uniforms);
-          onCleanup(() => {
-            drawnBy.remove(boxMesh);
-          });
-        }),
+        ...drawQuad(boxMesh, uniforms, batch),
         // A box that is a layer's root is one of the planes the panel's walk
         // orders (`layerOrder.js`), for as long as it is one.
         effects(() => {

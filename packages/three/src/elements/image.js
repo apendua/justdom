@@ -505,7 +505,7 @@ export function placeContentImage(content, fit, position, natural, texture, opac
  * @param {ContentImage | null} b
  * @returns {boolean}
  */
-function contentImageEqual(a, b) {
+export function contentImageEqual(a, b) {
   if (!a || !b) {
     return a === b;
   }
@@ -551,15 +551,7 @@ function contentImageEqual(a, b) {
 export function contentImage(element, properties) {
   const source = new Derived(() => getImageSource(element));
 
-  const owned = new Derived(() => {
-    const url = source.get();
-    if (!url) {
-      return null;
-    }
-    const entry = acquireImage(url);
-    onCleanup(() => releaseImage(url));
-    return entry;
-  });
+  const owned = ownedImage(() => source.get());
 
   return new Derived(
     () => {
@@ -586,6 +578,26 @@ export function contentImage(element, properties) {
 }
 
 /**
+ * A hold on the texture cache's entry for the address `url` gives, for as
+ * long as the address stays the same, and none while it gives none
+ * (`acquireImage`). A restyle that keeps the address keeps the hold.
+ *
+ * @param {() => string | null} url Read reactively.
+ * @returns {Derived<ReturnType<typeof acquireImage> | null>}
+ */
+export function ownedImage(url) {
+  return new Derived(() => {
+    const address = url();
+    if (!address) {
+      return null;
+    }
+    const entry = acquireImage(address);
+    onCleanup(() => releaseImage(address));
+    return entry;
+  });
+}
+
+/**
  * The picture a box's `background-image: url()` paints, as a signal: null
  * while the box has none, while it loads, and if it never arrives.
  *
@@ -606,15 +618,7 @@ export function contentImage(element, properties) {
  * @returns {Derived<ContentImage | null>}
  */
 export function backgroundImage(properties) {
-  const owned = new Derived(() => {
-    const url = properties.backgroundPictureUrl;
-    if (!url) {
-      return null;
-    }
-    const entry = acquireImage(url);
-    onCleanup(() => releaseImage(url));
-    return entry;
-  });
+  const owned = ownedImage(() => properties.backgroundPictureUrl);
 
   return new Derived(
     () => {

@@ -3936,12 +3936,7 @@ function parkMeasurementClone(element, clone, host) {
 function copyStillStyle(element, clone, computed = window.getComputedStyle(element)) {
   // Written as one declaration list, which the browser parses once, rather
   // than a `setProperty` per property: a computed style has some 350.
-  /** @type {string[]} */
-  const declarations = [];
-  for (let i = 0; i < computed.length; i++) {
-    const property = computed[i];
-    declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
-  }
+  const declarations = stillDeclarations(computed);
   // The custom properties the clone's own inline style sets go after them,
   // since Chromium enumerates none in a computed style, and a child styled
   // with `var(--gap)` would lose the `--gap` the element sets. Those alone:
@@ -3958,12 +3953,30 @@ function copyStillStyle(element, clone, computed = window.getComputedStyle(eleme
       );
     }
   }
+  clone.style.cssText = declarations.join("; ");
+}
+
+/**
+ * Every resolved property of `computed` as a declaration, and then the
+ * transform, transitions and animations switched off: `copyStillStyle`'s
+ * list, but for the custom properties.
+ *
+ * @param {CSSStyleDeclaration} computed
+ * @returns {string[]}
+ */
+function stillDeclarations(computed) {
+  /** @type {string[]} */
+  const declarations = [];
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed[i];
+    declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
+  }
   declarations.push(
     "transform: none !important",
     "transition: none !important",
     "animation: none !important",
   );
-  clone.style.cssText = declarations.join("; ");
+  return declarations;
 }
 
 /**
@@ -4633,6 +4646,118 @@ function dressLaidOut(live, copy) {
       copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
       dressLaidOut(element, childCopy);
     }
+  }
+}
+
+/**
+ * Where an element's `::before` or `::after` is laid out, and its text.
+ *
+ * @typedef {object} GeneratedLayout
+ * @property {number} x The left of the generated box's border box, in the
+ *   element's border-box frame and before any scroll: the frame a box's
+ *   content is drawn in, less the scroll the caller takes off.
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ * @property {TextLayout | null} text The generated text, placed relative to
+ *   the generated box's border box (`left`, `top`), or null for a box with
+ *   no text.
+ */
+
+/**
+ * The mark on a copy that a generated box is measured in, and the rule that
+ * switches the copy's own `::before` and `::after` off while it stands. The
+ * stand-in span is the copy's generated box, and the page's rules would lay
+ * out a second one beside it.
+ */
+const GENERATED_COPY_ATTRIBUTE = "data-xr-generated-copy";
+const GENERATED_COPY_RULE = `[${GENERATED_COPY_ATTRIBUTE}]::before, [${GENERATED_COPY_ATTRIBUTE}]::after { content: none !important; }`;
+
+/**
+ * A pseudo-element's resolved style as one declaration list, as a copy is
+ * dressed in it (`copyStillStyle`), with its transform, transitions and
+ * animations off. Two equal strings lay the box out alike, so a restyle of
+ * the element that leaves its pseudo-element as it was measures nothing.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {string}
+ */
+export function describeStillStyle(style) {
+  return stillDeclarations(style).join("; ");
+}
+
+/**
+ * Measure an element's `::before` or `::after`, which has no client rect of
+ * its own, by laying it out as a real element: in a copy of the element
+ * (`parkMeasurementClone`) that holds a span dressed in the pseudo-element's
+ * resolved style, first or last among the copy's children, with the
+ * generated text in it, or a picture of `picture`'s size for a `content:
+ * url()`. The copy's own generated boxes are switched off while it stands
+ * (`GENERATED_COPY_RULE`). The span's place in the copy is the box's place
+ * in the element, since the copy is the element's size and laid out alike.
+ *
+ * The copy is the containing block of whatever is absolutely positioned in
+ * it, so a positioned pseudo-element is placed right only when the element
+ * is its containing block on the page too; the caller asks that.
+ *
+ * It depends on what a line box copy does (`getLineBoxCopy`): the element's
+ * shape, what restyles it from above, and its size. The copy is taken down
+ * before this returns.
+ *
+ * @param {HTMLElement} element
+ * @param {"before" | "after"} kind
+ * @param {string} declarations The pseudo-element's style
+ *   (`describeStillStyle`).
+ * @param {string} text
+ * @param {{ width: number, height: number } | null} picture
+ * @returns {GeneratedLayout}
+ */
+export function measureGeneratedBox(element, kind, declarations, text, picture) {
+  getLineBoxShape(element);
+  readRestyledFromAbove(element);
+  getBorderBoxSize(element);
+  const copy = /** @type {HTMLElement} */ (element.cloneNode(true));
+  dressLaidOut(element, copy);
+  copy.setAttribute(GENERATED_COPY_ATTRIBUTE, "");
+  const stand = document.createElement("span");
+  // A `content` on an element, not a pseudo-element, would make the span a
+  // picture of its own in Chromium.
+  stand.style.cssText = `${declarations}; content: normal`;
+  if (picture) {
+    const image = document.createElement("img");
+    image.width = picture.width;
+    image.height = picture.height;
+    stand.append(image);
+  } else if (text) {
+    stand.append(text);
+  }
+  if (kind === "before") {
+    copy.prepend(stand);
+  } else {
+    copy.append(stand);
+  }
+  const rule = document.createElement("style");
+  rule.textContent = GENERATED_COPY_RULE;
+  document.body.append(rule);
+  const root = parkMeasurementClone(element, copy, null);
+  try {
+    const frame = frameFor(root);
+    const origin = measureClientRect(root, frame);
+    const rect = measureClientRect(stand, frame);
+    const content = stand.firstChild;
+    return {
+      x: rect.left - origin.left,
+      y: rect.top - origin.top,
+      width: rect.width,
+      height: rect.height,
+      text:
+        content instanceof Text
+          ? measureTextRects(content, stand, stand.style.whiteSpace || "normal", false, false)
+          : null,
+    };
+  } finally {
+    root.remove();
+    rule.remove();
   }
 }
 

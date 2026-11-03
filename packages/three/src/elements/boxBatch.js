@@ -73,6 +73,8 @@ export const BoxBatchContext = createProperty(
  *   R + 1/8      a field's caret, over the glyphs (`CARET_ORDER_BIAS`)
  *   R + 1/4      a picture's box, which draws itself (`UNBATCHED_BOX_BIAS`)
  *   R + 1/2      a batched box (`BOX_BUCKET_BIAS`)
+ *   R + 3/4      a `::before` or `::after` box with a picture, which draws
+ *                itself over its element's box (`GENERATED_BOX_BIAS`)
  *   R + 1        the next level's text
  *
  * The `<svg>` range spans the caret's and the picture's rungs, which is
@@ -94,6 +96,15 @@ export const BOX_BUCKET_BIAS = 0.5;
  * seen at.
  */
 export const UNBATCHED_BOX_BIAS = BOX_BUCKET_BIAS / 2;
+
+/**
+ * How far past its order a generated box with a picture draws, one that
+ * draws itself as an `<img>`'s box does (`generatedContent.js`). Its order
+ * is its element's own, so it has to draw after that box, batched or not,
+ * and before the text of the next level. Its place in the level is in the
+ * table at `BOX_BUCKET_BIAS`.
+ */
+export const GENERATED_BOX_BIAS = (BOX_BUCKET_BIAS + 1) / 2;
 
 /**
  * Write a box's numbers into the arrays of an instance, as the one batch's

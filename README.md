@@ -120,8 +120,9 @@ node common/scripts/install-run-rush.js build
 ```
 
 `install` also installs the pre-commit hook, which formats staged files with Prettier. `build`
-type-checks and tests every package and demo. A change to a published package needs a change file,
-which CI checks with `rush change --verify`:
+type-checks and tests every package and demo, and type-checks the code blocks in the docs against
+the packages ([`site/README.md`](site/README.md#checking-the-code-blocks) says how). A change to a
+published package needs a change file, which CI checks with `rush change --verify`:
 
 ```
 node common/scripts/install-run-rush.js change

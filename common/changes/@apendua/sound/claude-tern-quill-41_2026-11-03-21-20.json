@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Import what the README's examples use",
+      "type": "none",
+      "packageName": "@apendua/sound"
+    }
+  ],
+  "packageName": "@apendua/sound",
+  "email": "noreply@anthropic.com"
+}

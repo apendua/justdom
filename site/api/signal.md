@@ -87,6 +87,8 @@ A `Derived` that builds something costly, a texture, a compiled shader, a worker
 through `onCleanup` is a first-class use of the library, with these rules:
 
 ```js
+import { Derived, Effect, onCleanup } from "justdom-signal";
+
 const texture = new Derived(
   () => {
     const built = gl.createTexture(spec.get());
@@ -178,7 +180,7 @@ const frame = new UpdateChannel({
 });
 
 withChannel(frame, () => {
-  new Effect(() => (element.style.top = `${top.get()}px`));
+  new Effect(() => (element.style.top = `${offset.get()}px`));
 });
 ```
 
@@ -213,6 +215,8 @@ halfway through a `batch()` and again on the next write. An `Effect` goes on the
 it:
 
 ```js
+import { Effect } from "justdom-signal";
+
 node.subscribe({ next: () => node.get() }); // runs once per write
 new Effect(() => node.get()); // runs once per batch
 ```
@@ -344,8 +348,10 @@ equality cutoff keeps the previous value and releases whatever the run that just
 claimed. The idiom
 
 ```js
+import { Derived } from "justdom-signal";
+
 const d = new Derived(() => {
-  element.style.top = `${top.get()}px`;
+  element.style.top = `${offset.get()}px`;
 });
 const sub = d.subscribe({}); // used to force it to run
 ```
@@ -353,8 +359,10 @@ const sub = d.subscribe({}); // used to force it to run
 becomes
 
 ```js
+import { Effect } from "justdom-signal";
+
 const effect = new Effect(() => {
-  element.style.top = `${top.get()}px`;
+  element.style.top = `${offset.get()}px`;
 });
 ```
 

@@ -10,7 +10,7 @@ they meet into events on the objects, the way a browser turns a mouse into event
 raycast set and gets it pointer, select and squeeze events:
 
 ```js
-import { interactions, cursors } from "justdom-three";
+import { $, interactions } from "justdom-three";
 import { on } from "justdom-signal";
 
 const { makeInteractive } = interactions(ctx);
@@ -36,6 +36,9 @@ hit, and `mouse(ctx)` registers the mouse as one more controller, so a scene tha
 answers clicks on the canvas with the same handlers:
 
 ```js
+import { useEffects } from "justdom-signal";
+import { children, cursors, getScene, mouse } from "justdom-three";
+
 useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx, { color: "#ff0000" }))]);
 ```
 
@@ -48,6 +51,9 @@ its world matrix, and the scene decides what that means: a cell to snap to, a pr
 drop to refuse with the `reset()` the end event carries.
 
 ```js
+import { effects, on } from "justdom-signal";
+import { $, drag } from "justdom-three";
+
 const { draggable, held } = drag(ctx, { enabled: () => props.movable });
 
 $(mesh, [
@@ -71,7 +77,12 @@ has got to and how far it has turned about the vertical, and poses the board onc
 so a level board stays level. The presses are taken by **handles**, so only furniture starts a
 carry:
 
+<!-- snippet: skip -->
+
 ```js
+import * as THREE from "three";
+import { $, carry, children } from "justdom-three";
+
 const board = carry(ctx, { enabled: () => phase.get() === "build" });
 
 $(new THREE.Group(), [

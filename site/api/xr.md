@@ -86,6 +86,10 @@ the module that makes the scene, never from the page's entry.
   had as the session started.
 
 ```ts
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+import { clientRect } from "justdom-xr/scene";
+
 dom(ctx, board, [
   effects((o) => {
     const { width, height } = clientRect(board);

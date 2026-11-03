@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The package declares no side effects, so a bundler leaves the renderer out of a page that imports only the page's side from the main entry",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

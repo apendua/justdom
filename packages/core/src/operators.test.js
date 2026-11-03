@@ -241,15 +241,16 @@ describe("DOM Operators", () => {
       subscription.unsubscribe();
     });
 
-    it("should refuse a plain value given with a key, by its type", () => {
-      // Never called: the checks are tsc's, on the lines below.
-      const typeChecks = () => [
+    it("should refuse a plain value or no value given with a key", () => {
+      // Never called: the check is tsc's.
+      void (() =>
         // @ts-expect-error -- a plain value goes in the object form
-        data("id", "1"),
+        data("id", "1"));
+      assert.throws(
         // @ts-expect-error -- a key needs its value
-        data("id"),
-      ];
-      assert.strictEqual(typeof typeChecks, "function");
+        () => data("id"),
+        /Value observable is required/,
+      );
     });
   });
 

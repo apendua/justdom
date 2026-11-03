@@ -116,9 +116,8 @@ export function attr(keyOrValues, value) {
  */
 
 /**
- * Write one `dataset` entry the way the `dataset` property itself would:
- * `undefined` deletes it, and anything else is stored as its string, `null`
- * as `"null"`.
+ * Write one `dataset` entry. `undefined` deletes it; anything else is stored
+ * the way `dataset` stores it, as its string, `null` as `"null"`.
  * See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset#setting_values
  *
  * @param {DOMStringMap} dataset
@@ -163,9 +162,10 @@ export function data(keyOrValues, value) {
       }
     });
   }
-  return write(/** @type {Subscribable<Primitive> | (() => Primitive)} */ (value), (entity, v) =>
-    applyData(entity.dataset, keyOrValues, v),
-  );
+  if (!value) {
+    throw new Error("Value observable is required when key is provided.");
+  }
+  return write(value, (entity, v) => applyData(entity.dataset, keyOrValues, v));
 }
 
 /**

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The driver imports playwright-core as an optional peer dependency, so it runs outside the justdom repository",
+      "type": "patch",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

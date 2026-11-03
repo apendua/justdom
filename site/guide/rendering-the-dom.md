@@ -28,7 +28,8 @@ places and each gets a node of its own. `$$(tag, effects)` is the same for SVG e
 
 The operators are factories of entity effects. Given a key, each takes its value as a getter, re-run
 when anything it read moves, or as a subscribable, written on every emission. A plain value, written
-once, goes in the object form instead: `set({ className: "counter" })`.
+once, goes in the object form of `set`, `attr` or `style` instead: `set({ className: "counter" })`.
+`data` has no object form, so a constant entry takes a getter: `data("id", () => "1")`.
 
 | Operator               | Writes                                                                                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |

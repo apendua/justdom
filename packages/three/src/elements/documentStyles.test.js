@@ -1,6 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { enableThemingMode, leadingClass, watchDocumentStyles } from "./documentStyles.js";
+import {
+  enableThemingMode,
+  GENERATED_COPY_ATTRIBUTE,
+  getGeneratedSelectors,
+  leadingClass,
+  watchDocumentStyles,
+  withGeneratedCopyRule,
+} from "./documentStyles.js";
 import { forgetComputedStyles } from "../test/computedStyles.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver.
@@ -32,6 +39,30 @@ function watch() {
 }
 
 describe("watchDocumentStyles", () => {
+  test("the rule for generated box copies stands once while panels watch", () => {
+    const copyRules = () =>
+      [...document.querySelectorAll("style")].filter((style) =>
+        style.textContent?.includes(`[${GENERATED_COPY_ATTRIBUTE}]`),
+      );
+    const first = watch();
+    const second = watch();
+    try {
+      assert.equal(copyRules().length, 1);
+      assert.equal(copyRules()[0].parentElement, document.head);
+      // Not the page's rule: it gives no element a generated box.
+      assert.deepEqual(getGeneratedSelectors(), { before: null, after: null });
+      withGeneratedCopyRule(() => assert.equal(copyRules().length, 1));
+      first.stop();
+      assert.equal(copyRules().length, 1);
+    } finally {
+      first.stop();
+      second.stop();
+    }
+    assert.equal(copyRules().length, 0);
+    withGeneratedCopyRule(() => assert.equal(copyRules().length, 1));
+    assert.equal(copyRules().length, 0);
+  });
+
   test("a rule rewritten in place is announced", async () => {
     const style = document.createElement("style");
     style.innerHTML = ".a { color: red; }";

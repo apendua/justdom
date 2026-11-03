@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal";
 import { $, children, Nothing } from "../operators.js";
-import VisualProperties from "./VisualProperties.js";
+import VisualProperties, { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
 import { getGeneratedSelectors } from "./documentStyles.js";
 import {
   describeStillStyle,
@@ -9,6 +9,7 @@ import {
   getComputedStyleCached,
   getInteriorClipBox,
   getScrollOffset,
+  hidesVisibility,
   measureGeneratedBox,
   nodeCache,
   nodeDerived,
@@ -29,7 +30,7 @@ import { placeAndScale } from "./place.js";
 import { BoxBatchContext, GENERATED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { drawQuad } from "./div.js";
-import { contentBox, getRunRenderStyle, isTintableText, px } from "./textHelpers.js";
+import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
 import { surfaceRun } from "./surfaceRun.js";
 
 /**
@@ -256,6 +257,17 @@ function generatedLayoutEqual(a, b) {
   if (a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) {
     return false;
   }
+  if (
+    a.picture !== b.picture &&
+    (!a.picture ||
+      !b.picture ||
+      a.picture.x !== b.picture.x ||
+      a.picture.y !== b.picture.y ||
+      a.picture.width !== b.picture.width ||
+      a.picture.height !== b.picture.height)
+  ) {
+    return false;
+  }
   if (a.text === b.text) {
     return true;
   }
@@ -283,7 +295,8 @@ function generatedLayoutEqual(a, b) {
 
 /**
  * Whether a style paints anything on its box: a background colour that is
- * not transparent, a `background-image`, or a border. A pseudo-element that
+ * not transparent, a `background-image`, or a border that draws
+ * (`getDrawnBorderColor`), so not a transparent one. A pseudo-element that
  * is only text builds no quad.
  *
  * @param {CSSStyleDeclaration} style
@@ -292,12 +305,9 @@ function generatedLayoutEqual(a, b) {
 function paintsBox(style) {
   const background = style.backgroundColor || "transparent";
   return (
-    (background !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(background)) ||
+    (background !== "transparent" && parseAlpha(background) > 0) ||
     (style.backgroundImage || "none") !== "none" ||
-    px(style.borderTopWidth) > 0 ||
-    px(style.borderRightWidth) > 0 ||
-    px(style.borderBottomWidth) > 0 ||
-    px(style.borderLeftWidth) > 0
+    parseAlpha(getDrawnBorderColor(style)) > 0
   );
 }
 
@@ -391,6 +401,9 @@ function generatedBox(ctx, element, kind, surface, content) {
     ...surface,
     properties,
     contentRenderOrder: order,
+    // Its own `visibility`, which it inherits from the element unless a
+    // rule sets it.
+    hidden: () => hidesVisibility(style().visibility),
   };
 
   const renderStyle = () => getRunRenderStyle(style());
@@ -422,7 +435,7 @@ function generatedBox(ctx, element, kind, surface, content) {
               element,
               pseudo,
               own,
-              style,
+              () => layout.get(),
               origin,
               order,
               () => content.get()?.url != null,
@@ -463,7 +476,7 @@ function generatedBox(ctx, element, kind, surface, content) {
  * @param {HTMLElement} element
  * @param {string} pseudo `::before` or `::after`.
  * @param {BoxSurface} surface The generated box's own.
- * @param {() => CSSStyleDeclaration} style The pseudo-element's.
+ * @param {() => GeneratedLayout} layout The generated box's.
  * @param {() => { x: number, y: number }} origin
  * @param {() => number} order Where its text draws.
  * @param {() => boolean} hasPicture Whether its `content` is a `url()`.
@@ -476,7 +489,7 @@ function generatedQuad(
   element,
   pseudo,
   surface,
-  style,
+  layout,
   origin,
   order,
   hasPicture,
@@ -501,20 +514,25 @@ function generatedQuad(
     panelBatch?.invalidate();
     textBatch?.invalidate();
   };
-  /** The `content: url()` picture, at its own size in the content box. */
+  /**
+   * The `content: url()` picture, at its own size, where the copy laid it
+   * out: inline, on the baseline of its line in the box.
+   */
   const shown = new Derived(
     () => {
       const state = picture.get()?.state.get();
       const size = natural.get();
-      if (!state?.texture || !size) {
+      const placed = layout().picture;
+      if (!state?.texture || !size || !placed) {
         return background.get();
       }
-      const box = contentBox(style(), {
-        width: properties.totalWidth,
-        height: properties.totalHeight,
-      });
       return placeContentImage(
-        { left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height },
+        {
+          left: placed.x,
+          top: placed.y,
+          right: placed.x + placed.width,
+          bottom: placed.y + placed.height,
+        },
         "none",
         "0% 0%",
         size,

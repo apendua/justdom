@@ -19,6 +19,7 @@ import {
 } from "./textLines.js";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
 import { classify } from "./animationClock.js";
+import { GENERATED_COPY_ATTRIBUTE, withGeneratedCopyRule } from "./documentStyles.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
@@ -4662,16 +4663,19 @@ function dressLaidOut(live, copy) {
  * @property {TextLayout | null} text The generated text, placed relative to
  *   the generated box's border box (`left`, `top`), or null for a box with
  *   no text.
+ * @property {ClientBox | null} picture Where the `content: url()` picture is
+ *   laid out, relative to the generated box's border box: inline, on the
+ *   baseline of the line it is on, not at the content box's corner. Null
+ *   for a box with no picture.
  */
 
 /**
- * The mark on a copy that a generated box is measured in, and the rule that
- * switches the copy's own `::before` and `::after` off while it stands. The
- * stand-in span is the copy's generated box, and the page's rules would lay
- * out a second one beside it.
+ * @typedef {object} ClientBox
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
  */
-const GENERATED_COPY_ATTRIBUTE = "data-xr-generated-copy";
-const GENERATED_COPY_RULE = `[${GENERATED_COPY_ATTRIBUTE}]::before, [${GENERATED_COPY_ATTRIBUTE}]::after { content: none !important; }`;
 
 /**
  * A pseudo-element's resolved style as one declaration list, as a copy is
@@ -4688,21 +4692,29 @@ export function describeStillStyle(style) {
 
 /**
  * Measure an element's `::before` or `::after`, which has no client rect of
- * its own, by laying it out as a real element: in a copy of the element
- * (`parkMeasurementClone`) that holds a span dressed in the pseudo-element's
- * resolved style, first or last among the copy's children, with the
- * generated text in it, or a picture of `picture`'s size for a `content:
- * url()`. The copy's own generated boxes are switched off while it stands
- * (`GENERATED_COPY_RULE`). The span's place in the copy is the box's place
- * in the element, since the copy is the element's size and laid out alike.
+ * its own, by laying it out as a real element: a span dressed in the
+ * pseudo-element's resolved style, first or last among the children of a
+ * copy of the element, with the generated text in it, or a picture of
+ * `picture`'s size for a `content: url()`. The copy's own generated boxes
+ * are switched off while it stands (`withGeneratedCopyRule`). The span's
+ * place in the copy is the box's place in the element.
  *
- * The copy is the containing block of whatever is absolutely positioned in
- * it, so a positioned pseudo-element is placed right only when the element
- * is its containing block on the page too; the caller asks that.
+ * The copy is of the box the element is laid out in, as a text's line box
+ * copy is (`measureTextLayout`): the element itself, or, for an element
+ * that splits across lines, the nearest ancestor that does not. An inline
+ * element copied on its own would be parked as an absolutely positioned
+ * box, which makes it a block, and its line would be laid out anew: a
+ * `::before` on a link in a paragraph would land some pixels off the line
+ * the link is on.
  *
- * It depends on what a line box copy does (`getLineBoxCopy`): the element's
- * shape, what restyles it from above, and its size. The copy is taken down
- * before this returns.
+ * The element's copy is the containing block of whatever is absolutely
+ * positioned in it only when the element is positioned, so a positioned
+ * pseudo-element is placed right only when the element is its containing
+ * block on the page too; the caller asks that.
+ *
+ * It depends on what a line box copy does (`getLineBoxCopy`) for the box it
+ * copies: its shape, what restyles it from above, and its size; and on the
+ * element's size. The copy is taken down before this returns.
  *
  * @param {HTMLElement} element
  * @param {"before" | "after"} kind
@@ -4713,18 +4725,29 @@ export function describeStillStyle(style) {
  * @returns {GeneratedLayout}
  */
 export function measureGeneratedBox(element, kind, declarations, text, picture) {
-  getLineBoxShape(element);
-  readRestyledFromAbove(element);
+  let lineBox = element;
+  while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
+    lineBox = lineBox.parentElement;
+  }
+  getLineBoxShape(lineBox);
+  readRestyledFromAbove(lineBox);
+  getBorderBoxSize(lineBox);
   getBorderBoxSize(element);
-  const copy = /** @type {HTMLElement} */ (element.cloneNode(true));
-  dressLaidOut(element, copy);
-  copy.setAttribute(GENERATED_COPY_ATTRIBUTE, "");
+  const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
+  dressLaidOut(lineBox, copy);
+  const host = lineBox === element ? copy : counterpart(element, lineBox, copy);
+  if (!(host instanceof HTMLElement)) {
+    throw new NoValueError("The copy does not hold the element yet");
+  }
+  host.setAttribute(GENERATED_COPY_ATTRIBUTE, "");
   const stand = document.createElement("span");
   // A `content` on an element, not a pseudo-element, would make the span a
   // picture of its own in Chromium.
   stand.style.cssText = `${declarations}; content: normal`;
+  /** @type {HTMLImageElement | null} */
+  let image = null;
   if (picture) {
-    const image = document.createElement("img");
+    image = document.createElement("img");
     image.width = picture.width;
     image.height = picture.height;
     stand.append(image);
@@ -4732,33 +4755,38 @@ export function measureGeneratedBox(element, kind, declarations, text, picture) 
     stand.append(text);
   }
   if (kind === "before") {
-    copy.prepend(stand);
+    host.prepend(stand);
   } else {
-    copy.append(stand);
+    host.append(stand);
   }
-  const rule = document.createElement("style");
-  rule.textContent = GENERATED_COPY_RULE;
-  document.body.append(rule);
-  const root = parkMeasurementClone(element, copy, null);
-  try {
-    const frame = frameFor(root);
-    const origin = measureClientRect(root, frame);
-    const rect = measureClientRect(stand, frame);
-    const content = stand.firstChild;
-    return {
-      x: rect.left - origin.left,
-      y: rect.top - origin.top,
-      width: rect.width,
-      height: rect.height,
-      text:
-        content instanceof Text
-          ? measureTextRects(content, stand, stand.style.whiteSpace || "normal", false, false)
-          : null,
-    };
-  } finally {
-    root.remove();
-    rule.remove();
-  }
+  return withGeneratedCopyRule(() => {
+    const root = parkMeasurementClone(lineBox, copy, null);
+    try {
+      const frame = frameFor(root);
+      const origin = measureClientRect(host, frame);
+      const rect = measureClientRect(stand, frame);
+      const content = stand.firstChild;
+      const placed = image ? measureClientRect(image, frame) : null;
+      return {
+        x: rect.left - origin.left,
+        y: rect.top - origin.top,
+        width: rect.width,
+        height: rect.height,
+        text:
+          content instanceof Text
+            ? measureTextRects(content, stand, stand.style.whiteSpace || "normal", false, false)
+            : null,
+        picture: placed && {
+          x: placed.left - rect.left,
+          y: placed.top - rect.top,
+          width: placed.width,
+          height: placed.height,
+        },
+      };
+    } finally {
+      root.remove();
+    }
+  });
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */

@@ -496,12 +496,13 @@ generate:
 ```
 
 A pseudo-element has no client rect, so the portal lays it out where the page does by measuring a
-copy of its element that holds a real `<span>` in its place, dressed in its resolved style. The copy
-is measured again when the element's children, its size, what restyles it from above, or the
-pseudo-element's own style change, and not on a hover that leaves them as they were. Only an element
-that some rule of the document's styles gives a `::before` or an `::after` reads the
-pseudo-element's style at all; the `:hover` in such a rule answers the ray as every other `:hover`
-does ([Hover, press and focus](#hover-press-and-focus)).
+copy of its element that holds a real `<span>` in its place, dressed in its resolved style. For an
+inline element, such as a link in a paragraph, the copy is of the box its line is in, so that the
+line is laid out as on the page. The copy is measured again when the element's children, its size,
+what restyles it from above, or the pseudo-element's own style change, and not on a hover that
+leaves them as they were. Only an element that some rule of the document's styles gives a `::before`
+or an `::after` reads the pseudo-element's style at all; the `:hover` in such a rule answers the ray
+as every other `:hover` does ([Hover, press and focus](#hover-press-and-focus)).
 
 It paints inside its element as a page paints it: a `::before` over the element's own box and under
 its children, an `::after` over its children. Its box is drawn by the panel's batch, as an element's
@@ -511,11 +512,13 @@ element, as a click on a page's `::before` icon is a click on the element.
 Followed:
 
 - `content`: strings, an `attr()`, which the browser resolves, and a single `url()`, drawn at the
-  picture's own size in the content box. `""` draws the box alone, the usual way to draw a bar or a
-  dot.
+  picture's own size where the page lays it out, inline on the baseline of its line. `""` draws the
+  box alone, the usual way to draw a bar or a dot.
 - Inline, block, inline-block, flex and grid items laid out among the element's children, and a box
   positioned `absolute` against its element: an element that is `position`ed or transformed.
-- `display: none` and a `content` of `none` or `normal` draw nothing.
+- `display: none` and a `content` of `none` or `normal` draw nothing, and the pseudo-element's own
+  `visibility` hides it, as it shows one whose element is hidden.
+- A rule nested in another, such as `&::before` inside `.chip { }`.
 
 Not followed:
 

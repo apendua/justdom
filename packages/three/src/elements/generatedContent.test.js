@@ -151,6 +151,36 @@ describe("selectors for generated content", () => {
     }
     assert.deepEqual(getGeneratedSelectors(), { before: null, after: null });
   });
+
+  test("a nested rule's element is resolved against the rule it is nested in", () => {
+    // jsdom parses no nesting, so the sheet is one as Chromium reads it.
+    const sheet = {
+      cssRules: [
+        {
+          selectorText: ".chip, .tag",
+          cssRules: [
+            { selectorText: "&:hover::before" },
+            { selectorText: ".icon::after, > ::after" },
+            { selectorText: "&.open", cssRules: [{ selectorText: "&::after" }] },
+          ],
+        },
+      ],
+    };
+    const adopted = Object.getOwnPropertyDescriptor(document, "adoptedStyleSheets");
+    Object.defineProperty(document, "adoptedStyleSheets", { configurable: true, value: [sheet] });
+    try {
+      assert.deepEqual(getGeneratedSelectors(), {
+        before: ":is(.chip, .tag):hover",
+        after: ":is(.chip, .tag) .icon, :is(.chip, .tag) > *, :is(:is(.chip, .tag).open)",
+      });
+    } finally {
+      if (adopted) {
+        Object.defineProperty(document, "adoptedStyleSheets", adopted);
+      } else {
+        delete (/** @type {any} */ (document).adoptedStyleSheets);
+      }
+    }
+  });
 });
 
 /**
@@ -184,7 +214,9 @@ function pseudoRule(host, kind, content, css = "") {
  * What jsdom cannot say about layout: an element's rect is its `data-rect`,
  * and the stand-in a pseudo-element is measured as, the first or last child
  * of a copy, is at the `data-before` or `data-after` its element carries,
- * from the copy's corner. Every number is `left,top,width,height`.
+ * from the copy's corner, and a picture in it at the element's
+ * `data-picture`, from the stand-in's. Every number is
+ * `left,top,width,height`.
  */
 const realGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
 
@@ -344,9 +376,22 @@ describe("an element's ::before and ::after in a panel", () => {
           (this === copy.firstChild ? numbers(copy.getAttribute("data-before")) : null) ??
           (this === copy.lastChild ? numbers(copy.getAttribute("data-after")) : null);
         const corner = copy.getBoundingClientRect();
+        // An inline element parked on its own is made a block, and its line
+        // laid out anew, lower than on the page.
+        const blockified =
+          copy.parentElement === document.body &&
+          realGetComputedStyle.call(window, copy).display === "inline"
+            ? 3
+            : 0;
         if (at) {
-          return clientRect(corner.left + at[0], corner.top + at[1], at[2], at[3]);
+          return clientRect(corner.left + at[0], corner.top + at[1] + blockified, at[2], at[3]);
         }
+      }
+      const stand = this.parentElement;
+      const at = numbers(stand?.parentElement?.getAttribute("data-picture") ?? null);
+      if (this.localName === "img" && stand && at) {
+        const corner = stand.getBoundingClientRect();
+        return clientRect(corner.left + at[0], corner.top + at[1], at[2], at[3]);
       }
       return realGetBoundingClientRect.call(this);
     };
@@ -479,7 +524,7 @@ describe("an element's ::before and ::after in a panel", () => {
     panel.cleanup();
   });
 
-  test("a content: url() draws its picture at its own size, in the content box", async () => {
+  test("a content: url() draws its picture at its own size, where the copy lays it out", async () => {
     // Pictures land at once, at 12 by 14.
     const load = THREE.TextureLoader.prototype.load;
     THREE.TextureLoader.prototype.load = function (_url, onLoad) {
@@ -492,7 +537,7 @@ describe("an element's ::before and ::after in a panel", () => {
     try {
       pseudoRule(".pic", "before", 'url("/icon.png")', "padding: 2px");
       const panel = generatedPanel(
-        `<div class="pic" data-rect="0,0,200,40" data-before="10,4,16,18"></div>`,
+        `<div class="pic" data-rect="0,0,200,40" data-before="10,4,16,20" data-picture="2,1,12,14"></div>`,
       );
       await settle(panel.portal);
 
@@ -501,13 +546,63 @@ describe("an element's ::before and ::after in a panel", () => {
       assert.notEqual(quad.material, batchedBoxMaterial(), "a picture draws itself");
       const { uImage, uImageRect } = quad.material.uniforms;
       assert.ok(uImage.value, "the picture is bound");
-      assert.deepEqual(uImageRect.value.toArray(), [2, 2, 14, 16]);
+      // On the baseline, a pixel down here, not at the content box's corner,
+      // which the padding puts at 2, 2.
+      assert.deepEqual(uImageRect.value.toArray(), [2, 1, 14, 15]);
       assert.deepEqual(canvas.drawn, []);
 
       panel.cleanup();
     } finally {
       THREE.TextureLoader.prototype.load = load;
     }
+  });
+
+  test("an inline element's ::before is measured in the line its element is on", async () => {
+    pseudoRule(".link", "before", '"→"', "background-color: red");
+    const panel = generatedPanel(`
+      <p data-rect="0,0,200,40">
+        Read <a class="link" style="display: inline" data-rect="40,0,60,20" data-before="0,2,10,16">more</a>
+      </p>
+    `);
+    await settle(panel.portal);
+
+    const [quad] = panel.quads();
+    assert.ok(quad);
+    assert.deepEqual([quad.position.x, quad.position.y], [0, 2]);
+
+    panel.cleanup();
+  });
+
+  test("a transparent border paints no box", async () => {
+    pseudoRule(".clear", "before", '"a"', "border: 2px solid rgba(0, 0, 0, 0)");
+    const panel = generatedPanel(
+      `<div class="clear" data-rect="0,0,200,40" data-before="0,0,14,20"></div>`,
+    );
+    await settle(panel.portal);
+
+    assert.equal(panel.quads().length, 0);
+    assert.deepEqual(canvas.drawn, ["a"]);
+
+    panel.cleanup();
+  });
+
+  test("a pseudo-element is hidden by its own visibility, not its element's", async () => {
+    pseudoRule(".shown", "before", '""', "visibility: visible; background-color: red");
+    pseudoRule(".gone", "before", '""', "visibility: hidden; background-color: red");
+    const panel = generatedPanel(`
+      <div class="shown" style="visibility: hidden" data-rect="0,0,200,40" data-before="0,0,10,10"></div>
+      <div class="gone" data-rect="0,40,200,40" data-before="0,0,10,10"></div>
+    `);
+    await settle(panel.portal);
+
+    const quads = panel.quads();
+    assert.equal(quads.length, 2);
+    assert.deepEqual(
+      quads.map((quad) => quad.visible),
+      [true, false],
+    );
+
+    panel.cleanup();
   });
 
   test("a :hover rule gives the element an ::after while the ray is on it", async () => {

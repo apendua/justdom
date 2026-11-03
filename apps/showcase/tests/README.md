@@ -58,9 +58,9 @@ browser of their own, so the hand is in none of the other photographs.
 ## The two kinds of check, and which one can fail on your machine
 
 **Baseline comparison** is exact, and is only meaningful on a machine that draws the way the
-recording machine did. A different Chromium rasterizes differently; a machine with different fonts
-installed lays the panels' text out differently. Both are real differences in what was drawn and
-neither is a regression.
+recording machine did. A different Chromium can rasterize differently; a machine with different
+fonts installed lays the panels' text out differently. Both are real differences in what was drawn
+and neither is a regression.
 
 So baselines are filed under a fingerprint of the machine that drew them — Chromium's version, the
 width the app's font stack measures a specimen string at, and the viewport — one directory each, and

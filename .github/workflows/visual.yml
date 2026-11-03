@@ -15,8 +15,9 @@ on:
   # the push that merges it would photograph a scene already checked.
   pull_request:
     branches: ["develop", "claude/**"]
-    # The two extra events are there because a draft is skipped below. See
-    # ci.yml for what each one does.
+    # The two extra events are there because a draft is skipped below: a
+    # draft marked ready starts the run that `opened` skipped, and a ready PR
+    # turned back into a draft cancels the one in flight.
     types:
       [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
@@ -43,6 +44,7 @@ on:
       - "!packages/**/*.bench.js"
       - "!packages/*/src/test/**"
       - "!packages/*/bench/**"
+      - "!apps/showcase/bench/**"
 
 # As in ci.yml: a new push to a pull request cancels the run for the one
 # before it, and a manual run always has a group of its own.
@@ -55,6 +57,7 @@ jobs:
     if: >-
       (github.event_name != 'workflow_dispatch' || !inputs.record)
       && !github.event.pull_request.draft
+      && github.head_ref != 'release/version-bump'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -108,12 +111,8 @@ jobs:
       # question is which ones. So the job says so on the pull request, with
       # the photograph one click away.
       #
-      # One click, and not none: an artifact link is an authenticated zip
-      # rather than an image, and a private repository's own files cannot be
-      # fetched by the proxy that renders images in comments either, so there
-      # is no URL this could put inside a Markdown image that would resolve
-      # for a reader. Linking is as close as a repository's own credentials
-      # reach.
+      # One click, and not none: the frames live only in the artifact, and
+      # an artifact link is an authenticated zip rather than an image.
       #
       # One comment per pull request, edited in place rather than added to:
       # it is created only when something is wrong, and a later green run

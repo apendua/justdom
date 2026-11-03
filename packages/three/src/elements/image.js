@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { addDependency, Derived, fromEvent, onCleanup, Signal, withChannel } from "justdom-signal";
 import { getComputedStyleCached } from "./mirror.js";
+import { layoutTile } from "./gradient.js";
 import { fitImage } from "./objectFit.js";
 
 /**
@@ -31,8 +32,8 @@ import { fitImage } from "./objectFit.js";
 /**
  * A loaded texture and the intrinsic size that came with it. The size is read
  * off the decoded image rather than off the `<img>`, so it is available to
- * anything that has a URL — `background-image`, when its turn comes — and not
- * only to elements the browser is laying out.
+ * anything that has a URL — a box's `background-image` (`backgroundImage`)
+ * — and not only to elements the browser is laying out.
  *
  * @typedef {object} ImageState
  * @property {"loading" | "loaded" | "error"} status
@@ -71,6 +72,12 @@ import { fitImage } from "./objectFit.js";
  * @property {number} right
  * @property {number} bottom
  * @property {ContentBox} content What clips it.
+ * @property {boolean} [repeatX] Whether copies of the picture tile the clip
+ *   box across, from where the one above lands. Only a background repeats.
+ * @property {boolean} [repeatY]
+ * @property {boolean} [underGradient] Whether the box's gradient is drawn
+ *   over the picture rather than under it: a background whose gradient is
+ *   listed before its `url()`.
  */
 
 /**
@@ -512,7 +519,10 @@ function contentImageEqual(a, b) {
     a.content.left === b.content.left &&
     a.content.top === b.content.top &&
     a.content.right === b.content.right &&
-    a.content.bottom === b.content.bottom
+    a.content.bottom === b.content.bottom &&
+    Boolean(a.repeatX) === Boolean(b.repeatX) &&
+    Boolean(a.repeatY) === Boolean(b.repeatY) &&
+    Boolean(a.underGradient) === Boolean(b.underGradient)
   );
 }
 
@@ -570,6 +580,77 @@ export function contentImage(element, properties) {
         state.texture,
         properties.opacity,
       );
+    },
+    { isEqual: contentImageEqual },
+  );
+}
+
+/**
+ * The picture a box's `background-image: url()` paints, as a signal: null
+ * while the box has none, while it loads, and if it never arrives.
+ *
+ * The same texture cache an `<img>` uses (`acquireImage`), and the same
+ * split as `contentImage`: the address alone decides the share in the
+ * texture, so a restyle or a resize that keeps the picture never lets go of
+ * it. Where it lands is `gradient.js`'s tile arithmetic, the one a gradient
+ * layer is laid out by, given the picture's own size; it is cropped to the
+ * padding box, which is where a background is painted here
+ * (`background-clip` is not followed), and it repeats across it on the axes
+ * `background-repeat` says.
+ *
+ * Every box builds this, and a box with no picture reads one memoized
+ * string to find out (`backgroundPictureUrl`). What reads it is the box's
+ * uniform effect, and only while the box has a picture to draw.
+ *
+ * @param {VisualProperties} properties
+ * @returns {Derived<ContentImage | null>}
+ */
+export function backgroundImage(properties) {
+  const owned = new Derived(() => {
+    const url = properties.backgroundPictureUrl;
+    if (!url) {
+      return null;
+    }
+    const entry = acquireImage(url);
+    onCleanup(() => releaseImage(url));
+    return entry;
+  });
+
+  return new Derived(
+    () => {
+      const entry = owned.get();
+      const picture = properties.backgroundPicture;
+      if (!entry || !picture) {
+        return null;
+      }
+      const state = entry.state.get();
+      if (!state.texture) {
+        return null;
+      }
+      const box = properties.backgroundBox;
+      const tile = layoutTile(picture, box, { width: state.width, height: state.height });
+      if (!tile) {
+        return null;
+      }
+      const [x, y, width, height] = tile;
+      const [bt, br, bb, bl] = box.border;
+      return {
+        texture: state.texture,
+        opacity: properties.opacity,
+        left: x,
+        top: y,
+        right: x + width,
+        bottom: y + height,
+        content: {
+          left: bl,
+          top: bt,
+          right: Math.max(bl, box.width - br),
+          bottom: Math.max(bt, box.height - bb),
+        },
+        repeatX: picture.repeat[0] !== "no-repeat",
+        repeatY: picture.repeat[1] !== "no-repeat",
+        underGradient: (properties.background?.index ?? Infinity) < picture.index,
+      };
     },
     { isEqual: contentImageEqual },
   );

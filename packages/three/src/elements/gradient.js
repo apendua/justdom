@@ -119,12 +119,26 @@ import * as THREE from "three";
  * out. What `parseBackground` produces, and what depends on nothing but the
  * element's computed style.
  *
- * @typedef {object} Background
- * @property {Gradient} gradient
+ * @typedef {LayerPlacement & { gradient: Gradient }} Background
+ */
+
+/**
+ * The four properties that lay one background layer out, and the layer's
+ * index in the list, 0 being the topmost: what a gradient layer and a
+ * picture layer share.
+ *
+ * @typedef {object} LayerPlacement
  * @property {"cover" | "contain" | [SizeComponent, SizeComponent]} size
  * @property {{ x: LengthPercentage, y: LengthPercentage }} position
  * @property {[RepeatStyle, RepeatStyle]} repeat
  * @property {"border-box" | "padding-box" | "content-box"} origin
+ * @property {number} index
+ */
+
+/**
+ * A `url()` background layer: the picture's address and how it is laid out.
+ *
+ * @typedef {LayerPlacement & { url: string }} BackgroundPicture
  */
 
 /**
@@ -712,12 +726,13 @@ function layerOf(list, index, fallback) {
 }
 
 /**
- * The background layer to draw, or `null` if there is no gradient among the
+ * The gradient layer to draw, or `null` if there is no gradient among the
  * element's background images.
  *
- * One layer, and the topmost gradient of them: an instance has room for one
- * set of gradient numbers, and a background that stacks several is drawn as
- * its uppermost gradient over its background colour.
+ * One gradient, and the topmost of them: an instance has room for one set of
+ * gradient numbers, and a background that stacks several is drawn as its
+ * uppermost gradient over its background colour. A `url()` layer is read
+ * apart, by `parseBackgroundPicture`.
  *
  * @param {BackgroundStyle} style
  * @returns {Background | null}
@@ -732,31 +747,83 @@ export function parseBackground(style) {
     if (!gradient) {
       continue;
     }
-    const size = parseSizeLayer(layerOf(style.size, index, "auto"));
-    const repeat = parseRepeatLayer(layerOf(style.repeat, index, "repeat"));
-    const originWord = layerOf(style.origin, index, "padding-box").toLowerCase();
-    const origin =
-      originWord === "border-box" || originWord === "content-box" ? originWord : "padding-box";
-    // The per-axis longhands where the engine computes them — they are what
-    // keeps `right 10px` intact — and the shorthand where it does not.
-    const x =
-      style.positionX || style.positionY
-        ? axisPosition(layerOf(style.positionX, index, "0%"), "x")
-        : null;
-    const y =
-      style.positionX || style.positionY
-        ? axisPosition(layerOf(style.positionY, index, "0%"), "y")
-        : null;
-    const position =
-      x && y
-        ? { x, y }
-        : parsePosition(splitTopLevel(layerOf(style.position, index, "0% 0%"), " "));
-    if (!size || !repeat || !position) {
-      return null;
-    }
-    return { gradient, size, position, repeat, origin };
+    const placement = parseLayerPlacement(style, index);
+    return placement && { ...placement, gradient };
   }
   return null;
+}
+
+/**
+ * The picture layer to draw, or `null` if there is no `url()` among the
+ * element's background images: the topmost one, as with gradients.
+ *
+ * @param {BackgroundStyle} style
+ * @returns {BackgroundPicture | null}
+ */
+export function parseBackgroundPicture(style) {
+  if (!style.image || !style.image.includes("url(")) {
+    return null;
+  }
+  const images = splitTopLevel(style.image, ",");
+  for (let index = 0; index < images.length; index++) {
+    const url = parseUrl(images[index]);
+    if (url === null) {
+      continue;
+    }
+    const placement = parseLayerPlacement(style, index);
+    return placement && { ...placement, url };
+  }
+  return null;
+}
+
+/**
+ * The address in a `url()`, quoted or not, or null for anything else. A
+ * browser computes every `url()` to an absolute, quoted address.
+ *
+ * @param {string} value One background image.
+ * @returns {string | null}
+ */
+export function parseUrl(value) {
+  const match = /^url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^"'()\s]*))\s*\)$/i.exec(
+    value.trim(),
+  );
+  if (!match) {
+    return null;
+  }
+  const url = (match[1] ?? match[2] ?? match[3] ?? "").replace(/\\(.)/g, "$1");
+  return url.length > 0 ? url : null;
+}
+
+/**
+ * How layer `index` is laid out, from the comma separated lists of the four
+ * properties that do it, or null when one of them cannot be read.
+ *
+ * @param {BackgroundStyle} style
+ * @param {number} index
+ * @returns {LayerPlacement | null}
+ */
+function parseLayerPlacement(style, index) {
+  const size = parseSizeLayer(layerOf(style.size, index, "auto"));
+  const repeat = parseRepeatLayer(layerOf(style.repeat, index, "repeat"));
+  const originWord = layerOf(style.origin, index, "padding-box").toLowerCase();
+  const origin =
+    originWord === "border-box" || originWord === "content-box" ? originWord : "padding-box";
+  // The per-axis longhands where the engine computes them — they are what
+  // keeps `right 10px` intact — and the shorthand where it does not.
+  const x =
+    style.positionX || style.positionY
+      ? axisPosition(layerOf(style.positionX, index, "0%"), "x")
+      : null;
+  const y =
+    style.positionX || style.positionY
+      ? axisPosition(layerOf(style.positionY, index, "0%"), "y")
+      : null;
+  const position =
+    x && y ? { x, y } : parsePosition(splitTopLevel(layerOf(style.position, index, "0% 0%"), " "));
+  if (!size || !repeat || !position) {
+    return null;
+  }
+  return { size, position, repeat, origin, index };
 }
 
 /**
@@ -860,14 +927,17 @@ function resolve(value, reference) {
  * `round`, and placed by `background-position`.
  *
  * A gradient has no size of its own, so `auto`, `cover` and `contain` all mean
- * the positioning area. `space` is drawn as `repeat`: the gaps it would put
+ * the positioning area. A picture has one, `natural`: `cover` and `contain`
+ * scale it to the area, `auto` on both axes is that size, and `auto` on one
+ * keeps its proportions. `space` is drawn as `repeat`: the gaps it would put
  * between tiles need two more numbers than an instance has room for.
  *
- * @param {Background} background
+ * @param {LayerPlacement} background
  * @param {BackgroundBox} box
+ * @param {{ width: number, height: number }} [natural] A picture's size.
  * @returns {[number, number, number, number] | null}
  */
-function layoutTile(background, box) {
+export function layoutTile(background, box, natural) {
   const [bt, br, bb, bl] = box.border;
   const [pt, pr, pb, pl] = box.padding;
   let left = 0;
@@ -894,9 +964,27 @@ function layoutTile(background, box) {
   const size = background.size;
   const autoWidth = typeof size === "string" || size[0] === "auto";
   const autoHeight = typeof size === "string" || size[1] === "auto";
-  if (typeof size !== "string") {
+  const hasRatio = natural !== undefined && natural.width > 0 && natural.height > 0;
+  if (typeof size === "string") {
+    if (hasRatio) {
+      const fit = size === "cover" ? Math.max : Math.min;
+      const scale = fit(width / natural.width, height / natural.height);
+      tileWidth = natural.width * scale;
+      tileHeight = natural.height * scale;
+    }
+  } else {
     if (size[0] !== "auto") tileWidth = resolve(size[0], width);
     if (size[1] !== "auto") tileHeight = resolve(size[1], height);
+    if (hasRatio) {
+      if (autoWidth && autoHeight) {
+        tileWidth = natural.width;
+        tileHeight = natural.height;
+      } else if (autoWidth) {
+        tileWidth = (tileHeight * natural.width) / natural.height;
+      } else if (autoHeight) {
+        tileHeight = (tileWidth * natural.height) / natural.width;
+      }
+    }
   }
   if (tileWidth <= 0 || tileHeight <= 0) {
     return null;

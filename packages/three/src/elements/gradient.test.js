@@ -7,12 +7,15 @@ import {
   GRADIENT_LINEAR,
   GRADIENT_RADIAL,
   layoutGradient,
+  layoutTile,
   parseAngle,
   parseBackground,
+  parseBackgroundPicture,
   parseCssColor,
   parseGradient,
   parseLengthPercentage,
   parsePosition,
+  parseUrl,
   RAMP_WIDTH,
   rampAtlas,
   rampUniforms,
@@ -528,5 +531,66 @@ describe("the ramp atlas", () => {
     for (const slot of slots) {
       slot.release();
     }
+  });
+});
+
+describe("picture layers", () => {
+  test("the topmost url() is read with its own layer's placement", () => {
+    const picture = parseBackgroundPicture({
+      image: 'linear-gradient(red, blue), url("https://a.test/b.png"), url("c.png")',
+      size: "auto, 20px 10px, cover",
+      repeat: "repeat, no-repeat",
+      positionX: "0%, 100%",
+      positionY: "0%, 50%",
+    });
+    assert.ok(picture);
+    assert.equal(picture.url, "https://a.test/b.png");
+    assert.equal(picture.index, 1);
+    assert.deepEqual(picture.size, [
+      { percent: 0, px: 20 },
+      { percent: 0, px: 10 },
+    ]);
+    assert.deepEqual(picture.repeat, ["no-repeat", "no-repeat"]);
+    assert.equal(parseBackground({ image: "url(a.png), linear-gradient(red, blue)" })?.index, 1);
+    assert.equal(parseBackgroundPicture({ image: "linear-gradient(red, blue)" }), null);
+  });
+
+  test("an address is read quoted, unquoted and escaped", () => {
+    assert.equal(parseUrl("url(a.png)"), "a.png");
+    assert.equal(parseUrl("url('a b.png')"), "a b.png");
+    assert.equal(
+      parseUrl('url("data:image/svg+xml,%3Csvg x=\\"1\\"%3E")'),
+      'data:image/svg+xml,%3Csvg x="1"%3E',
+    );
+    assert.equal(parseUrl("url()"), null);
+    assert.equal(parseUrl("image-set(url(a.png) 1x)"), null);
+  });
+
+  test("a picture's own size decides cover, contain and auto", () => {
+    const natural = { width: 100, height: 50 };
+    /** @param {string} size @param {string} [repeat] */
+    const tile = (size, repeat = "no-repeat") => {
+      const picture = parseBackgroundPicture({
+        image: "url(p.png)",
+        size,
+        repeat,
+        position: "0% 0%",
+      });
+      assert.ok(picture);
+      return layoutTile(picture, BOX, natural);
+    };
+    // The box is 200 by 100.
+    assert.deepEqual(tile("cover"), [0, 0, 200, 100]);
+    assert.deepEqual(tile("contain"), [0, 0, 200, 100]);
+    assert.deepEqual(tile("auto"), [0, 0, 100, 50]);
+    assert.deepEqual(tile("50px auto"), [0, 0, 50, 25]);
+    assert.deepEqual(tile("auto 20px"), [0, 0, 40, 20]);
+    assert.deepEqual(tile("10px 10px"), [0, 0, 10, 10]);
+    // round fits a whole number of tiles, and keeps the proportions.
+    assert.deepEqual(tile("90px auto", "round no-repeat"), [0, 0, 100, 50]);
+    // A gradient has no size of its own: auto is the whole area.
+    const gradient = parseBackground({ image: "linear-gradient(red, blue)", size: "auto" });
+    assert.ok(gradient);
+    assert.deepEqual(layoutTile(gradient, BOX), [0, 0, 200, 100]);
   });
 });

@@ -2,9 +2,9 @@
 
 A panel is drawn from its elements' computed style, and this page says which of it: lists and their
 markers, transforms, the document's stylesheets, animation, text revealed to a cursor, the paint
-order, images, gradients, clipping and scrolling, and inline SVG. Each section ends with what is
-followed and what is not. [Writing CSS for a panel](/guide/panel-css) in the guide is the short
-version.
+order, images, gradients, background pictures, clipping and scrolling, and inline SVG. Each section
+ends with what is followed and what is not. [Writing CSS for a panel](/guide/panel-css) in the guide
+is the short version.
 
 ## Lists
 
@@ -326,7 +326,6 @@ Not followed:
   but there is no `alt` text and no broken-image frame.
 - An SVG behind a URL that names no such type, a blob URL or an endpoint with no extension, is
   uploaded as it came.
-- A box's `background-image: url()` (see [Gradients](#gradients)).
 
 ## Gradients
 
@@ -362,8 +361,8 @@ Followed:
 
 Not followed:
 
-- **One layer.** A background that stacks several images is drawn as its topmost gradient over its
-  background colour; the others, and any `url()` image, are not drawn.
+- **One gradient.** A background that stacks several gradients is drawn as its topmost one over its
+  background colour, with its topmost `url()` picture (below); the other layers are not drawn.
 - **`background-clip`.** The background, colour and gradient alike, fills the padding box, so a
   `content-box` clip draws wider than the page does.
 - **`space` repeats as `repeat`**: tiles are laid edge to edge rather than spaced out.
@@ -375,6 +374,46 @@ Not followed:
 
 Prefer percentage stops on anything that resizes: a `px` stop is a different fraction of the
 gradient at every size, so a box animating its width bakes a new row every frame it moves.
+
+## Background pictures
+
+A `background-image: url()` is drawn through the same texture cache as an `<img>`, laid out by the
+same `background-size`, `-position`, `-repeat` and `-origin` a gradient follows, and cropped to the
+padding box:
+
+```css
+.hero {
+  background:
+    linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0.6)),
+    url("hero.jpg") center / cover no-repeat;
+}
+```
+
+A box draws one picture and one gradient, each its topmost of the kind, in the order the page lists
+them, so a scrim over a photo and a picture over a gradient both come out as on the page. While it
+has a picture, the box is drawn on its own, one draw call, as an `<img>` is; every other box stays
+in its panel's batch. A class or a hover that adds a picture or takes it away moves the box out of
+the batch or back.
+
+Followed:
+
+- `background-size`: `cover`, `contain`, `auto`, lengths and percentages, one of them `auto` keeping
+  the picture's proportions.
+- `background-position`, `background-origin`, and `background-repeat`: `repeat`, `repeat-x`,
+  `repeat-y`, `no-repeat` and `round`.
+
+Not followed:
+
+- **One picture.** Of several `url()` layers the topmost is drawn and the others are not.
+- **`space` repeats as `repeat`**, and `background-clip` and `background-attachment` are not
+  followed, as for a gradient.
+- **An SVG with no size of its own**, only a `viewBox`, is laid out at the size Chrome reports for
+  it, 150 px tall or 300 px wide, where a page sizes it as `contain` under `background-size: auto`.
+  Give it a `width` and a `height`, or give the background a size.
+- `image-set()` and `cross-fade()` are not drawn, and a picture that fails to load draws nothing, as
+  an `<img>`'s does.
+- A checkbox does not draw a `url()` background: it draws its own tick, which is what a page with
+  `appearance: none` gives as one.
 
 ## Clipping and scrolling
 

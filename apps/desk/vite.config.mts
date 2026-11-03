@@ -32,7 +32,7 @@ export default defineConfig({
       },
       output: {
         // three.js in a chunk of its own, cached apart from the app and kept
-        // out of its main chunk, which grows with freedom.
+        // out of its main chunk, which grows with justdom-three.
         manualChunks: (id) => (id.includes("/node_modules/three/") ? "three" : undefined),
       },
     },

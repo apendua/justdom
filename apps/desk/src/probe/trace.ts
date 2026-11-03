@@ -11,7 +11,7 @@ import * as THREE from "three";
  * has risen on the page, by its computed style, and in the scene, by its
  * object, with the animations running on it. Inside a session the Quest
  * stops rendering the page, so its transitions stop advancing and fire no
- * events, and freedom has to find and advance them itself
+ * events, and justdom-three has to find and advance them itself
  * (`animationClock.js`); the emulator keeps rendering the page and never
  * takes that path. A note that rises on the page and not in the scene, or
  * in neither, is what to look for.
@@ -19,13 +19,13 @@ import * as THREE from "three";
  * The trace is not a bystander to that. Reading a note's computed style
  * and its animations brings the page's styles up to date every frame,
  * which is where a suspended page creates the transition a hover starts,
- * so it can create one sooner than freedom alone would have. A run that
+ * so it can create one sooner than justdom-three alone would have. A run that
  * shows no lag may owe that to the trace. So the page's side is read only
  * when asked for (`pageReads`); without it a row has the scene's side,
  * which is read off the objects and touches no style.
  *
  * Each row can also name the panels that have work for a coming frame,
- * by freedom's `data-xr-busy` on their elements: an animation its clock
+ * by justdom-three's `data-xr-busy` on their elements: an animation its clock
  * samples, or an update it has yet to draw. A panel that stays busy after
  * its notes have stopped moving on the page is one holding an update back.
  */
@@ -45,7 +45,7 @@ export interface TraceRow {
   traceMs: number;
   /**
    * Ms since the page was last rendered: since a `requestAnimationFrame`
-   * of the window was last answered. freedom counts the page as no longer
+   * of the window was last answered. justdom-three counts the page as no longer
    * rendered past 200 ms (`renderingUpdates.js`).
    */
   pageFrameAgeMs: number;
@@ -96,7 +96,7 @@ let pageFrameAt = performance.now();
 
 /**
  * Keep a frame of the window asked for, and note when each is answered.
- * One outstanding request at a time, as freedom keeps.
+ * One outstanding request at a time, as justdom-three keeps.
  */
 function watchPageFrames(): void {
   requestAnimationFrame(() => {
@@ -250,7 +250,7 @@ function liftOf(element: HTMLElement): number {
 
 /**
  * How far `object` stands off its parent, in px: the z its own matrix
- * moves it by, which is where freedom writes an element's CSS transform.
+ * moves it by, which is where justdom-three writes an element's CSS transform.
  * A portal turns its content half a turn about x, which turns z round, so
  * the sign is put back for a note that rises towards the viewer to count
  * up, as on the page.

@@ -52,7 +52,8 @@ export default defineConfig({
   build: {
     target: "esnext",
     sourcemap: true,
-    // three.js and freedom, in the chunk a headset loads to mirror the game.
+    // three.js and justdom-three, in the chunk a headset loads to mirror the
+    // game.
     chunkSizeWarningLimit: 1024,
     rollupOptions: {
       // `@iwer/devui` draws its icons from lucide-react, whose modules open

@@ -38,8 +38,8 @@ const FACING = new THREE.Euler(0.17, 0.25, 0);
 /**
  * Where the panel is drawn in the frame's order: after everything a scene is
  * likely to have asked for, and far enough clear of it that the panel's own
- * ordering — which `freedom` writes as small numbers, one per layer of nesting
- * — survives being shifted up by this.
+ * ordering — which `justdom-three` writes as small numbers, one per layer of
+ * nesting — survives being shifted up by this.
  */
 const HUD_RENDER_ORDER = 100000;
 
@@ -57,9 +57,9 @@ const HUD_RENDER_ORDER = 100000;
  * then border, then glyphs — is `renderOrder` rather than depth, and shifting
  * the whole subtree by a constant leaves it exactly as it was. And only on
  * what draws colour: a material that writes none, such as the depth quad of
- * a panel freedom draws in paint order, shows nothing to keep legible, so
+ * a panel justdom-three draws in paint order, shows nothing to keep legible, so
  * the walk leaves it as its owner made it. The panel the readout sits in
- * owns those, and a host is free to share one across panels, as freedom
+ * owns those, and a host is free to share one across panels, as justdom-three
  * shares its blockers', where turning the test off would reach every other
  * panel.
  *

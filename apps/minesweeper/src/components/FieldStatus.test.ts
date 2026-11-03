@@ -73,7 +73,7 @@ describe("FieldStatus", () => {
     expect(parsed.getElementsByTagName("parsererror")).toHaveLength(0);
     const root = parsed.documentElement;
     expect([root.namespaceURI, root.localName]).toEqual([SVG_NS, "svg"]);
-    // freedom draws an SVG with no size of its own at 300 by 150.
+    // justdom-three draws an SVG with no size of its own at 300 by 150.
     expect(Number(root.getAttribute("width"))).toBeGreaterThan(0);
     expect(Number(root.getAttribute("height"))).toBeGreaterThan(0);
   });

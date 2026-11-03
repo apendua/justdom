@@ -125,7 +125,7 @@ export function scrollable(props) {
    * the bar is mounted, the second notification arrives next frame — but the
    * report arrives as an `error` event with no `Error` behind it, and a page
    * that treats an error event as a crash takes the whole app down over a
-   * scrollbar appearing. freedom's crash panel was exactly such a page.
+   * scrollbar appearing. justdom-three's crash panel was exactly such a page.
    *
    * A task is the shortest wait that works. A microtask is not: it is drained
    * inside the same delivery, so the mount is still the loop's own doing and

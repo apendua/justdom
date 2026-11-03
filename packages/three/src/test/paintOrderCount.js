@@ -1,7 +1,7 @@
 /**
  * What a mounted panel draws in paint order, counted from one list. Phase 1
  * of `docs/freedom-paint-order-plan.md` wrote it to weigh paint order
- * against the lift, which freedom no longer has.
+ * against the lift, which justdom-three no longer has.
  *
  * `listPaintOrder` walks a panel's mirrored tree and lists what it draws:
  * each entry a kind (a box, a run, a picture or a shape), its element, its
@@ -9,7 +9,7 @@
  * its layers' planes and adds up the draws under each way of getting the
  * order to the GPU. It counts one panel for one eye.
  *
- * The rules are freedom's own:
+ * The rules are justdom-three's own:
  *
  * - A layer is what `getLayer` says: the portal's root, an overlay or an
  *   element transformed out of its parent's plane. A box that clears a
@@ -71,7 +71,7 @@
  *   (`MAXIMUM_LAYERS` in `textBatch.js`), in every way of drawing alike, so
  *   none is charged for them here.
  *
- * Plain JavaScript over freedom's own derivations, so it runs wherever a
+ * Plain JavaScript over justdom-three's own derivations, so it runs wherever a
  * portal does: in jsdom over `paintOrderScenes.js`, under
  * `bench/paintOrderCount.jsdom.mjs` and `paintOrderCount.test.js`, and in a
  * page under `bench/paintOrderCount.browser.mjs`.
@@ -158,7 +158,7 @@ function paints(element) {
  * `textInput.js` lays it out, or a list item's marker, placed as
  * `markerRun` in `listMarker.js` places it. A `<textarea>` and a
  * `<select>` are counted a run of their `value` laid out as a field's,
- * as phase 1 counted them, though freedom draws neither one's text
+ * as phase 1 counted them, though justdom-three draws neither one's text
  * (`portal.js` gives them `markedBox`): an overcount of one run each.
  *
  * @param {Element} element

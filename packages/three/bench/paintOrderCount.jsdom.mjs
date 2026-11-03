@@ -2,7 +2,7 @@
  * Phase 1's count on its jsdom scenes (`src/test/paintOrderScenes.js`):
  * the 800-row list and the three 100-card boards of `mirror.bench.js`, a
  * handful of layers the bench has none of, and five things a page holds
- * that freedom draws nothing of.
+ * that justdom-three draws nothing of.
  *
  *   node --import ./src/test/setup-jsdom.js bench/paintOrderCount.jsdom.mjs
  *
@@ -20,7 +20,7 @@ import {
 for (const [title, scenes] of /** @type {const} */ ([
   ["the bench's scenes", BENCH_SCENES],
   ["layers out of the plane", LAYER_SCENES],
-  ["what a page holds and freedom draws nothing of", HIDDEN_SCENES],
+  ["what a page holds and justdom-three draws nothing of", HIDDEN_SCENES],
 ])) {
   /** @type {[string, import("../src/test/paintOrderCount.js").PanelCount][]} */
   const rows = [];

@@ -46,10 +46,10 @@ bottom; press it and the emulated session is drawn over the page, driven from th
 Three things the page does not know about, and does not need to.
 
 **The field is a real `<input>`.** On the page the browser draws the caret and takes the keys. In
-the scene freedom draws the value, the placeholder and a caret, and the keyboard it opens in front
-of the viewer types through the same `input` and `keydown` events the page's handlers already listen
-for, so `Enter` adds a todo in both. Clearing the field after a submit is a plain `value` write,
-which the mirror follows. `[data-xr-focus]` is the scene's `:focus`.
+the scene justdom-three draws the value, the placeholder and a caret, and the keyboard it opens in
+front of the viewer types through the same `input` and `keydown` events the page's handlers already
+listen for, so `Enter` adds a todo in both. Clearing the field after a submit is a plain `value`
+write, which the mirror follows. `[data-xr-focus]` is the scene's `:focus`.
 
 **The list scrolls on both.** `scrollable` is made of ordinary elements — a viewport that hides its
 overflow, arrows, a track and a thumb — so it works on the page as a list with its own scrollbar,
@@ -60,11 +60,11 @@ Rows can also be grabbed and pulled with the trigger.
 and the list listens for the browser's drag and drop: `dragstart` on the handle says which todo is
 carried and fades its row, `dragover` turns the divider above the slot it would land in blue, and
 `drop` moves it. On the page that is a mouse drag. In a session it is the trigger closed on the
-handle, the ray carried down the list and the trigger opened, and freedom turns that into the same
-events, so the same handlers run. The marks are plain CSS, an `opacity` and a border colour, set by
-classes. `node tests/drag-check.mjs` does both, the mouse on the page and the controller in the
-emulator, and prints the events and the order the todos ended up in; `SHOT=drag.png` photographs the
-drag half way.
+handle, the ray carried down the list and the trigger opened, and justdom-three turns that into the
+same events, so the same handlers run. The marks are plain CSS, an `opacity` and a border colour,
+set by classes. `node tests/drag-check.mjs` does both, the mouse on the page and the controller in
+the emulator, and prints the events and the order the todos ended up in; `SHOT=drag.png` photographs
+the drag half way.
 
 **Two things are there only in a session.** The frame rate, from justui's `useDiagnostics`, hangs in
 the upper left of the view. And the card grows an exit button in its top-right corner, an ordinary
@@ -82,24 +82,24 @@ passthrough whatever the scene's background says.
 **The keyboard is the scene's to place.** `TodoKeyboard` says what a key looks like, and `xr.ts`
 hands it to `render()` as a panel option, so every panel in the scene gets it without asking. When
 the board appears, where it opens, what a key does to the field and when the board goes are decided
-by freedom. Press the field and it opens in front of you, below eye level and reclined toward the
-hands; point at it and handles show along its edges to move it by. `xr.ts` sets three things about
-it: the board is three quarters of freedom's default size, it reclines 34° so that its face looks at
-the eyes, and the copy of the field above the keys lies in the keys' plane. It behaves like focus on
-the page: `Enter` adds the todo and keeps the field, so the next one can be typed straight in, while
-pressing Add, or anything else in the card, puts the keyboard away as a click would blur the field.
-`Escape` puts it away too.
+by justdom-three. Press the field and it opens in front of you, below eye level and reclined toward
+the hands; point at it and handles show along its edges to move it by. `xr.ts` sets three things
+about it: the board is three quarters of justdom-three's default size, it reclines 34° so that its
+face looks at the eyes, and the copy of the field above the keys lies in the keys' plane. It behaves
+like focus on the page: `Enter` adds the todo and keeps the field, so the next one can be typed
+straight in, while pressing Add, or anything else in the card, puts the keyboard away as a click
+would blur the field. `Escape` puts it away too.
 
 ## The key log
 
 `?keylog` puts a log at the bottom of the card, `src/focusDiagnostics.ts`, to read in a headset,
 where there are no dev tools. It shows whether `navigator.virtualKeyboard` exists and the rectangle
 its `geometrychange` reports, every `keydown` with whether the browser sent it (`TRUSTED`) or a
-script did (freedom's keyboard), focus moving in the card, and the window and the visual viewport
-changing size. It is there to answer the first question in #547: whether a keyboard paired with a
-Quest sends its keys to the page during a session while nothing on the page has focus.
+script did (justdom-three's keyboard), focus moving in the card, and the window and the visual
+viewport changing size. It is there to answer the first question in #547: whether a keyboard paired
+with a Quest sends its keys to the page during a session while nothing on the page has focus.
 
-A ray's press on the field is a click freedom dispatches itself, which moves no focus, so in a
+A ray's press on the field is a click justdom-three dispatches itself, which moves no focus, so in a
 session the field never has the page's focus. Giving it that focus (`?realfocus`, #527) was tried
 and taken out: on a Quest it brings up the system keyboard, whose caret stays at the start of the
 word, whose Enter always closes it, and which leaves the scene unresponsive while it is up.

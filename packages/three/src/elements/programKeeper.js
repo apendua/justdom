@@ -3,33 +3,33 @@
  */
 
 /**
- * Keeping the programs freedom draws with linked for the life of the
+ * Keeping the programs justdom-three draws with linked for the life of the
  * renderer.
  *
  * three.js keeps a compiled program only while a material holds it. A material
  * that compiles one counts itself in, `Material.dispose` counts it out, and
  * `WebGLPrograms.releaseProgram` deletes the program when the count reaches
- * nought. freedom makes and disposes its materials with the lives of what they
- * draw: a panel, a draw of its one batch, the frame shown while a panel mounts.
- * So the last of a kind to go took its program with it, and the next one to
- * come linked it again, at 15 to 19 ms a program on a Quest 3, inside the frame
- * that first drew it. A panel that mounted after the last one of its kind had
- * closed paid that, and so did every draw that grew.
+ * nought. justdom-three makes and disposes its materials with the lives of what
+ * they draw: a panel, a draw of its one batch, the frame shown while a panel
+ * mounts. So the last of a kind to go took its program with it, and the next
+ * one to come linked it again, at 15 to 19 ms a program on a Quest 3, inside
+ * the frame that first drew it. A panel that mounted after the last one of its
+ * kind had closed paid that, and so did every draw that grew.
  *
- * So each kind of material freedom draws gets a keeper per renderer. A keeper
- * is one more material of the same recipe, never disposed, and it holds the
- * count above nought for as long as the page has the renderer. It is made the
- * first time a material of its kind is drawn, and drawn once, in the same
+ * So each kind of material justdom-three draws gets a keeper per renderer. A
+ * keeper is one more material of the same recipe, never disposed, and it holds
+ * the count above nought for as long as the page has the renderer. It is made
+ * the first time a material of its kind is drawn, and drawn once, in the same
  * call and just before that material, by `renderBufferDirect` with the
- * material's scene, camera, geometry and object. Three keys a program on all
- * of those as well as on the material: the render target, the scene's fog
- * and lights, the geometry's attributes and the kind of object. Drawn with
- * every one of them as they are, the keeper compiles to the same program as
- * the material it stands behind. The one link the kind needs is the
- * keeper's, and the material finds the program already linked. A keeper
- * writes no colour and no depth, so it puts nothing on the screen.
+ * material's scene, camera, geometry and object. Three keys a program on all of
+ * those as well as on the material: the render target, the scene's fog and
+ * lights, the geometry's attributes and the kind of object. Drawn with every
+ * one of them as they are, the keeper compiles to the same program as the
+ * material it stands behind. The one link the kind needs is the keeper's, and
+ * the material finds the program already linked. A keeper writes no colour and
+ * no depth, so it puts nothing on the screen.
  *
- * The render target is the one of those freedom itself varies. Three
+ * The render target is the one of those justdom-three itself varies. Three
  * compiles for the screen, an XR session's framebuffer included, with the
  * renderer's tone mapping and output colour space, and for any other target
  * with neither, and `ghostSnapshot.js` draws a panel into such a target. So
@@ -87,8 +87,8 @@ function isScreen(target) {
 }
 
 /**
- * Keep the program `material` is drawn with linked once the material is
- * gone. Takes the material's `onBeforeRender`, which nothing else in freedom
+ * Keep the program `material` is drawn with linked once the material is gone.
+ * Takes the material's `onBeforeRender`, which nothing else in justdom-three
  * uses.
  *
  * @template {Material} M

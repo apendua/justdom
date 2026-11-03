@@ -2,9 +2,9 @@ import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createXRButton, requestFrameRate, suppressSessionOffers } from "./xr.js";
 
-// The button is freedom's own now (see `button.js`), and it is a real element
-// built against the jsdom the test setup installs — so these check the choice
-// this module makes by looking at what came back and at what it asks the
+// The button is justdom-three's own now (see `button.js`), and it is a real
+// element built against the jsdom the test setup installs — so these check the
+// choice this module makes by looking at what came back and at what it asks the
 // runtime for, rather than by intercepting three's button factories. The state
 // machine behind the element has its own tests in `button.test.js`.
 
@@ -434,9 +434,9 @@ describe("suppressSessionOffers", () => {
 
     await createXRButton(fakeRenderer());
 
-    // freedom's own button never reaches for this, so shadowing it would only
-    // be taking something away from whoever else is on the page. What matters
-    // is that nothing was offered.
+    // justdom-three's own button never reaches for this, so shadowing it would
+    // only be taking something away from whoever else is on the page. What
+    // matters is that nothing was offered.
     assert.equal(typeof system.offerSession, "function");
     assert.deepEqual(offered, []);
   });

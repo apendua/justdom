@@ -37,9 +37,9 @@ const THROWN = "the frame loop threw on purpose";
 /**
  * Arms a throw from inside the frame loop, to go off when asked.
  *
- * The loop is freedom's, and none of it is reachable from a page: there is no
- * handle on the renderer, and the callbacks it runs each frame belong to the
- * scene rather than to anything a script outside it can hold. What *is*
+ * The loop is justdom-three's, and none of it is reachable from a page: there
+ * is no handle on the renderer, and the callbacks it runs each frame belong to
+ * the scene rather than to anything a script outside it can hold. What *is*
  * reachable is the bottom of it — `renderer.render(scene, camera)` ends up in
  * the WebGL context, and a context method is an ordinary prototype method.
  * Making one of them throw is a genuine failure raised from inside the loop
@@ -56,7 +56,7 @@ const THROWN = "the frame loop threw on purpose";
  * session's frame callback at all, so it goes straight to the window — the
  * one path that was working when this was broken, and the one a test of the
  * other path must not accidentally take. Hence the look at the stack: only a
- * clear that freedom's own loop asked for will do.
+ * clear that justdom-three's own loop asked for will do.
  *
  * Runs before the app loads: three reaches for these methods as it draws, and
  * a patch applied afterwards would be on a prototype it has already gone past.
@@ -158,7 +158,7 @@ describe("a crash inside the session", () => {
     // The regression this file exists for, stated as plainly as it can be:
     // every assertion above is met while the mechanism the panel was first
     // built on never fires at all. Take the frame loop's own reporting out of
-    // `freedom/src/render.js` and this is the number that stays the same
+    // `packages/three/src/render.js` and this is the number that stays the same
     // while everything above it fails.
     assert.equal(
       windowErrors.filter((message) => message.includes(THROWN)).length,

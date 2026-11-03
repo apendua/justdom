@@ -48,21 +48,21 @@ function importGraph(entry) {
 
 test("the widgets a page shows load no three.js and no scene", () => {
   // A dropdown, a scrolling list or a keyboard on a page that may never
-  // open a session asks freedom at most which panel it is in and how to
-  // scroll, which is the page's side of freedom, not the renderer's.
+  // open a session asks justdom-three at most which panel it is in and how to
+  // scroll, which is the page's side of justdom-three, not the renderer's.
   for (const widget of WIDGETS) {
     const graph = [...importGraph(new URL(`./${widget}.js`, import.meta.url).href)];
     const three = graph.filter((url) => /\/node_modules\/three\/(src|build)\//.test(url));
     assert.deepEqual(three, [], `${widget}.js reaches three.js`);
     const scene = graph.filter((url) => url === import.meta.resolve("justdom-three"));
-    assert.deepEqual(scene, [], `${widget}.js reaches freedom's scene`);
+    assert.deepEqual(scene, [], `${widget}.js reaches justdom-three's scene`);
   }
 });
 
 test("a page that imports them from the package bundles no three.js", async () => {
-  // The package's entry also exports the diagnostics, which do import
-  // three.js and freedom's scene. A bundler leaves them out of a page that
-  // does not use them only because the package says it has no side effects.
+  // The package's entry also exports the diagnostics, which do import three.js
+  // and justdom-three's scene. A bundler leaves them out of a page that does
+  // not use them only because the package says it has no side effects.
   const result = await build({
     stdin: {
       contents: `import { ${WIDGETS.join(", ")} } from "./src/index.js";

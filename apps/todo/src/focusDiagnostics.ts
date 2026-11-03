@@ -10,7 +10,7 @@
  * - `navigator.virtualKeyboard`, Chromium's API for an on-screen
  *   keyboard, and the rectangle its `geometrychange` reports;
  * - every `keydown` on the page, the browser's own (`isTrusted`) told
- *   apart from the ones freedom's keyboard dispatches;
+ *   apart from the ones justdom-three's keyboard dispatches;
  * - `focusin` and `focusout` in the card;
  * - the window and the visual viewport changing size.
  */

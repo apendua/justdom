@@ -235,7 +235,7 @@ const dropdownOptionSelected = stylesheet`
   }
 `;
 
-/** The output picker's dress; the widget itself comes from freedom. */
+/** The output picker's dress; the widget itself comes from justdom-three. */
 export const outputClasses: DropdownClasses = {
   root: dropdownRoot,
   trigger: dropdownTrigger,

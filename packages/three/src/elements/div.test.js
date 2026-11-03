@@ -23,7 +23,8 @@ import { markedBox } from "./listMarker.js";
 import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
-import { BOX_BUCKET_BIAS, BoxBatchContext } from "./boxBatch.js";
+import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
+import { getObjectDrawOrder } from "../drawOrder.js";
 import { paintBatch } from "../test/textRuns.js";
 import { shape } from "../svg/shape.js";
 import { drawText } from "../svg/text.js";
@@ -2170,20 +2171,35 @@ describe("a box's background-image: url()", () => {
     }
   });
 
-  test("a box that gains one leaves its batch, and joins it again without", () => {
+  test("a box that gains one leaves its batch, and joins it again without, with its draw order kept", () => {
     const pictures = deferredPictures(10, 10);
     const drawn = batchedCard("background-color: rgb(255, 0, 0)");
+    /** @param {string} image */
+    const restyle = (image) => {
+      drawn.card.style.backgroundImage = image;
+      drawn.board.mirror.attributeChanged(drawn.card);
+    };
     try {
       assert.equal(drawn.batched(), true, "a box with no picture is batched");
-      drawn.card.style.backgroundImage = "url(/hover.png)";
-      drawn.board.mirror.attributeChanged(drawn.card);
-      pictures.land();
-      assert.equal(drawn.batched(), false);
-      assert.ok(drawn.box.material.uniforms.uImage.value);
-      drawn.card.style.backgroundImage = "none";
-      drawn.board.mirror.attributeChanged(drawn.card);
-      assert.equal(drawn.batched(), true);
-      assert.equal(drawn.box.material.uniforms.uImageOpacity.value, 0);
+      // The order the box's level gives it, which the batch draws past.
+      const level = drawn.box.renderOrder;
+      assert.equal(getObjectDrawOrder(drawn.box), level + BOX_BUCKET_BIAS);
+      // A hover happens more than once: the picture is built again after
+      // the box lost it.
+      for (const url of ["/hover.png", "/hover-again.png"]) {
+        restyle(`url(${url})`);
+        pictures.land();
+        assert.equal(drawn.batched(), false);
+        assert.ok(drawn.box.material.uniforms.uImage.value, `${url} is bound`);
+        assert.equal(drawn.box.material.uniforms.uImageOpacity.value, 1);
+        assert.equal(drawn.box.renderOrder, level + UNBATCHED_BOX_BIAS);
+        assert.equal(getObjectDrawOrder(drawn.box), level + UNBATCHED_BOX_BIAS);
+        restyle("none");
+        assert.equal(drawn.batched(), true);
+        assert.equal(drawn.box.material.uniforms.uImageOpacity.value, 0);
+        assert.equal(drawn.box.renderOrder, level);
+        assert.equal(getObjectDrawOrder(drawn.box), level + BOX_BUCKET_BIAS);
+      }
     } finally {
       drawn.teardown();
       pictures.restore();

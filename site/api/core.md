@@ -28,8 +28,8 @@ a scene without the two packages depending on each other.
 
 Entity effects for elements. `set` and `on` are `justdom-signal`'s, re-exported. The value given
 with a key is a getter, which is re-run when anything it read moves, or a subscribable, written on
-every emission. A plain value goes in the object form, `set(values)`, `attr(values)` or
-`style(values)`, which writes it once.
+every emission. A plain value goes in the object form, `set(values)`, `attr(values)`, `data(values)`
+or `style(values)`, which writes it once.
 
 | Function             | What it does                                                                                                                                                             |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -37,7 +37,7 @@ every emission. A plain value goes in the object form, `set(values)`, `attr(valu
 | `set(values)`        | Assigns an object of properties with `Object.assign`, as an effect: a getter on the object is read inside it, so the assignment runs again when the getter's reads move. |
 | `on(event, handler)` | Adds an event listener and removes it with the element. The handler runs inside a `Computation`, and a handler that throws fails the mounting.                           |
 | `attr(name, value)`  | Writes an attribute; `undefined` removes it, `null` writes `"null"`. `attr(values)` writes several at once.                                                              |
-| `data(key, value)`   | Writes a `dataset` entry; `undefined` deletes it.                                                                                                                        |
+| `data(key, value)`   | Writes a `dataset` entry; `undefined` deletes it, `null` writes `"null"`. `data(values)` writes several at once.                                                         |
 | `style(name, value)` | Writes a style property, a custom property such as `--accent` included. `style(values)` writes several.                                                                  |
 
 ## Lists

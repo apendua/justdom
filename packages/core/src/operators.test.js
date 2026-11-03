@@ -213,6 +213,45 @@ describe("DOM Operators", () => {
 
       subscription.unsubscribe();
     });
+
+    it("should write a getter's value and follow it", () => {
+      const div = document.createElement("div");
+      const value = Signal.of("a");
+      const subscription = just(div, [data("testKey", () => value.get())]).subscribe();
+
+      assert.strictEqual(div.dataset.testKey, "a");
+      value.set("b");
+      assert.strictEqual(div.dataset.testKey, "b");
+
+      subscription.unsubscribe();
+    });
+
+    it("should write plain values in the object form", () => {
+      const div = document.createElement("div");
+      div.dataset.gone = "x";
+      const subscription = just(div, [
+        data({ id: "1", count: 3, empty: null, gone: undefined }),
+      ]).subscribe();
+
+      assert.strictEqual(div.getAttribute("data-id"), "1");
+      assert.strictEqual(div.dataset.count, "3");
+      assert.strictEqual(div.dataset.empty, "null");
+      assert.strictEqual("gone" in div.dataset, false);
+
+      subscription.unsubscribe();
+    });
+
+    it("should refuse a plain value or no value given with a key", () => {
+      // Never called: the check is tsc's.
+      void (() =>
+        // @ts-expect-error -- a plain value goes in the object form
+        data("id", "1"));
+      assert.throws(
+        // @ts-expect-error -- a key needs its value
+        () => data("id"),
+        /Value observable is required/,
+      );
+    });
   });
 
   describe("operator: style()", () => {

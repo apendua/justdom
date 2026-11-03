@@ -28,14 +28,13 @@ places and each gets a node of its own. `$$(tag, effects)` is the same for SVG e
 
 The operators are factories of entity effects. Given a key, each takes its value as a getter, re-run
 when anything it read moves, or as a subscribable, written on every emission. A plain value, written
-once, goes in the object form of `set`, `attr` or `style` instead: `set({ className: "counter" })`.
-`data` has no object form, so a constant entry takes a getter: `data("id", () => "1")`.
+once, goes in the object form instead: `set({ className: "counter" })`.
 
 | Operator               | Writes                                                                                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `set(key, value)`      | A property. `set({ type: "checkbox", get checked() { return props.completed; } })` assigns an object of properties, and runs again when a getter's reads move. |
 | `attr(name, value)`    | An attribute; `undefined` removes it. `attr({ "data-id": id })` writes several.                                                                                |
-| `data(key, value)`     | A `dataset` entry.                                                                                                                                             |
+| `data(key, value)`     | A `dataset` entry; `undefined` deletes it. `data({ id })` writes several.                                                                                      |
 | `style(name, value)`   | A style property, custom properties included; `style({ ... })` writes several.                                                                                 |
 | `on(event, handler)`   | A listener, removed with the element. The handler runs inside a computation, so a throw fails the mounting rather than vanishing.                              |
 | `children(...sources)` | The element's children: each source emits a mountable, and a new emission replaces the nodes the last one placed.                                              |

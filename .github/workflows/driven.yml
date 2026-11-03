@@ -80,8 +80,10 @@ jobs:
       # No build: the apps and everything they import are served from
       # source by vite, which is what the checks start.
       #
-      # The checks borrow playwright from apps/showcase, so the browser is
-      # the one visual.yml installs, cached under the same key.
+      # The checks drive the browser through justdom-xr's own playwright-core,
+      # so the browser is installed and found through that copy. The lockfile
+      # resolves it to the version apps/showcase has, so this is the browser
+      # visual.yml installs, cached under the same key.
       - name: Cache the browser
         uses: actions/cache@v6
         with:
@@ -89,14 +91,14 @@ jobs:
           key: playwright-${{ runner.os }}-${{
             hashFiles('./common/config/rush/pnpm-lock.yaml') }}
       - name: Install Chromium
-        run: node apps/showcase/node_modules/playwright-core/cli.js install --with-deps chromium
+        run: node packages/xr/node_modules/playwright-core/cli.js install --with-deps chromium
       # The checks launch the Chromium a development container keeps under
       # /opt unless CHROMIUM names another, and the runner has it where
       # playwright put it.
       - name: Point the checks at it
         run: |
           echo "CHROMIUM=$(node --input-type=module -e "
-            const { chromium } = await import('./apps/showcase/node_modules/playwright-core/index.mjs');
+            const { chromium } = await import('./packages/xr/node_modules/playwright-core/index.mjs');
             console.log(chromium.executablePath());
           ")" >> "$GITHUB_ENV"
       - name: Play minesweeper

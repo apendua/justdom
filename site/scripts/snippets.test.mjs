@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractSnippets, mapDiagnostics, skipMarker, unresolvedNames } from "./snippets.mjs";
+import {
+  extractSnippets,
+  mapDiagnostics,
+  readProbe,
+  skipMarker,
+  unresolvedNames,
+  writeProbe,
+} from "./snippets.mjs";
 
 test("each js and ts block is taken, with the line of its fence", () => {
   const markdown = [
@@ -100,4 +107,57 @@ test("the names tsc could not find are listed once each", () => {
     "a/2.js(3,1): error TS2345: Argument of type 'string' is not assignable.",
   ].join("\n");
   assert.deepEqual(unresolvedNames(output), ["ctx", "node", "root"]);
+});
+
+test("the probe imports each name from each entry point, then uses each", () => {
+  const probe = writeProbe(["a", "b"], ["x", "y"]);
+  assert.equal(
+    probe.text,
+    [
+      'import { x as _0, y as _1 } from "a";',
+      'import { x as _2, y as _3 } from "b";',
+      "void _0;",
+      "void _1;",
+      "void _2;",
+      "void _3;",
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    probe.aliases.map(({ line, column }) => [line, column]),
+    [
+      [1, 10],
+      [1, 19],
+      [2, 10],
+      [2, 19],
+    ],
+  );
+});
+
+test("any refusal at a name on an import line means the entry point lacks it", () => {
+  const probe = writeProbe(["a", "a/rxjs"], ["Subscribable", "set", "Context"]);
+  /** Where tsc puts an error on the name `name` imported from `entry`. */
+  const at = (/** @type {string} */ entry, /** @type {string} */ name) => {
+    const alias = probe.aliases.find((a) => a.entry === entry && a.name === name);
+    return `probe.ts(${alias?.line},${alias?.column})`;
+  };
+  const output = [
+    `${at("a", "set")}: error TS2305: Module '"a"' has no exported member 'set'.`,
+    `${at("a/rxjs", "Subscribable")}: error TS2459: Module '"a/rxjs"' declares 'Subscribable' locally, but it is not exported.`,
+    `${at("a/rxjs", "Context")}: error TS2724: '"a/rxjs"' has no exported member named 'Context'. Did you mean 'Contexts'?`,
+    "probe.ts(5,6): error TS2693: '_2' only refers to a type, but is being used as a value here.",
+  ].join("\n");
+  assert.deepEqual(readProbe(output, probe), {
+    values: new Map([
+      ["Subscribable", ["a"]],
+      ["set", ["a/rxjs"]],
+    ]),
+    types: new Map([["Context", ["a"]]]),
+  });
+});
+
+test("an entry point that does not resolve fails, not exports everything", () => {
+  const probe = writeProbe(["no-such-pkg"], ["ctx"]);
+  const output = "probe.ts(1,27): error TS2307: Cannot find module 'no-such-pkg' or its types.";
+  assert.throws(() => readProbe(output, probe), /could not import from no-such-pkg/);
 });

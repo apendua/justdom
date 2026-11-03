@@ -271,35 +271,90 @@ export function exportsOf(names, dir) {
   }
   const candidates = names.filter((name) => !namespaces.has(name));
   if (candidates.length === 0) return exported;
-  const entries = entryPoints();
-  /** @type {{ entry: string, line: number, name: string }[]} */
-  const aliases = [];
-  const probe = entries.map((entry, line) => {
-    const list = candidates.map((name) => `${name} as _${aliases.push({ entry, line, name }) - 1}`);
-    return `import { ${list.join(", ")} } from "${entry}";`;
-  });
-  // A statement each, since tsc reports one such error a statement.
-  probe.push(...aliases.map((_, index) => `void _${index};`));
+  const probe = writeProbe(entryPoints(), candidates);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "probe.ts"), probe.join("\n") + "\n");
+  writeFileSync(join(dir, "probe.ts"), probe.text);
   writeFileSync(
     join(dir, "tsconfig.json"),
     JSON.stringify({ compilerOptions, files: ["probe.ts"] }, null, 2) + "\n",
   );
-  const output = runTsc(dir);
+  const { values, types } = readProbe(runTsc(dir), probe);
+  for (const [name, from] of values) exported.values.set(name, from);
+  for (const [name, from] of types) exported.types.set(name, from);
+  return exported;
+}
+
+/**
+ * @typedef {object} Probe
+ * @property {string} text the probe's source
+ * @property {number} imports how many of its lines are imports, from line 1
+ * @property {{ entry: string, line: number, column: number, name: string }[]} aliases
+ *   each name as it is imported, as `_` and its index, at a line and a
+ *   column from 1
+ */
+
+/**
+ * The probe `exportsOf` hands to tsc: one import line for each entry point,
+ * each name under an alias, then one statement for each alias that uses it
+ * as a value, since tsc reports one such error a statement.
+ *
+ * @param {string[]} entries
+ * @param {string[]} names
+ * @returns {Probe}
+ */
+export function writeProbe(entries, names) {
+  /** @type {Probe["aliases"]} */
+  const aliases = [];
+  const lines = entries.map((entry, index) => {
+    let text = "import { ";
+    names.forEach((name, n) => {
+      if (n > 0) text += ", ";
+      aliases.push({ entry, line: index + 1, column: text.length + 1, name });
+      text += `${name} as _${aliases.length - 1}`;
+    });
+    return `${text} } from "${entry}";`;
+  });
+  lines.push(...aliases.map((_, index) => `void _${index};`));
+  return { text: lines.join("\n") + "\n", imports: entries.length, aliases };
+}
+
+/**
+ * What tsc's errors on a probe say each entry point exports. Any error at a
+ * name on an import line means the entry point does not export it: tsc
+ * words that several ways, such as a member that does not exist, or one the
+ * module declares but does not export. An alias that refers to a type alone
+ * is reported where it is used as a value. Any other error, such as an
+ * entry point that does not resolve, throws, since it would otherwise read
+ * as an entry point that exports every name.
+ *
+ * @param {string} output tsc's stdout for the probe
+ * @param {Probe} probe
+ * @returns {{ values: Map<string, string[]>, types: Map<string, string[]> }}
+ */
+export function readProbe(output, { imports, aliases }) {
   const missing = new Set();
-  for (const [, line, name] of output.matchAll(
-    /^probe\.ts\((\d+),\d+\): error TS\d+: .* has no exported member(?: named)? '([^']+)'/gm,
+  const typeOnly = new Set();
+  for (const [text, row, column, message] of output.matchAll(
+    /^probe\.ts\((\d+),(\d+)\): error TS\d+: (.*)$/gm,
   )) {
-    missing.add(`${Number(line) - 1}:${name}`);
+    const line = Number(row);
+    if (line <= imports) {
+      const index = aliases.findIndex((a) => a.line === line && a.column === Number(column));
+      if (index === -1) {
+        const entry = aliases.find((a) => a.line === line)?.entry;
+        throw new Error(`The probe could not import from ${entry}: ${text}`);
+      }
+      missing.add(index);
+    } else if (/^'_\d+' only refers to a type/.test(message)) {
+      typeOnly.add(Number(message.slice(2, message.indexOf("'", 1))));
+    } else {
+      throw new Error(`The probe failed: ${text}`);
+    }
   }
-  const typeOnly = new Set(
-    [
-      ...output.matchAll(/^probe\.ts\(\d+,\d+\): error TS\d+: '_(\d+)' only refers to a type/gm),
-    ].map(([, index]) => Number(index)),
-  );
-  aliases.forEach(({ entry, line, name }, index) => {
-    if (missing.has(`${line}:${name}`)) return;
+  /** @type {{ values: Map<string, string[]>, types: Map<string, string[]> }} */
+  const exported = { values: new Map(), types: new Map() };
+  aliases.forEach(({ entry, name }, index) => {
+    if (missing.has(index)) return;
     const map = typeOnly.has(index) ? exported.types : exported.values;
     map.set(name, [...(map.get(name) ?? []), entry]);
   });
@@ -348,6 +403,21 @@ export function sources() {
   return ["README.md", ...packages, "site/index.md", ...pages];
 }
 
+/**
+ * The packages whose README is checked but which the site does not depend
+ * on, so that their own names would be taken for placeholders.
+ *
+ * @returns {string[]} their names
+ */
+export function packagesNotDependedOn() {
+  /** @type {Record<string, string>} */
+  const dependencies = readJson(join(site, "package.json")).devDependencies;
+  return sources()
+    .filter((source) => source.startsWith("packages/"))
+    .map((source) => readJson(join(root, posix.dirname(source), "package.json")).name)
+    .filter((name) => dependencies[name] !== "workspace:*");
+}
+
 function main() {
   const out = join(site, ".snippets");
   rmSync(out, { recursive: true, force: true });
@@ -356,7 +426,10 @@ function main() {
   /** @type {Map<string, { source: string, line: number }>} */
   const files = new Map();
   /** @type {string[]} */
-  const problems = [];
+  const problems = packagesNotDependedOn().map(
+    (name) =>
+      `site/package.json: ${name} has a README that is checked, so it has to be a "workspace:*" devDependency`,
+  );
   for (const source of sources()) {
     const { snippets, stray } = extractSnippets(readFileSync(join(root, source), "utf8"));
     for (const line of stray) {

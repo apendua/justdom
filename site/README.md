@@ -94,10 +94,10 @@ API the way its types refuse fails the build. `scripts/snippets.mjs` takes every
 and `tsx` block from the guide, the API reference, the repository's README and each package's
 README, writes each to `.snippets/` (ignored by Git) as a module of its own, and runs `tsc` over
 them against the packages. The packages are this package's other `workspace:*` dependencies, so Rush
-builds their types first; a new package under `packages/` goes in that list too, or its README's
-names are taken for placeholders. A block is checked, not run. The check also includes the
-declarations that tell `on` an element's or a Three object's events, from
-`packages/three/src/types/`: the packages do not ship them, and each demo keeps a copy of its own.
+builds their types first. A package whose README is checked has to be one of them, and the check
+fails on one that is not. A block is checked, not run. The check also includes the declarations that
+tell `on` an element's or a Three object's events, from `packages/three/src/types/`: the packages do
+not ship them, and each demo keeps a copy of its own.
 
 Most blocks are fragments that use a `ctx` or a `board` the page explains in prose. A name a block
 never declares is taken for such a placeholder and not reported, unless a package exports it as a

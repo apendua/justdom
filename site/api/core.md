@@ -26,9 +26,10 @@ a scene without the two packages depending on each other.
 
 ## Operators
 
-Entity effects for elements. `set` and `on` are `justdom-signal`'s, re-exported. Each value may be a
-plain value, a getter, which is re-run when anything it read moves, or a subscribable, written on
-every emission.
+Entity effects for elements. `set` and `on` are `justdom-signal`'s, re-exported. The value given
+with a key is a getter, which is re-run when anything it read moves, or a subscribable, written on
+every emission. A plain value goes in the object form, `set(values)`, `attr(values)` or
+`style(values)`, which writes it once.
 
 | Function             | What it does                                                                                                                                                             |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

@@ -43,8 +43,11 @@ once, goes in the object form of `set`, `attr` or `style` instead: `set({ classN
 The operators are plain functions, so a component is a function that returns an element source, and
 its props are whatever it was given:
 
+<!-- snippet: skip -->
+
 ```js
 import { component, store, emit } from "justdom-signal";
+import { $, attr, children, on, set, text } from "justdom-core";
 
 const TodoItem = component((ctx, id, operators) => {
   const props = store({ text: "", completed: false }, operators);
@@ -86,6 +89,8 @@ subscribable; a getter or a source that yields `null` or `undefined` renders as 
 records that is re-ordered moves its rows rather than rebuilding them, and `getIndex()` is reactive:
 
 ```js
+import { children, list, set } from "justdom-core";
+
 children(
   list(
     () => todos.get(),
@@ -113,7 +118,7 @@ interpolates its own generated name wherever `CLASS_NAME` appears, for a sheet w
 selector:
 
 ```js
-import { className, stylesheet, CLASS_NAME } from "justdom-core";
+import { $, children, className, set, stylesheet, CLASS_NAME } from "justdom-core";
 
 const label = className`
   flex-grow: 1;
@@ -138,6 +143,8 @@ is an `@font-face` rule on the same terms.
 wait for, and `withFallback(ctx, content)` renders the fallback until every registered promise has
 settled, then the content:
 
+<!-- snippet: skip -->
+
 ```js
 ctx = suspend(ctx, () => ProgressBar(1000));
 waitFor(ctx, loadTodos());
@@ -152,6 +159,7 @@ as its children.
 
 ```js
 import { just } from "justdom-signal";
+import { children } from "justdom-core";
 
 const subscription = just(document.querySelector("#app"), [children(App({}))]).subscribe();
 // later

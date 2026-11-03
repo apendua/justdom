@@ -57,6 +57,10 @@ reading head-locked in the room, with a minute of history as bars coloured again
 rate. It is faint, lets rays through, and draws over the scene rather than in it.
 
 ```js
+import { useEffects, effects } from "justdom-signal";
+import { getScene } from "justdom-three";
+import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
+
 const diagnostics = createDiagnostics();
 useEffects(getScene(ctx), [effects(() => useDiagnostics(ctx, diagnostics))]);
 ```

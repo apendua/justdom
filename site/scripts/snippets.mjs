@@ -455,8 +455,8 @@ function main() {
   if (problems.length > 0) {
     console.log(problems.join("\n"));
     console.log(
-      `\n${problems.length} problem(s) in the docs' code blocks. Fix the block, or put ` +
-        `${skipMarker} on the line above one that is not meant to compile.`,
+      `\n${problems.length} problem(s). A code block that is not meant to compile can be ` +
+        `skipped with ${skipMarker} on the line above its fence.`,
     );
     process.exitCode = 1;
     return;

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -20,8 +20,10 @@ test("the driver loads from an install outside this repository", () => {
     mkdirSync(installed, { recursive: true });
     cpSync(join(pkg, "package.json"), join(installed, "package.json"));
     cpSync(join(pkg, "driver"), join(installed, "driver"), { recursive: true });
-    const playwright = createRequire(join(pkg, "package.json")).resolve("playwright-core");
-    symlinkSync(realpathSync(join(playwright, "..")), join(modules, "playwright-core"), "dir");
+    const playwright = createRequire(join(pkg, "package.json")).resolve(
+      "playwright-core/package.json",
+    );
+    symlinkSync(realpathSync(dirname(playwright)), join(modules, "playwright-core"), "dir");
 
     const exported = execFileSync(
       process.execPath,

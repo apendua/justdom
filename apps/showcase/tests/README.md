@@ -58,9 +58,9 @@ browser of their own, so the hand is in none of the other photographs.
 ## The two kinds of check, and which one can fail on your machine
 
 **Baseline comparison** is exact, and is only meaningful on a machine that draws the way the
-recording machine did. A different Chromium rasterizes differently; a machine with different fonts
-installed lays the panels' text out differently. Both are real differences in what was drawn and
-neither is a regression.
+recording machine did. A different Chromium can rasterize differently; a machine with different
+fonts installed lays the panels' text out differently. Both are real differences in what was drawn
+and neither is a regression.
 
 So baselines are filed under a fingerprint of the machine that drew them — Chromium's version, the
 width the app's font stack measures a specimen string at, and the viewport — one directory each, and
@@ -68,10 +68,10 @@ more than one can be committed at a time. Somewhere with no baseline of its own,
 one and says so. **Under `VISUAL_STRICT=1`, which is how CI runs it, it fails instead**: a green
 check that quietly declined to check is worse than no check at all.
 
-The difference between two machines is not hypothetical: this repository holds baselines from a
-runner and from a dev container that have the _same_ fonts and differ only in Chromium build, and
-they disagree by 705 pixels — twice the budget. Sharing one set between them would mean either a
-budget too loose to catch a missing border or a check that fails for everyone but one machine.
+The difference between two machines is not hypothetical: baselines once recorded on a runner and in
+a dev container, with the _same_ fonts and only the Chromium build apart, disagreed by 705 pixels —
+twice the budget. Sharing one set between them would mean either a budget too loose to catch a
+missing border or a check that fails for everyone but one machine.
 
 CI's baselines are the ones that gate a pull request, and CI is where they are drawn: dispatch the
 **Visual regression** workflow with `record: true` and the runner redraws them, runs the strict

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Drop the unused lodash dependency",
+      "type": "patch",
+      "packageName": "@apendua/geometry"
+    }
+  ],
+  "packageName": "@apendua/geometry",
+  "email": "noreply@anthropic.com"
+}

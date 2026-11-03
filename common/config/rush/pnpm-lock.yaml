@@ -483,10 +483,6 @@ importers:
         version: 7.0.2
 
   ../../packages/geometry:
-    dependencies:
-      lodash:
-        specifier: ^4.17.21
-        version: 4.18.1
     devDependencies:
       '@types/node':
         specifier: ^24.7.0

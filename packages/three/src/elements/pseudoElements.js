@@ -10,9 +10,10 @@ import {
   nodeDerived,
 } from "./mirror.js";
 import { ownedImage } from "./image.js";
+import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
 
 /**
- * @import {GeneratedLayout} from './mirror.js';
+ * @import {ClientBox, GeneratedLayout} from './mirror.js';
  */
 
 /*
@@ -223,6 +224,9 @@ function generatedLayoutEqual(a, b) {
   if (a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) {
     return false;
   }
+  if (a.picture !== b.picture && (!a.picture || !b.picture || !boxEqual(a.picture, b.picture))) {
+    return false;
+  }
   if (a.text === b.text) {
     return true;
   }
@@ -245,6 +249,33 @@ function generatedLayoutEqual(a, b) {
         line.height === other.height
       );
     })
+  );
+}
+
+/**
+ * @param {ClientBox} a
+ * @param {ClientBox} b
+ * @returns {boolean}
+ */
+function boxEqual(a, b) {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/**
+ * Whether a style paints anything on its box: a background colour that is
+ * not transparent, a `background-image`, or a border that draws
+ * (`getDrawnBorderColor`), so not a transparent one. A pseudo-element that
+ * is only text builds no quad.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+export function paintsBox(style) {
+  const background = style.backgroundColor || "transparent";
+  return (
+    (background !== "transparent" && parseAlpha(background) > 0) ||
+    (style.backgroundImage || "none") !== "none" ||
+    parseAlpha(getDrawnBorderColor(style)) > 0
   );
 }
 
@@ -330,6 +361,22 @@ export class Generated {
    */
   style() {
     return getComputedStyleCached(this.element, this.pseudo);
+  }
+
+  /**
+   * What its quad covers, in its element's frame before any scroll: its
+   * box, or, for a box that paints nothing of its own (`paintsBox`), the
+   * `content: url()` picture alone, which reaches above the box when it is
+   * taller than the line it is on.
+   *
+   * @returns {ClientBox}
+   */
+  quad() {
+    const at = this.layout.get();
+    const placed = at.picture;
+    return placed && !paintsBox(this.style())
+      ? { x: at.x + placed.x, y: at.y + placed.y, width: placed.width, height: placed.height }
+      : { x: at.x, y: at.y, width: at.width, height: at.height };
   }
 }
 

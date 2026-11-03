@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal";
 import { $, children, Nothing } from "../operators.js";
 import VisualProperties from "./VisualProperties.js";
-import { getInteriorClipBox, getScrollOffset } from "./mirror.js";
-import { getGenerated, generatedRules, KIND_BITS } from "./pseudoElements.js";
+import { getInteriorClipBox, getScrollOffset, hidesVisibility } from "./mirror.js";
+import { getGenerated, generatedRules, KIND_BITS, paintsBox } from "./pseudoElements.js";
 import {
   createRectUniforms,
   rectGeometry,
@@ -20,7 +20,7 @@ import { placeAndScale } from "./place.js";
 import { BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { drawQuad } from "./div.js";
-import { contentBox, getRunRenderStyle, isTintableText, px } from "./textHelpers.js";
+import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
 import { surfaceRun } from "./surfaceRun.js";
 
 /**
@@ -50,26 +50,6 @@ import { surfaceRun } from "./surfaceRun.js";
  * other than its element, whose place a copy of the element cannot give;
  * and its transitions and animations, of which the end is drawn.
  */
-
-/**
- * Whether a style paints anything on its box: a background colour that is
- * not transparent, a `background-image`, or a border. A pseudo-element that
- * is only text builds no quad.
- *
- * @param {CSSStyleDeclaration} style
- * @returns {boolean}
- */
-function paintsBox(style) {
-  const background = style.backgroundColor || "transparent";
-  return (
-    (background !== "transparent" && !/^rgba\(.*,\s*0\)$/.test(background)) ||
-    (style.backgroundImage || "none") !== "none" ||
-    px(style.borderTopWidth) > 0 ||
-    px(style.borderRightWidth) > 0 ||
-    px(style.borderBottomWidth) > 0 ||
-    px(style.borderLeftWidth) > 0
-  );
-}
 
 /**
  * An element's `::before` and `::after`, each for as long as it draws one.
@@ -139,6 +119,9 @@ function generatedBox(ctx, generated, surface) {
     ...surface,
     properties,
     contentRenderOrder: order,
+    // Its own `visibility`, which it inherits from the element unless a
+    // rule sets it.
+    hidden: () => hidesVisibility(style().visibility),
   };
 
   const renderStyle = () => getRunRenderStyle(style());
@@ -159,7 +142,7 @@ function generatedBox(ctx, generated, surface) {
   group.matrixAutoUpdate = false;
   return $(group, [
     effects(() => {
-      const { width, height } = layout.get();
+      const { width, height } = generated.quad();
       properties.setFromElement(element, pseudo, { width, height });
     }),
     children(
@@ -195,7 +178,7 @@ function generatedBox(ctx, generated, surface) {
  * @param {WeakKey} ctx
  * @param {Generated} generated
  * @param {BoxSurface} surface The generated box's own.
- * @param {() => { x: number, y: number }} origin
+ * @param {() => { x: number, y: number }} origin The box's top left, scrolled.
  * @returns {Source<Component>}
  */
 function generatedQuad(ctx, generated, surface, origin) {
@@ -218,20 +201,24 @@ function generatedQuad(ctx, generated, surface, origin) {
     panelBatch?.invalidate();
     textBatch?.invalidate();
   };
-  /** The `content: url()` picture, at its own size in the content box. */
+  /**
+   * The `content: url()` picture, at its own size, where the copy laid it
+   * out: inline, on the baseline of its line in the box.
+   */
   const shown = new Derived(
     () => {
       const state = picture.get()?.state.get();
       const size = natural.get();
-      if (!state?.texture || !size) {
+      const at = generated.layout.get();
+      const placed = at.picture;
+      if (!state?.texture || !size || !placed) {
         return background.get();
       }
-      const box = contentBox(generated.style(), {
-        width: properties.totalWidth,
-        height: properties.totalHeight,
-      });
+      const quad = generated.quad();
+      const left = at.x + placed.x - quad.x;
+      const top = at.y + placed.y - quad.y;
       return placeContentImage(
-        { left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height },
+        { left, top, right: left + placed.width, bottom: top + placed.height },
         "none",
         "0% 0%",
         size,
@@ -252,7 +239,9 @@ function generatedQuad(ctx, generated, surface, origin) {
     effects((obj) => {
       writeRectUniforms(uniforms, properties);
       writeGradientUniforms(uniforms, properties, rampSlot);
-      const at = origin();
+      const quad = generated.quad();
+      const box = generated.layout.get();
+      const at = { x: origin().x + quad.x - box.x, y: origin().y + quad.y - box.y };
       placeAndScale(
         obj,
         at.x,

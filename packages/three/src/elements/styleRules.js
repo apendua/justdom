@@ -8,19 +8,24 @@
 /**
  * Call `visit` on every style rule in `rules`, and in every rule nested in
  * them: inside `@media`, `@supports`, `@layer` and `@container`, inside a
- * style rule's own nested rules, and in a sheet an `@import` brings.
+ * style rule's own nested rules, and in a sheet an `@import` brings. A rule
+ * nested in a style rule is visited with that rule's selector, resolved
+ * against its own parent's (`resolveNested`); a top-level rule, with null.
  *
  * @param {CSSRuleList} rules
- * @param {(rule: CSSStyleRule) => void} visit
+ * @param {(rule: CSSStyleRule, parent: string | null) => void} visit
+ * @param {string | null} parent
  * @returns {void}
  */
-function walkRules(rules, visit) {
+function walkRules(rules, visit, parent) {
   for (const rule of rules) {
     // By the properties rather than by `instanceof`, which needs each rule
     // class to be a global.
     const style = /** @type {Partial<CSSStyleRule>} */ (rule);
+    let scope = parent;
     if (typeof style.selectorText === "string") {
-      visit(/** @type {CSSStyleRule} */ (rule));
+      visit(/** @type {CSSStyleRule} */ (rule), parent);
+      scope = resolveNested(style.selectorText, parent);
     }
     const imported = /** @type {Partial<CSSImportRule>} */ (rule).styleSheet;
     if (imported) {
@@ -28,14 +33,14 @@ function walkRules(rules, visit) {
     }
     const nested = /** @type {Partial<CSSGroupingRule>} */ (rule).cssRules;
     if (nested) {
-      walkRules(nested, visit);
+      walkRules(nested, visit, scope);
     }
   }
 }
 
 /**
  * @param {CSSStyleSheet} sheet
- * @param {(rule: CSSStyleRule) => void} visit
+ * @param {(rule: CSSStyleRule, parent: string | null) => void} visit
  * @returns {void}
  */
 function walkSheet(sheet, visit) {
@@ -48,16 +53,16 @@ function walkSheet(sheet, visit) {
     // the script's to read, and not to rewrite either.
     return;
   }
-  walkRules(rules, visit);
+  walkRules(rules, visit, null);
 }
 
 /**
  * Call `visit` on every style rule of every sheet in `sheets`, nested and
- * imported ones included (see `walkRules`). A sheet whose rules cannot be
- * read is skipped.
+ * imported ones included, a nested one with the selector it is nested in
+ * (see `walkRules`). A sheet whose rules cannot be read is skipped.
  *
  * @param {Iterable<CSSStyleSheet>} sheets
- * @param {(rule: CSSStyleRule) => void} visit
+ * @param {(rule: CSSStyleRule, parent: string | null) => void} visit
  * @returns {void}
  */
 export function walkStyleRules(sheets, visit) {
@@ -102,6 +107,68 @@ export function splitSelectorList(text) {
   }
   parts.push(text.slice(start));
   return parts;
+}
+
+/**
+ * A nested rule's selector list as one that stands on its own: each `&` in a
+ * selector is its parent's list, as `:is(parent)`, and a selector with no
+ * `&` is relative to it, a descendant unless it starts with a combinator.
+ * `&::before` in `.chip` is `:is(.chip)::before`, and `.icon::after` in it
+ * is `:is(.chip) .icon::after`. A top-level list, with no parent, is as it
+ * stands.
+ *
+ * @param {string} text A selector list, as `selectorText` reads.
+ * @param {string | null} parent The resolved list it is nested in.
+ * @returns {string}
+ */
+export function resolveNested(text, parent) {
+  if (parent === null) {
+    return text;
+  }
+  const scope = `:is(${parent})`;
+  return splitSelectorList(text)
+    .map((part) => {
+      const selector = part.trim();
+      const resolved = replaceNesting(selector, scope);
+      return resolved === null ? `${scope} ${selector}` : resolved;
+    })
+    .join(", ");
+}
+
+/**
+ * `selector` with each `&` that is a nesting selector, not an escaped one
+ * or one in a string, replaced by `scope`; or null when it has none.
+ *
+ * @param {string} selector
+ * @param {string} scope
+ * @returns {string | null}
+ */
+function replaceNesting(selector, scope) {
+  let out = "";
+  let found = false;
+  /** @type {string | null} */
+  let quote = null;
+  for (let i = 0; i < selector.length; i++) {
+    const c = selector[i];
+    if (c === "\\") {
+      out += selector.slice(i, i + 2);
+      i += 1;
+    } else if (quote) {
+      if (c === quote) {
+        quote = null;
+      }
+      out += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      out += c;
+    } else if (c === "&") {
+      found = true;
+      out += scope;
+    } else {
+      out += c;
+    }
+  }
+  return found ? out : null;
 }
 
 /** A pseudo-element that ends a selector and generates content. */

@@ -62,7 +62,7 @@
 
 import { Signal } from "justdom-signal";
 import { originalSelector, restoreUserActions, rewriteUserActions } from "./userActionRules.js";
-import { generatedHost, splitSelectorList, walkStyleRules } from "./styleRules.js";
+import { generatedHost, resolveNested, splitSelectorList, walkStyleRules } from "./styleRules.js";
 
 /**
  * What a style change can restyle: the classes every changed rule starts
@@ -112,15 +112,68 @@ let pollerInterval = 0;
 let fingerprint = "";
 
 /**
+ * The mark on a copy that an element's `::before` or `::after` is measured in
+ * (`measureGeneratedBox`), and the rule that switches the copy's own
+ * `::before` and `::after` off. The copy holds a stand-in span for the
+ * generated box, and the page's rules would lay out a second one beside it.
+ */
+export const GENERATED_COPY_ATTRIBUTE = "data-xr-generated-copy";
+const GENERATED_COPY_RULE = `[${GENERATED_COPY_ATTRIBUTE}]::before, [${GENERATED_COPY_ATTRIBUTE}]::after { content: none !important; }`;
+
+/**
+ * The `<style>` that holds `GENERATED_COPY_RULE` while a panel watches. It
+ * goes into the head before the observer watches it and leaves after the
+ * observer stops, so no flush reports it, and it is none of the document's
+ * sheets (`documentSheets`): it is not the page's, and no panel is to
+ * restyle for it.
+ *
+ * @type {HTMLStyleElement | null}
+ */
+let copyRule = null;
+
+/**
+ * @returns {HTMLStyleElement}
+ */
+function installCopyRule() {
+  const element = document.createElement("style");
+  element.textContent = GENERATED_COPY_RULE;
+  document.head.append(element);
+  return element;
+}
+
+/**
+ * Run `measure` while `GENERATED_COPY_RULE` is in the page: the one a panel
+ * installed, or, while none watches, one put in for the call and taken out
+ * after it.
+ *
+ * @template T
+ * @param {() => T} measure
+ * @returns {T}
+ */
+export function withGeneratedCopyRule(measure) {
+  if (copyRule) {
+    return measure();
+  }
+  const rule = installCopyRule();
+  try {
+    return measure();
+  } finally {
+    rule.remove();
+  }
+}
+
+/**
  * The document's top-level sheets: the ones `<style>` and `<link>` bring,
  * the one the developer tools add when a rule is created there, and the
- * constructed ones adopted by script. A sheet brought in by `@import` is not
- * among them; `readSheet` reaches it through the rule that imports it.
+ * constructed ones adopted by script, less the one that is the panels' own
+ * (`copyRule`). A sheet brought in by `@import` is not among them;
+ * `readSheet` reaches it through the rule that imports it.
  *
  * @returns {CSSStyleSheet[]}
  */
 function documentSheets() {
-  const sheets = [...document.styleSheets];
+  const own = copyRule?.sheet;
+  const sheets = [...document.styleSheets].filter((sheet) => sheet !== own);
   if (document.adoptedStyleSheets) {
     sheets.push(...document.adoptedStyleSheets);
   }
@@ -630,8 +683,8 @@ function refreshGeneratedSelectors() {
 function readGeneratedSelectors() {
   /** @type {Record<"before" | "after", string[]>} */
   const hosts = { before: [], after: [] };
-  walkStyleRules(documentSheets(), (rule) => {
-    for (const selector of splitSelectorList(rule.selectorText)) {
+  walkStyleRules(documentSheets(), (rule, parent) => {
+    for (const selector of splitSelectorList(resolveNested(rule.selectorText, parent))) {
       const generated = generatedHost(selector);
       if (generated && isSelector(generated.host)) {
         hosts[generated.kind].push(generated.host);
@@ -691,6 +744,7 @@ function loadCallback(event) {
 export function watchDocumentStyles(listener) {
   listeners.add(listener);
   if (!observer) {
+    copyRule = installCopyRule();
     // The first panel: nothing has read the rules on a panel's behalf yet,
     // so the rewrite needs no announcing. It goes before the poller takes
     // its first read, which would otherwise announce it.
@@ -736,6 +790,8 @@ export function watchDocumentStyles(listener) {
       observer.disconnect();
       observer = null;
       document.head.removeEventListener("load", loadCallback, true);
+      copyRule?.remove();
+      copyRule = null;
     }
   };
 }

@@ -58,7 +58,7 @@ import { getPaintChildren, isGenerated } from "./pseudoElements.js";
  * where it takes an element, and walks an element's paint children
  * (`getPaintChildren`) where it would walk its child nodes. A stand-in reads
  * its paint layer from the pseudo-element's style and its bounds from the
- * box measured for it (`Generated.layout`).
+ * box its quad covers (`Generated.quad`).
  *
  * SVG content is drawn within the `<svg>`'s content level (`paintSlot` in
  * `svg/shape.js`), so an SVG element is never a layer of its own.
@@ -515,9 +515,9 @@ export function paintedBoundsInto(out, element, x, y, borderWidth, borderHeight,
  * counted. The box takes in the shadow of the element's own text, which is
  * ink past it (`getShadowBleed`).
  *
- * A pseudo-element covers the border box measured for it
- * (`Generated.layout`), in its element's content space, the frame its
- * element's children are placed in.
+ * A pseudo-element covers what its quad covers (`Generated.quad`): the
+ * border box measured for it, or a picture that reaches past it, in its
+ * element's content space, the frame its element's children are placed in.
  *
  * @param {HTMLElement | Generated} element
  * @returns {PaintedBounds}
@@ -525,11 +525,11 @@ export function paintedBoundsInto(out, element, x, y, borderWidth, borderHeight,
 export function getPaintedBounds(element) {
   let signal = paintedBoundsCache.get(element);
   if (!signal && isGenerated(element)) {
-    const { layout } = element;
+    const generated = element;
     signal = nodeDerived(
-      element.element,
+      generated.element,
       () => {
-        const at = layout.get();
+        const at = generated.quad();
         return { left: at.x, top: at.y, right: at.x + at.width, bottom: at.y + at.height };
       },
       { isEqual: boundsEqual },

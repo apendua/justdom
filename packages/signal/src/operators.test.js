@@ -279,9 +279,9 @@ describe("flatMap()", () => {
   it("drops the inner subscription before it takes the next one", () => {
     // Where vacate-before-claim actually lives. A child subtree switching is
     // one source emitting a new component, not a holder re-choosing a source
-    // — `children` in justdom and in freedom hold one source for the life of
-    // the mounting — so the ordering a DOM slot needs is `onEachValue`'s,
-    // here, and not the holder's.
+    // — `children` in justdom-core and in freedom hold one source for the
+    // life of the mounting — so the ordering a DOM slot needs is
+    // `onEachValue`'s, here, and not the holder's.
     /** @type {Subject<string>} */
     const source = new Subject();
     /** @type {string[]} */

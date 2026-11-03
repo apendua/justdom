@@ -2524,9 +2524,10 @@ describe("which siblings a change restyles", () => {
   });
 
   test("a row appended after a trailing comment anchor leaves the list's neighbours alone", () => {
-    // justdom ends a list's rows with its anchor, so every append lands after
-    // a comment. The comment says nothing about `:empty`; the rows before it
-    // do. The last row restyles for `:last-of-type`, which the new row takes.
+    // justdom-core ends a list's rows with its anchor, so every append lands
+    // after a comment. The comment says nothing about `:empty`; the rows before
+    // it do. The last row restyles for `:last-of-type`, which the new row
+    // takes.
     const { container, mirror, list, rows, insertRow } = setupRowList();
     const anchor = document.createComment("");
     list.append(anchor);

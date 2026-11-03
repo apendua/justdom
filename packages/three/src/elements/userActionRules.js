@@ -29,9 +29,10 @@ import { ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE, HOVER_ATTRIBUTE } from "./portalRoot
  * as rewritten only while it still reads what the rewrite wrote: one the
  * page has edited since, from a script or the developer tools, starts over.
  * Its new text is rewritten at the next walk, and is never written over with
- * the text it had before the edit. A pseudo-class that follows a pseudo-element,
- * such as `::-webkit-scrollbar-thumb:hover`, cannot be wrapped in `:is()`
- * and is left as it is; a panel draws no scrollbar thumb anyway.
+ * the text it had before the edit. A pseudo-class that follows a
+ * pseudo-element, such as `::-webkit-scrollbar-thumb:hover`, cannot be
+ * wrapped in `:is()` and is left as it is; a panel draws no scrollbar thumb
+ * anyway.
  *
  * `:focus-within` is not rewritten: the keyboard flags the field it types
  * into, not the elements around it.

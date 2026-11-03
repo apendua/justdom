@@ -5,9 +5,9 @@ keyboard that types on it, a panel of live charts, a board of cards, something t
 from, and a paper to read. On a page it is a page. In a headset `justdom-three` mirrors each object
 into a panel of its own and sets them out on a desk in a room.
 
-It is the sampler for what freedom can mirror, written as one scene rather than a grid of specimens.
-`apps/showcase` stays as it is, because its visual suite is a regression test for freedom and needs
-a scene that holds still. The three looks are the mockups in
+It is the sampler for what justdom-three can mirror, written as one scene rather than a grid of
+specimens. `apps/showcase` stays as it is, because its visual suite is a regression test for
+justdom-three and needs a scene that holds still. The three looks are the mockups in
 [`docs/showcase-desk`](../../docs/showcase-desk), each picked from the "Look" menu in the corner:
 
 | Look          | `?look=` | The desk                                                                                                                                                                  |
@@ -182,17 +182,18 @@ Four things to know about it.
 
 - Everything that moves moves on timers, not animation frames. A headset that has the display stops
   the page's animation frames, and timers keep going.
-- An app's own scroll goes through freedom's `scrollElementBy`, which dispatches the `scroll` event
-  the browser does not send while a session has the display. Without it the screen and the log would
-  scroll on the page while their panels stayed put.
-- The panels load slowly under the emulator in a browser without a GPU. Freedom gives the panels a
-  share of each frame to mount in, and at a few frames a second the whole desk takes about a minute
-  to come up. The charts come last, because their live updates keep arriving while they mount.
+- An app's own scroll goes through justdom-three's `scrollElementBy`, which dispatches the `scroll`
+  event the browser does not send while a session has the display. Without it the screen and the log
+  would scroll on the page while their panels stayed put.
+- The panels load slowly under the emulator in a browser without a GPU. justdom-three gives the
+  panels a share of each frame to mount in, and at a few frames a second the whole desk takes about
+  a minute to come up. The charts come last, because their live updates keep arriving while they
+  mount.
 - Night Ops' telemetry panel used to stay on its loading frame under the emulator on a slow machine.
   A panel left its loading frame on a frame with nothing left to do, and the radar's sweep, its
   blips and the status lights blink without end, so at a few frames a second that frame did not
-  come. Freedom no longer samples animations frame by frame while a panel loads, and only settles an
-  animation that ends there, once. It lands a panel that something keeps busy after a second of
-  waiting, one long frame at a time. A panel whose rows the timers add faster than a slow frame
-  builds them, as the charts' were on the CI runner, lands once rows are still arriving five seconds
-  into the wait. Neither has been tried on a headset.
+  come. justdom-three no longer samples animations frame by frame while a panel loads, and only
+  settles an animation that ends there, once. It lands a panel that something keeps busy after a
+  second of waiting, one long frame at a time. A panel whose rows the timers add faster than a slow
+  frame builds them, as the charts' were on the CI runner, lands once rows are still arriving five
+  seconds into the wait. Neither has been tried on a headset.

@@ -3,7 +3,7 @@
  * jsdom, and the one way they are mounted and counted. Phase 3's tests
  * mount the same scenes in paint order (`mountScene`). The bench's scenes
  * come from `benchLayout.js`; the rest are layers out of the plane, which
- * the bench has none of, and what a page holds that freedom draws nothing
+ * the bench has none of, and what a page holds that justdom-three draws nothing
  * of. `bench/paintOrderCount.jsdom.mjs` prints their counts and
  * `paintOrderCount.test.js` holds them.
  *
@@ -246,8 +246,8 @@ export const LAYER_SCENES = [
 ];
 
 /**
- * What a page holds and freedom draws nothing of, each beside what it does
- * draw.
+ * What a page holds and justdom-three draws nothing of, each beside what it
+ * does draw.
  *
  * @type {Scene[]}
  */

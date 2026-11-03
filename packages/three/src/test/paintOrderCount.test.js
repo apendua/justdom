@@ -198,7 +198,7 @@ describe("one batch by node", () => {
     );
   });
 
-  test("orders a node's pieces as freedom paints their roots", async () => {
+  test("orders a node's pieces as justdom-three paints their roots", async () => {
     // A card swung about its centre, and a tray beside it holding three
     // cards lifted to one plane: two across the swung card's plane, and
     // between them in the tree one clear of it. The tray comes after the
@@ -297,7 +297,7 @@ describe("one batch by node", () => {
   });
 });
 
-describe("what a page holds and freedom draws nothing of", () => {
+describe("what a page holds and justdom-three draws nothing of", () => {
   for (const [name, kinds, layers] of /** @type {const} */ ([
     ["a closed overlay", { box: 1, run: 1, picture: 0, shape: 0 }, 1],
     ["a hidden group, one child shown", { box: 1, run: 1, picture: 0, shape: 0 }, 1],

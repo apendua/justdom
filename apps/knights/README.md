@@ -31,9 +31,10 @@ is set against and shows the room, and the × at the end of the toolbar, which e
 On a laptop the page is the page and nothing else. No session can be opened, so no button is shown,
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
 (IWER, with its dev panels) and the **Enter** button appears at the top, over the sky in the
-backdrop, since freedom's place for it at the bottom is the toolbar's. Press it and the emulated
-session is drawn over the page. The controller and hand models come from three's default CDN, so a
-headset with no network draws no models. `?emulator=bare` installs the runtime without the panels.
+backdrop, since justdom-three's place for it at the bottom is the toolbar's. Press it and the
+emulated session is drawn over the page. The controller and hand models come from three's default
+CDN, so a headset with no network draws no models. `?emulator=bare` installs the runtime without the
+panels.
 
 The page needed four changes to look the same in the panel. The first three do not show on the page;
 the fourth does:

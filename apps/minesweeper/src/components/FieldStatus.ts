@@ -33,14 +33,13 @@ const PICTURE_SIZE = 128;
  * A picture of `body`, drawn in a unit box centred on the origin, as an SVG
  * data URL.
  *
- * The flag and the mine are pictures rather than shapes for the headset's
- * sake. freedom triangulates every shape it mirrors and gives it meshes of
- * its own, so a lost game, which uncovers every mine at once, had the panel
- * build close to 700 meshes on the medium board before it showed them. An
- * `<image>` is one quad, and freedom shares one texture between every
- * element that names the URL. It keeps the texture idle once the last of
- * them goes, so the mines of the next lost game are drawn without loading
- * the picture again.
+ * The flag and the mine are pictures rather than shapes for the headset's sake.
+ * justdom-three triangulates every shape it mirrors and gives it meshes of its
+ * own, so a lost game, which uncovers every mine at once, had the panel build
+ * close to 700 meshes on the medium board before it showed them. An `<image>`
+ * is one quad, and justdom-three shares one texture between every element that
+ * names the URL. It keeps the texture idle once the last of them goes, so the
+ * mines of the next lost game are drawn without loading the picture again.
  */
 function picture(body: string): string {
   const svg =

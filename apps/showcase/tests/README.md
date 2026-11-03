@@ -109,7 +109,7 @@ the page canvas from the _window's_ animation frame and clears the same context 
 a throw raised there never enters the session's callback at all — it goes straight to the window,
 which is the path that was working when this was broken. Arming that one produces a check that
 passes just as happily against the bug. The patch looks at the stack for that reason, and takes only
-the clear that freedom's own loop asked for.
+the clear that justdom-three's own loop asked for.
 
 Removing the frame loop's reporting from `packages/three/src/render.js` fails it, which is the only
 property that makes it worth running: the session stays open and no panel appears, while the

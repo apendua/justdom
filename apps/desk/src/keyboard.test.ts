@@ -140,7 +140,7 @@ describe("mountKeyboard", () => {
   });
 
   it("leaves a field a session's keyboard types into to that keyboard", () => {
-    // In a session the note field has no focus: freedom's own board types
+    // In a session the note field has no focus: justdom-three's own board types
     // into it, dispatching each key's keydown on the field, and the keydown
     // bubbles up to the window this keyboard listens on.
     const keys = board();

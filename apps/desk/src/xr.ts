@@ -9,7 +9,7 @@ import type { Readable } from "./session.js";
 
 /**
  * Offer the page a headset: a scene that mirrors the objects of whichever
- * look `desk` holds when a session starts, and freedom's Enter button.
+ * look `desk` holds when a session starts, and justdom-three's Enter button.
  * Nothing happens on a platform that cannot present, so on a laptop the page
  * is the page and nothing else.
  *

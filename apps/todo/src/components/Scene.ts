@@ -31,8 +31,8 @@ const NOTHING = new Stream<never>(() => {});
  * scene's, handed to `render()` as a panel option in `xr.ts`.
  *
  * While a session runs there is also the frame rate, in the corner of the
- * view (`useDiagnostics` from justui), and the app is told about the session
- * (`xrSession`) so that its card can show a button that ends it.
+ * view (`useDiagnostics` from justdom-three-ui), and the app is told about
+ * the session (`xrSession`) so that its card can show a button that ends it.
  *
  * The panel exists only while a session is presenting. Between sessions the
  * page is all anyone sees, and a portal kept up behind it would go on

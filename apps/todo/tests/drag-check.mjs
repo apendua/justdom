@@ -13,7 +13,7 @@
  * handle, the trigger closes on it, the ray moves down the list, and the
  * trigger opens. Both runs print the drag events the list heard and the
  * order the todos ended up in, and the script fails unless each run moved
- * the first todo further down. The same handlers ran both times; freedom
+ * the first todo further down. The same handlers ran both times; justdom-three
  * is what turned the second one into drag events.
  *
  * A manual check rather than part of `npm test`: it needs a browser, and

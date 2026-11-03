@@ -133,8 +133,9 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
   });
   const { makeInteractive } = interactions(ctx);
   // The carrying itself — which hand has the brick, handing it to the other
-  // one, putting it back — is freedom's. What a brick adds is its size in the
-  // hand, which button means a copy, and what the board makes of where it is.
+  // one, putting it back — is justdom-three's. What a brick adds is its size in
+  // the hand, which button means a copy, and what the board makes of where it
+  // is.
   const { draggable, held } = drag(ctx, {
     buttons: ["select", "squeeze"],
     enabled: () => props.draggable,

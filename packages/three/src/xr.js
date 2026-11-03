@@ -84,11 +84,11 @@ export function requestFrameRate(renderer, preference = "high") {
  * takes anyway. It stays shadowed for the life of the page, because the
  * button reads it again every time it is clicked.
  *
- * `createXRButton` no longer needs this: it builds freedom's own button, which
- * makes an offer only when a page asks for one and only from a session state
- * of rest (see `createSessionButton`). This is still exported for a page that
- * mounts three's buttons itself, which is the only way that hazard is still
- * reachable from here.
+ * `createXRButton` no longer needs this: it builds justdom-three's own button,
+ * which makes an offer only when a page asks for one and only from a session
+ * state of rest (see `createSessionButton`). This is still exported for a page
+ * that mounts three's buttons itself, which is the only way that hazard is
+ * still reachable from here.
  *
  * @returns {() => void} Puts it back.
  */
@@ -159,12 +159,12 @@ function withOptionalFeature(init, feature) {
  * dead-end one — "AR NOT SUPPORTED", or the link to HTTPS that is the only
  * one of those states anybody can act on.
  *
- * The button and the session state machine behind it are freedom's own rather
- * than three's `ARButton` / `VRButton`; `createSessionButton` opens with why,
- * and the short of it is that three's holds the running session in a variable
- * assigned after an `await`, so a session that ends inside that window leaves
- * the page insisting one is still running until it is reloaded. The element
- * keeps three's ids and wording, so anything selecting `#ARButton` /
+ * The button and the session state machine behind it are justdom-three's own
+ * rather than three's `ARButton` / `VRButton`; `createSessionButton` opens with
+ * why, and the short of it is that three's holds the running session in a
+ * variable assigned after an `await`, so a session that ends inside that window
+ * leaves the page insisting one is still running until it is reloaded. The
+ * element keeps three's ids and wording, so anything selecting `#ARButton` /
  * `#VRButton` or reading the label goes on working.
  *
  * The reference space is set to `local`, whose origin is at the headset's
@@ -192,9 +192,9 @@ function withOptionalFeature(init, feature) {
  * The browser is not offered a session, which is three's own default and one a
  * Quest can get stuck on; see `suppressSessionOffers` for what that looked
  * like. `offerSession: true` asks for the browser's own Enter XR affordance,
- * and freedom makes that offer itself — only from a session state of rest, so
- * an offer never overlaps the end of the session it would replace, which is
- * the ordering that made three's a hazard.
+ * and justdom-three makes that offer itself — only from a session state of
+ * rest, so an offer never overlaps the end of the session it would replace,
+ * which is the ordering that made three's a hazard.
  *
  * An uncaught error ends the session and is written onto the page, where it
  * can be read on the headset rather than guessed at from a scene that has

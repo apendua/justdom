@@ -144,7 +144,7 @@ export function just(valueOrFactory, effects = []) {
             // build its entity, and whichever computation happened to be
             // evaluating when somebody subscribed has no business depending on
             // what it read — it would be marked stale by a write it never
-            // looked at, and in freedom that means rebuilding a subtree.
+            // looked at, and in justdom-three that means rebuilding a subtree.
             withComputation(null, /** @type {() => T} */ (valueOrFactory))
           : valueOrFactory;
       for (const fn of effects) {

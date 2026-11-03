@@ -2,7 +2,7 @@ import { getPortalRoot } from "./portalRoot.js";
 import { matrixScratch, readMatrix } from "./cssNumbers.js";
 
 /**
- * Every client rect freedom reads, and the frame it is read in.
+ * Every client rect justdom-three reads, and the frame it is read in.
  *
  * The browser reports a client rect through every transform above the
  * element, the panel's root and the page around it included. The mirror

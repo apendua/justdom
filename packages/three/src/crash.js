@@ -27,7 +27,7 @@ const reporters = new WeakMap();
  * these apps are developed against is exactly that: it wraps every frame
  * callback in a `try`/`catch` and writes the error to the console, so a crash
  * that a headset would report was invisible in a tab. Rather than depend on
- * that, freedom's frame loop catches its own failures and says so here.
+ * that, justdom-three's frame loop catches its own failures and says so here.
  *
  * @param {WebGLRenderer} renderer
  * @param {unknown} err
@@ -326,16 +326,16 @@ function isResizeLoop(event) {
  * line and column are empty. Nothing distinguishes one such failure from
  * another, and nothing in it can be acted on.
  *
- * It is also never this app's. Everything freedom's apps ship is served from
- * the page's own origin, so their throws arrive here with the `Error` itself,
- * stack and all — as does anything a browser extension injects, which the
- * browser attributes to its `chrome-extension://` file. A muted report means
- * some script the app does not control failed: an analytics or captcha
- * beacon, something a browser puts in the page for a feature of its own.
- * Those tend to fire on lifecycle moments a player can produce at will —
- * hiding the tab is the usual one, so opening the browser's share sheet, or
- * switching apps, would raise the panel with "Script error." in it every
- * time, over an app that was running perfectly.
+ * It is also never this app's. Everything justdom-three's apps ship is served
+ * from the page's own origin, so their throws arrive here with the `Error`
+ * itself, stack and all — as does anything a browser extension injects, which
+ * the browser attributes to its `chrome-extension://` file. A muted report
+ * means some script the app does not control failed: an analytics or captcha
+ * beacon, something a browser puts in the page for a feature of its own. Those
+ * tend to fire on lifecycle moments a player can produce at will — hiding the
+ * tab is the usual one, so opening the browser's share sheet, or switching
+ * apps, would raise the panel with "Script error." in it every time, over an
+ * app that was running perfectly.
  *
  * So the panel does not take them. Its whole promise is that what it shows is
  * both real and readable, and a muted error is neither.

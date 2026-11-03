@@ -185,13 +185,13 @@ async function main() {
   }, JSON.stringify(castle()));
 
   // Count the sessions this page offers the browser, which should be none.
-  // three's own XR buttons make one when they are built and another the
-  // instant one is used to leave a session — that second one, racing the end
-  // it was fired next to, is what left a Quest browser behaving as though a
-  // session were still running. freedom shadows the API away; this is what
-  // says it is still doing it. Hooked through defineProperty because that is
-  // how the emulator installs its XRSystem, and nothing else here can be
-  // sure of running first.
+  // three's own XR buttons make one when they are built and another the instant
+  // one is used to leave a session — that second one, racing the end it was
+  // fired next to, is what left a Quest browser behaving as though a session
+  // were still running. justdom-three shadows the API away; this is what says
+  // it is still doing it. Hooked through defineProperty because that is how the
+  // emulator installs its XRSystem, and nothing else here can be sure of
+  // running first.
   await page.addInitScript(() => {
     window.__offers = 0;
     const watch = (xr) => {
@@ -209,7 +209,7 @@ async function main() {
     };
     const define = Object.defineProperty;
     Object.defineProperty = function (target, key, descriptor) {
-      // Only the install, never freedom's own shadowing of the same key.
+      // Only the install, never justdom-three's own shadowing of the same key.
       if (target === navigator && key === "xr" && descriptor && descriptor.value) {
         watch(descriptor.value);
       }

@@ -3,6 +3,7 @@ layout: home
 
 hero:
   name: justdom
+  text: One interface, on the page and in the headset
   tagline: A reactive, non-VDOM renderer for the DOM and for Three.js, built on signals.
   actions:
     - theme: brand

@@ -15,6 +15,12 @@ is where every option, default and rule is stated. A package's README is a short
 to both, so a claim about how something behaves lives on one reference page and nowhere else. The
 sidebar for each is in `.vitepress/config.mjs`.
 
+The landing page, `index.md`, is VitePress's home layout with one addition. `.vitepress/theme/`
+extends the default theme and puts `HomeMirror.vue` between the hero and the feature cards: the Desk
+demo's two clips side by side, on a page and in the emulated headset, and the few paragraphs on the
+problem they show. Its clips are the demos page's files, marked up the same way, so a new recording
+of Desk changes both pages.
+
 Two folders are generated and ignored by Git. `scripts/pages.mjs` writes them, and `build` and `dev`
 run it first:
 

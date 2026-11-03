@@ -3,13 +3,12 @@ import PluginHMR from "justdom-vite-hmr/plugin";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    PluginHMR(),
-  ],
+  plugins: [PluginHMR()],
   build: {
     target: "esnext",
     sourcemap: true,
-    // three.js and freedom, in the chunk a headset loads to mirror the app.
+    // three.js and justdom-three, in the chunk a headset loads to mirror the
+    // app.
     chunkSizeWarningLimit: 1024,
     rollupOptions: {
       // `@iwer/devui` draws its icons from lucide-react, whose modules open

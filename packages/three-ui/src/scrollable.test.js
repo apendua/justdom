@@ -114,7 +114,7 @@ describe("scrollable", () => {
     // resizes the very element the callback was told about. The browser
     // reports that on the window as "ResizeObserver loop completed with
     // undelivered notifications." — an `error` event with nothing behind it,
-    // which freedom's crash panel used to end the XR session over.
+    // which justdom-three's crash panel used to end the XR session over.
     /** @type {(() => void)[]} */
     const callbacks = [];
     const had = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");

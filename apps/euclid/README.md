@@ -79,11 +79,11 @@ starts and again whenever its element is resized, as it is when the window is. E
 picked up by its edges, whose strips show while a ray is on the panel, and put somewhere else for
 the rest of the session.
 
-The drawing's panel is not atomic, unlike the other two. freedom holds an atomic panel's change back
-until a frame finds nothing left to resolve, or until it has waited a second, and a point dragged or
-a paper panned changes the drawing on every move. A move whose reading fits the frame's budget lands
-that frame either way. One whose reading overruns it would land once a second rather than follow the
-hand, so the panel takes a torn frame instead.
+The drawing's panel is not atomic, unlike the other two. justdom-three holds an atomic panel's
+change back until a frame finds nothing left to resolve, or until it has waited a second, and a
+point dragged or a paper panned changes the drawing on every move. A move whose reading fits the
+frame's budget lands that frame either way. One whose reading overruns it would land once a second
+rather than follow the hand, so the panel takes a torn frame instead.
 
 The three panels share one budget per frame, and the drawing's is offered it first. A drag rewrites
 the dragged point's statement on every move, so the program has work to bring in on the same frames
@@ -93,12 +93,12 @@ only when its own line changes, so a drag replaces the nodes of one line rather 
 program. A line is one line-height tall whatever it holds, so a change inside it moves nothing below
 it.
 
-The drawing needs nothing from the headset. freedom sends a ray's press, its moves and its release
-as the pointer events a browser sends for a mouse, each hand its own pointer, carrying the point the
-ray met as `clientX` and `clientY`, so the handlers that serve the mouse and the finger place
-points, drag them and pan. The ray leaving the drawing is its `pointerleave`, which clears the snap
-ring, and a drag the drawing captured goes on following the hand off the drawing. The one thing the
-drawing does for the headset is to say `cursor: pointer` while there is a session, since a ray
+The drawing needs nothing from the headset. justdom-three sends a ray's press, its moves and its
+release as the pointer events a browser sends for a mouse, each hand its own pointer, carrying the
+point the ray met as `clientX` and `clientY`, so the handlers that serve the mouse and the finger
+place points, drag them and pan. The ray leaving the drawing is its `pointerleave`, which clears the
+snap ring, and a drag the drawing captured goes on following the hand off the drawing. The one thing
+the drawing does for the headset is to say `cursor: pointer` while there is a session, since a ray
 presses only what says it is pressable, and every point of the paper is. A pointer has no wheel, so
 the toolbar zooms with **+** and **−**.
 

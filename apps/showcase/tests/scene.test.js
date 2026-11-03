@@ -425,12 +425,11 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
 const ON_FIRST_BUTTON = /** @type {const} */ ([51.5, 37.5]);
 
 describe("the showcase under a hand", { timeout: 180_000 }, () => {
-  // A browser of its own, so that the hand is in none of the photographs
-  // above. What these two are for is what a panel draws for a ray resting
-  // on a control and for a trigger held on it: the hover and press styles a
-  // stylesheet hangs on `data-xr-hover` and `data-xr-active`, which the
-  // event goldens in freedom can say were set and only a photograph can say
-  // were drawn.
+  // A browser of its own, so that the hand is in none of the photographs above.
+  // What these two are for is what a panel draws for a ray resting on a control
+  // and for a trigger held on it: the hover and press styles a stylesheet hangs
+  // on `data-xr-hover` and `data-xr-active`, which the event goldens in
+  // justdom-three can say were set and only a photograph can say were drawn.
 
   /** @type {Awaited<ReturnType<typeof openShowcase>>} */
   let showcase;

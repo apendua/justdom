@@ -96,7 +96,7 @@ const App = effectsOnly((ctx: WeakKey) => {
    * room for it: on the real table in front of them, or off to one side.
    *
    * It stays level while it is carried, and can change hands on the way: that
-   * is freedom's `carry()`. Building only — during the siege the triggers
+   * is justdom-three's `carry()`. Building only — during the siege the triggers
    * belong to the slingshot, and a shot lined up across the board would
    * otherwise carry the board off; a carry that outlives the building phase
    * is put down, so pressing Ready does not leave the board in mid-air.

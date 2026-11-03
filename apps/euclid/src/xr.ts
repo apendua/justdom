@@ -7,7 +7,7 @@ import Scene, { type Mounts } from "./components/Scene";
 /**
  * Offer the page a headset: a scene that mirrors the toolbar, the program
  * and the drawing, the elements the app is mounted in, into three panels,
- * and freedom's Enter button, which starts a session and is the way back
+ * and justdom-three's Enter button, which starts a session and is the way back
  * in after one ends. Loaded by `offerHeadset` from
  * `justdom-xr/offer` only on a platform that can present.
  */

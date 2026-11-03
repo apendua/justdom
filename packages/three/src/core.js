@@ -227,13 +227,13 @@ import { addDependency, batch, Derived } from "justdom-signal";
  *
  * A *segment* is the pair of sibling nodes a tree spans — its first and its
  * last, which may be the same node — and `replace` swaps whatever currently
- * occupies that span for this tree's own nodes, handing back the span they
- * now occupy. That one method is the entire protocol between the two
- * packages, which is why it is written out here rather than imported: this
- * is `justdom-core`'s `Mountable` to the letter, TypeScript compares the two
- * structurally, and `freedom` therefore describes its own signatures without
- * depending on `justdom-core` at all. Pass a justdom tree to `dom()` exactly as
- * before.
+ * occupies that span for this tree's own nodes, handing back the span they now
+ * occupy. That one method is the entire protocol between the two packages,
+ * which is why it is written out here rather than imported: this is
+ * `justdom-core`'s `Mountable` to the letter, TypeScript compares the two
+ * structurally, and `justdom-three` therefore describes its own signatures
+ * without depending on `justdom-core` at all. Pass a justdom tree to `dom()`
+ * exactly as before.
  *
  * @typedef {object} Mountable
  * @property {(segment: [first: Node, last: Node]) => [first: Node, last: Node]} replace

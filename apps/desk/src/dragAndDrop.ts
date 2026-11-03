@@ -1,8 +1,8 @@
 /**
  * Everything on the desk that moves, moves by the browser's drag and drop,
- * because that is what a ray delivers in a session: freedom sends the same
- * events to the same elements, with `clientX` and `clientY` mapped back onto
- * the page's layout. So the handlers here are written once, for a mouse,
+ * because that is what a ray delivers in a session: justdom-three sends the
+ * same events to the same elements, with `clientX` and `clientY` mapped back
+ * onto the page's layout. So the handlers here are written once, for a mouse,
  * and a hand uses them unchanged.
  */
 

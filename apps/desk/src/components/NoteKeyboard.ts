@@ -75,7 +75,7 @@ const classes = {
 /**
  * The keyboard a session opens for the note field on the board: justui's
  * board, dressed as the desk. The desk's own keyboard types on the monitor;
- * where this one opens and when it goes are freedom's.
+ * where this one opens and when it goes are justdom-three's.
  */
 const NoteKeyboard = component(({ onKey, field }: Pick<KeyboardTarget, "onKey" | "field">) =>
   $("div", [set("className", surfaceStyle), children(keyboard({ classes, onKey, field }))]),

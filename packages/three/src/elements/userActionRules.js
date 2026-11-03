@@ -24,8 +24,12 @@ import { ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE, HOVER_ATTRIBUTE } from "./portalRoot
  *    argument, and a pseudo-class and an attribute selector count alike, so
  *    the rule keeps both its specificity and its place.
  *
- * The rule's original text is kept, and `restoreUserActions` puts it back
- * when the last portal goes. A pseudo-class that follows a pseudo-element,
+ * The rule's original text is kept beside the text the rewrite wrote, and
+ * `restoreUserActions` puts it back when the last portal goes. A rule counts
+ * as rewritten only while it still reads what the rewrite wrote: one the
+ * page has edited since, from a script or the developer tools, starts over.
+ * Its new text is rewritten at the next walk, and is never written over with
+ * the text it had before the edit. A pseudo-class that follows a pseudo-element,
  * such as `::-webkit-scrollbar-thumb:hover`, cannot be wrapped in `:is()`
  * and is left as it is; a panel draws no scrollbar thumb anyway.
  *
@@ -128,12 +132,26 @@ export function rewriteSelector(text) {
 }
 
 /**
- * Each style rule's text before it was rewritten. Keyed weakly: a sheet a
+ * Each rewritten style rule's text before the rewrite, and the text the
+ * rewrite left it with, as the rule reads it back. Keyed weakly: a sheet a
  * library rewrites gets new rule objects, and the old ones go with it.
  *
- * @type {WeakMap<CSSStyleRule, string>}
+ * @type {WeakMap<CSSStyleRule, { original: string, rewritten: string }>}
  */
-const originals = new WeakMap();
+const rewrites = new WeakMap();
+
+/**
+ * What `rule` read before the rewrite, while it still reads what the rewrite
+ * wrote; undefined for a rule never rewritten, and for one the page has
+ * edited since, which is the page's again.
+ *
+ * @param {CSSStyleRule} rule
+ * @returns {string | undefined}
+ */
+function rewrittenFrom(rule) {
+  const entry = rewrites.get(rule);
+  return entry && rule.selectorText === entry.rewritten ? entry.original : undefined;
+}
 
 /**
  * Call `visit` on every style rule in `rules`, and in every rule nested in
@@ -194,7 +212,7 @@ export function rewriteUserActions(sheets) {
   const rewritten = [];
   for (const sheet of sheets) {
     walkSheet(sheet, (rule) => {
-      if (originals.has(rule)) {
+      if (rewrittenFrom(rule) !== undefined) {
         return;
       }
       const original = rule.selectorText;
@@ -209,7 +227,7 @@ export function rewriteUserActions(sheets) {
       if (rule.selectorText === original) {
         return;
       }
-      originals.set(rule, original);
+      rewrites.set(rule, { original, rewritten: rule.selectorText });
       rewritten.push(rule);
     });
   }
@@ -218,17 +236,18 @@ export function rewriteUserActions(sheets) {
 
 /**
  * The text a rewritten rule had before, or its text now for one that was
- * never rewritten.
+ * never rewritten or that the page has edited since.
  *
  * @param {CSSStyleRule} rule
  * @returns {string}
  */
 export function originalSelector(rule) {
-  return originals.get(rule) ?? rule.selectorText;
+  return rewrittenFrom(rule) ?? rule.selectorText;
 }
 
 /**
- * Put back the text of every rewritten rule still in `sheets`.
+ * Put back the text of every rewritten rule still in `sheets` that still
+ * reads what the rewrite wrote, and leave one the page has edited since.
  *
  * @param {Iterable<CSSStyleSheet>} sheets
  * @returns {void}
@@ -236,11 +255,11 @@ export function originalSelector(rule) {
 export function restoreUserActions(sheets) {
   for (const sheet of sheets) {
     walkSheet(sheet, (rule) => {
-      const original = originals.get(rule);
+      const original = rewrittenFrom(rule);
       if (original !== undefined) {
         rule.selectorText = original;
-        originals.delete(rule);
       }
+      rewrites.delete(rule);
     });
   }
 }

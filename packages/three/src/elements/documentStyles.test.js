@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { enableThemingMode, leadingClass, watchDocumentStyles } from "./documentStyles.js";
+import { forgetComputedStyles } from "../test/computedStyles.js";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver.
 if (typeof globalThis.MutationObserver === "undefined") {
@@ -17,17 +18,6 @@ function flush() {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
-}
-
-/**
- * jsdom keeps each element's computed style until the DOM changes, and a
- * rule rewritten through the CSSOM is no DOM change. A browser has no such
- * cache to clear.
- *
- * @returns {void}
- */
-function forgetComputedStyles() {
-  document.body.appendChild(document.createComment("")).remove();
 }
 
 /**

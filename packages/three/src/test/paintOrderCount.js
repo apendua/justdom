@@ -119,7 +119,7 @@ import {
 } from "../elements/textHelpers.js";
 import { PASSWORD_BULLET } from "../elements/textInput.js";
 import { getShownValue, isTextInput } from "../elements/typing.js";
-import { getPaintChildren, isGenerated } from "../elements/pseudoElements.js";
+import { getPaintChildren, isGenerated, paintsBox } from "../elements/pseudoElements.js";
 import { MARKABLE_TAGS, markerVertices } from "../svg/marker.js";
 import { buildShapePath, readDrawnProperty, SHAPE_TAGS, viewportSize } from "../svg/shape.js";
 import { parseNumber, parsePaint, parseUrlReference, readShapeGeometry } from "../svg/style.js";
@@ -450,7 +450,7 @@ export function listPaintOrder(root) {
     const style = generated.style();
     if (content.url !== null) {
       push("picture", generated, 0);
-    } else if (paintsStyle(style)) {
+    } else if (paintsBox(style)) {
       push("box", generated, 0);
     }
     const placed = generated.layout.get().text;

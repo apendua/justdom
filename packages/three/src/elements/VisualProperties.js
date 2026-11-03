@@ -371,6 +371,8 @@ export default class VisualProperties {
       paddingLeft: hasImage ? style.paddingLeft : "",
       borderColor: getDrawnBorderColor(style),
       textColor: style.color,
+      // The element's, also for its `::before` or `::after`, whose quad
+      // reads its own level from its stand-in (`generatedContent.js`).
       drawLevel: getDrawLevel(element),
       band: getRenderBand(element),
     };

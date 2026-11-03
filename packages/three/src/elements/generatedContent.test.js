@@ -742,8 +742,8 @@ describe("an element's ::before and ::after in the paint order", () => {
     `);
     await settle(panel.portal);
 
-    assert.ok(level(panel, ".card", "before") <= level(panel, ".child"));
-    assert.ok(level(panel, ".card", "after") <= level(panel, ".child"));
+    assert.equal(level(panel, ".card", "before"), level(panel, ".child"));
+    assert.equal(level(panel, ".card", "after"), level(panel, ".child"));
 
     panel.cleanup();
   });

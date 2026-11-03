@@ -513,11 +513,11 @@ It paints inside its element as a page paints it, ordered as the element's first
 `::before`) or its last (an `::after`) would be, by the same rules as every element in the
 [paint order](#paint-order). In the flow, a `::before` is over its element's own box and level with
 its children. Positioned, either one draws over the children it covers, and a later positioned child
-draws over a positioned `::before` it covers. An element's `::after` draws after its descendants'
-own, and a sibling that covers the element draws over its `::after` too. Its box is drawn by the
-panel's batch, as an element's is, unless it has a picture, and then it is one draw call of its own.
-A ray that meets it meets its element, as a click on a page's `::before` icon is a click on the
-element.
+draws over a positioned `::before` it covers. An element's positioned `::after` draws after its
+descendants' own, and a sibling that covers the element draws over its `::after` too. Its box is
+drawn by the panel's batch, as an element's is, unless it has a picture, and then it is one draw
+call of its own. A ray that meets it meets its element, as a click on a page's `::before` icon is a
+click on the element.
 
 Followed:
 

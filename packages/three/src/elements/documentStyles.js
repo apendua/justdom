@@ -48,7 +48,15 @@
  * rule's text a few times a second and announces when that text changed. A
  * page being themed turns it on to see its edits in the panel, and turns it
  * on only when asked, since nothing else needs it.
+ *
+ * While any panel is watching, the rules are also rewritten so that a page's
+ * `:hover`, `:active` and `:focus` answer the flags a portal writes
+ * (`userActionRules.js`): once when the first panel starts watching, again
+ * for whatever each announcement brought, and back to the page's own text
+ * when the last panel stops.
  */
+
+import { originalSelector, restoreUserActions, rewriteUserActions } from "./userActionRules.js";
 
 /**
  * What a style change can restyle: the classes every changed rule starts
@@ -168,9 +176,12 @@ function readSheet(sheet) {
  * @returns {void}
  */
 function poll() {
-  const next = readRules();
-  if (next !== fingerprint) {
-    fingerprint = next;
+  if (readRules() !== fingerprint) {
+    // A rule added through the CSSOM may name `:hover`, and is rewritten
+    // before the rules are read again, so that the edit is not taken for
+    // one of the page's own at the next read.
+    rewriteUserActions(documentSheets());
+    fingerprint = readRules();
     notify(null);
   }
 }
@@ -469,6 +480,56 @@ function scopeOfFlush(records) {
 }
 
 /**
+ * Rewrite what the document's rules have gained since the last walk (see
+ * `userActionRules.js`), and answer what that can restyle: undefined when
+ * nothing was rewritten, and otherwise the classes the rewritten rules start
+ * from, or null when one of them starts anywhere else. A rewrite goes
+ * through the CSSOM, which the observer does not see, so it is announced
+ * with whatever announcement it rides along with.
+ *
+ * @returns {StyleScope | undefined}
+ */
+function rewriteRules() {
+  const rewritten = rewriteUserActions(documentSheets());
+  if (rewritten.length === 0) {
+    return undefined;
+  }
+  /** @type {Set<string>} */
+  const classes = new Set();
+  for (const rule of rewritten) {
+    const selectors = splitSelectors(originalSelector(rule));
+    if (selectors === null) {
+      return null;
+    }
+    for (const selector of selectors) {
+      const name = leadingClass(selector);
+      if (name === null) {
+        return null;
+      }
+      classes.add(name);
+    }
+  }
+  return classes;
+}
+
+/**
+ * Two scopes together, where undefined is nothing to restyle.
+ *
+ * @param {StyleScope | undefined} a
+ * @param {StyleScope | undefined} b
+ * @returns {StyleScope | undefined}
+ */
+function joinScopes(a, b) {
+  if (a === undefined) {
+    return b;
+  }
+  if (b === undefined) {
+    return a;
+  }
+  return a && b ? new Set([...a, ...b]) : null;
+}
+
+/**
  * @param {StyleScope} scope
  * @returns {void}
  */
@@ -501,6 +562,8 @@ function notify(scope) {
 function loadCallback(event) {
   const target = event.target;
   if (target instanceof Node && isStylesheetLink(target)) {
+    // A linked sheet's rules are readable only once it has loaded.
+    rewriteRules();
     announce(null);
   }
 }
@@ -518,6 +581,12 @@ function loadCallback(event) {
  */
 export function watchDocumentStyles(listener) {
   listeners.add(listener);
+  if (!observer) {
+    // The first panel: nothing has read the rules on a panel's behalf yet,
+    // so the rewrite needs no announcing. It goes before the poller takes
+    // its first read, which would otherwise announce it.
+    rewriteRules();
+  }
   syncPoller();
   if (!observer) {
     // What the sheets already in the head style, so that one leaving or
@@ -526,7 +595,9 @@ export function watchDocumentStyles(listener) {
       styleScopes.set(element, scopeOfSheet(element));
     }
     observer = new MutationObserver((records) => {
-      const scope = scopeOfFlush(records);
+      const changed = scopeOfFlush(records);
+      // Only a flush that changed the rules can have brought one to rewrite.
+      const scope = changed === undefined ? undefined : joinScopes(changed, rewriteRules());
       if (scope !== undefined) {
         announce(scope);
       }
@@ -546,6 +617,8 @@ export function watchDocumentStyles(listener) {
     }
     syncPoller();
     if (listeners.size === 0 && observer) {
+      // The last panel: the page gets its rules back as it wrote them.
+      restoreUserActions(documentSheets());
       observer.disconnect();
       observer = null;
       document.head.removeEventListener("load", loadCallback, true);

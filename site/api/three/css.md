@@ -1,10 +1,10 @@
 # What a panel draws
 
 A panel is drawn from its elements' computed style, and this page says which of it: lists and their
-markers, transforms, the document's stylesheets, animation, text revealed to a cursor, the paint
-order, images, gradients, background pictures, clipping and scrolling, and inline SVG. Each section
-ends with what is followed and what is not. [Writing CSS for a panel](/guide/panel-css) in the guide
-is the short version.
+markers, transforms, the document's stylesheets, hover and press, animation, text revealed to a
+cursor, the paint order, images, gradients, background pictures, clipping and scrolling, and inline
+SVG. Each section ends with what is followed and what is not.
+[Writing CSS for a panel](/guide/panel-css) in the guide is the short version.
 
 ## Lists
 
@@ -107,6 +107,49 @@ theming mode is on.
 
 [Theming mode](./tooling#theming-mode) follows those too, by reading the text of every rule on a
 timer.
+
+## Hover, press and focus
+
+A ray cannot put an element under `:hover`, so the portal writes attributes instead: `data-xr-hover`
+on the controls a ray is over, `data-xr-active` on the ones a hand is pressing, and `data-xr-focus`
+on the field the keyboard types into. While a panel is up, the page's own rules answer them as they
+are written. Every rule that names `:hover`, `:active`, `:focus` or `:focus-visible` is rewritten in
+place to name the attribute too:
+
+```css
+.button:hover {
+  background: #0056b3;
+}
+/* read while a panel is up as */
+.button:is(:hover, [data-xr-hover]) {
+  background: #0056b3;
+}
+```
+
+The rule keeps its place in its sheet and its specificity, since `:is()` counts as its most specific
+argument and a pseudo-class and an attribute count alike, so the cascade is the page's. A negation
+stays one: `.tab:not(:hover)` still matches every tab no ray is on. The page gets its rules back as
+it wrote them when the last panel goes. Until then the page's sheets hold the rewritten selectors,
+which look the same on the page, where nothing writes the attributes outside a session.
+
+Rules written for both states, `.button:hover, .button[data-xr-hover]`, go on working.
+
+Not followed:
+
+- **An ancestor that is not a ray target.** A page's `:hover` holds for every ancestor of the
+  hovered element, while `data-xr-hover` goes on ray targets (an element under `cursor: pointer`, a
+  field, a checkbox) and the clickable controls around them. A `.card:hover` on a card that is none
+  of those does nothing in a panel; give the card `cursor: pointer` to make it one.
+- **`:focus-within`** and `:checked`, which are not rewritten. Write `[data-xr-checked]` beside
+  `:checked` yourself.
+- **A pseudo-class after a pseudo-element**, such as `::-webkit-scrollbar-thumb:hover`, which
+  `:is()` may not follow.
+- **A rule no stylesheet watcher sees.** A sheet from another origin served without CORS cannot be
+  read, and a rule added through `insertRule` or `adoptedStyleSheets` is rewritten only at the next
+  change the watcher does see, or at theming mode's next read.
+- **Layout under the ray.** The attributes are presentational by contract, so a rule that changes a
+  size under the ray is not mirrored, and one that styles a sibling is not followed
+  ([Panels](./panels)).
 
 ## Animation
 

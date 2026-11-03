@@ -60,8 +60,9 @@ with no re-layout and no re-rasterized text. Prefer it for motion, as on the fla
 - 3D is real depth: `rotateY` swings half the element _behind_ its own surface, up to half its width
   deep, and the panel covers that half (see [Paint order](#paint-order)). Give anything 3D-rotated
   enough `translateZ` to keep the swing in front.
-- A transformed element paints over the earlier siblings it overlaps, the way a positioned one does
-  (see [Paint order](#paint-order)).
+- A transformed element paints over the earlier siblings it overlaps, and over every sibling in the
+  flow it overlaps, earlier or later, the way a positioned one does (see
+  [Paint order](#paint-order)).
 - A panel laid flat has its y axis along the surface it lies on, so a key pressed with the page's
   `translateY(3px)` slides sideways across the desk. An effect that should move toward the viewer is
   `translateZ`, whatever the page uses for the same press.

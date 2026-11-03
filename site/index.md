@@ -23,7 +23,7 @@ features:
   - title: justdom-signal
     details: Dependency-tracked signals with a pull-based core.
     link: /guide/reactivity
-  - title: justdom
+  - title: justdom-core
     details:
       Every reactive value wired straight to a DOM write, with server rendering and hydration.
     link: /guide/rendering-the-dom

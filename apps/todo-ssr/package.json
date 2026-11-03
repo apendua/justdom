@@ -2,7 +2,7 @@
   "name": "todo-ssr",
   "version": "0.1.0",
   "private": true,
-  "description": "Server side rendering example based on jsdom, express and justdom",
+  "description": "Server side rendering example based on jsdom, express and justdom-core",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apendua/justdom.git",

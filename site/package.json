@@ -10,22 +10,37 @@
   },
   "type": "module",
   "scripts": {
-    "build": "npm run test && node scripts/pages.mjs && vitepress build 2>&1 && node scripts/copy-demos.mjs",
+    "build": "npm run test && npm run snippets && node scripts/pages.mjs && vitepress build 2>&1 && node scripts/copy-demos.mjs",
     "build:watch": "",
     "dev": "node scripts/pages.mjs && vitepress dev",
     "preview": "vitepress preview",
     "screenshots": "node scripts/screenshots.mjs",
+    "snippets": "node scripts/snippets.mjs",
     "test": "node --test \"scripts/*.test.mjs\""
   },
   "devDependencies": {
+    "@apendua/euclid-core": "workspace:*",
+    "@apendua/jsdom-env": "workspace:*",
+    "@types/node": "^24.7.0",
+    "@types/three": "~0.185.0",
     "castle": "workspace:*",
     "desk": "workspace:*",
     "euclid": "workspace:*",
+    "justdom-core": "workspace:*",
+    "justdom-signal": "workspace:*",
+    "justdom-three": "workspace:*",
+    "justdom-three-ui": "workspace:*",
+    "justdom-vite-hmr": "workspace:*",
+    "justdom-xr": "workspace:*",
     "knights": "workspace:*",
     "minesweeper": "workspace:*",
     "playwright-core": "^1.56.0",
+    "rxjs": "^7.8.2",
     "showcase": "workspace:*",
+    "three": "~0.185.0",
     "todo": "workspace:*",
+    "typescript": "^7.0.2",
+    "vite": "^7.1.9",
     "vitepress": "1.6.4"
   }
 }

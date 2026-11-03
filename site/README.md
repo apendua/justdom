@@ -32,10 +32,11 @@ run it first:
   demo that depends on `justdom-xr` also gets a link that opens it in a new tab under `?emulator`,
   with an emulated headset to play it with.
 
-The demos are this package's `workspace:*` dependencies, so Rush builds them before the site, and
-`scripts/copy-demos.mjs` copies each app's `dist` into `dist/demos/<app>/` after VitePress has
-built. Each app builds for that path with `base: "/demos/<app>/"` in its `vite.config.mts`. To serve
-another demo, add the app here as a dependency and set its `base` to match.
+The demos are this package's `workspace:*` dependencies under `apps/`, so Rush builds them before
+the site, and `scripts/copy-demos.mjs` copies each app's `dist` into `dist/demos/<app>/` after
+VitePress has built. Each app builds for that path with `base: "/demos/<app>/"` in its
+`vite.config.mts`. To serve another demo, add the app here as a dependency and set its `base` to
+match.
 
 `build` sends VitePress's output to stdout with `2>&1`. VitePress draws its progress on stderr, and
 Rush counts anything on stderr as a warning, which fails `rush build`.
@@ -85,3 +86,29 @@ included.
 Before the first deploy, the repository's Pages source is set to GitHub Actions (Settings → Pages),
 and justdom.dev is set up as the migration plan's "Before the site can go live" says. The demos are
 built for the domain's root, so they do not load from `apendua.github.io/justdom/`.
+
+## Checking the code blocks
+
+`build` type-checks the code blocks in the docs before VitePress runs, so a snippet that calls an
+API the way its types refuse fails the build. `scripts/snippets.mjs` takes every `js`, `ts`, `jsx`
+and `tsx` block from the guide, the API reference, the repository's README and each package's
+README, writes each to `.snippets/` (ignored by Git) as a module of its own, and runs `tsc` over
+them against the packages. The packages are this package's other `workspace:*` dependencies, so Rush
+builds their types first. A block is checked, not run. The check also includes the declarations that
+tell `on` an element's or a Three object's events, from `packages/three/src/types/`: the packages do
+not ship them, and each demo keeps a copy of its own.
+
+Most blocks are fragments that use a `ctx` or a `board` the page explains in prose. A name a block
+never declares is taken for such a placeholder and not reported, unless a package exports it: then
+the block has to import it, as a reader copying it would have to, and what it calls is checked
+against the real types. A placeholder that shares its name with an export, or with a browser global
+such as `top`, is therefore checked as that thing, so give it another name. An import of a relative
+path, such as `./xr`, is the reader's own module and is a placeholder too. Null checks are off, so a
+block may mount on `document.querySelector(…)` without one.
+
+A block that is not meant to compile, such as a sketch with gaps in it, is skipped with
+`<!-- snippet: skip -->` on the line above its fence, a comment that neither GitHub nor VitePress
+shows. A marker with no code block under it fails the check.
+
+To run the check alone, after `node common/scripts/install-run-rush.js build --to justdom-site`, run
+`npm run snippets` here.

@@ -15,7 +15,8 @@ npm install justdom-xr justdom-three justdom-signal three
 `three` is a peer dependency. The package has five entries for a page and no index, so that an app
 importing one does not pull in the others: `justdom-xr/emulator`, `justdom-xr/offer`,
 `justdom-xr/session`, `justdom-xr/scene` and `justdom-xr/theming`. A sixth, `justdom-xr/driver`,
-runs in Node and drives the emulated headset from a check script.
+runs in Node and drives the emulated headset from a check script. It needs `playwright-core`, an
+optional peer dependency, installed beside it.
 
 ## Usage
 

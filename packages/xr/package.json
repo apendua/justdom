@@ -56,11 +56,18 @@
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@types/webxr": "^0.5.24",
+    "playwright-core": "^1.56.0",
     "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "playwright-core": "^1.56.0",
     "three": ">=0.180.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

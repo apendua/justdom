@@ -150,9 +150,10 @@ through the device `install` leaves on `window.xrDevice`:
 | `check(ok, what)`, `finish()`, `closeAll(...)` | The tally, the exit code and the teardown.                                                                                                         |
 | `precache(build, root)`                        | Builds an app with its own Vite and says which chunks its service worker precaches and which the page loads, for a check that holds the two equal. |
 
-It is in `driver/` rather than `src/`, since it runs in Node and never in a page. It borrows
-Playwright from `apps/showcase` and launches the Chromium at `/opt/pw-browsers/chromium-1194`, or
-the one `CHROMIUM` names. Minesweeper's, the desk's, Euclid's and Knights' checks use it, by hand.
+It is in `driver/` rather than `src/`, since it runs in Node and never in a page. It imports
+`playwright-core`, an optional peer dependency, so a project that runs a check installs it beside
+`justdom-xr`. It launches the Chromium at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM`
+names. Minesweeper's, the desk's, Euclid's and Knights' checks use it, by hand.
 
 ## Tests
 

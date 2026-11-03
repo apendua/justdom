@@ -1,4 +1,4 @@
-import { list, $$, children, attr, on, className } from "justdom";
+import { list, $$, children, attr, on, className } from "justdom-core";
 import { observe } from "justdom-signal";
 import { Field, Fields, getKey } from "../store/Fields";
 import { RootContext } from "../store/Root";

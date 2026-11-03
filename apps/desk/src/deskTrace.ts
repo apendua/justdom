@@ -16,7 +16,7 @@ import type { Readable } from "./session.js";
  * inline style). A card with no tilt, or one another card shares, is not
  * found and has no scene lift. Only the scene's side of a card is read,
  * unless `?trace=page` asks for the page's too, since reading a card's
- * style can create its transition sooner than freedom alone would.
+ * style can create its transition sooner than justdom-three alone would.
  *
  * Saved through the probe's route (`vite/probeResults.js`), so it is there
  * only under the dev server, as

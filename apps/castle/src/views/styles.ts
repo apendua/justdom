@@ -13,7 +13,7 @@
  * borders, corner radii and text — no gradients and no shadows — so the whole
  * design is carried by colour, line and type.
  */
-import { stylesheet, CLASS_NAME } from "justdom";
+import { stylesheet, CLASS_NAME } from "justdom-core";
 import type { DropdownClasses } from "justdom-three-ui";
 import { fromObservable, observable, type Subscribable } from "justdom-signal";
 import { palette } from "../elements/palette.js";
@@ -235,7 +235,7 @@ const dropdownOptionSelected = stylesheet`
   }
 `;
 
-/** The output picker's dress; the widget itself comes from freedom. */
+/** The output picker's dress; the widget itself comes from justdom-three. */
 export const outputClasses: DropdownClasses = {
   root: dropdownRoot,
   trigger: dropdownTrigger,

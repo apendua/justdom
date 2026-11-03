@@ -9,7 +9,7 @@ import {
   waitFor,
   stylesheet,
   CLASS_NAME,
-} from "justdom";
+} from "justdom-core";
 import { Signal, toObservable } from "justdom-signal";
 import { store, on, set, observable, component } from "justdom-signal";
 import { scrollable } from "justdom-three-ui";
@@ -30,16 +30,16 @@ const LOADING_DELAY = 1000;
 export const fontFamily = 'system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 // The card paints a surface of its own, with the padding showing as a margin
-// all the way round and corners rounded the way freedom's shader rounds every
-// box. The surface is a gradient, as are most of the controls below: freedom
-// draws `background-image` gradients, and this app is where to see them in a
-// headset — linear on the card and the buttons, conic and radial on the exit
-// button, a repeating hatch on a finished row, and a tiled stripe on the
-// loading bar. The flat colour under each is what shows where a gradient
-// cannot be drawn. The width is fixed rather than shrink-to-fit, and it matters more in a
-// headset than on the page: a panel is centred on its own origin, so a row of
-// long text would not merely widen the card, it would slide both its edges
-// out from under whatever ray was pointing at them.
+// all the way round and corners rounded the way justdom-three's shader rounds
+// every box. The surface is a gradient, as are most of the controls below:
+// justdom-three draws `background-image` gradients, and this app is where to
+// see them in a headset — linear on the card and the buttons, conic and radial
+// on the exit button, a repeating hatch on a finished row, and a tiled stripe
+// on the loading bar. The flat colour under each is what shows where a gradient
+// cannot be drawn. The width is fixed rather than shrink-to-fit, and it matters
+// more in a headset than on the page: a panel is centred on its own origin, so
+// a row of long text would not merely widen the card, it would slide both its
+// edges out from under whatever ray was pointing at them.
 const containerStyle = stylesheet`
   .${CLASS_NAME} {
     position: relative;
@@ -77,11 +77,10 @@ const inputContainerStyle = className`
 `;
 
 // A real field, on the page and in the scene alike. On the page the browser
-// draws the caret and takes the keys; in the scene freedom draws the value
-// and the caret, and the keyboard the scene mounts under the panel types
-// through the same `input` and `keydown` events. `:focus` is the page's
-// focus ring and `[data-xr-focus]` the scene's: the field the board is
-// typing into.
+// draws the caret and takes the keys; in the scene justdom-three draws the
+// value and the caret, and the keyboard the scene mounts under the panel types
+// through the same `input` and `keydown` events. `:focus` is the page's focus
+// ring and `[data-xr-focus]` the scene's: the field the board is typing into.
 const inputStyle = stylesheet`
   .${CLASS_NAME} {
     flex-grow: 1;
@@ -110,10 +109,10 @@ const inputStyle = stylesheet`
 `;
 
 /**
- * The blue every pressable control here wears: lit from above, and darker
- * under the ray. A hover is a swap between two gradients, which in a scene is
- * a swap between two rows of freedom's gradient ramp — each baked the first
- * time it is seen and shared by every control wearing it after that.
+ * The blue every pressable control here wears: lit from above, and darker under
+ * the ray. A hover is a swap between two gradients, which in a scene is a swap
+ * between two rows of justdom-three's gradient ramp — each baked the first time
+ * it is seen and shared by every control wearing it after that.
  */
 const blueGradient = "linear-gradient(to bottom, #3b93ff, #0062d6)";
 const blueGradientHover = "linear-gradient(to bottom, #1f6fd1, #003f8a)";
@@ -338,7 +337,7 @@ const TodoApp = component((ctx: WeakKey) => {
   };
 
   // Reordering by dragging a row's handle, written against the browser's
-  // drag and drop and nothing else. In a headset freedom sends the same
+  // drag and drop and nothing else. In a headset justdom-three sends the same
   // events from the controller ray, so these handlers are the ones that
   // run there too.
   //

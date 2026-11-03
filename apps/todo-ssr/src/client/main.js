@@ -1,4 +1,4 @@
-import { hydrate } from "justdom/hydrate";
+import { hydrate } from "justdom-core/hydrate";
 import { store } from "justdom-signal";
 import TodoApp from "../components/TodoApp.js";
 import { parseFilter, todos } from "../todos.js";

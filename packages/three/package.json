@@ -1,6 +1,6 @@
 {
   "name": "justdom-three",
-  "version": "0.30.0",
+  "version": "0.30.1",
   "description": "Reactive Three.js scene graph built on justdom-signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",
@@ -56,7 +56,7 @@
     "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
-    "justdom": "workspace:*",
+    "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*",
     "justdom-vite-hmr": "workspace:*",
     "rxjs": "^7.8.2",

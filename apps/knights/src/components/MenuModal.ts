@@ -1,4 +1,4 @@
-import { $, CLASS_NAME, attr, children, on, renderText, set, stylesheet, text } from "justdom";
+import { $, CLASS_NAME, attr, children, on, renderText, set, stylesheet, text } from "justdom-core";
 import { component } from "justdom-signal";
 import { HOTSEAT, VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import ActionItem from "./ActionItem";

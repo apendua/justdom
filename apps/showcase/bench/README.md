@@ -72,7 +72,7 @@ other — an idle panel costs the renderer, not the mirror — which is far belo
 `worst above idle` is reporting and comparable to what `median above idle` is. Trust the first,
 treat the second as a rounding error with a sign.
 
-### Changing the freedom package
+### Changing the justdom-three package
 
 **Uncommitted edits work, and only affect the side you expect.** The working tree is served as-is —
 vite serves `packages/three/src` through the workspace symlink, so there is nothing to build and no

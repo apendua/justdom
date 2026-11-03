@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Comments call justdom-three by its name instead of freedom",
+      "type": "none",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

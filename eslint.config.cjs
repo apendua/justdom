@@ -17,7 +17,7 @@ module.exports = [
   {
     files: [
       "apps/todo-ssr/src/client/**/*.js",
-      "packages/justdom/src/**/*.js",
+      "packages/core/src/**/*.js",
       "packages/three/src/**/*.js",
       "packages/three-ui/src/**/*.js",
       "packages/sound/src/**/*.js",

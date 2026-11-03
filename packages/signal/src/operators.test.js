@@ -226,7 +226,7 @@ describe("use()", () => {
     // those belong to it, not to whichever computation happened to be
     // evaluating when the edge attached. Tracking them would tear the whole
     // subscription down and back up on a write the host never looked at,
-    // which in freedom means rebuilding a subtree.
+    // which in justdom-three means rebuilding a subtree.
     const unrelated = Signal.of("a");
     let innerSubscribes = 0;
     let invalidations = 0;
@@ -279,9 +279,9 @@ describe("flatMap()", () => {
   it("drops the inner subscription before it takes the next one", () => {
     // Where vacate-before-claim actually lives. A child subtree switching is
     // one source emitting a new component, not a holder re-choosing a source
-    // — `children` in justdom and in freedom hold one source for the life of
-    // the mounting — so the ordering a DOM slot needs is `onEachValue`'s,
-    // here, and not the holder's.
+    // — `children` in justdom-core and in justdom-three hold one source for the
+    // life of the mounting — so the ordering a DOM slot needs is
+    // `onEachValue`'s, here, and not the holder's.
     /** @type {Subject<string>} */
     const source = new Subject();
     /** @type {string[]} */

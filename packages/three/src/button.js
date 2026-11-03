@@ -2,9 +2,9 @@
  * The door into XR: the button, and the session state machine behind it.
  *
  * three's `ARButton` and `VRButton` are the obvious things to build this on,
- * and freedom did, until the state they keep turned out to be the thing that
- * strands a headset. Both hold the running session in a closure variable that
- * is assigned *after* an `await`:
+ * and justdom-three did, until the state they keep turned out to be the thing
+ * that strands a headset. Both hold the running session in a closure variable
+ * that is assigned *after* an `await`:
  *
  *   async function onSessionStarted( session ) {
  *     session.addEventListener( 'end', onSessionEnded );

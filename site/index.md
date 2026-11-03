@@ -3,11 +3,15 @@ layout: home
 
 hero:
   name: justdom
+  text: One interface, on the page and in the headset
   tagline: A reactive, non-VDOM renderer for the DOM and for Three.js, built on signals.
   actions:
     - theme: brand
       text: Get started
       link: /guide/getting-started
+    - theme: alt
+      text: API reference
+      link: /api/
     - theme: alt
       text: Packages
       link: /packages/
@@ -18,13 +22,13 @@ hero:
 features:
   - title: justdom-signal
     details: Dependency-tracked signals with a pull-based core.
-    link: /packages/signal
-  - title: justdom
+    link: /guide/reactivity
+  - title: justdom-core
     details:
       Every reactive value wired straight to a DOM write, with server rendering and hydration.
-    link: /packages/justdom
+    link: /guide/rendering-the-dom
   - title: justdom-three
     details:
       The same model for a Three.js scene graph, with WebXR helpers and DOM panels in the scene.
-    link: /packages/three
+    link: /guide/rendering-a-scene
 ---

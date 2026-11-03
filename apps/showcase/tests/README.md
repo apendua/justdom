@@ -58,9 +58,9 @@ browser of their own, so the hand is in none of the other photographs.
 ## The two kinds of check, and which one can fail on your machine
 
 **Baseline comparison** is exact, and is only meaningful on a machine that draws the way the
-recording machine did. A different Chromium rasterizes differently; a machine with different fonts
-installed lays the panels' text out differently. Both are real differences in what was drawn and
-neither is a regression.
+recording machine did. A different Chromium can rasterize differently; a machine with different
+fonts installed lays the panels' text out differently. Both are real differences in what was drawn
+and neither is a regression.
 
 So baselines are filed under a fingerprint of the machine that drew them — Chromium's version, the
 width the app's font stack measures a specimen string at, and the viewport — one directory each, and
@@ -68,10 +68,10 @@ more than one can be committed at a time. Somewhere with no baseline of its own,
 one and says so. **Under `VISUAL_STRICT=1`, which is how CI runs it, it fails instead**: a green
 check that quietly declined to check is worse than no check at all.
 
-The difference between two machines is not hypothetical: this repository holds baselines from a
-runner and from a dev container that have the _same_ fonts and differ only in Chromium build, and
-they disagree by 705 pixels — twice the budget. Sharing one set between them would mean either a
-budget too loose to catch a missing border or a check that fails for everyone but one machine.
+The difference between two machines is not hypothetical: baselines once recorded on a runner and in
+a dev container, with the _same_ fonts and only the Chromium build apart, disagreed by 705 pixels —
+twice the budget. Sharing one set between them would mean either a budget too loose to catch a
+missing border or a check that fails for everyone but one machine.
 
 CI's baselines are the ones that gate a pull request, and CI is where they are drawn: dispatch the
 **Visual regression** workflow with `record: true` and the runner redraws them, runs the strict
@@ -109,7 +109,7 @@ the page canvas from the _window's_ animation frame and clears the same context 
 a throw raised there never enters the session's callback at all — it goes straight to the window,
 which is the path that was working when this was broken. Arming that one produces a check that
 passes just as happily against the bug. The patch looks at the stack for that reason, and takes only
-the clear that freedom's own loop asked for.
+the clear that justdom-three's own loop asked for.
 
 Removing the frame loop's reporting from `packages/three/src/render.js` fails it, which is the only
 property that makes it worth running: the session stays open and no panel appears, while the
@@ -137,12 +137,10 @@ cannot tell you is the thing you want to know: it says how many pixels moved, an
 question is which ones. The comment carries that number, how many of the baseline-free checks
 passed, and a link straight to the artifact.
 
-The photograph is a link rather than an image in that comment, and it cannot be anything else. An
-artifact is an authenticated zip; and this repository is private, so its own files are unreachable
-to the proxy GitHub renders comment images through. Nothing the workflow can name with the
-repository's own credentials would resolve inside a Markdown image for a reader. Embedding one would
-mean publishing the frame somewhere anonymous — a public gist, say — which is a decision about what
-leaves a private repository, not a workflow detail.
+The photograph is a link rather than an image in that comment. The frames live only in the artifact,
+and an artifact is an authenticated zip, so there is no URL the workflow could put inside a Markdown
+image. Embedding one would mean committing or publishing each frame somewhere else, which is more
+than a check's report is worth.
 
 Splitting the artifact into one upload per file does not help either, and is worth writing down so
 nobody has to find out twice: an artifact is always delivered as a zip, whatever is in it, so three

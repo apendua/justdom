@@ -1,4 +1,4 @@
-import { children, text } from "justdom";
+import { children, text } from "justdom-core";
 import { component, effect, just, observable } from "justdom-signal";
 import type { Readable } from "./session.js";
 import { makeReveal, scrollElementBy } from "justdom-three";

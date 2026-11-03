@@ -6,7 +6,7 @@ import Scene from "./components/Scene";
 
 /**
  * Offer the page a headset: a scene that mirrors `root`, the element the
- * game is mounted in, into a panel, and freedom's Enter button, which
+ * game is mounted in, into a panel, and justdom-three's Enter button, which
  * starts a session and is the way back in after one ends. Loaded by
  * `offerHeadset` from `justdom-xr/offer` only on a platform that
  * can present.

@@ -1,4 +1,4 @@
-import { $, children, stylesheet, className, CLASS_NAME } from "justdom";
+import { $, children, stylesheet, className, CLASS_NAME } from "justdom-core";
 import { set, component } from "justdom-signal";
 import { keyboard } from "justdom-three-ui";
 import type { KeyboardTarget } from "justdom-three";
@@ -73,9 +73,10 @@ const classes = {
 };
 
 /**
- * The keyboard a session opens for the note field on the board: justui's
- * board, dressed as the desk. The desk's own keyboard types on the monitor;
- * where this one opens and when it goes are freedom's.
+ * The keyboard a session opens for the note field on the board:
+ * justdom-three-ui's board, dressed as the desk. The desk's own keyboard
+ * types on the monitor; where this one opens and when it goes are
+ * justdom-three's.
  */
 const NoteKeyboard = component(({ onKey, field }: Pick<KeyboardTarget, "onKey" | "field">) =>
   $("div", [set("className", surfaceStyle), children(keyboard({ classes, onKey, field }))]),

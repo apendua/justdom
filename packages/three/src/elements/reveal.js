@@ -188,11 +188,11 @@ function bump(handle) {
  * string and is written only when that string changes — never when the cursor
  * moves, which is the entire point of the thing.
  *
- * freedom writes this rather than wrapping justdom's for two reasons. The
- * structural `Mountable` rule means justdom is not a dependency here and is
- * not about to become one; and the contract genuinely differs — a revealed
- * node's text is immovable by design, and it registers itself for a
- * measurement no other text node pays for.
+ * justdom-three writes this rather than wrapping justdom-core's for two
+ * reasons. The structural `Mountable` rule means justdom-core is not a
+ * dependency here and is not about to become one; and the contract genuinely
+ * differs — a revealed node's text is immovable by design, and it registers
+ * itself for a measurement no other text node pays for.
  *
  * @param {RevealHandle} handle
  * @param {TemplateStringsArray} strings
@@ -229,7 +229,7 @@ function revealText(handle, strings, values) {
 }
 
 /**
- * The five lines of justdom's mounting protocol that a single node needs:
+ * The five lines of justdom-core's mounting protocol that a single node needs:
  * take over the span something else occupies, and say what span this now is.
  *
  * @param {Text} node
@@ -257,7 +257,7 @@ function toMountable(node) {
 }
 
 /**
- * `justdom`'s interpolation, over the same signal primitives — a derivation
+ * `justdom-core`'s interpolation, over the same signal primitives — a derivation
  * that reads every part and renders the first time all of them can be read.
  *
  * @param {TemplateStringsArray} strings

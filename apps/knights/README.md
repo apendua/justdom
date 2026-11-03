@@ -2,8 +2,8 @@
 
 A turn based hex battle inspired by Heroes of Might and Magic III, and a port of
 [KnightsJS](https://github.com/apendua/KnightsJS) — originally React, redux and Meteor — onto
-`justdom-signal` for state and `justdom` for rendering. The sprite sheet and the backdrop are the
-original assets.
+`justdom-signal` for state and `justdom-core` for rendering. The sprite sheet and the backdrop are
+the original assets.
 
 ## Playing
 
@@ -31,9 +31,10 @@ is set against and shows the room, and the × at the end of the toolbar, which e
 On a laptop the page is the page and nothing else. No session can be opened, so no button is shown,
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
 (IWER, with its dev panels) and the **Enter** button appears at the top, over the sky in the
-backdrop, since freedom's place for it at the bottom is the toolbar's. Press it and the emulated
-session is drawn over the page. The controller and hand models come from three's default CDN, so a
-headset with no network draws no models. `?emulator=bare` installs the runtime without the panels.
+backdrop, since justdom-three's place for it at the bottom is the toolbar's. Press it and the
+emulated session is drawn over the page. The controller and hand models come from three's default
+CDN, so a headset with no network draws no models. `?emulator=bare` installs the runtime without the
+panels.
 
 The page needed four changes to look the same in the panel. The first three do not show on the page;
 the fourth does:
@@ -64,11 +65,11 @@ field the white stack can reach and checks that the route is drawn, pulls the tr
 that the click reached the board at that place and the turn passed on, then turns the passthrough on
 and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
 a stack for anything the page throws. It drives the browser and the controller through
-`justdom-xr/driver`, which borrows Playwright from `apps/showcase`, so that project has to have been
-installed. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
-`CHROMIUM=<path>` points it at one installed elsewhere. A pull request that changes this app or a
-package it imports, other than in docs, unit tests or benchmarks, runs it, with minesweeper's, the
-desk's and Euclid's, from `.github/workflows/driven.yml`.
+`justdom-xr/driver`, which launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
+elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
+tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
+`.github/workflows/driven.yml`.
 
 | File                      | What it is                                                                                                                                                                                  |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -1,6 +1,6 @@
 # `todo-ssr`
 
-A minimal server side rendering example for [`justdom-signal`][signal] and [`justdom`][dom]: an
+A minimal server side rendering example for [`justdom-signal`][signal] and [`justdom-core`][dom]: an
 [express][express] app that renders a component tree inside a [jsdom][jsdom] document and sends the
 serialized HTML to the browser.
 
@@ -17,7 +17,7 @@ rushx test    # typecheck + node:test
 
 ## How it works
 
-`justdom` builds real DOM nodes through the ambient `document` (`document.createElement`,
+`justdom-core` builds real DOM nodes through the ambient `document` (`document.createElement`,
 `document.createComment`, …) — there is no virtual DOM to serialize instead. So all SSR needs is a
 `document` that exists outside a browser, which is exactly what jsdom provides.
 
@@ -25,7 +25,7 @@ rushx test    # typecheck + node:test
 _mount → serialize → unmount_ cycle:
 
 1. `setupJsdom({ html })` from [`@apendua/jsdom-env`][jsdom-env] — the same helper the
-   `packages/justdom` test suite uses — creates a jsdom instance from an HTML shell and installs its
+   `packages/core` test suite uses — creates a jsdom instance from an HTML shell and installs its
    globals (`document`, `window`, `Node`, …) on `globalThis`.
 2. The component is mounted exactly the way a browser app is mounted in `apps/todo/src/main.ts`: by
    subscribing to `just(root, [children(component(ctx))])`. Subscribing _is_ mounting.
@@ -68,7 +68,7 @@ pieces make that work:
    would not have produced itself, so it has to start from the state the server rendered from.
 2. **A client bundle.** [`src/client/main.js`](./src/client/main.js) is built by vite into
    `dist/client/`, which express serves. It seeds the same signals from the payload and calls
-   `hydrate()` from `justdom/hydrate`.
+   `hydrate()` from `justdom-core/hydrate`.
 3. **Handlers that intercept.** The toggle button carries an `on("click")` that calls
    `preventDefault()` and flips the todo in place. It is part of the component the _server_ renders
    too — it simply never fires there — so the form stays the behaviour whenever the script has not
@@ -109,7 +109,7 @@ breaking the "no `await` while the globals are swapped in" invariant — plus a 
 the client could tell which branch the markup holds. That is a streaming SSR design, and the pattern
 above avoids needing it.
 
-[dom]: ../../packages/justdom
+[dom]: ../../packages/core
 [express]: https://expressjs.com/
 [jsdom]: https://github.com/jsdom/jsdom
 [jsdom-env]: ../../packages/jsdom-env

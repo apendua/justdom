@@ -21,8 +21,8 @@
   },
   "projects": [
     {
-      "packageName": "justdom",
-      "projectFolder": "packages/justdom",
+      "packageName": "justdom-core",
+      "projectFolder": "packages/core",
       "versionPolicyName": "publishable"
     },
     {

@@ -90,7 +90,7 @@ export interface KeyboardOptions {
  * for a moment (`data-down`, a `transform` in the stylesheet) and types into
  * the text field that has focus, if one does, and into `onKey` otherwise.
  * Only the page has focus to give: in a session a field is typed into with
- * the keyboard freedom opens for it, and every cap pressed here goes to
+ * the keyboard justdom-three opens for it, and every cap pressed here goes to
  * `onKey`. What that keyboard types is the field's alone, and does not press
  * a cap here or reach `onKey`.
  */
@@ -154,7 +154,7 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     }
     // A real key goes to what has focus. A keydown aimed at an element
     // without it was dispatched there by a script, and is that element's:
-    // in a session, the board freedom opens for a field types into it so.
+    // in a session, the board justdom-three opens for a field types into it so.
     // The caps are the monitor's, so they stay up, and cancelling the key
     // would keep it out of the field. The window and the document are not
     // elements, so a key aimed at either is still the monitor's.

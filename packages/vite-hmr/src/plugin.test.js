@@ -166,7 +166,7 @@ describe("transform()", () => {
   });
 
   test("a specifier list is removed once, whatever follows it kept", () => {
-    // The shape `justdom`'s operators module has: names re-exported from an
+    // The shape `justdom-core`'s operators module has: names re-exported from an
     // import, followed by the rest of the module.
     const code = [
       `import { set, on } from "justdom-signal";`,

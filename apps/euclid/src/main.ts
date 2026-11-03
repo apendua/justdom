@@ -1,4 +1,4 @@
-import { children } from "justdom";
+import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import "./index.css";
 import EuclidApp from "./components/EuclidApp";

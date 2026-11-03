@@ -1,10 +1,10 @@
 import { enableOutlinesMode, enableThemingMode } from "justdom-three";
 
 /**
- * Turn on freedom's theming mode when the page's address asks for it with
+ * Turn on justdom-three's theming mode when the page's address asks for it with
  * `?theming`, so that rules edited in the browser's developer tools reach the
- * panels in the scene. See "Stylesheets" in freedom's README for what that
- * follows and what it costs.
+ * panels in the scene. See "Stylesheets" in justdom-three's README for what
+ * that follows and what it costs.
  *
  * It stays on for the life of the page unless the switch it returns is
  * called. Without `?theming` it does nothing, and nothing is read on a timer.
@@ -19,10 +19,10 @@ export function followThemingQuery(query) {
 }
 
 /**
- * Turn on freedom's outlines mode when the page's address asks for it with
- * `?outlines`, so that every panel outlines the elements that change, and
- * those the mirror measures again for nothing. See "Outlines" in freedom's
- * README for how to read them.
+ * Turn on justdom-three's outlines mode when the page's address asks for it
+ * with `?outlines`, so that every panel outlines the elements that change, and
+ * those the mirror measures again for nothing. See "Outlines" in
+ * justdom-three's README for how to read them.
  *
  * In this entry beside `followThemingQuery` because it is the same kind of
  * switch, read from the same query by the same apps.

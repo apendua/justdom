@@ -2,7 +2,7 @@
   "name": "todo-ssr",
   "version": "0.1.0",
   "private": true,
-  "description": "Server side rendering example based on jsdom, express and justdom",
+  "description": "Server side rendering example based on jsdom, express and justdom-core",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apendua/justdom.git",
@@ -25,7 +25,7 @@
   "dependencies": {
     "@apendua/jsdom-env": "workspace:*",
     "express": "^5.2.1",
-    "justdom": "workspace:*",
+    "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*"
   },
   "devDependencies": {

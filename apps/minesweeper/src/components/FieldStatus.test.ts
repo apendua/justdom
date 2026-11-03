@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished } from "vitest";
-import { children } from "justdom";
+import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import type { Field } from "../store/Fields";
 import Viewport, { ViewportContext } from "../store/Viewport";
@@ -73,7 +73,7 @@ describe("FieldStatus", () => {
     expect(parsed.getElementsByTagName("parsererror")).toHaveLength(0);
     const root = parsed.documentElement;
     expect([root.namespaceURI, root.localName]).toEqual([SVG_NS, "svg"]);
-    // freedom draws an SVG with no size of its own at 300 by 150.
+    // justdom-three draws an SVG with no size of its own at 300 by 150.
     expect(Number(root.getAttribute("width"))).toBeGreaterThan(0);
     expect(Number(root.getAttribute("height"))).toBeGreaterThan(0);
   });

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { $, attr, children, className, set, text } from "justdom";
+import { $, attr, children, className, set, text } from "justdom-core";
 import { Signal, store } from "justdom-signal";
 import TodoApp from "./components/TodoApp.js";
 import { renderToString } from "./renderToString.js";

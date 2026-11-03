@@ -1,5 +1,16 @@
-import { $, attr, children, className, CLASS_NAME, list, on, set, stylesheet, text } from "justdom";
-import type { Mountable } from "justdom";
+import {
+  $,
+  attr,
+  children,
+  className,
+  CLASS_NAME,
+  list,
+  on,
+  set,
+  stylesheet,
+  text,
+} from "justdom-core";
+import type { Mountable } from "justdom-core";
 import { component, type Subscribable } from "justdom-signal";
 import { dropdown, type DropdownClasses } from "justdom-three-ui";
 import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";

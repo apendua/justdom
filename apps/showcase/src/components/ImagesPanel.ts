@@ -1,4 +1,4 @@
-import { className, text, set, attr, $, children } from "justdom";
+import { className, text, set, attr, $, children } from "justdom-core";
 import { component } from "justdom-signal";
 import { cardStyle, captionStyle, headingStyle, rowStyle } from "./panels.js";
 

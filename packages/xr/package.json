@@ -1,6 +1,6 @@
 {
   "name": "justdom-xr",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
   "repository": {
     "type": "git",
@@ -56,11 +56,18 @@
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@types/webxr": "^0.5.24",
+    "playwright-core": "^1.56.0",
     "three": "~0.185.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "playwright-core": "^1.56.0",
     "three": ">=0.180.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

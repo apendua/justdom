@@ -3,11 +3,11 @@
  *
  * Only the wording and the wiring are shared: the button wears a class name the
  * app supplies, because a panel's buttons have to look like that panel — the
- * same bargain `freedom`'s dropdown and keyboard strike. What is worth having
- * in common is that it says the same thing in every scene, since a player who
- * has found it once should not have to find it again somewhere else.
+ * same bargain `justdom-three`'s dropdown and keyboard strike. What is worth
+ * having in common is that it says the same thing in every scene, since a
+ * player who has found it once should not have to find it again somewhere else.
  */
-import { $, children, on, set, text } from "justdom";
+import { $, children, on, set, text } from "justdom-core";
 
 /**
  * @import {DiagnosticsControls} from './diagnostics.js';

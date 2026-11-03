@@ -1,4 +1,4 @@
-import { attr, className, text, $, children, style, stylesheet, CLASS_NAME } from "justdom";
+import { attr, className, text, $, children, style, stylesheet, CLASS_NAME } from "justdom-core";
 import { store, on, set, emit, Op, component } from "justdom-signal";
 
 // While a row is dragged, the slot it would land in is marked by turning
@@ -62,7 +62,7 @@ const textStyle = className`
   user-select: none;
 `;
 
-// freedom draws a checkbox in a portal itself — the box from these
+// justdom-three draws a checkbox in a portal itself — the box from these
 // declarations, the tick in whatever `color` says — so the native look is of
 // no use to it, and `appearance: none` is what the flat build needs anyway to
 // be dressed the same way. The same DOM is the page and the panel, so the
@@ -89,13 +89,13 @@ const checkboxStyle = stylesheet`
   .${CLASS_NAME}:checked, .${CLASS_NAME}[data-xr-checked] {
     background-color: #007bff;
     border-color: #007bff;
-    /* The tick, for the page, over a gradient for both. In a scene freedom
-       draws its own vector tick, and of a stack of background images it draws
-       the topmost gradient and skips any url(), so the tick shows on a page
-       and only there while the gradient shows on both. A background rather
-       than ::after because generated content on a replaced element is
-       Chrome-only; the polyline is the same one freedom draws, so the two
-       show the same mark. */
+    /* The tick, for the page, over a gradient for both. In a scene
+       justdom-three draws its own vector tick, and of a stack of background
+       images it draws the topmost gradient and skips any url(), so the tick
+       shows on a page and only there while the gradient shows on both. A
+       background rather than ::after because generated content on a replaced
+       element is Chrome-only; the polyline is the same one justdom-three draws,
+       so the two show the same mark. */
     background-image:
       url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"%3E%3Cpolyline points="0.16,0.5 0.4,0.74 0.84,0.24" fill="none" stroke="white" stroke-width="0.16"/%3E%3C/svg%3E'),
       linear-gradient(135deg, #3b93ff, #0056b3);

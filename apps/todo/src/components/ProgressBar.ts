@@ -1,4 +1,4 @@
-import { className, text, $, children, style } from "justdom";
+import { className, text, $, children, style } from "justdom-core";
 import { fromObservable, map, observable, set, timer, type Source } from "justdom-signal";
 
 const containerStyle = className`

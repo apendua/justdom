@@ -10,8 +10,8 @@ import {
   style,
   stylesheet,
   text,
-} from "justdom";
-import type { Mountable } from "justdom";
+} from "justdom-core";
+import type { Mountable } from "justdom-core";
 import { component, type Subscribable } from "justdom-signal";
 import { Fields } from "../store/Fields";
 import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";

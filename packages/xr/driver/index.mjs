@@ -9,21 +9,16 @@
  * on `window.xrDevice` (`src/emulator.js`), so the page has to be loaded
  * with `?emulator`, or `?emulator=bare` for nothing over the scene.
  *
- * Playwright is borrowed from `apps/showcase`, so that project has to
- * have been installed. The browser is the Chromium a development container
- * keeps at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM` names.
+ * Playwright is an optional peer dependency: a project that runs a check
+ * installs `playwright-core` beside `justdom-xr`, and one that only builds
+ * an app never loads this file. The browser is the Chromium a development
+ * container keeps at `/opt/pw-browsers/chromium-1194`, or the one `CHROMIUM`
+ * names.
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-
-/** @type {typeof import("playwright-core")} */
-const { chromium } = await import(
-  resolve(REPO, "apps/showcase/node_modules/playwright-core/index.mjs")
-);
+import { join } from "node:path";
+import { chromium } from "playwright-core";
 
 /**
  * Chromium on SwiftShader, which is what draws a session with no GPU.

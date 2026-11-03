@@ -1,4 +1,4 @@
-import { $, children, className, set, style, text } from "justdom";
+import { $, children, className, set, style, text } from "justdom-core";
 import { component } from "justdom-signal";
 import type AppStore from "../store/App";
 

@@ -1,4 +1,4 @@
-import { CLASS_NAME, stylesheet } from "justdom";
+import { CLASS_NAME, stylesheet } from "justdom-core";
 
 /**
  * The blocky, monospaced button the whole interface is built from.
@@ -12,8 +12,8 @@ import { CLASS_NAME, stylesheet } from "justdom";
  * menu with its width.
  *
  * A ray in a headset session hovers a button by `data-xr-hover`, which
- * freedom sets on it, since `:hover` belongs to the mouse alone; every rule
- * written for `:hover` is written for both.
+ * justdom-three sets on it, since `:hover` belongs to the mouse alone; every
+ * rule written for `:hover` is written for both.
  */
 export const menuItem = stylesheet`
   .${CLASS_NAME} {

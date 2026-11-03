@@ -1,4 +1,4 @@
-import { list, type Mountable } from "justdom";
+import { list, type Mountable } from "justdom-core";
 import type { Source, Subscribable } from "justdom-signal";
 
 /**

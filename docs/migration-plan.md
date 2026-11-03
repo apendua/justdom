@@ -16,11 +16,11 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 - **The demos move with the library.** The eight apps that apendua.dev lists as announced demos (the
   `announced` list in its `.github/deployed-apps.json`) come here. `desk` tests freedom more than
   any other app, and the labs games are not needed to validate it. `apps/signal-ssr` comes too,
-  renamed `todo-ssr`: it is the server-rendering example for `justdom` and `justdom-signal`, and it
-  uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31 October
-  2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the import,
-  `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo` (Tomasz,
-  31 October 2026).
+  renamed `todo-ssr`: it is the server-rendering example for `justdom-core` and `justdom-signal`,
+  and it uses nothing else. `bricks-xr` came with them and was deleted after the import (Tomasz, 31
+  October 2026): it is `castle-xr` with most of the game taken out, and `castle-xr` stays. After the
+  import, `castle-xr`, `showcase-xr` and `todo-vanilla` are renamed `castle`, `showcase` and `todo`
+  (Tomasz, 31 October 2026).
 - **Everything public lives here.** apendua.dev publishes nothing after the move, and there is no
   third repository. One Rush setup publishes two name families: unscoped `justdom-*` for the library
   and `@apendua/*` for packages that are not about justdom. GitHub Packages is retired.
@@ -43,7 +43,7 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 
 | Today in apendua.dev       | Published as            |
 | -------------------------- | ----------------------- |
-| `@apendua/justdom`         | `justdom`               |
+| `@apendua/justdom`         | `justdom-core`          |
 | `@apendua/signal`          | `justdom-signal`        |
 | `@apendua/freedom`         | `justdom-three`         |
 | `@apendua/justui`          | `justdom-three-ui`      |
@@ -57,6 +57,10 @@ which dates from 1 September 2026. Where the two disagree, this file wins.
 
 Every published package gets `"publishConfig": { "access": "public" }`, because a scoped package is
 private by default, and a `repository` field pointing at this repository with a `directory`.
+
+`@apendua/justdom` was meant to publish as plain `justdom`, but npm refuses that name as too similar
+to the existing `just-dom`, so it publishes as `justdom-core` from `packages/core`. If npm support
+allows `justdom` later, the package can move back to it.
 
 The names of `justdom-vite-hmr` and `justdom-xr`, and whether `jsdom-env` is published at all, are
 proposals that have not been confirmed.
@@ -142,15 +146,21 @@ Before the site can go live:
    workflow that only prepares versions: it runs `rush version --bump` and opens the version bump
    pull request, as apendua.dev's does today. It never runs `rush publish` and holds no npm token.
    After the bump pull request is merged into `develop`, Tomasz publishes from his own machine with
-   `rush publish --publish --include-all --version-policy publishable`, since npm asks the account's
-   second factor on every publish. Start from the August branch's versions of these files, minus its
-   publish step and its `NPM_AUTH_TOKEN` secret.
+   `common/scripts/publish.mjs`, since npm asks the account's second factor on every publish. The
+   README's _Releasing_ section has the commands. Start from the August branch's versions of these
+   files, minus its publish step and its `NPM_AUTH_TOKEN` secret.
 6. **Add the site** and its Pages workflow.
 7. **First release.** All public names go out in one sitting, so that nobody can take one in
-   between. It is a local `rush publish`, like every release after it, and
-   `common/config/rush/.npmrc-publish` points at registry.npmjs.org. Rush runs the publish with a
-   home directory of its own, so the publisher's `~/.npmrc` login is not read; the token comes from
-   `NPM_AUTH_TOKEN` in the publisher's shell, and no workflow holds one.
+   between. What follows is how the first release went: it was a local `rush publish`, and
+   `common/config/rush/.npmrc-publish` pointed at registry.npmjs.org. Rush ran the publish with a
+   home directory of its own, so the publisher's `~/.npmrc` login was not read; the token came from
+   `NPM_AUTH_TOKEN` in the publisher's shell, and no workflow held one. The first release, on 2
+   November 2026, settled the second factor: the token is the session token `npm login` saves, npm
+   asks for the second factor once per package, and Rush passes that prompt through. A token that
+   bypasses the second factor is not an option, since npm stops those from publishing directly in
+   January 2027. Every later release runs `common/scripts/publish.mjs` instead, with the publisher's
+   own `npm login` and no `NPM_AUTH_TOKEN` copy: on the second release, Rush misread npm 11's
+   `npm view --json` output and tried to publish versions already on npm.
 8. **Cut over apendua.dev.** The labs apps switch from `workspace:*` to npm ranges under the new
    names. The moved directories are deleted, the `publishable` version policy, `release.yml` and the
    GitHub Packages mapping in `.npmrc-publish` are removed, and `provenance.yml` stops listing the
@@ -169,6 +179,4 @@ Before the site can go live:
 - Whether `@apendua/jsdom-env` is published. Once `signal-ssr` moves as `todo-ssr`, nothing in
   apendua.dev uses it, so it can also stay a private workspace package here.
 - Whether apendua.dev's demo page links to the demos at justdom.dev once they leave its own site.
-- Whether `rush publish` passes npm's second-factor prompt through for each package. If it does not,
-  a short script runs `npm publish --otp` per package instead. The first release settles it.
 - Which of apendua.dev's design docs, review rules and visual tests come along, and in what form.

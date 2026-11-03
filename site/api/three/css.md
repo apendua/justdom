@@ -60,8 +60,9 @@ with no re-layout and no re-rasterized text. Prefer it for motion, as on the fla
 - 3D is real depth: `rotateY` swings half the element _behind_ its own surface, up to half its width
   deep, and the panel covers that half (see [Paint order](#paint-order)). Give anything 3D-rotated
   enough `translateZ` to keep the swing in front.
-- A transformed element paints over the earlier siblings it overlaps, the way a positioned one does
-  (see [Paint order](#paint-order)).
+- A transformed element paints over the earlier siblings it overlaps, and over every sibling in the
+  flow it overlaps, earlier or later, the way a positioned one does (see
+  [Paint order](#paint-order)).
 - A panel laid flat has its y axis along the surface it lies on, so a key pressed with the page's
   `translateY(3px)` slides sideways across the desk. An effect that should move toward the viewer is
   `translateZ`, whatever the page uses for the same press.
@@ -287,10 +288,11 @@ Followed:
 Not followed:
 
 - **Flow siblings are not ordered against each other.** Only an element that is positioned or
-  transformed clears its siblings, and only those that are too. A box pulled over a neighbour by a
-  negative margin keeps its level in the tree, and so does a positioned box over a flow sibling,
-  which then draws under that sibling's descendants: the positioned box's own text can sit behind a
-  child of the box it covers.
+  transformed clears its siblings, so a box pulled over a neighbour by a negative margin keeps its
+  level in the tree.
+- **A positioned box clears a flow sibling it covers whole, descendants included.** A page paints
+  that sibling's positioned descendants in tree order with the box, so one later in the tree than
+  the box draws under it here and over it on a page.
 - Only the sign of `z-index` counts. Two overlays stack in tree order, whatever their numbers, and
   two layers in one plane are ordered by that sign, as siblings are. A `z-index` inside a box that
   forms no stacking context is read where the box is, not let out of it.

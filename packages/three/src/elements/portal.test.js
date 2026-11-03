@@ -1549,8 +1549,8 @@ describe("createPortal", () => {
     portal.mount(mountable);
     await settle(portal);
 
-    // Rows the test owns rather than justdom's, since it is going to take
-    // them out from under whoever mounted them. Clickable, so that each is
+    // Rows the test owns rather than justdom-core's, since it is going to
+    // take them out from under whoever mounted them. Clickable, so that each is
     // a ray target with a registration to watch go.
     const containers = document.querySelectorAll("[data-xr-portal]");
     const list = /** @type {HTMLElement} */ (containers[containers.length - 1].firstElementChild);
@@ -1650,7 +1650,7 @@ describe("createPortal", () => {
     await drain();
     assert.equal(drawn(), 5, "two more, drawn in the frame they were attached");
 
-    // One of the rows the test appended, not one of justdom's.
+    // One of the rows the test appended, not one of justdom-core's.
     list.removeChild(/** @type {ChildNode} */ (list.lastElementChild));
     await nextMacrotask();
     flushFrame();
@@ -3401,14 +3401,14 @@ describe("createPortal", () => {
  * itself to in the first place.
  *
  * It is the *contract*. Every other test in this file builds its tree with
- * `justdom-core`, so all of them would keep passing if `mount` quietly grew
- * a second requirement and justdom grew the method to satisfy it — and every
+ * `justdom-core`, so all of them would keep passing if `mount` quietly grew a
+ * second requirement and justdom-core grew the method to satisfy it — and every
  * integration written against the one method in the README would break. That is
  * the regression this catches, and the only test here that can: it is the sole
  * caller whose mountable was not written by the package on the other side of
  * the seam.
  */
-describe("mounting a tree justdom did not build", () => {
+describe("mounting a tree justdom-core did not build", () => {
   /**
    * The whole `Mountable` contract, over a single element: put the node where
    * the span is, take the span's own nodes out, and report the span the node

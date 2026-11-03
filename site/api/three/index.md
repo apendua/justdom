@@ -36,7 +36,7 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
 - `fragment(...sources)` mounts several components as one. `copy(key, value)` writes a
   subscribable's values into a property that has a `copy` method, a `Vector3` or a `Color`, the way
   `set` assigns a plain one. `layoutEffects(fn)` runs an effect once the object is in the scene, and
-  not again when `attach` moves it. `list` and `keyedList` are the keyed lists justdom has, for
+  not again when `attach` moves it. `list` and `keyedList` are the keyed lists justdom-core has, for
   Three objects, and `Nothing()` is a component that mounts nothing.
 - `size(ctx)` is the renderer's size as a source. `InteractionContext` and `InteractionManager` are
   the manager behind `interactions(ctx)`, for a test or a scene that drives one by hand.

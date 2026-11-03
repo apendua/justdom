@@ -14,7 +14,7 @@ export default defineConfig({
         name: "Todo App",
         short_name: "Todo",
         description:
-          "A todo list built with justdom and justdom-signal, mirrored into a headset by justdom-three",
+          "A todo list built with justdom-core and justdom-signal, mirrored into a headset by justdom-three",
         theme_color: "#ffffff",
         icons: [
           {

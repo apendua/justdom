@@ -145,9 +145,9 @@ shader.
 
 ```js
 import { makeReveal } from "justdom-three";
-// The element builders are justdom's, as they are for any panel; `$` and
-// `children` here are that package's, not the ones justdom-three hands out for
-// Three objects.
+// The element builders are justdom-core's, as they are for any panel; `$`
+// and `children` here are that package's, not the ones justdom-three hands
+// out for Three objects.
 import { $, children, set } from "justdom-core";
 
 const reveal = makeReveal(() => letter.typed.get());

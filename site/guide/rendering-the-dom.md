@@ -13,7 +13,7 @@ import { $, children, set, on, text, style } from "justdom-core";
 const count = Signal.of(0);
 
 const Counter = $("button", [
-  set("className", "counter"),
+  set({ className: "counter" }),
   style("fontWeight", () => (count.get() > 9 ? "bold" : "normal")),
   on("click", () => count.set(count.get() + 1)),
   children(text`Clicked ${() => count.get()} times`),
@@ -26,9 +26,9 @@ const Counter = $("button", [
 created when the tree is mounted, not when `$()` is called, so the same source can be mounted in two
 places and each gets a node of its own. `$$(tag, effects)` is the same for SVG elements.
 
-The operators are factories of entity effects, and each takes a value in three shapes: a plain
-value, written once; a getter, re-run when anything it read moves; or a subscribable, written on
-every emission.
+The operators are factories of entity effects. Given a key, each takes its value as a getter, re-run
+when anything it read moves, or as a subscribable, written on every emission. A plain value, written
+once, goes in the object form instead: `set({ className: "counter" })`.
 
 | Operator               | Writes                                                                                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |

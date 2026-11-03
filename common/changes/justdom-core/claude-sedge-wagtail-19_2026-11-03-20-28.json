@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Correct the README's counter, which passed set() a plain string with a key",
+      "type": "none",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

@@ -1,0 +1,133 @@
+name: Driven checks
+
+# Four apps played in an emulated headset by a script, the way a player would
+# play them. Minesweeper's check plays its board and menu, the desk's puts
+# each look up and leaves by its power control, Euclid's draws, drags and
+# pans with the drawing's own pointer handlers, and Knights' sends a stack
+# along the route its ray previews. Each is a check of justdom-three more than of
+# its app, since a ray that misses or a panel that never loads is the
+# library's to fix, so a pull request that changes justdom-three runs all
+# four. Kept apart from ci.yml because it needs a browser the other job has
+# no use for, and gates nothing else.
+on:
+  workflow_dispatch:
+  # Pull requests only, as in visual.yml: every change reaches develop
+  # through one, so a run on the merge would check a commit already checked.
+  pull_request:
+    branches: ["develop", "claude/**"]
+    # The two extra events are there because a draft is skipped below: a
+    # draft marked ready starts the run that `opened` skipped, and a ready PR
+    # turned back into a draft cancels the one in flight.
+    types:
+      [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    paths:
+      # The four apps and their direct dependencies: a package any of them
+      # imports can break a check, justdom-xr most of all, since its driver
+      # is what the checks drive the session with. Euclid's own two packages
+      # are euclid-core and euclid-lang, which depends only on euclid-core.
+      # Widen this when an app's dependency list grows.
+      - "apps/minesweeper/**"
+      - "apps/desk/**"
+      - "apps/euclid/**"
+      - "apps/knights/**"
+      - "packages/core/**"
+      - "packages/euclid-core/**"
+      - "packages/euclid-lang/**"
+      - "packages/geometry/**"
+      - "packages/signal/**"
+      - "packages/three/**"
+      - "packages/three-ui/**"
+      - "packages/vite-hmr/**"
+      - "packages/xr/**"
+      - ".github/workflows/driven.yml"
+      # What none of those ships to the page: docs, unit tests and their
+      # harnesses, and benchmarks. A change made only of these cannot change
+      # what the run sees. A `!` pattern takes back what the lines above
+      # matched, so these stay last.
+      - "!**/*.md"
+      - "!packages/**/*.test.js"
+      - "!packages/**/*.bench.js"
+      - "!packages/*/src/test/**"
+      - "!packages/*/bench/**"
+
+# As in ci.yml: a new push to a pull request cancels the run for the one
+# before it, and a manual run always has a group of its own.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: >-
+      !github.event.pull_request.draft
+      && github.head_ref != 'release/version-bump'
+    runs-on: ubuntu-latest
+    # Each check takes a few minutes under SwiftShader, most of it panels
+    # mounting at a few frames a second.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        # Knights plays an mp3 that the repository keeps in LFS.
+        with:
+          lfs: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      # No build: the apps and everything they import are served from
+      # source by vite, which is what the checks start.
+      #
+      # The checks borrow playwright from apps/showcase, so the browser is
+      # the one visual.yml installs, cached under the same key.
+      - name: Cache the browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{
+            hashFiles('./common/config/rush/pnpm-lock.yaml') }}
+      - name: Install Chromium
+        run: node apps/showcase/node_modules/playwright-core/cli.js install --with-deps chromium
+      # The checks launch the Chromium a development container keeps under
+      # /opt unless CHROMIUM names another, and the runner has it where
+      # playwright put it.
+      - name: Point the checks at it
+        run: |
+          echo "CHROMIUM=$(node --input-type=module -e "
+            const { chromium } = await import('./apps/showcase/node_modules/playwright-core/index.mjs');
+            console.log(chromium.executablePath());
+          ")" >> "$GITHUB_ENV"
+      - name: Play minesweeper
+        working-directory: apps/minesweeper
+        env:
+          SHOTS: ${{ runner.temp }}/shots/minesweeper
+        run: node tests/xr-check.mjs
+      # Run whether or not minesweeper passed, so one run reports every app.
+      - name: Put the desk up
+        if: ${{ !cancelled() }}
+        working-directory: apps/desk
+        env:
+          SHOTS: ${{ runner.temp }}/shots/desk
+        run: node tests/xr-check.mjs
+      - name: Draw in Euclid
+        if: ${{ !cancelled() }}
+        working-directory: apps/euclid
+        env:
+          SHOTS: ${{ runner.temp }}/shots/euclid
+        run: node tests/xr-check.mjs
+      - name: Fight in Knights
+        if: ${{ !cancelled() }}
+        working-directory: apps/knights
+        env:
+          SHOTS: ${{ runner.temp }}/shots/knights
+        run: node tests/xr-check.mjs
+      - name: Upload what they saw
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: driven
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: warn
+          retention-days: 14

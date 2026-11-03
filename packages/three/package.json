@@ -19,6 +19,7 @@
   },
   "license": "MIT",
   "author": "apendua",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -54,6 +55,7 @@
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@webgpu/types": "^0.1.65",
+    "esbuild": "^0.27.4",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
     "justdom-core": "workspace:*",

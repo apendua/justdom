@@ -38,7 +38,7 @@ import { surfaceRun } from "./surfaceRun.js";
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
  * @import {ContentImage} from './image.js';
- * @import {GeneratedLayout} from './mirror.js';
+ * @import {ClientBox, GeneratedLayout} from './mirror.js';
  */
 
 /**
@@ -394,6 +394,17 @@ function generatedBox(ctx, element, kind, surface, content) {
   };
   const order = () =>
     kind === "before" ? getContentRenderOrder(element) : getClosingRenderOrder(element);
+  /**
+   * What the quad covers, from the box's top left: the box, or for a box
+   * that paints nothing of its own, the `content: url()` picture alone,
+   * which reaches above the box when it is taller than the line it is on.
+   */
+  const quadBox = () => {
+    const at = layout.get();
+    return at.picture && !paintsBox(style())
+      ? at.picture
+      : { x: 0, y: 0, width: at.width, height: at.height };
+  };
 
   const properties = new VisualProperties();
   /** @type {BoxSurface} */
@@ -424,7 +435,7 @@ function generatedBox(ctx, element, kind, surface, content) {
   group.matrixAutoUpdate = false;
   return $(group, [
     effects(() => {
-      const { width, height } = layout.get();
+      const { width, height } = quadBox();
       properties.setFromElement(element, pseudo, { width, height });
     }),
     children(
@@ -436,6 +447,7 @@ function generatedBox(ctx, element, kind, surface, content) {
               pseudo,
               own,
               () => layout.get(),
+              quadBox,
               origin,
               order,
               () => content.get()?.url != null,
@@ -477,7 +489,9 @@ function generatedBox(ctx, element, kind, surface, content) {
  * @param {string} pseudo `::before` or `::after`.
  * @param {BoxSurface} surface The generated box's own.
  * @param {() => GeneratedLayout} layout The generated box's.
- * @param {() => { x: number, y: number }} origin
+ * @param {() => ClientBox} quadBox What the quad covers, from the box's
+ *   top left.
+ * @param {() => { x: number, y: number }} origin The box's top left.
  * @param {() => number} order Where its text draws.
  * @param {() => boolean} hasPicture Whether its `content` is a `url()`.
  * @param {Derived<ReturnType<typeof ownedImage> extends Derived<infer T> ? T : never>} picture
@@ -490,6 +504,7 @@ function generatedQuad(
   pseudo,
   surface,
   layout,
+  quadBox,
   origin,
   order,
   hasPicture,
@@ -526,13 +541,11 @@ function generatedQuad(
       if (!state?.texture || !size || !placed) {
         return background.get();
       }
+      const box = quadBox();
+      const left = placed.x - box.x;
+      const top = placed.y - box.y;
       return placeContentImage(
-        {
-          left: placed.x,
-          top: placed.y,
-          right: placed.x + placed.width,
-          bottom: placed.y + placed.height,
-        },
+        { left, top, right: left + placed.width, bottom: top + placed.height },
         "none",
         "0% 0%",
         size,
@@ -553,7 +566,8 @@ function generatedQuad(
     effects((obj) => {
       writeRectUniforms(uniforms, properties);
       writeGradientUniforms(uniforms, properties, rampSlot);
-      const at = origin();
+      const box = quadBox();
+      const at = { x: origin().x + box.x, y: origin().y + box.y };
       placeAndScale(
         obj,
         at.x,

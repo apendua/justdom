@@ -535,13 +535,15 @@ describe("an element's ::before and ::after in a panel", () => {
       return /** @type {THREE.Texture<HTMLImageElement>} */ (texture);
     };
     try {
-      pseudoRule(".pic", "before", 'url("/icon.png")', "padding: 2px");
-      const panel = generatedPanel(
-        `<div class="pic" data-rect="0,0,200,40" data-before="10,4,16,20" data-picture="2,1,12,14"></div>`,
-      );
+      pseudoRule(".pic", "before", 'url("/icon.png")', "padding: 2px; background-color: red");
+      pseudoRule(".tall", "before", 'url("/icon.png")');
+      const panel = generatedPanel(`
+        <div class="pic" data-rect="0,0,200,40" data-before="10,4,16,20" data-picture="2,1,12,14"></div>
+        <div class="tall" data-rect="0,40,200,40" data-before="0,10,12,8" data-picture="0,-4,12,14"></div>
+      `);
       await settle(panel.portal);
 
-      const [quad] = panel.quads();
+      const [quad, tall] = panel.quads();
       assert.ok(quad, "a picture is drawn on a quad of its own");
       assert.notEqual(quad.material, batchedBoxMaterial(), "a picture draws itself");
       const { uImage, uImageRect } = quad.material.uniforms;
@@ -549,6 +551,13 @@ describe("an element's ::before and ::after in a panel", () => {
       // On the baseline, a pixel down here, not at the content box's corner,
       // which the padding puts at 2, 2.
       assert.deepEqual(uImageRect.value.toArray(), [2, 1, 14, 15]);
+      // Taller than its line, it reaches above its box, and with no box of
+      // its own to paint, its quad is the picture.
+      assert.deepEqual(
+        [tall.position.x, tall.position.y, tall.scale.x, tall.scale.y],
+        [0, 6, 12, 14],
+      );
+      assert.deepEqual(tall.material.uniforms.uImageRect.value.toArray(), [0, 0, 12, 14]);
       assert.deepEqual(canvas.drawn, []);
 
       panel.cleanup();

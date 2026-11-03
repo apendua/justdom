@@ -530,6 +530,8 @@ Not followed:
   over them. An element's `::after` and one of its descendant's can draw level, in no set order.
 - `counter()`, `counters()` and the quotes, which the browser leaves for the page to count. The text
   of such a `content` is not drawn, its box is. Text and a `url()` in one `content` draw the text.
+- A `content: url()` picture taller than its line, in a box with a background or a border: the
+  picture is clipped to the box. In a box that paints nothing of its own, it is drawn whole.
 - A transition or an animation on a pseudo-element: its end is drawn.
 - `::first-letter`, `::first-line`, `::selection`, `::backdrop`, and a pseudo-element on a replaced
   element, such as an `<img>` or an `<input>`.

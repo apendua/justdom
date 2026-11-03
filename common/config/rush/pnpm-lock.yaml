@@ -694,9 +694,18 @@ importers:
       '@apendua/euclid-core':
         specifier: workspace:*
         version: link:../packages/euclid-core
+      '@apendua/euclid-lang':
+        specifier: workspace:*
+        version: link:../packages/euclid-lang
+      '@apendua/geometry':
+        specifier: workspace:*
+        version: link:../packages/geometry
       '@apendua/jsdom-env':
         specifier: workspace:*
         version: link:../packages/jsdom-env
+      '@apendua/sound':
+        specifier: workspace:*
+        version: link:../packages/sound
       '@types/node':
         specifier: ^24.7.0
         version: 24.19.2

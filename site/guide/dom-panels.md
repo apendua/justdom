@@ -12,6 +12,7 @@ true: a ray's click is a click, so the app's handlers are the ones a page would 
 for a panel that exists only in the scene:
 
 ```js
+import * as THREE from "three";
 import { effects } from "justdom-signal";
 import { $, children, dom } from "justdom-three";
 

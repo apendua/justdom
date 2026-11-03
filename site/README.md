@@ -94,21 +94,29 @@ API the way its types refuse fails the build. `scripts/snippets.mjs` takes every
 and `tsx` block from the guide, the API reference, the repository's README and each package's
 README, writes each to `.snippets/` (ignored by Git) as a module of its own, and runs `tsc` over
 them against the packages. The packages are this package's other `workspace:*` dependencies, so Rush
-builds their types first. A block is checked, not run. The check also includes the declarations that
-tell `on` an element's or a Three object's events, from `packages/three/src/types/`: the packages do
-not ship them, and each demo keeps a copy of its own.
+builds their types first; a new package under `packages/` goes in that list too, or its README's
+names are taken for placeholders. A block is checked, not run. The check also includes the
+declarations that tell `on` an element's or a Three object's events, from
+`packages/three/src/types/`: the packages do not ship them, and each demo keeps a copy of its own.
 
 Most blocks are fragments that use a `ctx` or a `board` the page explains in prose. A name a block
-never declares is taken for such a placeholder and not reported, unless a package exports it: then
-the block has to import it, as a reader copying it would have to, and what it calls is checked
-against the real types. A placeholder that shares its name with an export, or with a browser global
-such as `top`, is therefore checked as that thing, so give it another name. An import of a relative
-path, such as `./xr`, is the reader's own module and is a placeholder too. Null checks are off, so a
-block may mount on `document.querySelector(…)` without one.
+never declares is taken for such a placeholder and not reported, unless a package exports it as a
+value, or as a type in a `ts` block, or it is `THREE`: then the block has to import it, as a reader
+copying it would have to, and what it calls is checked against the real types. `tsc` itself says
+which names the packages export. The rule only knows names the packages export, so a misspelt one,
+such as `childen` for `children`, is a placeholder as well, and a green check does not prove that
+every name in a block is real. A placeholder that shares its name with an export, or with a browser
+global such as `top`, is therefore checked as that thing, so give it another name. An import of a
+relative path, such as `./xr`, is the reader's own module and is a placeholder too. Null checks are
+off, so a block may mount on `document.querySelector(…)` without one.
 
 A block that is not meant to compile, such as a sketch with gaps in it, is skipped with
 `<!-- snippet: skip -->` on the line above its fence, a comment that neither GitHub nor VitePress
 shows. A marker with no code block under it fails the check.
+
+A block that does not parse hides every type error in every other block: `tsc` reports types only
+once nothing fails to parse. So after fixing a syntax error, run the check again before taking its
+silence about the rest for a pass.
 
 To run the check alone, after `node common/scripts/install-run-rush.js build --to justdom-site`, run
 `npm run snippets` here.

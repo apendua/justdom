@@ -14,6 +14,7 @@ disabled control, or anything else that comes and goes can leave and rejoin the 
 leaving the scene:
 
 ```js
+import * as THREE from "three";
 import { $ } from "justdom-three";
 
 $(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
@@ -171,7 +172,10 @@ things standing on it, which a drag would tip over. A carry takes only two thing
 where it has got to, and how far it has turned about the vertical — and poses the board once a frame
 from them rather than reparenting it, so a level board stays level.
 
+<!-- snippet: skip -->
+
 ```js
+import * as THREE from "three";
 import { $, carry, children } from "justdom-three";
 
 const board = carry(ctx, { enabled: () => phase.get() === "build" });

@@ -833,6 +833,7 @@ being recomposed every frame on the chance it moved, which is most of what makes
 cheap. Place the panel however you like:
 
 ```js
+import * as THREE from "three";
 import { effects } from "justdom-signal";
 import { $, children, dom } from "justdom-three";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractSnippets, mapDiagnostics, skipMarker } from "./snippets.mjs";
+import { extractSnippets, mapDiagnostics, skipMarker, unresolvedNames } from "./snippets.mjs";
 
 test("each js and ts block is taken, with the line of its fence", () => {
   const markdown = [
@@ -41,8 +41,14 @@ test("a skip marker with no block under it is stray", () => {
   assert.deepEqual(stray, [1, 8]);
 });
 
-const files = new Map([["site/guide/page/10.js", { source: "site/guide/page.md", line: 10 }]]);
-const exported = new Map([["set", ["justdom-core", "justdom-signal"]]]);
+const files = new Map([
+  ["site/guide/page/10.js", { source: "site/guide/page.md", line: 10 }],
+  ["site/guide/page/20.ts", { source: "site/guide/page.md", line: 20 }],
+]);
+const exported = {
+  values: new Map([["set", ["justdom-core", "justdom-signal"]]]),
+  types: new Map([["Context", ["justdom-signal"]]]),
+};
 
 test("an error is reported at its line in the Markdown file", () => {
   const output = [
@@ -73,4 +79,25 @@ test("a package's export left unimported is reported once a block", () => {
   assert.deepEqual(mapDiagnostics(output, files, exported), [
     "site/guide/page.md:12:1: 'set' is not imported, from justdom-core or justdom-signal",
   ]);
+});
+
+test("a name exported as a type alone has to be imported in a TypeScript block only", () => {
+  const output = [
+    "site/guide/page/10.js(1,1): error TS2304: Cannot find name 'Context'.",
+    "site/guide/page/20.ts(1,8): error TS2304: Cannot find name 'Context'.",
+  ].join("\n");
+  assert.deepEqual(mapDiagnostics(output, files, exported), [
+    "site/guide/page.md:21:8: 'Context' is not imported, from justdom-signal",
+  ]);
+});
+
+test("the names tsc could not find are listed once each", () => {
+  const output = [
+    "a/1.js(1,1): error TS2304: Cannot find name 'ctx'.",
+    "a/1.js(2,1): error TS2552: Cannot find name 'node'. Did you mean 'Node'?",
+    "a/2.js(1,1): error TS2304: Cannot find name 'ctx'.",
+    "a/2.js(2,9): error TS18004: No value exists in scope for the shorthand property 'root'.",
+    "a/2.js(3,1): error TS2345: Argument of type 'string' is not assignable.",
+  ].join("\n");
+  assert.deepEqual(unresolvedNames(output), ["ctx", "node", "root"]);
 });

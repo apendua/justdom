@@ -12,8 +12,10 @@
 // page has explained in prose, and declaring each one would bury the point of
 // the block. So a name a block uses and never declares is taken to be such a
 // placeholder, and tsc's error for it is dropped, unless one of the packages
-// exports that name. Then the block has to import it, as a reader copying it
-// would, and an API it calls is checked against the real types.
+// exports that name (a type counts in a TypeScript block), or it is `THREE`.
+// Then the block has to import it, as a reader copying it would, and an API
+// it calls is checked against the real types. tsc itself says which names
+// the packages export: see `exportsOf`.
 //
 // A block that is not meant to compile, such as a sketch with gaps in it,
 // is skipped by putting this comment on the line above its fence:
@@ -26,7 +28,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, posix, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { splitFences } from "./pages.mjs";
 import { demos, readJson, root, site } from "./projects.mjs";
 
@@ -140,7 +142,7 @@ export function extractSnippets(markdown) {
  * @param {string} output tsc's stdout, run with `--pretty false`
  * @param {Map<string, { source: string, line: number }>} files each written
  *   file, relative to .snippets/ with `/` separators, and where its block is
- * @param {Map<string, string[]>} exported what `packageExports` returns
+ * @param {Exports} exported what `exportsOf` returns
  * @returns {string[]}
  */
 export function mapDiagnostics(output, files, exported) {
@@ -163,9 +165,7 @@ export function mapDiagnostics(output, files, exported) {
     const where = block
       ? `${block.source}:${block.line + Number(row)}:${column}`
       : `${file}(${row},${column})`;
-    const name = message.match(
-      /^Cannot find name '([^']+)'|^No value exists in scope for the shorthand property '([^']+)'/,
-    );
+    const name = text.match(unresolved);
     dropped = false;
     // An import of a relative path is of the reader's own module, which is
     // a placeholder too.
@@ -174,7 +174,11 @@ export function mapDiagnostics(output, files, exported) {
       continue;
     }
     if (name) {
-      const from = exported.get(name[1] ?? name[2]);
+      // A name exported as a type alone is a placeholder in a JavaScript
+      // block, which has no type positions outside its JSDoc.
+      const from =
+        exported.values.get(name[1] ?? name[2]) ??
+        (/\.tsx?$/.test(file) ? exported.types.get(name[1] ?? name[2]) : undefined);
       if (!from) {
         dropped = true;
         continue;
@@ -195,34 +199,133 @@ export function mapDiagnostics(output, files, exported) {
 }
 
 /**
- * Every name the site's packages export, and the import paths that export
- * it. The packages are the site's "workspace:*" dependencies that are not
- * demos, and each entry point in a package's "exports" that has types is
- * imported to list its names.
- *
- * @returns {Promise<Map<string, string[]>>}
+ * Namespaces a block refers to by the name the docs import them under, and
+ * the module each is. A package's own names come from `entryPoints`.
  */
-export async function packageExports() {
+export const namespaces = new Map([["THREE", "three"]]);
+
+/**
+ * Every import path of the site's packages that has types: the site's
+ * "workspace:*" dependencies that are not demos, each with the entries in
+ * its "exports".
+ *
+ * @returns {string[]}
+ */
+export function entryPoints() {
   /** @type {Record<string, string>} */
   const dependencies = readJson(join(site, "package.json")).devDependencies;
   const served = new Set(demos().map((demo) => demo.packageName));
-  /** @type {Map<string, string[]>} */
-  const exported = new Map();
-  for (const [name, range] of Object.entries(dependencies)) {
-    if (range !== "workspace:*" || served.has(name)) continue;
-    const folder = join(site, "node_modules", name);
-    /** @type {Record<string, string | { types?: string, import?: string }>} */
-    const entries = readJson(join(folder, "package.json")).exports;
-    for (const [path, target] of Object.entries(entries)) {
-      if (typeof target === "string" || !target.types || !target.import) continue;
-      const specifier = posix.join(name, path);
-      const module = await import(pathToFileURL(join(folder, target.import)).href);
-      for (const key of Object.keys(module)) {
-        exported.set(key, [...(exported.get(key) ?? []), specifier]);
-      }
-    }
+  return Object.entries(dependencies)
+    .filter(([name, range]) => range === "workspace:*" && !served.has(name))
+    .flatMap(([name]) => {
+      /** @type {Record<string, string | { types?: string }>} */
+      const entries = readJson(join(site, "node_modules", name, "package.json")).exports;
+      return Object.entries(entries)
+        .filter(([, target]) => typeof target !== "string" && target.types)
+        .map(([path]) => posix.join(name, path));
+    });
+}
+
+/**
+ * The names tsc could not find in the blocks, each once.
+ *
+ * @param {string} output tsc's stdout
+ * @returns {string[]}
+ */
+export function unresolvedNames(output) {
+  const names = new Set();
+  for (const match of output.matchAll(new RegExp(unresolved.source, "gm"))) {
+    names.add(match[1] ?? match[2]);
   }
+  return [...names];
+}
+
+/** tsc's message for a name a block uses and nothing declares. */
+const unresolved =
+  /: error TS\d+: (?:Cannot find name '([^']+)'|No value exists in scope for the shorthand property '([^']+)')/;
+
+/**
+ * @typedef {object} Exports
+ * @property {Map<string, string[]>} values each name an entry point exports
+ *   as a value, and the entry points that do
+ * @property {Map<string, string[]>} types each name exported as a type alone
+ */
+
+/**
+ * Which of `names` the packages export, and from which import paths. tsc
+ * answers it: a probe imports every name from every entry point under an
+ * alias, one entry point a line, and then uses each alias as a value. tsc
+ * reports a name an entry point does not export on that entry point's line,
+ * and an alias of a type that is not a value where it is used.
+ *
+ * @param {string[]} names
+ * @param {string} dir a folder of its own under the site, for the probe
+ * @returns {Exports}
+ */
+export function exportsOf(names, dir) {
+  /** @type {Exports} */
+  const exported = { values: new Map(), types: new Map() };
+  for (const name of names) {
+    const module = namespaces.get(name);
+    if (module) exported.values.set(name, [module]);
+  }
+  const candidates = names.filter((name) => !namespaces.has(name));
+  if (candidates.length === 0) return exported;
+  const entries = entryPoints();
+  /** @type {{ entry: string, line: number, name: string }[]} */
+  const aliases = [];
+  const probe = entries.map((entry, line) => {
+    const list = candidates.map((name) => `${name} as _${aliases.push({ entry, line, name }) - 1}`);
+    return `import { ${list.join(", ")} } from "${entry}";`;
+  });
+  // A statement each, since tsc reports one such error a statement.
+  probe.push(...aliases.map((_, index) => `void _${index};`));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "probe.ts"), probe.join("\n") + "\n");
+  writeFileSync(
+    join(dir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions, files: ["probe.ts"] }, null, 2) + "\n",
+  );
+  const output = runTsc(dir);
+  const missing = new Set();
+  for (const [, line, name] of output.matchAll(
+    /^probe\.ts\((\d+),\d+\): error TS\d+: .* has no exported member(?: named)? '([^']+)'/gm,
+  )) {
+    missing.add(`${Number(line) - 1}:${name}`);
+  }
+  const typeOnly = new Set(
+    [
+      ...output.matchAll(/^probe\.ts\(\d+,\d+\): error TS\d+: '_(\d+)' only refers to a type/gm),
+    ].map(([, index]) => Number(index)),
+  );
+  aliases.forEach(({ entry, line, name }, index) => {
+    if (missing.has(`${line}:${name}`)) return;
+    const map = typeOnly.has(index) ? exported.types : exported.values;
+    map.set(name, [...(map.get(name) ?? []), entry]);
+  });
   return exported;
+}
+
+/**
+ * Runs tsc on the tsconfig.json in `dir` and returns what it printed. tsc
+ * exits with 1 when it reports errors; anything else that stops it throws.
+ *
+ * @param {string} dir
+ */
+function runTsc(dir) {
+  const tsc = join(site, "node_modules", ".bin", "tsc");
+  try {
+    execFileSync(tsc, ["--project", join(dir, "tsconfig.json"), "--pretty", "false"], {
+      cwd: dir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return "";
+  } catch (error) {
+    const { stdout = "" } = /** @type {{ stdout?: string }} */ (error);
+    if (!/: error TS\d+:/.test(stdout)) throw error;
+    return stdout;
+  }
 }
 
 /** The Markdown files whose code blocks are checked, relative to the root. */
@@ -245,7 +348,7 @@ export function sources() {
   return ["README.md", ...packages, "site/index.md", ...pages];
 }
 
-async function main() {
+function main() {
   const out = join(site, ".snippets");
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -271,22 +374,10 @@ async function main() {
     JSON.stringify({ compilerOptions, include: ["**/*", ...augmentations] }, null, 2) + "\n",
   );
 
-  const tsc = join(site, "node_modules", ".bin", "tsc");
-  try {
-    execFileSync(tsc, ["--project", join(out, "tsconfig.json"), "--pretty", "false"], {
-      cwd: out,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (error) {
-    const { stdout = "", stderr = "" } = /** @type {{ stdout?: string, stderr?: string }} */ (
-      error
-    );
-    // tsc exits with 1 on errors that may all be placeholders; anything else
-    // that stops it is a failure of its own.
-    if (!/: error TS\d+:/.test(stdout)) throw error;
-    problems.push(...mapDiagnostics(stdout + stderr, files, await packageExports()));
-  }
+  const output = runTsc(out);
+  // A dot folder, which the blocks' tsconfig.json does not include.
+  const exported = exportsOf(unresolvedNames(output), join(out, ".probe"));
+  problems.push(...mapDiagnostics(output, files, exported));
 
   if (problems.length > 0) {
     console.log(problems.join("\n"));
@@ -300,4 +391,4 @@ async function main() {
   console.log(`Type-checked ${files.size} code blocks in ${sources().length} Markdown files.`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();

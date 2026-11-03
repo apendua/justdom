@@ -77,7 +77,10 @@ has got to and how far it has turned about the vertical, and poses the board onc
 so a level board stays level. The presses are taken by **handles**, so only furniture starts a
 carry:
 
+<!-- snippet: skip -->
+
 ```js
+import * as THREE from "three";
 import { $, carry, children } from "justdom-three";
 
 const board = carry(ctx, { enabled: () => phase.get() === "build" });

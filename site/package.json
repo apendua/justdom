@@ -20,7 +20,10 @@
   },
   "devDependencies": {
     "@apendua/euclid-core": "workspace:*",
+    "@apendua/euclid-lang": "workspace:*",
+    "@apendua/geometry": "workspace:*",
     "@apendua/jsdom-env": "workspace:*",
+    "@apendua/sound": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "castle": "workspace:*",

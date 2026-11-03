@@ -34,6 +34,7 @@ export default defineConfig({
       { text: "API", link: "/api/", activeMatch: "/api/" },
       { text: "Packages", link: "/packages/" },
       { text: "Demos", link: "/demos/" },
+      { text: "Bundle size", link: "/bundle-size" },
     ],
     sidebar: {
       "/guide/": [

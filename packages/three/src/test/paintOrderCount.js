@@ -45,6 +45,10 @@
  *   the like. A `<use>`'s copy is read with the target's own computed
  *   style, not the one the `<use>` passes down. Each picture and shape is a
  *   draw of its own.
+ * - An element's `::before` and `::after` are counted as its first and last
+ *   child, while they draw (`getPaintChildren`): a box when they paint one
+ *   or a picture for a `content: url()`, and a run for their text, at
+ *   their own level (`getDrawLevel` of the stand-in).
  * - A run's size class is the array its raster goes in (`sizeClass`). The
  *   text batch binds one array a draw, so two batches draw text a class at
  *   a time.
@@ -82,6 +86,8 @@ import * as THREE from "three";
 /**
  * @import {TextLine} from "../elements/textLines.js";
  * @import {Polygon} from "../elements/layerTree.js";
+ * @import {PaintNode} from "../elements/elevation.js";
+ * @import {Generated} from "../elements/pseudoElements.js";
  */
 import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
@@ -113,6 +119,7 @@ import {
 } from "../elements/textHelpers.js";
 import { PASSWORD_BULLET } from "../elements/textInput.js";
 import { getShownValue, isTextInput } from "../elements/typing.js";
+import { getPaintChildren, isGenerated } from "../elements/pseudoElements.js";
 import { MARKABLE_TAGS, markerVertices } from "../svg/marker.js";
 import { buildShapePath, readDrawnProperty, SHAPE_TAGS, viewportSize } from "../svg/shape.js";
 import { parseNumber, parsePaint, parseUrlReference, readShapeGeometry } from "../svg/style.js";
@@ -123,7 +130,8 @@ import { findReferenced, GROUP_TAGS } from "../svg/template.js";
  *
  * @typedef {object} Entry
  * @property {Kind} kind
- * @property {Element} element
+ * @property {PaintNode} element What draws it: an element, or an element's
+ *   `::before` or `::after`.
  * @property {Element} layer The root of the layer it is drawn in.
  * @property {number} level Its draw level, within its layer.
  * @property {string | null} size A run's size class, the array its raster
@@ -143,7 +151,14 @@ function isRoot(element) {
  * @returns {boolean}
  */
 function paints(element) {
-  const style = getComputedStyleCached(element);
+  return paintsStyle(getComputedStyleCached(element));
+}
+
+/**
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+function paintsStyle(style) {
   return (
     parseAlpha(style.backgroundColor) > 0 ||
     (style.backgroundImage || "none") !== "none" ||
@@ -323,7 +338,7 @@ export function listPaintOrder(root) {
 
   /**
    * @param {Kind} kind
-   * @param {Element} element
+   * @param {PaintNode} element
    * @param {number} step 0 for the box, 1 for its content.
    * @param {string | null} [size] A run's size class, null for one that
    *   draws itself.
@@ -422,6 +437,29 @@ export function listPaintOrder(root) {
   };
 
   /**
+   * What an element's `::before` or `::after` draws, as `generatedContent.js`
+   * draws it: its picture, or its box where it paints one, and its text.
+   *
+   * @param {Generated} generated
+   */
+  const visitGenerated = (generated) => {
+    const content = generated.content.get();
+    if (!content) {
+      return;
+    }
+    const style = generated.style();
+    if (content.url !== null) {
+      push("picture", generated, 0);
+    } else if (paintsStyle(style)) {
+      push("box", generated, 0);
+    }
+    const placed = generated.layout.get().text;
+    if (content.text !== "" && placed) {
+      push("run", generated, 1, sizeClass(style, placed.lines, placed.bounds));
+    }
+  };
+
+  /**
    * @param {Element} element
    */
   const visit = (element) => {
@@ -462,8 +500,12 @@ export function listPaintOrder(root) {
     if (tag === "TEXTAREA" || tag === "SELECT" || tag === "INPUT") {
       return;
     }
-    for (const node of getChildNodes(element)) {
-      if (node.nodeType === Node.TEXT_NODE) {
+    for (const node of getPaintChildren(element)) {
+      if (isGenerated(node)) {
+        if (shown) {
+          visitGenerated(node);
+        }
+      } else if (node.nodeType === Node.TEXT_NODE) {
         const text = /** @type {Text} */ (node);
         if (shown && getTextDataCached(text).trim() !== "") {
           const { lines, bounds } = getTextLayout(text);

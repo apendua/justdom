@@ -8,7 +8,9 @@ import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { resetMeasuringRangeForTests } from "./mirror.js";
 import { batchedBoxMaterial, rectGeometry } from "./sdfRect.js";
-import { parseGeneratedContent } from "./generatedContent.js";
+import { getGenerated, parseGeneratedContent } from "./pseudoElements.js";
+import { getDrawLevel, getRenderBand } from "./elevation.js";
+import { listPaintOrder } from "../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "./documentStyles.js";
 import { generatedHost, splitSelectorList } from "./styleRules.js";
 import { HOVER_ATTRIBUTE } from "./portalRoot.js";
@@ -241,6 +243,66 @@ function installRange() {
 }
 
 /**
+ * Stand in for the browser where jsdom cannot: a pseudo-element's style is
+ * the one `pseudoRules` gives it, and a rect is the one `data-rect`,
+ * `data-before` or `data-after` names.
+ *
+ * @returns {void}
+ */
+function installPseudoStubs() {
+  window.getComputedStyle = (element, pseudo) => {
+    if (pseudo !== "::before" && pseudo !== "::after") {
+      return realGetComputedStyle.call(window, element);
+    }
+    pseudoReads.push(element);
+    const kind = pseudo.slice(2);
+    const rule = [...pseudoRules].reverse().find((r) => r.kind === kind && element.matches(r.host));
+    const probe = document.createElement("span");
+    probe.style.cssText = rule?.css ?? "";
+    document.body.append(probe);
+    const style = realGetComputedStyle.call(window, probe);
+    probe.remove();
+    const content = rule?.content ?? "none";
+    return new Proxy(style, {
+      get: (target, key) => {
+        if (key === "content") {
+          return content;
+        }
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  };
+  HTMLElement.prototype.getBoundingClientRect = function boundingClientRect() {
+    const own = numbers(this.getAttribute("data-rect"));
+    if (own) {
+      return clientRect(own[0], own[1], own[2], own[3]);
+    }
+    const copy = this.parentElement;
+    if (
+      copy?.hasAttribute("data-xr-generated-copy") &&
+      this.localName === "span" &&
+      (this === copy.firstChild || this === copy.lastChild)
+    ) {
+      const at =
+        (this === copy.firstChild ? numbers(copy.getAttribute("data-before")) : null) ??
+        (this === copy.lastChild ? numbers(copy.getAttribute("data-after")) : null);
+      const corner = copy.getBoundingClientRect();
+      if (at) {
+        return clientRect(corner.left + at[0], corner.top + at[1], at[2], at[3]);
+      }
+    }
+    return realGetBoundingClientRect.call(this);
+  };
+}
+
+/** @returns {void} */
+function removePseudoStubs() {
+  window.getComputedStyle = realGetComputedStyle;
+  HTMLElement.prototype.getBoundingClientRect = realGetBoundingClientRect;
+}
+
+/**
  * A page-owned root with `markup` in it, and a portal over it.
  *
  * @param {string} markup
@@ -304,58 +366,12 @@ describe("an element's ::before and ::after in a panel", () => {
   before(() => {
     canvas = stubCanvas();
     restoreRange = installRange();
-    window.getComputedStyle = (element, pseudo) => {
-      if (pseudo !== "::before" && pseudo !== "::after") {
-        return realGetComputedStyle.call(window, element);
-      }
-      pseudoReads.push(element);
-      const kind = pseudo.slice(2);
-      const rule = [...pseudoRules]
-        .reverse()
-        .find((r) => r.kind === kind && element.matches(r.host));
-      const probe = document.createElement("span");
-      probe.style.cssText = rule?.css ?? "";
-      document.body.append(probe);
-      const style = realGetComputedStyle.call(window, probe);
-      probe.remove();
-      const content = rule?.content ?? "none";
-      return new Proxy(style, {
-        get: (target, key) => {
-          if (key === "content") {
-            return content;
-          }
-          const value = Reflect.get(target, key);
-          return typeof value === "function" ? value.bind(target) : value;
-        },
-      });
-    };
-    HTMLElement.prototype.getBoundingClientRect = function boundingClientRect() {
-      const own = numbers(this.getAttribute("data-rect"));
-      if (own) {
-        return clientRect(own[0], own[1], own[2], own[3]);
-      }
-      const copy = this.parentElement;
-      if (
-        copy?.hasAttribute("data-xr-generated-copy") &&
-        this.localName === "span" &&
-        (this === copy.firstChild || this === copy.lastChild)
-      ) {
-        const at =
-          (this === copy.firstChild ? numbers(copy.getAttribute("data-before")) : null) ??
-          (this === copy.lastChild ? numbers(copy.getAttribute("data-after")) : null);
-        const corner = copy.getBoundingClientRect();
-        if (at) {
-          return clientRect(corner.left + at[0], corner.top + at[1], at[2], at[3]);
-        }
-      }
-      return realGetBoundingClientRect.call(this);
-    };
+    installPseudoStubs();
   });
   after(() => {
     canvas.restore();
     restoreRange();
-    window.getComputedStyle = realGetComputedStyle;
-    HTMLElement.prototype.getBoundingClientRect = realGetBoundingClientRect;
+    removePseudoStubs();
   });
   beforeEach(() => {
     canvas.drawn.length = 0;
@@ -423,10 +439,10 @@ describe("an element's ::before and ::after in a panel", () => {
     panel.cleanup();
   });
 
-  test("an ::after is drawn after the element's children", async () => {
-    pseudoRule(".card", "after", '"!"', "background-color: rgb(0, 0, 255)");
+  test("a positioned ::after is drawn after the children it covers", async () => {
+    pseudoRule(".card", "after", '"!"', "position: absolute; background-color: rgb(0, 0, 255)");
     const panel = generatedPanel(`
-      <div class="card" data-rect="0,0,200,40" data-after="150,0,20,16">
+      <div class="card" style="position: relative" data-rect="0,0,200,40" data-after="50,0,20,16">
         <div data-rect="0,0,100,40" style="background-color: green"></div>
       </div>
     `);
@@ -446,6 +462,9 @@ describe("an element's ::before and ::after in a panel", () => {
         .map((box) => box.renderOrder),
     );
     assert.ok(quad.renderOrder >= childOrder + 1, `${quad.renderOrder} after ${childOrder}`);
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    const generated = getGenerated(card, "after");
+    assert.equal(quad.renderOrder, getRenderBand(generated) + getDrawLevel(generated));
 
     panel.cleanup();
   });
@@ -533,6 +552,182 @@ describe("an element's ::before and ::after in a panel", () => {
     link.removeAttribute(HOVER_ATTRIBUTE);
     await pump();
     assert.equal(panel.runs().length, 0);
+
+    panel.cleanup();
+  });
+});
+
+describe("an element's ::before and ::after in the paint order", () => {
+  /** @type {ReturnType<typeof stubCanvas>} */
+  let canvas;
+  /** @type {() => void} */
+  let restoreRange;
+  before(() => {
+    canvas = stubCanvas();
+    restoreRange = installRange();
+    installPseudoStubs();
+  });
+  after(() => {
+    canvas.restore();
+    restoreRange();
+    removePseudoStubs();
+  });
+  afterEach(() => {
+    pseudoRules.length = 0;
+    for (const style of document.head.querySelectorAll("style")) {
+      style.remove();
+    }
+  });
+
+  /**
+   * The draw level of the element `selector` finds, or of its `kind` of
+   * pseudo-element.
+   *
+   * @param {ReturnType<typeof generatedPanel>} panel
+   * @param {string} selector
+   * @param {"before" | "after"} [kind]
+   * @returns {number}
+   */
+  const level = (panel, selector, kind) => {
+    const element = /** @type {HTMLElement} */ (panel.root.querySelector(selector));
+    return getDrawLevel(kind ? getGenerated(element, kind) : element);
+  };
+
+  test("a positioned ::before draws over the flow child it covers, and an in-flow one does not", async () => {
+    pseudoRule(".over", "before", '""', "position: absolute; background-color: red");
+    pseudoRule(".flow", "before", '""', "display: block; background-color: red");
+    const panel = generatedPanel(`
+      <div class="over" style="position: relative" data-rect="0,0,200,40" data-before="0,0,50,40">
+        <div class="child" data-rect="0,0,200,40" style="background-color: green"></div>
+      </div>
+      <div class="flow" data-rect="0,40,200,40" data-before="0,0,200,10">
+        <div class="child" data-rect="0,50,200,30" style="background-color: green"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+
+    assert.ok(level(panel, ".over", "before") > level(panel, ".over > .child"));
+    assert.equal(level(panel, ".flow", "before"), level(panel, ".flow > .child"));
+
+    panel.cleanup();
+  });
+
+  test("a later positioned child draws over a positioned ::before it covers", async () => {
+    pseudoRule(".card", "before", '""', "position: absolute; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative" data-rect="0,0,200,40" data-before="0,0,50,40">
+        <div class="tip" style="position: absolute; background-color: green" data-rect="20,0,50,20"></div>
+        <div class="far" style="position: absolute; background-color: green" data-rect="150,0,50,20"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+
+    assert.ok(level(panel, ".tip") > level(panel, ".card", "before"));
+    assert.equal(level(panel, ".far"), level(panel, ".card", "before"));
+
+    panel.cleanup();
+  });
+
+  test("a pseudo-element with a negative z-index does not climb past the flow it covers", async () => {
+    pseudoRule(".card", "before", '""', "position: absolute; z-index: -1; background-color: red");
+    pseudoRule(".card", "after", '""', "position: absolute; z-index: -1; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative; z-index: 0" data-rect="0,0,200,40" data-before="0,0,200,40" data-after="0,0,200,40">
+        <div class="child" data-rect="0,0,200,40" style="background-color: green"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+
+    assert.ok(level(panel, ".card", "before") <= level(panel, ".child"));
+    assert.ok(level(panel, ".card", "after") <= level(panel, ".child"));
+
+    panel.cleanup();
+  });
+
+  test("an element's ::after draws after a descendant's, and a sibling over it after both", async () => {
+    pseudoRule(".box", "after", '""', "position: absolute; background-color: red");
+    const panel = generatedPanel(`
+      <div class="box outer" style="position: relative" data-rect="0,0,200,100" data-after="0,0,200,100">
+        <div class="box inner" style="position: relative" data-rect="0,0,100,50" data-after="0,0,100,50"></div>
+      </div>
+      <div class="cover" style="position: absolute; background-color: green" data-rect="0,0,200,100"></div>
+    `);
+    await settle(panel.portal);
+
+    const outer = level(panel, ".outer", "after");
+    assert.ok(outer > level(panel, ".inner", "after"), "the element's ::after is its last");
+    assert.ok(level(panel, ".cover") > outer, "a sibling over the element draws over its ::after");
+
+    panel.cleanup();
+  });
+
+  test("the paint-order count counts each as its element's first or last child", async () => {
+    pseudoRule(".card", "before", '"★"', "position: absolute; background-color: red");
+    pseudoRule(".card", "after", 'url("/badge.png")', "position: absolute");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative" data-rect="0,0,200,40" data-before="0,0,20,16" data-after="180,0,20,20">
+        <div class="child" data-rect="0,0,200,40" style="background-color: green"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    const before = getGenerated(card, "before");
+    const after = getGenerated(card, "after");
+    const { entries } = listPaintOrder(panel.root);
+    const of = (/** @type {unknown} */ node) =>
+      entries.filter((entry) => entry.element === node).map((entry) => [entry.kind, entry.level]);
+    assert.deepEqual(of(before), [
+      ["box", getDrawLevel(before)],
+      ["run", getDrawLevel(before) + 1],
+    ]);
+    assert.deepEqual(of(after), [["picture", getDrawLevel(after)]]);
+    const order = entries.map((entry) => entry.element);
+    assert.ok(order.indexOf(before) < order.indexOf(card.firstElementChild ?? card));
+    assert.ok(order.indexOf(after) > order.indexOf(card.firstElementChild ?? card));
+
+    panel.cleanup();
+  });
+
+  test("a pseudo-element appearing on hover reorders the siblings it covers, and back", async () => {
+    pseudoRules.push({
+      host: `.row[${HOVER_ATTRIBUTE}]`,
+      kind: "after",
+      css: "position: absolute; background-color: red",
+      content: '""',
+    });
+    const style = document.createElement("style");
+    style.textContent = ".row:hover::after { content: '' }";
+    document.head.append(style);
+    const panel = generatedPanel(`
+      <div class="row" style="position: relative" data-rect="0,0,200,40" data-after="0,0,60,40">
+        <div class="tip" style="position: absolute; background-color: green" data-rect="20,0,20,20"></div>
+        <div class="far" style="position: absolute; background-color: green" data-rect="150,0,20,20"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+    const tip = level(panel, ".tip");
+    const far = level(panel, ".far");
+
+    const row = /** @type {HTMLElement} */ (panel.root.querySelector(".row"));
+    row.setAttribute(HOVER_ATTRIBUTE, "true");
+    await pump();
+    // The ::after is the row's last paint child, after the tip in tree
+    // order, so it covers the tip, and the far one it does not touch keeps
+    // its level.
+    assert.ok(level(panel, ".row", "after") > tip);
+    assert.equal(level(panel, ".tip"), tip);
+    assert.equal(level(panel, ".far"), far);
+    const [quad] = panel.quads();
+    assert.equal(
+      quad.renderOrder,
+      getRenderBand(getGenerated(row, "after")) + level(panel, ".row", "after"),
+    );
+
+    row.removeAttribute(HOVER_ATTRIBUTE);
+    await pump();
+    assert.equal(panel.quads().length, 0);
+    assert.equal(level(panel, ".tip"), tip);
 
     panel.cleanup();
   });

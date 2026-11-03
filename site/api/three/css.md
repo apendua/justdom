@@ -290,6 +290,9 @@ Not followed:
 - **Flow siblings are not ordered against each other.** Only an element that is positioned or
   transformed clears its siblings, so a box pulled over a neighbour by a negative margin keeps its
   level in the tree.
+- **A negative `z-index` is under its positioned siblings, not under the flow.** A box with one is
+  level with the flow siblings it covers, where a page paints it under them. Ordering it under the
+  flow would have every flow box watch its siblings for one, and rerun on every row added to a list.
 - **A positioned box clears a flow sibling it covers whole, descendants included.** A page paints
   that sibling's positioned descendants in tree order with the box, so one later in the tree than
   the box draws under it here and over it on a page.
@@ -505,10 +508,15 @@ that some rule of the document's styles gives a `::before` or an `::after` reads
 pseudo-element's style at all; the `:hover` in such a rule answers the ray as every other `:hover`
 does ([Hover, press and focus](#hover-press-and-focus)).
 
-It paints inside its element as a page paints it: a `::before` over the element's own box and under
-its children, an `::after` over its children. Its box is drawn by the panel's batch, as an element's
-is, unless it has a picture, and then it is one draw call of its own. A ray that meets it meets its
-element, as a click on a page's `::before` icon is a click on the element.
+It paints inside its element as a page paints it, ordered as the element's first child (a
+`::before`) or its last (an `::after`) would be, by the same rules as every element in the
+[paint order](#paint-order). In the flow, a `::before` is over its element's own box and level with
+its children. Positioned, either one draws over the children it covers, and a later positioned child
+draws over a positioned `::before` it covers. An element's `::after` draws after its descendants'
+own, and a sibling that covers the element draws over its `::after` too. Its box is drawn by the
+panel's batch, as an element's is, unless it has a picture, and then it is one draw call of its own.
+A ray that meets it meets its element, as a click on a page's `::before` icon is a click on the
+element.
 
 Followed:
 
@@ -524,9 +532,13 @@ Not followed:
 - **A positioned pseudo-element against another box.** One that is `absolute` in an element that is
   not its containing block, and one that is `fixed`, is not drawn. Give its element
   `position: relative`.
-- **A `z-index`**, and an overlap with the element's positioned children: the paint order does not
-  see pseudo-elements yet, so a `::before` is always under its element's children and an `::after`
-  over them. An element's `::after` and one of its descendant's can draw level, in no set order.
+- **An in-flow `::after` over its element's children.** Flow boxes are not ordered against each
+  other, so one pulled over an earlier child by a negative margin draws level with it. Position it
+  to draw it over what it covers.
+- **A negative `z-index`** keeps a pseudo-element level with the flow it covers, as it keeps an
+  element (see [Paint order](#paint-order)), rather than under it.
+- **A positive `z-index`** orders a pseudo-element over its positioned siblings, but does not make
+  it an overlay that floats in front of the panel, as it makes an element.
 - `counter()`, `counters()` and the quotes, which the browser leaves for the page to count. The text
   of such a `content` is not drawn, its box is. Text and a `url()` in one `content` draw the text.
 - A transition or an animation on a pseudo-element: its end is drawn.

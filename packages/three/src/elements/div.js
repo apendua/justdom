@@ -20,12 +20,12 @@ import { createBlocker, coverBox } from "./blocker.js";
 import {
   getBorderBoxSize,
   getBoxOffset,
-  getChildNodes,
   getLocalClipBox,
   getParentElement,
   getScrollOffset,
   isVisibilityHidden,
 } from "./mirror.js";
+import { getPaintChildren, isGenerated } from "./pseudoElements.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
 import {
   composeTransform,
@@ -616,7 +616,10 @@ export function box(ctx, element, options = {}) {
    * against the bounds each sibling's order was written from. A sibling that
    * is a layer is skipped, since an overlap with it changes no draw level
    * (`getDrawLevel`). One in the flow is not: the element clears it
-   * (`getClearedSiblings`).
+   * (`getClearedSiblings`). The parent's `::before` and `::after` are
+   * siblings too (`getPaintChildren`), tested against the box measured for
+   * them: neither moves but with its element's layout, which the commit
+   * brings.
    *
    * @param {PaintedBounds} was
    * @param {PaintedBounds} bounds
@@ -627,15 +630,18 @@ export function box(ctx, element, options = {}) {
     if (!parent) {
       return true;
     }
-    for (const node of getChildNodes(parent)) {
-      if (node === element || node.nodeType !== Node.ELEMENT_NODE) {
+    for (const node of getPaintChildren(parent)) {
+      /** @type {PaintedBounds | null | undefined} */
+      let theirs;
+      if (isGenerated(node)) {
+        theirs = getPaintedBounds(node);
+      } else if (node !== element && node.nodeType === Node.ELEMENT_NODE) {
+        theirs = committedPlacements.get(/** @type {Element} */ (node))?.get()?.bounds;
+      }
+      if (!theirs) {
         continue;
       }
-      const theirs = committedPlacements.get(/** @type {Element} */ (node))?.get();
-      if (!theirs?.bounds) {
-        continue;
-      }
-      if (overlaps(bounds, theirs.bounds) !== overlaps(was, theirs.bounds)) {
+      if (overlaps(bounds, theirs) !== overlaps(was, theirs)) {
         return false;
       }
     }

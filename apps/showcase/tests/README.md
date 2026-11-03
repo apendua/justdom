@@ -137,12 +137,10 @@ cannot tell you is the thing you want to know: it says how many pixels moved, an
 question is which ones. The comment carries that number, how many of the baseline-free checks
 passed, and a link straight to the artifact.
 
-The photograph is a link rather than an image in that comment, and it cannot be anything else. An
-artifact is an authenticated zip; and this repository is private, so its own files are unreachable
-to the proxy GitHub renders comment images through. Nothing the workflow can name with the
-repository's own credentials would resolve inside a Markdown image for a reader. Embedding one would
-mean publishing the frame somewhere anonymous — a public gist, say — which is a decision about what
-leaves a private repository, not a workflow detail.
+The photograph is a link rather than an image in that comment. The frames live only in the artifact,
+and an artifact is an authenticated zip, so there is no URL the workflow could put inside a Markdown
+image. Embedding one would mean committing or publishing each frame somewhere else, which is more
+than a check's report is worth.
 
 Splitting the artifact into one upload per file does not help either, and is worth writing down so
 nobody has to find out twice: an artifact is always delivered as a zip, whatever is in it, so three

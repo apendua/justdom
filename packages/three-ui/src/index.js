@@ -1,3 +1,4 @@
+/// <reference types="justdom-signal/dom" preserve="true" />
 export { dropdown } from "./dropdown.js";
 export { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
 export { scrollable } from "./scrollable.js";

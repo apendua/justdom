@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
-    "noEmit": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"]
+    "noEmit": true
   },
   "include": ["src"],
   "extends": "../../common/config/typescript/tsconfig.package-browser-base.json",

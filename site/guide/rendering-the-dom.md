@@ -42,8 +42,6 @@ once, goes in the object form instead: `set({ className: "counter" })`.
 The operators are plain functions, so a component is a function that returns an element source, and
 its props are whatever it was given:
 
-<!-- snippet: skip -->
-
 ```js
 import { component, store, emit } from "justdom-signal";
 import { $, attr, children, on, set, text } from "justdom-core";

@@ -195,8 +195,6 @@ headset takes the display the page stops being drawn. This is the same reading, 
 pieces: an object holding what the readout knows and whether it is shown, and an effect that
 measures and draws it.
 
-<!-- snippet: skip -->
-
 ```js
 import { effects, effectsOnly, useEffects } from "justdom-signal";
 import { children, getScene } from "justdom-three";

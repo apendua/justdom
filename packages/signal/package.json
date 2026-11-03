@@ -26,6 +26,9 @@
     "./rxjs": {
       "types": "./lib-types/rxjs.d.ts",
       "import": "./src/rxjs.js"
+    },
+    "./dom": {
+      "types": "./src/types/dom.d.ts"
     }
   },
   "main": "./src/index.js",

@@ -388,8 +388,12 @@ export function replace(oldValue, newValue) {
 }
 
 /**
+ * The event map defaults to one that takes any event with any payload, so
+ * that `emit` and `on` work on a store made without one, as every store in
+ * plain JavaScript is. Pass it to have both checked.
+ *
  * @template {object} T
- * @template {object} [TEventMap={}]
+ * @template {object} [TEventMap=Record<string, any>]
  * @overload
  * @param {T} data
  * @param {Array<EntityEffect<T & IEmitter<TEventMap>>>} [operators]

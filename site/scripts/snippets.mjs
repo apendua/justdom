@@ -71,17 +71,6 @@ export const compilerOptions = {
 };
 
 /**
- * Declarations an app makes for `on` to know an element's or an object's
- * events: each demo has a copy under src/types/. The packages do not ship
- * them, so a block is checked with justdom-three's own, relative to
- * .snippets/.
- */
-export const augmentations = [
-  "../../packages/three/src/types/dom.d.ts",
-  "../../packages/three/src/types/three.d.ts",
-];
-
-/**
  * @typedef {object} Snippet
  * @property {number} line the line of the block's opening fence, from 1
  * @property {string} extension what the block is checked as
@@ -444,7 +433,7 @@ function main() {
   }
   writeFileSync(
     join(out, "tsconfig.json"),
-    JSON.stringify({ compilerOptions, include: ["**/*", ...augmentations] }, null, 2) + "\n",
+    JSON.stringify({ compilerOptions, include: ["**/*"] }, null, 2) + "\n",
   );
 
   const output = runTsc(out);

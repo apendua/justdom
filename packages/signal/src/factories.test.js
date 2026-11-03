@@ -9,8 +9,7 @@ import { Effect, Signal, useEffect } from "./index.js";
 
 /**
  * @import { Source } from './subscribable.js';
- * @import { EntityEffect } from './types.js';
- * @import { IEmitter } from './Emitter.js';
+ * @import { Op } from './index.js';
  */
 
 /**
@@ -74,12 +73,6 @@ describe("component()", () => {
   });
 
   /**
-   * @template {object} T
-   * @template {object} [TEventMap={}]
-   * @typedef {EntityEffect<T & IEmitter<TEventMap>>[]} Op
-   */
-
-  /**
    * @typedef {object} InputProps
    * @property {string} text
    */
@@ -118,6 +111,27 @@ describe("component()", () => {
     return observable(() => {
       return `[${props.text}]`;
     });
+  });
+
+  it("lets a store whose operators name no event map emit any event", () => {
+    /**
+     * @type {(operators: Op<InputProps>) => Source<string>}
+     */
+    const Field = component((operators) => {
+      const props = store(defaults, operators);
+      emit(props, "changed", "typed");
+      return observable(() => props.text);
+    });
+
+    const changed = mock.fn();
+    const subscription = Field([on("changed", changed)]).subscribe(() => {});
+
+    assert.deepStrictEqual(
+      changed.mock.calls.map((call) => call.arguments[0]),
+      ["typed"],
+    );
+
+    subscription.unsubscribe();
   });
 
   it("updates child component state immedately after rendering in a two-way binding scenario", () => {

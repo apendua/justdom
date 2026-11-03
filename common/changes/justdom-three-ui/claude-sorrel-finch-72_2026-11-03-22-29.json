@@ -1,7 +1,7 @@
 {
   "changes": [
     {
-      "comment": "Ship the __EVENT_MAP__ declarations for the DOM (justdom-signal/dom) and three, referenced from the entry points; let unannotated JS callbacks to component/effectsOnly get any-typed arguments; default a store's event map to any event; carriable() takes any Object3D.",
+      "comment": "Reference justdom-signal/dom from the entry point, so an app gets the element's events for on() without declaring __EVENT_MAP__ itself",
       "type": "minor",
       "packageName": "justdom-three-ui"
     }

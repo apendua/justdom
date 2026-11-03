@@ -72,11 +72,11 @@ export * from "./types.js";
 
 /**
  * @import {EntityEffect} from './types.js';
- * @import {IEmitter} from "./Emitter.js";
+ * @import {AnyEventMap, IEmitter} from "./Emitter.js";
  */
 
 /**
  * @template {object} T
- * @template {object} [TEventMap={}]
+ * @template {object} [TEventMap=AnyEventMap]
  * @typedef {EntityEffect<T & IEmitter<TEventMap>>[]} Op
  */

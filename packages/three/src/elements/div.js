@@ -844,7 +844,8 @@ export function box(ctx, element, options = {}) {
           }
           // No batch to draw this box: an `<img>` or a box with a `url()`
           // background, whose picture is a texture binding and so a draw of
-          // its own, or a panel built outside a portal. Those still draw themselves, from a material of their own.
+          // its own, or a panel built outside a portal. Those still draw
+          // themselves, from a material of their own.
           const material = createRectMaterial(uniforms);
           // The panel's depth is one quad over its root's
           // (`createDepthQuad`), and no box writes any.

@@ -70,8 +70,8 @@ const keyboardClasses = {
 };
 
 /**
- * The keyboard the scene offers the todo field: justui's board, dressed for
- * this panel, typing through whatever the portal hands it.
+ * The keyboard the scene offers the todo field: justdom-three-ui's board,
+ * dressed for this panel, typing through whatever the portal hands it.
  *
  * This is the whole of what the app has to say about typing in a headset.
  * When the board appears, where it hangs, what a key does to the field and

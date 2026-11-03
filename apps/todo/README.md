@@ -66,11 +66,12 @@ set by classes. `node tests/drag-check.mjs` does both, the mouse on the page and
 the emulator, and prints the events and the order the todos ended up in; `SHOT=drag.png` photographs
 the drag half way.
 
-**Two things are there only in a session.** The frame rate, from justui's `useDiagnostics`, hangs in
-the upper left of the view. And the card grows an exit button in its top-right corner, an ordinary
-`<button>` hidden on the page, which ends the session when pressed. The app cannot ask the renderer
-whether there is a session, since it is mounted before there is one, so the scene tells it: it
-copies `getXRSession(ctx)` into `xrSession`, and the button's `hidden` follows that.
+**Two things are there only in a session.** The frame rate, from justdom-three-ui's
+`useDiagnostics`, hangs in the upper left of the view. And the card grows an exit button in its
+top-right corner, an ordinary `<button>` hidden on the page, which ends the session when pressed.
+The app cannot ask the renderer whether there is a session, since it is mounted before there is one,
+so the scene tells it: it copies `getXRSession(ctx)` into `xrSession`, and the button's `hidden`
+follows that.
 
 **Nothing runs until a session does.** The renderer is made with `presentingOnly`, so no frame is
 drawn and no frame callback runs between sessions, and the panel is mounted when a session starts

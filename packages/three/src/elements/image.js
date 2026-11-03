@@ -598,9 +598,12 @@ export function contentImage(element, properties) {
  * (`background-clip` is not followed), and it repeats across it on the axes
  * `background-repeat` says.
  *
- * Every box builds this, and a box with no picture reads one memoized
- * string to find out (`backgroundPictureUrl`). What reads it is the box's
- * uniform effect, and only while the box has a picture to draw.
+ * A box builds this the first time it has a picture to draw, and one that
+ * never has one builds nothing: `div.js` finds out by reading one memoized
+ * string (`backgroundPictureUrl`). What reads it is the box's uniform
+ * effect, and only while the box has a picture. When the box loses its
+ * picture the effect stops reading it, and it goes cold: its `onCleanup`
+ * releases the texture share, and the next picture computes it again.
  *
  * @param {VisualProperties} properties
  * @returns {Derived<ContentImage | null>}

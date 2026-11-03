@@ -307,9 +307,10 @@ export function box(ctx, element, options = {}) {
   /**
    * The picture this element paints inside its box, for the ones that have
    * any. Built only for elements that can carry one, and a tag never changes,
-   * so this is decided once rather than watched: an ordinary div pays nothing
-   * — no signal, no effect, no uniform write — for a feature it will never
-   * use, which matters when a panel is a few hundred of them.
+   * so this is decided once rather than watched. An ordinary div still pays
+   * for the picture slot it shares with a `url()` background (below): one
+   * effect that reads one memoized string, and two uniform writes when it
+   * mounts.
    *
    * @type {Derived<import('./image.js').ContentImage | null> | null}
    */
@@ -414,10 +415,6 @@ export function box(ctx, element, options = {}) {
   const batch = () => (drawsBackgroundPicture() ? null : panelBatch);
   /** The panel's order of its layers, null outside a portal. */
   const layerOrder = LayerOrderContext.get(ctx);
-  // The panel draws the box level with what it covers, so the hit test goes
-  // by the order it draws at: the one batch's, or its own for a box that
-  // draws itself.
-  registerDrawOrder(boxMesh, panelBatch ? BOX_BUCKET_BIAS : 0);
 
   /**
    * The text of this panel, which has to hear about this element moving even
@@ -834,8 +831,10 @@ export function box(ctx, element, options = {}) {
       $(boxMesh, [
         set("material", () => {
           const drawnBy = batch();
-          // Where the hit test finds this box in the draw order follows the
-          // draw it is in.
+          // The panel draws the box level with what it covers, so the hit
+          // test goes by the order it draws at: the one batch's, or its own
+          // for a box that draws itself. It follows the draw the box is in
+          // now, from the first run at mount on.
           registerDrawOrder(boxMesh, drawnBy ? BOX_BUCKET_BIAS : 0);
           if (drawnBy) {
             // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
@@ -843,9 +842,9 @@ export function box(ctx, element, options = {}) {
             // reads.
             return batchedBoxMaterial();
           }
-          // No batch to draw this box: an `<img>`, whose picture is a texture
-          // binding and so a draw of its own, or a panel built outside a
-          // portal. Those still draw themselves, from a material of their own.
+          // No batch to draw this box: an `<img>` or a box with a `url()`
+          // background, whose picture is a texture binding and so a draw of
+          // its own, or a panel built outside a portal. Those still draw themselves, from a material of their own.
           const material = createRectMaterial(uniforms);
           // The panel's depth is one quad over its root's
           // (`createDepthQuad`), and no box writes any.
@@ -856,8 +855,9 @@ export function box(ctx, element, options = {}) {
           return material;
         }),
         // After the material, which is what carries the flag that takes this
-        // mesh out of the draw — and which is built once, since its factory
-        // reads nothing that changes while the box is in its panel.
+        // mesh out of the draw. Both read `batch()`, so a box that gains or
+        // loses a picture builds its material again, and this runs after it
+        // on every such change.
         effects(() => {
           const drawnBy = batch();
           if (!drawnBy) {

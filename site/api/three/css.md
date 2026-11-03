@@ -412,6 +412,8 @@ Not followed:
   Give it a `width` and a `height`, or give the background a size.
 - `image-set()` and `cross-fade()` are not drawn, and a picture that fails to load draws nothing, as
   an `<img>`'s does.
+- **An `<img>` with a `url()` background** draws its own picture and not the background, which a
+  page paints under it: a box has one picture slot.
 - A checkbox does not draw a `url()` background: it draws its own tick, which is what a page with
   `appearance: none` gives as one.
 

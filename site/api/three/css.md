@@ -129,8 +129,11 @@ place to name the attribute too:
 The rule keeps its place in its sheet and its specificity, since `:is()` counts as its most specific
 argument and a pseudo-class and an attribute count alike, so the cascade is the page's. A negation
 stays one: `.tab:not(:hover)` still matches every tab no ray is on. The page gets its rules back as
-it wrote them when the last panel goes. Until then the page's sheets hold the rewritten selectors,
-which look the same on the page, where nothing writes the attributes outside a session.
+it wrote them when the last panel goes. A rule the page edits while a panel is up, from a script or
+the developer tools, is the page's again: its new text is rewritten when a rule added through
+`insertRule` would be (below), and the edit is kept when the last panel goes. Until then the page's
+sheets hold the rewritten selectors, which look the same on the page, where nothing writes the
+attributes outside a session.
 
 Rules written for both states, `.button:hover, .button[data-xr-hover]`, go on working.
 
@@ -145,8 +148,9 @@ Not followed:
 - **A pseudo-class after a pseudo-element**, such as `::-webkit-scrollbar-thumb:hover`, which
   `:is()` may not follow.
 - **A rule no stylesheet watcher sees.** A sheet from another origin served without CORS cannot be
-  read, and a rule added through `insertRule` or `adoptedStyleSheets` is rewritten only at the next
-  change the watcher does see, or at theming mode's next read.
+  read. A rule added through `insertRule` is rewritten only when its `<style>` element next changes
+  in a way the watcher sees, or at theming mode's next read, and one in a sheet adopted through
+  `adoptedStyleSheets` only at theming mode's next read.
 - **Layout under the ray.** The attributes are presentational by contract, so a rule that changes a
   size under the ray is not mirrored, and one that styles a sibling is not followed
   ([Panels](./panels)).

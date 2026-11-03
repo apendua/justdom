@@ -1,6 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { restoreUserActions, rewriteSelector, rewriteUserActions } from "./userActionRules.js";
+import {
+  originalSelector,
+  restoreUserActions,
+  rewriteSelector,
+  rewriteUserActions,
+} from "./userActionRules.js";
+import { forgetComputedStyles } from "../test/computedStyles.js";
 
 describe("rewriteSelector", () => {
   test("names the flag beside each user-action pseudo-class", () => {
@@ -40,17 +46,6 @@ describe("rewriteSelector", () => {
     assert.equal(rewriteSelector("a:hover::after"), "a:is(:hover, [data-xr-hover])::after");
   });
 });
-
-/**
- * jsdom keeps each element's computed style until the DOM changes, and a
- * rule rewritten through the CSSOM is no DOM change. A browser has no such
- * cache to clear.
- *
- * @returns {void}
- */
-function forgetComputedStyles() {
-  document.body.appendChild(document.createComment("")).remove();
-}
 
 /**
  * @param {string} css
@@ -161,6 +156,39 @@ describe("rewriteUserActions", () => {
       // And it can be rewritten again for the next panel.
       assert.equal(rewriteUserActions([sheet]).length, 1);
       restoreUserActions([sheet]);
+    } finally {
+      style.remove();
+    }
+  });
+
+  test("rewrites a rule the page edited after the rewrite", () => {
+    const style = addStyle(".ua-g:hover { color: red; }");
+    const sheet = sheetOf(style);
+    const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+    try {
+      rewriteUserActions([sheet]);
+      // As the developer tools do, on the rule object the sheet keeps.
+      rule.selectorText = ".ua-h:hover";
+      assert.deepEqual(rewriteUserActions([sheet]), [rule]);
+      assert.equal(rule.selectorText, ".ua-h:is(:hover, [data-xr-hover])");
+      assert.equal(originalSelector(rule), ".ua-h:hover");
+      restoreUserActions([sheet]);
+      assert.equal(rule.selectorText, ".ua-h:hover");
+    } finally {
+      style.remove();
+    }
+  });
+
+  test("leaves the page's edit when it puts the rules back", () => {
+    const style = addStyle(".ua-i:hover { color: red; }");
+    const sheet = sheetOf(style);
+    const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[0]);
+    try {
+      rewriteUserActions([sheet]);
+      rule.selectorText = ".ua-j";
+      assert.equal(originalSelector(rule), ".ua-j");
+      restoreUserActions([sheet]);
+      assert.equal(rule.selectorText, ".ua-j");
     } finally {
       style.remove();
     }

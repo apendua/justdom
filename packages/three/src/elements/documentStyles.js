@@ -433,10 +433,12 @@ function rescope(element) {
  * What a flush can have restyled: undefined when it carries nothing that
  * could have changed what the document's rules say, which is most of what
  * the head sees (a title, a meta tag, a preload hint), and otherwise the
- * scope of every style change in it together.
+ * scope of every style change in it together, with the sheets of the
+ * `<style>` elements it added or rewrote. A `<link>` it added has no rules
+ * to read until its `load`.
  *
  * @param {MutationRecord[]} records
- * @returns {StyleScope | undefined}
+ * @returns {{ scope: StyleScope, sheets: CSSStyleSheet[] } | undefined}
  */
 function scopeOfFlush(records) {
   /** @type {Set<string>} */
@@ -476,27 +478,34 @@ function scopeOfFlush(records) {
       }
     }
   }
+  /** @type {CSSStyleSheet[]} */
+  const sheets = [];
   for (const element of rewritten) {
     add(rescope(element));
+    const sheet = /** @type {HTMLStyleElement} */ (element).sheet;
+    if (sheet && element.isConnected) {
+      sheets.push(sheet);
+    }
   }
   if (!touched) {
     return undefined;
   }
-  return unscoped ? null : classes;
+  return { scope: unscoped ? null : classes, sheets };
 }
 
 /**
- * Rewrite what the document's rules have gained since the last walk (see
+ * Rewrite what the rules of `sheets` have gained since the last walk (see
  * `userActionRules.js`), and answer what that can restyle: undefined when
  * nothing was rewritten, and otherwise the classes the rewritten rules start
  * from, or null when one of them starts anywhere else. A rewrite goes
  * through the CSSOM, which the observer does not see, so it is announced
  * with whatever announcement it rides along with.
  *
+ * @param {Iterable<CSSStyleSheet>} sheets
  * @returns {StyleScope | undefined}
  */
-function rewriteRules() {
-  const rewritten = rewriteUserActions(documentSheets());
+function rewriteRules(sheets) {
+  const rewritten = rewriteUserActions(sheets);
   if (rewritten.length === 0) {
     return undefined;
   }
@@ -662,7 +671,8 @@ function loadCallback(event) {
   const target = event.target;
   if (target instanceof Node && isStylesheetLink(target)) {
     // A linked sheet's rules are readable only once it has loaded.
-    rewriteRules();
+    const sheet = /** @type {HTMLLinkElement} */ (target).sheet;
+    rewriteRules(sheet ? [sheet] : []);
     announce(null);
   }
 }
@@ -684,7 +694,7 @@ export function watchDocumentStyles(listener) {
     // The first panel: nothing has read the rules on a panel's behalf yet,
     // so the rewrite needs no announcing. It goes before the poller takes
     // its first read, which would otherwise announce it.
-    rewriteRules();
+    rewriteRules(documentSheets());
     // Read while nobody watched, so nothing says they are still the rules',
     // and read after the rewrite, whose selectors they are now.
     refreshGeneratedSelectors();
@@ -698,8 +708,10 @@ export function watchDocumentStyles(listener) {
     }
     observer = new MutationObserver((records) => {
       const changed = scopeOfFlush(records);
-      // Only a flush that changed the rules can have brought one to rewrite.
-      const scope = changed === undefined ? undefined : joinScopes(changed, rewriteRules());
+      // Only a flush that changed the rules can have brought one to rewrite,
+      // and only in the sheets it changed.
+      const scope =
+        changed === undefined ? undefined : joinScopes(changed.scope, rewriteRules(changed.sheets));
       if (scope !== undefined) {
         announce(scope);
       }

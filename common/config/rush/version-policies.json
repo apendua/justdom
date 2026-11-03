@@ -109,8 +109,8 @@
    *
    * The point of naming the set is that Rush can then select it natively.
    * "shouldPublish" is derived from "versionPolicyName", so this stays the one
-   * place that decides what gets published, and the release workflow refers to
-   * it as "--to version-policy:publishable" and "--version-policy publishable"
+   * place that decides what gets published, and common/scripts/publish.mjs
+   * reads it from rush.json and builds it as "--to version-policy:publishable"
    * rather than repeating the list of packages.
    */
   {

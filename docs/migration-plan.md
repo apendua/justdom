@@ -146,19 +146,21 @@ Before the site can go live:
    workflow that only prepares versions: it runs `rush version --bump` and opens the version bump
    pull request, as apendua.dev's does today. It never runs `rush publish` and holds no npm token.
    After the bump pull request is merged into `develop`, Tomasz publishes from his own machine with
-   `rush publish --publish --include-all --version-policy publishable`, since npm asks the account's
-   second factor on every publish. Start from the August branch's versions of these files, minus its
-   publish step and its `NPM_AUTH_TOKEN` secret.
+   `common/scripts/publish.mjs`, since npm asks the account's second factor on every publish. The
+   README's _Releasing_ section has the commands. Start from the August branch's versions of these
+   files, minus its publish step and its `NPM_AUTH_TOKEN` secret.
 6. **Add the site** and its Pages workflow.
 7. **First release.** All public names go out in one sitting, so that nobody can take one in
-   between. It is a local `rush publish`, like every release after it, and
-   `common/config/rush/.npmrc-publish` points at registry.npmjs.org. Rush runs the publish with a
-   home directory of its own, so the publisher's `~/.npmrc` login is not read; the token comes from
-   `NPM_AUTH_TOKEN` in the publisher's shell, and no workflow holds one. The first release, on 2
+   between. What follows is how the first release went: it was a local `rush publish`, and
+   `common/config/rush/.npmrc-publish` pointed at registry.npmjs.org. Rush ran the publish with a
+   home directory of its own, so the publisher's `~/.npmrc` login was not read; the token came from
+   `NPM_AUTH_TOKEN` in the publisher's shell, and no workflow held one. The first release, on 2
    November 2026, settled the second factor: the token is the session token `npm login` saves, npm
    asks for the second factor once per package, and Rush passes that prompt through. A token that
    bypasses the second factor is not an option, since npm stops those from publishing directly in
-   January 2027.
+   January 2027. Every later release runs `common/scripts/publish.mjs` instead, with the publisher's
+   own `npm login` and no `NPM_AUTH_TOKEN` copy: on the second release, Rush misread npm 11's
+   `npm view --json` output and tried to publish versions already on npm.
 8. **Cut over apendua.dev.** The labs apps switch from `workspace:*` to npm ranges under the new
    names. The moved directories are deleted, the `publishable` version policy, `release.yml` and the
    GitHub Packages mapping in `.npmrc-publish` are removed, and `provenance.yml` stops listing the

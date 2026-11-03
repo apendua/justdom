@@ -32,19 +32,20 @@ against three.js with no library, and the last column is what each library adds 
 | justdom-three      |  574.7 KiB | 150.5 KiB |                   27.4 KiB |
 | @react-three/fiber | 1111.1 KiB | 308.3 KiB |                  185.2 KiB |
 
-React Three Fiber adds React, and it imports all of three.js, so that `<mesh>` and `<boxGeometry>`
-can name any class in it, and the bundler cannot leave the unused classes out. justdom-three imports
-the classes it uses.
+React Three Fiber adds React and ReactDOM, and it imports all of three.js, so that `<mesh>` and
+`<boxGeometry>` can name any class in it, and the bundler cannot leave the unused classes out.
+justdom-three imports the classes it uses.
 
 ## A panel in a scene
 
-The counter button again, drawn as a panel two metres in front of the camera. justdom-three mirrors
-the DOM that justdom-core builds into the scene. @react-three/uikit lays out its own components and
-draws its text from a font of its own.
+The counter button again, drawn as a panel two metres in front of the camera. In both apps a mouse
+click on the button in the canvas counts. justdom-three mirrors the DOM that justdom-core builds
+into the scene. @react-three/uikit lays out its own components and draws its text from a font of its
+own.
 
 | App                                     |   Minified |   Gzipped | Gzipped, above three alone |
 | --------------------------------------- | ---------: | --------: | -------------------------: |
-| justdom-three + justdom-core            |  735.7 KiB | 207.9 KiB |                   84.8 KiB |
+| justdom-three + justdom-core            |  737.3 KiB | 208.5 KiB |                   85.3 KiB |
 | @react-three/fiber + @react-three/uikit | 1748.4 KiB | 664.8 KiB |                  541.6 KiB |
 
 Of uikit's 664.8 KiB, the page loads 388.9 KiB to start and fetches the other 275.9 KiB, its Inter
@@ -58,12 +59,13 @@ app. It is closer to uikit's pre-styled kits than to uikit itself, and neither i
 
 The apps and the script are in
 [`bench/bundle-size`](https://github.com/apendua/justdom/tree/develop/bench/bundle-size). The script
-builds each app with Vite 7 in production mode, with no options beyond the JSX compiler: esbuild's
-for React, `vite-plugin-solid` for Solid. It counts the entry chunk and the chunks it imports
-dynamically, minified by Vite, and gzips each one at level 9. uikit's build also emits a worker that
-builds fonts from TTF files; the panel app never fetches it, and it is not counted. The packages
-come from npm at the versions above, pinned in the folder's lockfile, so these steps print the
-tables again:
+builds each app with Vite 7 in production mode, with two settings: the JSX compiler, esbuild's for
+React and `vite-plugin-solid` for Solid, and `modulePreload: false`, which keeps Vite's preload
+helper out of the one app that imports a chunk dynamically. It counts the entry chunk and the chunks
+it imports dynamically, minified by Vite, and gzips each one at level 9. uikit's build also emits a
+worker that builds fonts from TTF files; the panel app never fetches it, and it is not counted. The
+packages come from npm at the versions above, pinned in the folder's lockfile, so these steps print
+the tables again:
 
 ```
 cd bench/bundle-size

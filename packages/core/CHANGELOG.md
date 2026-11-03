@@ -1,6 +1,13 @@
 # Change Log - justdom-core
 
-This log was last generated on Mon, 02 Nov 2026 22:24:26 GMT and should not be manually modified.
+This log was last generated on Tue, 03 Nov 2026 22:19:23 GMT and should not be manually modified.
+
+## 0.4.0
+Tue, 03 Nov 2026 22:19:23 GMT
+
+### Minor changes
+
+- data() takes an object of plain values, data({ id: "1" }), as set(), attr() and style() do, and its key form is typed to take a getter
 
 ## 0.3.8
 Mon, 02 Nov 2026 22:24:26 GMT

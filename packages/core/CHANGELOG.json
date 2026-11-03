@@ -2,6 +2,23 @@
   "name": "justdom-core",
   "entries": [
     {
+      "version": "0.4.0",
+      "tag": "justdom-core_v0.4.0",
+      "date": "Tue, 03 Nov 2026 22:19:23 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Correct the README's counter, which passed set() a plain string with a key"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "data() takes an object of plain values, data({ id: \"1\" }), as set(), attr() and style() do, and its key form is typed to take a getter"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.8",
       "tag": "justdom-core_v0.3.8",
       "date": "Mon, 02 Nov 2026 22:24:26 GMT",

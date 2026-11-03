@@ -1,6 +1,13 @@
 # Change Log - justdom-xr
 
-This log was last generated on Mon, 02 Nov 2026 22:24:26 GMT and should not be manually modified.
+This log was last generated on Tue, 03 Nov 2026 22:19:23 GMT and should not be manually modified.
+
+## 0.1.2
+Tue, 03 Nov 2026 22:19:23 GMT
+
+### Patches
+
+- The driver imports playwright-core as an optional peer dependency, so it runs outside the justdom repository
 
 ## 0.1.1
 Mon, 02 Nov 2026 22:24:26 GMT

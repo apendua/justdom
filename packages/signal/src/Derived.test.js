@@ -218,6 +218,130 @@ describe("Derived.live()", () => {
   });
 });
 
+describe("a node that writes a signal while it evaluates", () => {
+  /**
+   * `mirror` copies `source` into `echo` as it evaluates, and an effect on
+   * the manual channel keeps it connected without ever draining on its own.
+   * The reader on the default channel reads `echo`, and `mirror` only once
+   * `echo` has moved, so the write is the only thing that schedules it.
+   */
+  function makeGraph() {
+    const channel = new UpdateChannel({ name: "manual", manual: true });
+    const source = Signal.of(0);
+    const echo = Signal.of(0);
+    const mirror = new Derived(() => {
+      const value = source.get();
+      echo.set(value);
+      return value;
+    });
+    const holder = new Effect(() => mirror.get(), { channel });
+    /** @type {Array<[number, number] | string>} */
+    const seen = [];
+    const reader = new Effect(() => {
+      const copy = echo.get();
+      if (copy === 0) {
+        return;
+      }
+      try {
+        seen.push([copy, mirror.get()]);
+      } catch (err) {
+        seen.push(err instanceof Error ? err.name : String(err));
+      }
+    });
+    return { source, echo, mirror, holder, reader, seen };
+  }
+
+  it("lets its readers run once it has its value, when read connected", () => {
+    const { source, mirror, holder, reader, seen } = makeGraph();
+    source.set(1);
+    assert.strictEqual(mirror.get(), 1);
+    assert.deepStrictEqual(seen, [[1, 1]], "the reader saw the value that wrote the copy");
+    reader.dispose();
+    holder.dispose();
+  });
+
+  it("lets its readers run once it has its value, when an effect flush resolves it", () => {
+    const { source, holder, reader, seen } = makeGraph();
+    source.set(1);
+    holder.flush();
+    assert.deepStrictEqual(seen, [[1, 1]]);
+    reader.dispose();
+    holder.dispose();
+  });
+
+  it("hands a plain read its value before a reader lets go of the node", () => {
+    const channel = new UpdateChannel({ name: "manual", manual: true });
+    const source = Signal.of(0);
+    const echo = Signal.of(0);
+    const mirror = new Derived(() => {
+      const value = source.get();
+      echo.set(value);
+      return value;
+    });
+    const holder = new Effect(() => mirror.get(), { channel });
+    // The write runs this, and it disposes the only effect holding `mirror`,
+    // which drops its cached value on the way out of the graph.
+    const dropper = new Effect(() => {
+      if (echo.get() !== 0) {
+        holder.dispose();
+      }
+    });
+    source.set(1);
+    assert.strictEqual(mirror.get(), 1, "not a CircularDependencyError");
+    assert.strictEqual(holder.isDisposed, true);
+    dropper.dispose();
+  });
+
+  it("lets its readers run once it has its value, when read unconnected", () => {
+    const { source, holder, reader, seen, mirror } = makeGraph();
+    holder.dispose();
+    source.set(1);
+    assert.strictEqual(mirror.get(), 1);
+    assert.deepStrictEqual(seen, [[1, 1]], "not a CircularDependencyError");
+    reader.dispose();
+  });
+});
+
+describe("a warm asked for while a node resolves", () => {
+  it("declines, as it does inside a batch", () => {
+    const atomic = new UpdateChannel({ name: "atomic", manual: true, atomic: true });
+    const source = Signal.of(0);
+    const echo = Signal.of(0);
+    const mirror = new Derived(() => {
+      const value = source.get();
+      echo.set(value);
+      return value;
+    });
+    const queued = new Effect(() => mirror.get(), { channel: atomic });
+    /** @type {number[]} */
+    const seen = [];
+    // On the default channel: the warm's pass over the self-draining lanes
+    // would run it, against `outer` still evaluating.
+    const reader = new Effect(() => {
+      if (echo.get() !== 0) {
+        seen.push(outer.get());
+      }
+    });
+    /** @type {boolean | null} */
+    let warmed = null;
+    const outer = new Derived(() => {
+      const value = source.get();
+      warmed = atomic.warm({ budget: Infinity });
+      return value;
+    });
+    const holder = new Effect(() => outer.get(), { channel: atomic });
+    source.set(1);
+    assert.strictEqual(outer.get(), 1);
+    assert.deepStrictEqual(seen, [], "nothing ran against `outer` half done");
+    assert.strictEqual(warmed, false, "not yet");
+    atomic.flush({ budget: Infinity });
+    assert.deepStrictEqual(seen, [1]);
+    holder.dispose();
+    reader.dispose();
+    queued.dispose();
+  });
+});
+
 describe("a node let go of while it resolves", () => {
   it("answers a plain read uncached rather than as a cycle", () => {
     const manual = new UpdateChannel({ name: "manual", manual: true });

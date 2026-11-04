@@ -236,6 +236,13 @@ export default class UpdateQueue {
   #isFlushing = false;
 
   /**
+   * How many node resolutions are on the stack: see `deferDrain`.
+   *
+   * @type {number}
+   */
+  #deferrals = 0;
+
+  /**
    * @param {UpdateChannel} defaultChannel
    */
   constructor(defaultChannel) {
@@ -280,6 +287,37 @@ export default class UpdateQueue {
       // managed to make before it failed are real, and the effects that read
       // them are stale until they run.
       this.#isBatching = false;
+      this.flush();
+    }
+  }
+
+  /**
+   * Hold the drain while a node resolves, until the matching `resumeDrain`.
+   *
+   * A signal written while a node evaluates outside any drain — a plain
+   * read, `Effect.flush()`, an effect's first run — would drain the queue
+   * then and there, and run the node's readers while it is half done: marked
+   * clean and still holding its old value, or still evaluating, which a
+   * reader takes for a cycle. `batch()` would hold the drain too, but it
+   * costs a closure and a frame on every resolution, and these are the
+   * reads a panel does thousands of times a frame. A count costs neither.
+   *
+   * @returns {void}
+   */
+  deferDrain() {
+    this.#deferrals += 1;
+  }
+
+  /**
+   * Undo one `deferDrain`, and drain what the resolutions held once the last
+   * of them is done. Inside a batch or a drain that is a no-op: the batch's
+   * end, or the drain itself, sees to it.
+   *
+   * @returns {void}
+   */
+  resumeDrain() {
+    this.#deferrals -= 1;
+    if (this.#deferrals === 0) {
       this.flush();
     }
   }
@@ -522,16 +560,17 @@ export default class UpdateQueue {
    * `budget` milliseconds, running none of them. The first half of an atomic
    * pass, offered on its own; see `UpdateChannel.warm`.
    *
-   * Declined outright inside a batch or a flush — there is no request to
-   * record, because a caller asking whether the channel is warm wants an
-   * answer now, and "not yet" is the true one.
+   * Declined outright inside a batch or a flush, or while a node resolves
+   * (`deferDrain`) — there is no request to record, because a caller asking
+   * whether the channel is warm wants an answer now, and "not yet" is the
+   * true one.
    *
    * @param {UpdateChannel} channel
    * @param {number} budget
    * @returns {boolean} whether everything queued in the channel is now warm
    */
   warmChannel(channel, budget) {
-    if (this.#isBatching || this.#isFlushing) {
+    if (this.#isBatching || this.#isFlushing || this.#deferrals > 0) {
       return false;
     }
     const lane = this.#lanes.get(channel);
@@ -611,10 +650,11 @@ export default class UpdateQueue {
       // run, or none.
       return;
     }
-    if (this.#isBatching || this.#isFlushing) {
-      // Draining now would run effects against a half-written model, or
-      // interleave two passes. Both are exactly what the caller does not
-      // want; record the request and satisfy it when the queue is free.
+    if (this.#isBatching || this.#isFlushing || this.#deferrals > 0) {
+      // Draining now would run effects against a half-written model or a
+      // node still resolving, or interleave two passes. None of that is what
+      // the caller wants; record the request and satisfy it when the queue
+      // is free.
       if (target) {
         this.#request(target, budget);
       }

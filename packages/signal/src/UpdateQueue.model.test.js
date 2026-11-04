@@ -216,12 +216,7 @@ function buildWorld(specs, nodeSpecs) {
         onCleanup(() => {
           resource.disposed = true;
         });
-        // Only inside a drain or a warm. Anywhere else the write drains the
-        // queue then and there, with this evaluation still on the stack, and
-        // an effect that reads this node in that drain gets its previous
-        // value or a `CircularDependencyError` — a hazard of its own, not
-        // what this test is after.
-        if (write !== null && updateQueue.isFlushing) {
+        if (write !== null) {
           signals[write].set(value % 5);
         }
         if (kill && kill.on === value) {

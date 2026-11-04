@@ -449,7 +449,20 @@ export default class UpdateQueue {
       // and releasing here first would let a teardown enqueue into a lane
       // the reset is about to wipe.
       if (lane.size === 0 && lane.running === 0 && (!threw || !this.#isFlushing)) {
-        this.#release(lane);
+        if (threw) {
+          // The release's own drain can fail too, and a throw from here
+          // would replace the run's failure. The run's is the one the caller
+          // hears of; the release's goes to a timer, as in `#release`.
+          try {
+            this.#release(lane);
+          } catch (later) {
+            setTimeout(() => {
+              throw later;
+            });
+          }
+        } else {
+          this.#release(lane);
+        }
       }
     }
   }
@@ -506,14 +519,24 @@ export default class UpdateQueue {
     // the stack is setting aside into this one (`withHeldCleanups`), and
     // whatever it holds after this has to land where the next release finds
     // it.
-    for (const cleanups of held.splice(0)) {
-      try {
-        runCleanups(cleanups);
-      } catch (err) {
-        setTimeout(() => {
-          throw err;
-        });
+    //
+    // The drain is held until every teardown has run. One can write a
+    // signal, and a drain then and there would run effects with half the
+    // old values still open, and hand a failure of theirs to the teardown's
+    // own catch below.
+    this.deferDrain();
+    try {
+      for (const cleanups of held.splice(0)) {
+        try {
+          runCleanups(cleanups);
+        } catch (err) {
+          setTimeout(() => {
+            throw err;
+          });
+        }
       }
+    } finally {
+      this.resumeDrain();
     }
   }
 
@@ -612,6 +635,8 @@ export default class UpdateQueue {
       return warm;
     } catch (err) {
       this.#reset();
+      this.#isFlushing = false;
+      this.#drainReleased();
       throw err;
     } finally {
       this.#isFlushing = false;
@@ -672,6 +697,8 @@ export default class UpdateQueue {
       // clean slate, so this clears every channel and not only the one that
       // threw.
       this.#reset();
+      this.#isFlushing = false;
+      this.#drainReleased();
       throw err;
     } finally {
       this.#isFlushing = false;
@@ -1048,6 +1075,29 @@ export default class UpdateQueue {
   }
 
   /**
+   * Drain what `#reset` queued as it released the lanes. A teardown it ran
+   * may have written a signal, and the effect that write queued landed with
+   * the flushing flag still up: in a channel that drains of its own accord
+   * it would otherwise sit there until something else is enqueued. Called
+   * with the flag down, after the reset and before the failure is rethrown.
+   *
+   * @returns {void}
+   */
+  #drainReleased() {
+    try {
+      this.#drain(null, Infinity);
+    } catch (later) {
+      // The failure that started the reset is the one the caller hears of,
+      // as `runCleanups` keeps the first of several. This drain has reset
+      // the queue in its turn, and its own failure is reported the way
+      // `#release` reports a teardown's: from a timer, so it is not lost.
+      setTimeout(() => {
+        throw later;
+      });
+    }
+  }
+
+  /**
    * @returns {void}
    */
   #reset() {
@@ -1074,7 +1124,8 @@ export default class UpdateQueue {
       // What the old values held open is released below, once the queue's
       // own counters are back to zero: a teardown may write a signal, and the
       // enqueue that follows has to land in a lane the queue believes it has,
-      // not in one it is about to forget.
+      // not in one it is about to forget. `#drainReleased` drains it once the
+      // flushing flag is down.
     }
     this.#size = 0;
     this.#requested.clear();

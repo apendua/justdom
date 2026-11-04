@@ -168,6 +168,12 @@ runs its readers once the node is resolved, not while a reader would still find 
 take the evaluation for a cycle. A channel's `warm()` asked for in that time declines, as it does
 inside a batch.
 
+Teardowns are held the same way. When a node lets go of its dependencies, or the queue releases what
+a warm set aside, a teardown that writes a signal runs that signal's readers once every teardown has
+run, so a reader that throws cannot cut the rest short. When a failed pass resets the queue, what
+the reset's teardowns queued drains after it, and the failure that started the pass is the one
+rethrown.
+
 ### Update channels
 
 An effect belongs to an `UpdateChannel`, which decides when its queue drains and how long a pass may

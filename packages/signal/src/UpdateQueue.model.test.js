@@ -18,17 +18,16 @@ import UpdateChannel from "./UpdateChannel.js";
  * The graph is small and fixed per run: four signals, five `Derived` nodes
  * that each sum one or two of them and hand out a fresh resource per value,
  * and three channels of random kind, order and budget next to the default
- * one. A node may also write the top signal as it evaluates, or dispose an
- * effect. The effects are built by the commands. An effect reads one or two
+ * one. A node may also write the top signal as it evaluates or as its value
+ * is torn down, or dispose an effect. The effects are built by the commands. An effect reads one or two
  * nodes, and may also write a signal above them (so channels feed each
  * other, backwards too, which exercises order correction), clamp a signal it
  * reads (a run that writes what it reads), throw on one sum, or build a
  * nested effect.
  *
- * Two things the generator never does, so the test gives no cover for them:
- * no teardown writes a signal (one run by `#reset`'s release would land in a
- * self-draining lane while the queue is still flushing), and no effect is
- * built `deferred`, so the constructor's `enqueue` is not exercised.
+ * One thing the generator never does, so the test gives no cover for it: no
+ * effect is built `deferred`, so the constructor's `enqueue` is not
+ * exercised.
  *
  * Everything writes a signal above the ones it reads, a clamp aside, which
  * only ever lowers its signal, so every pass settles. A cycle is the queue's
@@ -50,6 +49,9 @@ const BOOM = "model: the run throws";
  * @property {number} node which node made it
  * @property {number} value the node's value it was made for
  * @property {boolean} disposed
+ * @property {boolean} uncached whether its node was out of the graph when it
+ *   made it: read by a run that goes on after its effect was disposed, which
+ *   keeps the value's teardown until the node next evaluates
  * @property {UpdateChannel | null} replacedInWarmOf the channel whose warm
  *   replaced it, if a warm did: the case the queue promises to keep it alive
  *   for, until that channel's lane has nothing left to run
@@ -65,6 +67,9 @@ const BOOM = "model: the run throws";
  * @property {number | null} write a signal, above every one it reads, that
  *   its evaluation writes: the node whose resolution fires a source, which
  *   can cool an effect a warm has already been past
+ * @property {boolean} onTeardown whether the write comes from the teardown
+ *   of the node's value rather than from its evaluation: a write a warm sets
+ *   aside, which a failed pass releases from `#reset`
  * @property {{ probe: number, on: number } | null} kill an effect its
  *   evaluation disposes when its value is `on`
  */
@@ -193,7 +198,7 @@ function buildWorld(specs, nodeSpecs) {
     );
   });
   world.nodes = nodeSpecs.map(
-    ({ reads: from, write, kill }, index) =>
+    ({ reads: from, write, onTeardown, kill }, index) =>
       new Derived(() => {
         // Each evaluation costs a millisecond on the channels' clock, so a
         // budget cuts passes short.
@@ -210,13 +215,17 @@ function buildWorld(specs, nodeSpecs) {
           disposed: false,
           replacedInWarmOf: null,
           droppableInWarmOf: null,
+          uncached: !world.nodes[index].isConnected(),
         };
         world.latest[index] = resource;
         world.resources.push(resource);
         onCleanup(() => {
           resource.disposed = true;
+          if (write !== null && onTeardown) {
+            signals[write].set(value % 5);
+          }
         });
-        if (write !== null) {
+        if (write !== null && !onTeardown) {
           signals[write].set(value % 5);
         }
         if (kill && kill.on === value) {
@@ -366,6 +375,24 @@ function buildEffect(world, spec) {
 }
 
 /**
+ * What the queue hands to `setTimeout`: a failure it reports rather than
+ * throws, because another one is already on its way to the caller.
+ *
+ * @type {Array<() => void>}
+ */
+const timers = [];
+
+/**
+ * Run what the queue handed to a timer, as the event loop would once the
+ * command has returned. A run's own throw is expected there too.
+ */
+function runTimers() {
+  for (const fn of timers.splice(0)) {
+    act(fn);
+  }
+}
+
+/**
  * Run `fn`, and treat the test's own throw as what it is: a run failing.
  * Whether that reset the queue is counted where it happens, in the wrapper
  * on `runFromQueue`. Anything else is a real failure.
@@ -444,24 +471,52 @@ function checkInvariants(world) {
 }
 
 /**
+ * The effects `settle` checks. An effect a reset dropped is not promised to
+ * catch up until something it reads moves again.
+ *
+ * @param {World} world
+ */
+function checkedProbes(world) {
+  return world.probes.filter(
+    (probe) => !probe.effect.isDisposed && probe.ranAt === world.resets && probe.seen,
+  );
+}
+
+/**
  * Run every channel until the queue is empty, and check every effect that
  * has run since the last reset saw what its nodes hold now.
  *
  * @param {World} world
  */
 function settle(world) {
-  for (let round = 0; round < 10 && updateQueue.size > 0; round += 1) {
+  for (let round = 0; round < 10; round += 1) {
     for (const channel of world.channels) {
       act(() => channel.flush({ budget: Infinity }));
     }
+    // A read can resolve a node and tear its last value down, and the
+    // teardown can write a signal and drain the queue, effects that throw
+    // included. Read what the check below reads until a read changes
+    // nothing, so that the values it checks are ones the effects had the
+    // chance to see. Only nodes still connected, which the nodes it checks
+    // are: an uncached read keeps its value's teardown until the node next
+    // evaluates, and a read can dispose an effect the loop has yet to reach.
+    const before = world.signals.map((signal) => signal.peek());
+    act(() => {
+      for (const probe of checkedProbes(world)) {
+        for (const n of probe.spec.nodes) {
+          if (world.nodes[n].isConnected()) {
+            world.nodes[n].get();
+          }
+        }
+      }
+    });
+    const moved = world.signals.some((signal, i) => signal.peek() !== before[i]);
+    if (!moved && updateQueue.size === 0) {
+      break;
+    }
   }
   assert.strictEqual(updateQueue.size, 0, "everything queued has run");
-  for (const probe of world.probes) {
-    // An effect a reset dropped is not promised to catch up until something
-    // it reads moves again.
-    if (probe.effect.isDisposed || probe.ranAt !== world.resets || !probe.seen) {
-      continue;
-    }
+  for (const probe of checkedProbes(world)) {
     const expected = probe.spec.nodes.map((n) => world.nodes[n].get().value);
     assert.deepStrictEqual(probe.seen, expected, `${probe.effect.name} saw the settled values`);
   }
@@ -484,6 +539,7 @@ function command(label, run) {
     check: () => true,
     run(_model, world) {
       run(world);
+      runTimers();
       checkInvariants(world);
     },
     toString: () => label,
@@ -622,6 +678,7 @@ const nodeSpec = fc
   .record({
     reads: fc.uniqueArray(fc.integer({ min: 0, max: SIGNALS - 1 }), { minLength: 1, maxLength: 2 }),
     write: fc.boolean(),
+    onTeardown: fc.boolean(),
     kill: fc.option(fc.record({ probe: fc.nat(), on: fc.integer({ min: 0, max: 8 }) }), {
       freq: 3,
     }),
@@ -663,6 +720,9 @@ describe("UpdateQueue, model-based", () => {
       }
       warn(...args);
     });
+    mock.method(globalThis, "setTimeout", (/** @type {() => void} */ fn) => {
+      timers.push(fn);
+    });
     // Wrapped so that a node's evaluation can tell whose warm it is under,
     // and so that a throw is counted as a reset where it leaves a drain.
     const { warm, runFromQueue } = Effect.prototype;
@@ -702,17 +762,28 @@ describe("UpdateQueue, model-based", () => {
             settle(world);
             checkInvariants(world);
           } finally {
+            // A disposal can tear a node's value down, and its teardown can
+            // write a signal that an effect not yet disposed throws on.
             for (const probe of world.probes) {
-              probe.effect.dispose();
+              act(() => probe.effect.dispose());
             }
-            updateQueue.flush();
+            act(() => updateQueue.flush());
+            runTimers();
           }
           assert.strictEqual(
             updateQueue.size,
             0,
             "nothing is left queued once every effect is gone",
           );
+          // An uncached read keeps its value's teardown until the node next
+          // evaluates, as any read outside a computation does. That is how
+          // `Derived` reads, not the queue's doing. The kills avoid it, but a
+          // run can still outlive its effect: its parent runs again in a
+          // drain the run's own reads started, and disposes it.
           for (const resource of world.resources) {
+            if (resource.uncached) {
+              continue;
+            }
             assert.ok(resource.disposed, `a value of node ${resource.node} outlived every reader`);
           }
         }),

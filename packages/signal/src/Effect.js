@@ -539,8 +539,17 @@ export class Effect extends ReactiveNode {
       return;
     }
     this.#disposed = true;
-    updateQueue.dequeue(this);
-    this.disconnect();
+    // Held across both halves. Taking the last task out of a lane releases
+    // what its warms set aside, and a teardown there can write a signal; a
+    // drain then and there that threw would leave this effect disposed but
+    // still holding everything it read. Drained once it has let go.
+    updateQueue.deferDrain();
+    try {
+      updateQueue.dequeue(this);
+      this.disconnect();
+    } finally {
+      updateQueue.resumeDrain();
+    }
   }
 
   /**

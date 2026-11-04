@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A signal written by a teardown, during a dispose, a release or a failed pass's reset, drains once every teardown has run instead of cutting the dispose short or sitting in the queue",
+      "type": "minor",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

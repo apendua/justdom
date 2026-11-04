@@ -4611,7 +4611,9 @@ function describeShape(node, parts) {
  * in the box; restyled by its classes alone it would be inline again, and
  * its words would join the line. What is inside it is not dressed. It is
  * copied as `createMeasurementClone` copies descendants, with its classes
- * only, and its resolved width and height hold whatever that changes.
+ * only, and its resolved width and height hold its size, and so where the
+ * line's texts break. They do not hold an `inline-block`'s baseline, which
+ * a restyle inside it can still move.
  *
  * Nothing here is a dependency. The copy depends on what `getLineBoxCopy`
  * reads, and `display` is read straight from the computed style: through

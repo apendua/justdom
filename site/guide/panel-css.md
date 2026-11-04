@@ -88,8 +88,8 @@ The things a page does that a panel does not, most often met:
 - A native `<select>`, a `<textarea>`'s value, every `<input>` type but checkboxes and the text
   kinds, and the system keyboard. `justdom-three-ui` has the dropdown and the keyboard.
 - Text selection; a field has a caret only.
-- In SVG: patterns, a gradient on text, masks, filters, `<foreignObject>`, and a `clip-path` of any
-  shape but a single `<rect>`.
+- In SVG: a gradient or a pattern on text, masks, filters, `<foreignObject>`, and a `clip-path` of
+  any shape but a single `<rect>`.
 - A change made through the CSSOM, `insertRule` or the developer tools, unless
   [theming mode](/api/three/tooling#theming-mode) is on.
 

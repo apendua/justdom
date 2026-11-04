@@ -5,8 +5,9 @@ import { IDENTITY, invert, multiply } from "./geometry.js";
 import { SPREAD_PAD } from "./paintServer.js";
 
 /**
- * Drawing a gradient on an SVG shape's mesh: a patch on its material that
- * evaluates the gradient per pixel, from the shape's own user space.
+ * Drawing a gradient or a pattern on an SVG shape's mesh: a patch on its
+ * material that evaluates the paint per pixel, from the shape's own user
+ * space.
  *
  * The fill and stroke geometry are built in user space (`buildFillGeometry`,
  * `buildStrokeGeometry`), so a vertex's position is the point the gradient
@@ -14,9 +15,12 @@ import { SPREAD_PAD } from "./paintServer.js";
  * bounding box for `objectBoundingBox` and the inverse `gradientTransform`.
  * There the fragment finds how far along the gradient it is, carries that
  * past the ends by the spread method, and reads the colour from the ramp
- * atlas the CSS boxes bake their stops into (`rampUniforms`).
+ * atlas the CSS boxes bake their stops into (`rampUniforms`). A pattern's
+ * matrix takes the position into tile space instead, where one tile spans
+ * 0 to 1, and the fragment samples the tile's picture there
+ * (`svg/patternTile.js`).
  *
- * Every shape mesh carries the patch, a flat colour as much as a gradient,
+ * Every shape mesh carries the patch, a flat colour as much as a server,
  * so that a paint that changes between the two writes uniforms and never
  * compiles a second program. For a flat colour the fragment skips the
  * patch on one uniform.
@@ -29,6 +33,17 @@ import { SPREAD_PAD } from "./paintServer.js";
 const PAINT_FLAT = 0;
 const PAINT_LINEAR = 1;
 const PAINT_RADIAL = 2;
+const PAINT_PATTERN = 3;
+
+/**
+ * What one region draws, as the shape has worked it out: a flat colour, a
+ * gradient through the matrix into its space (`toGradientSpace`), or a
+ * pattern's tile through the matrix into tile space (`patternLayout`).
+ *
+ * @typedef {{ kind: "color", paint: import('./style.js').Paint }
+ *   | { kind: "gradient", gradient: GradientServer, matrix: Matrix2D }
+ *   | { kind: "pattern", texture: THREE.Texture, matrix: Matrix2D }} PaintDraw
+ */
 
 /**
  * A box as the shape's fill bounding box is given: a corner and a size, in
@@ -51,6 +66,7 @@ const PAINT_RADIAL = 2;
  *   paintGeometry: { value: THREE.Vector4 },
  *   paintFocus: { value: THREE.Vector4 },
  *   paintRamp: { value: number },
+ *   paintTile: { value: THREE.Texture | null },
  * }}
  */
 export function createPaintUniforms() {
@@ -63,6 +79,9 @@ export function createPaintUniforms() {
     // Radial: fx, fy, fr, unused.
     paintFocus: { value: new THREE.Vector4() },
     paintRamp: { value: 0 },
+    // A pattern's tile. Null, which three binds as its empty texture, for
+    // any other paint.
+    paintTile: { value: null },
   };
 }
 
@@ -117,6 +136,7 @@ uniform mat3 paintMatrix;
 uniform vec4 paintGeometry;
 uniform vec4 paintFocus;
 uniform float paintRamp;
+uniform sampler2D paintTile;
 varying vec2 vPaintPosition;
 // How far along the gradient a point of gradient space is, or a negative
 // number where a radial gradient's cone does not reach.
@@ -159,6 +179,14 @@ float paintOffset(vec2 g) {
 }
 vec4 paintColor(vec2 position) {
   vec2 g = (paintMatrix * vec3(position, 1.0)).xy;
+  if (paintKind > 2.5) {
+    // One tile spans 0 to 1. Wrapped here rather than by the texture, which
+    // the image cache shares and clamps; the derivatives of the unwrapped
+    // position pick the mip level, so the seam does not jump to the
+    // smallest one. The picture is uploaded flipped, its top row at v = 1.
+    vec2 tile = fract(g);
+    return textureGrad(paintTile, vec2(tile.x, 1.0 - tile.y), dFdx(g), dFdy(g));
+  }
   float t = paintOffset(g);
   if (t < -1e8) {
     return vec4(0.0);
@@ -212,24 +240,35 @@ export function toGradientSpace(gradient, box) {
 }
 
 /**
- * Write a mesh's paint uniforms: `gradient` through `matrix`, the one
- * `toGradientSpace` gave for this shape, or a flat colour when either is
- * null.
+ * Write a mesh's paint uniforms for what it draws: a gradient or a pattern
+ * through its matrix, or the flat colour the material carries for anything
+ * else. A gradient holds its ramp row through `slot`; anything else gives
+ * the row back.
  *
  * @param {PaintUniforms} uniforms
- * @param {GradientServer | null} gradient
- * @param {Matrix2D | null} matrix
+ * @param {PaintDraw | null} draw
  * @param {RampSlot} slot The mesh's hold on its ramp row.
  * @returns {void}
  */
-export function writePaint(uniforms, gradient, matrix, slot) {
-  if (!gradient || !matrix) {
-    uniforms.paintKind.value = PAINT_FLAT;
+export function writePaint(uniforms, draw, slot) {
+  if (draw?.kind !== "pattern") {
+    uniforms.paintTile.value = null;
+  }
+  if (draw?.kind !== "gradient") {
     slot.release();
+  }
+  if (!draw || draw.kind === "color") {
+    uniforms.paintKind.value = PAINT_FLAT;
     return;
   }
-  const [a, b, c, d, e, f] = matrix;
+  const [a, b, c, d, e, f] = draw.matrix;
   uniforms.paintMatrix.value.set(a, c, e, b, d, f, 0, 0, 1);
+  if (draw.kind === "pattern") {
+    uniforms.paintKind.value = PAINT_PATTERN;
+    uniforms.paintTile.value = draw.texture;
+    return;
+  }
+  const { gradient } = draw;
   uniforms.paintKind.value = gradient.kind === "linear" ? PAINT_LINEAR : PAINT_RADIAL;
   uniforms.paintSpread.value = gradient.spread;
   const coords = gradient.coords;

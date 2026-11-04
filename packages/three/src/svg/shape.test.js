@@ -1,4 +1,4 @@
-import { describe, test } from "node:test";
+import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { clientRect } from "../test/clientRect.js";
 import { clipMatrixOf, clipUniformsOf } from "../test/clipUniforms.js";
@@ -14,6 +14,9 @@ import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, buildShapePath, fillBox, group, paintSlot, shape } from "./shape.js";
 import { RAMP_WIDTH, rampAtlas, rampUniforms } from "../elements/gradient.js";
+import { releaseIdleImages } from "../elements/image.js";
+import { deferredLoader } from "../test/deferredLoader.js";
+import { stubCanvas } from "../test/stubCanvas.js";
 import { parsePoints } from "./style.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
@@ -1107,6 +1110,104 @@ describe("svg shape painted by a gradient", () => {
     assert.equal(box.x, 0);
     assert.equal(box.width, 100);
     assert.ok(Math.abs(box.height - 50) < 0.1, `height ${box.height}`);
+  });
+});
+
+describe("svg shape painted by a pattern", () => {
+  afterEach(() => releaseIdleImages());
+
+  const DEFS = `<pattern id="p" width="0.5" height="0.5"><rect width="2" height="2"/></pattern>`;
+
+  test("draws its fallback until the tile lands, then the tile over a white material", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup(
+        "rect",
+        { x: "10", y: "20", width: "40", height: "10", fill: "url(#p) red" },
+        { defs: DEFS },
+      );
+      const [fill] = s.meshes;
+      const uniforms = clipUniformsOf(fill);
+      assert.equal(uniforms.paintKind.value, 0);
+      assert.equal(material(fill).color.getHexString(), "ff0000");
+      assert.equal(loader.loads.length, 1);
+      assert.match(loader.loads[0].url, /^data:image\/svg\+xml,/);
+      const { texture, disposed } = loader.loads[0].land(4, 4);
+      assert.equal(uniforms.paintKind.value, 3);
+      assert.equal(uniforms.paintTile.value, texture);
+      assert.equal(material(fill).color.getHexString(), "ffffff");
+      // Half the box a tile: the box's far corner is two tiles along.
+      const at = new THREE.Vector3(50, 30, 1).applyMatrix3(
+        /** @type {THREE.Matrix3} */ (uniforms.paintMatrix.value),
+      );
+      assert.deepEqual([round(at.x), round(at.y)], [2, 2]);
+      s.teardown();
+      releaseIdleImages();
+      assert.equal(disposed(), 1, "the tile is let go of with the mesh");
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
+  });
+
+  test("with no fallback, nothing is drawn until the tile lands", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup("rect", { width: "40", height: "10", fill: "url(#p)" }, { defs: DEFS });
+      assert.equal(material(s.meshes[0]).visible, false);
+      loader.loads[0].land(4, 4);
+      assert.equal(material(s.meshes[0]).visible, true);
+      s.teardown();
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
+  });
+
+  test("an edit inside the pattern asks for a new tile and keeps the old one until it lands", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup(
+        "rect",
+        { width: "40", height: "10", fill: "url(#p)" },
+        {
+          defs: `<pattern id="p" width="1" height="1"><rect id="inside" width="2" height="2"/></pattern>`,
+        },
+      );
+      const uniforms = clipUniformsOf(s.meshes[0]);
+      const old = loader.loads[0].land(4, 4);
+      document.getElementById("inside")?.setAttribute("fill", "blue");
+      s.flush();
+      assert.equal(loader.loads.length, 2);
+      assert.match(decodeURIComponent(loader.loads[1].url), /fill="blue"/);
+      assert.equal(uniforms.paintTile.value, old.texture, "the old tile while the new one loads");
+      const next = loader.loads[1].land(4, 4);
+      assert.equal(uniforms.paintTile.value, next.texture);
+      s.teardown();
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
+  });
+
+  test("a pattern given up for a colour lets go of its tile", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup("rect", { width: "40", height: "10", fill: "url(#p)" }, { defs: DEFS });
+      const { disposed } = loader.loads[0].land(4, 4);
+      s.setAttribute("fill", "red");
+      assert.equal(clipUniformsOf(s.meshes[0]).paintTile.value, null);
+      releaseIdleImages();
+      assert.equal(disposed(), 1);
+      s.teardown();
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
   });
 });
 

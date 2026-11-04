@@ -68,6 +68,7 @@ describe("the paint patch", () => {
     assert.match(shader.vertexShader, /vPaintPosition = position\.xy;/);
     assert.match(shader.fragmentShader, /diffuseColor \*= paintColor\(vPaintPosition\)/);
     assert.match(shader.fragmentShader, /vec4 paintColor\(vec2 position\)/);
+    assert.match(shader.fragmentShader, /textureGrad\(paintTile/);
     assert.match(material.customProgramCacheKey(), /freedom-clip-matrix\+svg-paint/);
   });
 
@@ -114,15 +115,31 @@ describe("the paint patch", () => {
     const uniforms = createPaintUniforms();
     const slot = new RampSlot();
     const before = rampAtlas.size;
-    writePaint(uniforms, linear(), [2, 0, 0, 3, 4, 5], slot);
+    writePaint(
+      uniforms,
+      { kind: "gradient", gradient: linear(), matrix: [2, 0, 0, 3, 4, 5] },
+      slot,
+    );
     assert.equal(uniforms.paintKind.value, 1);
     assert.equal(uniforms.paintSpread.value, SPREAD_REFLECT);
     assert.equal(rampAtlas.size, before + 1);
     // Column-major, as GLSL reads it: x' = 2x + 4, y' = 3y + 5.
     const at = new THREE.Vector3(1, 1, 1).applyMatrix3(uniforms.paintMatrix.value);
     assertClose([at.x, at.y], [6, 8]);
-    writePaint(uniforms, null, null, slot);
+    writePaint(uniforms, null, slot);
     assert.equal(uniforms.paintKind.value, 0);
     assert.equal(rampAtlas.size, before);
+  });
+
+  test("a pattern binds its tile, and anything else unbinds it", () => {
+    const uniforms = createPaintUniforms();
+    const slot = new RampSlot();
+    const texture = new THREE.Texture();
+    writePaint(uniforms, { kind: "pattern", texture, matrix: [0.5, 0, 0, 0.25, 0, 0] }, slot);
+    assert.equal(uniforms.paintKind.value, 3);
+    assert.equal(uniforms.paintTile.value, texture);
+    writePaint(uniforms, { kind: "gradient", gradient: linear(), matrix: IDENTITY }, slot);
+    assert.equal(uniforms.paintTile.value, null);
+    writePaint(uniforms, null, slot);
   });
 });

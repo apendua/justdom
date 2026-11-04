@@ -9,7 +9,8 @@ import {
 } from "./paintServer.js";
 
 /**
- * @import {GradientServer, PaintServer} from './paintServer.js';
+ * @import {GradientServer, PaintServer, PatternServer} from './paintServer.js';
+ * @import {Matrix2D} from './geometry.js';
  */
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -47,7 +48,19 @@ function setup(markup) {
  * @returns {GradientServer}
  */
 function gradient(server) {
-  assert.ok(server && server.kind !== "color", `a gradient, got ${server?.kind}`);
+  assert.ok(
+    server && (server.kind === "linear" || server.kind === "radial"),
+    `a gradient, got ${server?.kind}`,
+  );
+  return server;
+}
+
+/**
+ * @param {PaintServer | null} server
+ * @returns {PatternServer}
+ */
+function pattern(server) {
+  assert.ok(server && server.kind === "pattern", `a pattern, got ${server?.kind}`);
   return server;
 }
 
@@ -244,6 +257,74 @@ describe("paint servers", () => {
     assert.ok(paintServerEqual(before, s.read("url(#g)")));
     document.getElementById("stop")?.setAttribute("stop-color", "blue");
     assert.equal(paintServerEqual(before, s.read("url(#g)")), false);
+    s.teardown();
+  });
+});
+
+describe("pattern servers", () => {
+  test("a pattern takes SVG's defaults: a tile in the box, content in user space", () => {
+    const s = setup(
+      `<pattern id="p" width="0.5" height="25%"><rect width="2" height="2"/></pattern>`,
+    );
+    const p = pattern(s.read("url(#p)"));
+    assert.equal(p.objectBox, true);
+    assert.equal(p.contentObjectBox, false);
+    assert.equal(p.viewBox, null);
+    assert.equal(p.transform, null);
+    assertClose(p.tile, [0, 0, 0.5, 0.25]);
+    assert.match(p.content, /^<rect width="2" height="2"/);
+    assert.equal(p.fallback, null);
+    s.teardown();
+  });
+
+  test("userSpaceOnUse takes a percentage of the viewport; the rest is read as written", () => {
+    const s = setup(
+      `<pattern id="p" patternUnits="userSpaceOnUse" patternContentUnits="objectBoundingBox"` +
+        ` x="10" width="10%" height="20" viewBox="0 0 4 4" preserveAspectRatio="none"` +
+        ` patternTransform="rotate(90)"><rect width="2" height="2"/></pattern>`,
+    );
+    const p = pattern(s.read("url(#p) red"));
+    assert.equal(p.objectBox, false);
+    assert.equal(p.contentObjectBox, true);
+    assertClose(p.tile, [10, 0, 20, 20]);
+    assert.equal(p.viewBox, "0 0 4 4");
+    assert.equal(p.preserveAspectRatio, "none");
+    assertClose(/** @type {Matrix2D} */ (p.transform), [0, 1, -1, 0, 0, 0]);
+    assert.equal(p.fallback?.color.getHexString(), "ff0000");
+    s.teardown();
+  });
+
+  test("href lends attributes from any pattern, and the content of the first that has any", () => {
+    const s = setup(
+      `<pattern id="base" width="4" height="5" patternUnits="userSpaceOnUse"><circle r="1"/></pattern>` +
+        `<pattern id="mid" href="#base" height="6"/>` +
+        `<pattern id="top" xlink:href="#mid"><rect width="1" height="1"/></pattern>`,
+    );
+    const mid = pattern(s.read("url(#mid)"));
+    assertClose(mid.tile, [0, 0, 4, 6]);
+    assert.match(mid.content, /^<circle/);
+    assert.match(pattern(s.read("url(#top)")).content, /^<rect/);
+    s.teardown();
+  });
+
+  test("a tile with no area or no content paints nothing, even with a fallback", () => {
+    const s = setup(
+      `<pattern id="flat" width="0" height="1"><rect width="1" height="1"/></pattern>` +
+        `<pattern id="empty" width="1" height="1"/>`,
+    );
+    assert.equal(s.read("url(#flat) red"), null);
+    assert.equal(s.read("url(#empty) red"), null);
+    s.teardown();
+  });
+
+  test("an edit inside the content is a different pattern", () => {
+    const s = setup(
+      `<pattern id="p" width="1" height="1"><rect id="inside" width="1" height="1"/></pattern>`,
+    );
+    const before = s.read("url(#p)");
+    assert.ok(paintServerEqual(before, s.read("url(#p)")));
+    document.getElementById("inside")?.setAttribute("fill", "blue");
+    assert.equal(paintServerEqual(before, s.read("url(#p)")), false);
     s.teardown();
   });
 });

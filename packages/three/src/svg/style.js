@@ -238,7 +238,7 @@ export function paintEqual(a, b) {
 /**
  * Whether a `fill` or `stroke` paints anything, in the sense hit testing
  * uses. Any paint but `none` counts. A `url(#…)` paint server counts
- * whether it is drawn or not, a pattern or a gradient on text, and so does
+ * whether it is drawn or not, as a server on text is not, and so does
  * `transparent`, which is how a page makes an invisible shape clickable.
  *
  * @param {string} value

@@ -60,6 +60,7 @@ import {
 import { dashRuns } from "./dash.js";
 import { paintServerEqual, readPaintServer } from "./paintServer.js";
 import { applyPaint, createPaintUniforms, toGradientSpace, writePaint } from "./paintShader.js";
+import { patternLayout, TileHold } from "./patternTile.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import {
   clipsViewport,
@@ -87,6 +88,7 @@ import {
  * @import {Matrix2D, Rect} from './geometry.js';
  * @import {HitRule, ShapeGeometry} from './style.js';
  * @import {PaintServer} from './paintServer.js';
+ * @import {PaintDraw} from './paintShader.js';
  */
 
 /**
@@ -1903,13 +1905,15 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
 
     /**
      * What one region's mesh paints with, and whether it paints at all: a
-     * flat colour written to the material, or a gradient written to the
-     * paint patch's uniforms over a white material, both under the region's
-     * opacity. A gradient that draws nothing on this shape
-     * (`toGradientSpace`) paints nothing. The uniforms are written apart
+     * flat colour written to the material, or a gradient or a pattern's
+     * tile written to the paint patch's uniforms over a white material, all
+     * under the region's opacity. A server that draws nothing on this shape
+     * (`toGradientSpace`, `patternLayout`) paints nothing. A pattern whose
+     * tile is not ready draws the tile it drew before, or else its fallback
+     * colour, or else nothing (`TileHold`). The uniforms are written apart
      * from the colour, so an opacity animated above the shape writes the
-     * material alone. Each mesh holds its own ramp row and lets go of it
-     * when the mesh goes.
+     * material alone. Each mesh holds its own ramp row and tiles, and lets
+     * go of them when the mesh goes.
      *
      * @param {Derived<PaintServer | null>} server
      * @param {string} opacityName `fill-opacity` or `stroke-opacity`.
@@ -1918,26 +1922,52 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
     const tint = (server, opacityName) => {
       const uniforms = createPaintUniforms();
       const ramp = new RampSlot();
-      const space = new Derived(() => {
+      const tiles = new TileHold();
+      /** Where a gradient or a pattern lies on the shape. */
+      const layout = new Derived(() => {
         const current = server.get();
-        return current && current.kind !== "color"
-          ? toGradientSpace(current, () => box.get())
-          : null;
+        if (!current || current.kind === "color") {
+          return null;
+        }
+        if (current.kind === "pattern") {
+          return patternLayout(current, () => box.get(), scale.get());
+        }
+        const matrix = toGradientSpace(current, () => box.get());
+        return matrix ? { matrix, url: null } : null;
+      });
+      /** The tile to draw, for a pattern. */
+      const tile = new Derived(() => tiles.texture(layout.get()?.url ?? null));
+      /** @type {Derived<PaintDraw | null>} */
+      const drawn = new Derived(() => {
+        // Read first, whatever the paint, so a pattern given up for a
+        // colour or a gradient lets go of its tiles there and then.
+        const texture = tile.get();
+        const current = server.get();
+        if (!current || current.kind === "color") {
+          return current;
+        }
+        const at = layout.get();
+        if (!at) {
+          return null;
+        }
+        if (current.kind !== "pattern") {
+          return { kind: "gradient", gradient: current, matrix: at.matrix };
+        }
+        if (texture) {
+          return { kind: "pattern", texture, matrix: at.matrix };
+        }
+        return current.fallback ? { kind: "color", paint: current.fallback } : null;
       });
       return {
-        paints: () => {
-          const current = server.get();
-          return current !== null && (current.kind === "color" || space.get() !== null);
-        },
+        paints: () => drawn.get() !== null,
         patch: (material) => applyPaint(material, uniforms),
         paint: [
           effects(() => {
-            const current = server.get();
-            writePaint(uniforms, current?.kind === "color" ? null : current, space.get(), ramp);
+            writePaint(uniforms, drawn.get(), ramp);
           }),
           effects((obj) => {
             const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-            const current = server.get();
+            const current = drawn.get();
             if (!current) {
               return;
             }
@@ -1953,6 +1983,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
           effects(() => {
             onCleanup(() => {
               ramp.release();
+              tiles.release();
             });
           }),
         ],

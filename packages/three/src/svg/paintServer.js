@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { colorAt } from "../elements/gradient.js";
 import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
+import { serializePatternContent } from "./patternTile.js";
 import { findSvgElement } from "../elements/plugins.js";
 import { matrixEqual, parseTransformList } from "./geometry.js";
 import {
@@ -14,9 +15,9 @@ import {
 
 /**
  * A `fill` or `stroke` as what draws it: a flat colour, or the paint server
- * a `url(#…)` names. Only the gradients are servers here so far; a pattern,
- * or a reference to nothing a server can be, draws its fallback colour, or
- * nothing without one, as a browser draws a server it cannot use.
+ * a `url(#…)` names, a gradient or a pattern. A reference to nothing a
+ * server can be draws its fallback colour, or nothing without one, as a
+ * browser draws a server it cannot use.
  *
  * A gradient is read as SVG defines it:
  *
@@ -32,6 +33,15 @@ import {
  * - A stop's `offset` is a number or a percentage, clamped to between 0 and
  *   1 and to no less than the offset before it. Its colour and opacity are
  *   its computed `stop-color` and `stop-opacity`.
+ *
+ * A pattern is read the same way, `href` lending attributes from any
+ * pattern and the content of the first along the chain that has any. Its
+ * tile, `x y width height`, is in `patternUnits` (`objectBoundingBox` by
+ * default), its content in `patternContentUnits` (`userSpaceOnUse` by
+ * default) unless it has a `viewBox`, and `patternTransform` applies after
+ * them. A tile with no width or no height, or no content, paints nothing.
+ * The content is kept as markup (`serializePatternContent`), drawn into a
+ * picture of one tile where the shape is drawn (`svg/patternTile.js`).
  *
  * Every read goes through the mirror's cached reads, so a stop recoloured by
  * a stylesheet or an attribute animated on the gradient reaches the drawing,
@@ -70,9 +80,28 @@ export const SPREAD_REPEAT = 2;
  * @property {ResolvedRamp} ramp The stops, in straight alpha.
  */
 
-/** @typedef {ColorServer | GradientServer} PaintServer */
+/**
+ * A pattern, resolved against everything but the shape's bounding box.
+ *
+ * @typedef {object} PatternServer
+ * @property {"pattern"} kind
+ * @property {boolean} objectBox Whether the tile is in fractions of the
+ *   shape's fill bounding box (`patternUnits="objectBoundingBox"`).
+ * @property {boolean} contentObjectBox Whether the content is in fractions
+ *   of it (`patternContentUnits`), which a `viewBox` overrides.
+ * @property {string | null} viewBox
+ * @property {string | null} preserveAspectRatio
+ * @property {Matrix2D | null} transform `patternTransform`.
+ * @property {number[]} tile `x y width height`, in the tile's units.
+ * @property {string} content The content's markup.
+ * @property {Paint | null} fallback The colour the paint names after the
+ *   reference, drawn while the tile is on its way or when it fails.
+ */
+
+/** @typedef {ColorServer | GradientServer | PatternServer} PaintServer */
 
 const GRADIENT_TAGS = new Set(["linearGradient", "radialGradient"]);
+const PATTERN_TAGS = new Set(["pattern"]);
 
 /** The longest `href` chain followed. A longer one is surely a mistake. */
 const MAX_CHAIN = 32;
@@ -95,23 +124,28 @@ export function readPaintServer(element, value, viewport) {
     if (server && GRADIENT_TAGS.has(server.localName)) {
       return readGradient(server, viewport);
     }
+    if (server && PATTERN_TAGS.has(server.localName)) {
+      return readPattern(server, viewport, parsePaint(split.fallback));
+    }
   }
   const paint = parsePaint(value);
   return paint ? { kind: "color", paint } : null;
 }
 
 /**
- * The gradient elements `gradient` inherits from, itself first.
+ * The servers `server` inherits from, itself first: the elements its
+ * `href` chain names, for as long as each is one of `tags`.
  *
- * @param {Element} gradient
+ * @param {Element} server
+ * @param {Set<string>} tags
  * @returns {Element[]}
  */
-function hrefChain(gradient) {
+function hrefChain(server, tags) {
   /** @type {Element[]} */
   const chain = [];
   /** @type {Element | null} */
-  let at = gradient;
-  while (at && GRADIENT_TAGS.has(at.localName) && !chain.includes(at) && chain.length < MAX_CHAIN) {
+  let at = server;
+  while (at && tags.has(at.localName) && !chain.includes(at) && chain.length < MAX_CHAIN) {
     chain.push(at);
     /** @type {string} */
     const href = getAttributeCached(at, "href") ?? getAttributeCached(at, "xlink:href") ?? "";
@@ -122,7 +156,7 @@ function hrefChain(gradient) {
 
 /**
  * The first value of `name` along the chain, from an element whose tag is
- * one of `tags` (any gradient when null).
+ * `tag` (any when null).
  *
  * @param {Element[]} chain
  * @param {string} name
@@ -152,7 +186,7 @@ function inherited(chain, name, tag = null) {
  * @returns {PaintServer | null}
  */
 function readGradient(gradient, viewport) {
-  const chain = hrefChain(gradient);
+  const chain = hrefChain(gradient, GRADIENT_TAGS);
   const kind = gradient.localName === "linearGradient" ? "linear" : "radial";
   const objectBox = inherited(chain, "gradientUnits") !== "userSpaceOnUse";
   const transform = parseTransformList(inherited(chain, "gradientTransform"));
@@ -164,26 +198,7 @@ function readGradient(gradient, viewport) {
         ? SPREAD_REPEAT
         : SPREAD_PAD;
 
-  /** @type {Record<"width" | "height" | "diagonal", () => number | undefined>} */
-  const reference = {
-    width: () => viewport()?.width,
-    height: () => viewport()?.height,
-    diagonal: () => {
-      const size = viewport();
-      return size ? Math.hypot(size.width, size.height) / Math.SQRT2 : undefined;
-    },
-  };
-  /**
-   * @param {string} name
-   * @param {string} fallback
-   * @param {"width" | "height" | "diagonal"} axis
-   * @returns {number}
-   */
-  const coord = (name, fallback, axis) => {
-    const value = (inherited(chain, name, gradient.localName) ?? fallback).trim();
-    const fallbackNumber = readCoordinate(fallback, objectBox, reference[axis]);
-    return readCoordinate(value, objectBox, reference[axis]) ?? fallbackNumber ?? 0;
-  };
+  const coord = coordinates(chain, gradient.localName, objectBox, viewport);
 
   /** @type {number[]} */
   let coords;
@@ -226,7 +241,80 @@ function readGradient(gradient, viewport) {
 }
 
 /**
- * One coordinate in the gradient's units, or null for one that does not
+ * @typedef {(name: string, fallback: string, axis: "width" | "height" | "diagonal") => number} CoordinateReader
+ */
+
+/**
+ * A reader of the server's coordinates along its chain, each in the
+ * server's units, falling back to the default SVG gives it.
+ *
+ * @param {Element[]} chain
+ * @param {string} tag The kind of server a coordinate is taken from.
+ * @param {boolean} objectBox
+ * @param {() => { width: number, height: number } | null} viewport
+ * @returns {CoordinateReader}
+ */
+function coordinates(chain, tag, objectBox, viewport) {
+  /** @type {Record<"width" | "height" | "diagonal", () => number | undefined>} */
+  const reference = {
+    width: () => viewport()?.width,
+    height: () => viewport()?.height,
+    diagonal: () => {
+      const size = viewport();
+      return size ? Math.hypot(size.width, size.height) / Math.SQRT2 : undefined;
+    },
+  };
+  return (name, fallback, axis) => {
+    const value = (inherited(chain, name, tag) ?? fallback).trim();
+    const fallbackNumber = readCoordinate(fallback, objectBox, reference[axis]);
+    return readCoordinate(value, objectBox, reference[axis]) ?? fallbackNumber ?? 0;
+  };
+}
+
+/**
+ * A pattern, or null for one that paints nothing: a tile with no width or
+ * no height, or no content.
+ *
+ * @param {Element} pattern
+ * @param {() => { width: number, height: number } | null} viewport
+ * @param {Paint | null} fallback
+ * @returns {PatternServer | null}
+ */
+function readPattern(pattern, viewport, fallback) {
+  const chain = hrefChain(pattern, PATTERN_TAGS);
+  const objectBox = inherited(chain, "patternUnits") !== "userSpaceOnUse";
+  const coord = coordinates(chain, "pattern", objectBox, viewport);
+  const tile = [
+    coord("x", "0", "width"),
+    coord("y", "0", "height"),
+    coord("width", "0", "width"),
+    coord("height", "0", "height"),
+  ];
+  if (!(tile[2] > 0) || !(tile[3] > 0)) {
+    return null;
+  }
+  const source = chain.find((element) =>
+    getChildNodes(element).some((node) => node.nodeType === Node.ELEMENT_NODE),
+  );
+  const content = source ? serializePatternContent(source) : "";
+  if (!content) {
+    return null;
+  }
+  return {
+    kind: "pattern",
+    objectBox,
+    contentObjectBox: inherited(chain, "patternContentUnits") === "objectBoundingBox",
+    viewBox: inherited(chain, "viewBox"),
+    preserveAspectRatio: inherited(chain, "preserveAspectRatio"),
+    transform: parseTransformList(inherited(chain, "patternTransform")),
+    tile,
+    content,
+    fallback,
+  };
+}
+
+/**
+ * One coordinate in the server's units, or null for one that does not
  * parse. Under `objectBoundingBox` a percentage is a fraction and a number
  * is one already; under `userSpaceOnUse` a percentage is of the viewport.
  *
@@ -333,16 +421,45 @@ export function paintServerEqual(a, b) {
   if (a.kind === "color") {
     return paintEqual(a.paint, /** @type {ColorServer} */ (b).paint);
   }
+  if (a.kind === "pattern") {
+    const other = /** @type {PatternServer} */ (b);
+    return (
+      a.objectBox === other.objectBox &&
+      a.contentObjectBox === other.contentObjectBox &&
+      a.viewBox === other.viewBox &&
+      a.preserveAspectRatio === other.preserveAspectRatio &&
+      transformEqual(a.transform, other.transform) &&
+      numbersEqual(a.tile, other.tile) &&
+      a.content === other.content &&
+      paintEqual(a.fallback, other.fallback)
+    );
+  }
   const other = /** @type {GradientServer} */ (b);
   return (
     a.objectBox === other.objectBox &&
     a.spread === other.spread &&
-    (a.transform === other.transform ||
-      (!!a.transform && !!other.transform && matrixEqual(a.transform, other.transform))) &&
-    a.coords.length === other.coords.length &&
-    a.coords.every((value, i) => value === other.coords[i]) &&
+    transformEqual(a.transform, other.transform) &&
+    numbersEqual(a.coords, other.coords) &&
     rampEqual(a.ramp, other.ramp)
   );
+}
+
+/**
+ * @param {Matrix2D | null} a
+ * @param {Matrix2D | null} b
+ * @returns {boolean}
+ */
+function transformEqual(a, b) {
+  return a === b || (!!a && !!b && matrixEqual(a, b));
+}
+
+/**
+ * @param {number[]} a
+ * @param {number[]} b
+ * @returns {boolean}
+ */
+function numbersEqual(a, b) {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
 }
 
 /**

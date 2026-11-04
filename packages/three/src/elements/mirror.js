@@ -2806,6 +2806,30 @@ export function getAttributeCached(element, name) {
   return signal.get();
 }
 
+/** @type {WeakMap<Element, Derived<string>>} */
+const attributeNamesCache = nodeCache();
+
+/**
+ * The names of the attributes an element carries, joined by spaces, as a
+ * dependency on its own attribute changes: for a reader that copies every
+ * attribute, and so has to see one added as well as one changed. Compared
+ * as a string, so an attribute changing its value alone stops here.
+ *
+ * @param {Element} element
+ * @returns {string}
+ */
+export function getAttributeNamesCached(element) {
+  let signal = attributeNamesCache.get(element);
+  if (!signal) {
+    signal = probedRead(element, () => {
+      readRecordOf(element)?.self.get();
+      return element.getAttributeNames().join(" ");
+    });
+    attributeNamesCache.set(element, signal);
+  }
+  return signal.get();
+}
+
 /**
  * @typedef {object} TransformStyle
  * @property {string} transform The computed `transform`.

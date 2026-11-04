@@ -243,15 +243,28 @@ export class Derived extends ReactiveNode {
    */
   #resolveConnected() {
     this.updateIfNecessary();
+    if (!this.isConnected()) {
+      // Let go of while it resolved: resolving upstream disposed its last
+      // reader, which dropped the cached value on the way out. The read is
+      // still owed an answer, and an unconnected node's answer is computed
+      // afresh, as `get` gives one that was never connected — unless it was
+      // let go of by failing, which `get` answers with the failure too.
+      const failure = this.failure;
+      if (failure) {
+        throw failure.value;
+      }
+      return this.#evaluateUncached();
+    }
     if (this.#error) {
       throw this.#error.error;
     }
     const computed = this.#current;
     if (computed === null) {
       // Connected, up to date as far as the state says, and holding nothing.
-      // The only way to be all three is to be *inside* this node's own
-      // evaluation: `updateIfNecessary` settles the state to `CLEAN` before
-      // running the function, so a read that comes back round from within it
+      // Of a node still connected after resolving, the only way to be all
+      // three is to be *inside* this node's own evaluation:
+      // `updateIfNecessary` settles the state to `CLEAN` before running the
+      // function, so a read that comes back round from within it
       // finds a node claiming to be current that has not produced a value
       // yet. Which is a cycle, and saying so beats the `TypeError` about a
       // property of `null` that reading the value used to raise.
@@ -310,7 +323,23 @@ export class Derived extends ReactiveNode {
     if (this.#evaluating) {
       throw new CircularDependencyError();
     }
-    if (this.state === CHECK && !this.hasStaleDependencies()) {
+    if (!this.isConnected()) {
+      // A value is cached only while this node holds its dependencies open
+      // (`onDisconnect` lets go of it), and one computed now would keep
+      // teardowns nobody will run. A reader gets its value from `get()`,
+      // which computes afresh; the only callers that land here are
+      // dependents that have let go of this node partway through resolving
+      // it — an effect disposed by something else it reads — and a plain
+      // read whose resolution disposed the node's last reader, which
+      // `#resolveConnected` then answers uncached.
+      return;
+    }
+    const stale = this.state === DIRTY || this.hasStaleDependencies();
+    if (!this.isConnected()) {
+      // Let go of by its last reader while asking upstream: see above.
+      return;
+    }
+    if (!stale) {
       // Asked upstream rather than assuming, and every dependency came back
       // at the version last seen. Nothing really moved, so this node keeps
       // its value — which is how an `isEqual` that swallows a change stops

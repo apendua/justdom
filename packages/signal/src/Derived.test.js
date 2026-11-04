@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { Derived } from "./Derived.js";
 import { Signal } from "./Signal.js";
 import { Effect } from "./Effect.js";
+import { valueOf } from "./core.js";
+import UpdateChannel from "./UpdateChannel.js";
 
 /**
  * Run `fn` with `console.error` silenced, handing back what it logged.
@@ -212,6 +214,51 @@ describe("Derived.live()", () => {
 
     context?.setValue({ id: 2 });
     assert.deepEqual(seen, [1, 2]);
+    holder.dispose();
+  });
+});
+
+describe("a node let go of while it resolves", () => {
+  it("answers a plain read uncached rather than as a cycle", () => {
+    const manual = new UpdateChannel({ name: "manual", manual: true });
+    const source = Signal.of(0);
+    /** @type {Effect | null} */
+    let holder = null;
+    // Resolving `mirror` resolves `killer`, which disposes the only effect
+    // holding `mirror`, and `mirror` drops its cached value on the way out.
+    const killer = new Derived(() => {
+      const value = source.get();
+      if (value === 1) {
+        holder?.dispose();
+      }
+      return value;
+    });
+    const mirror = new Derived(() => killer.get() * 10);
+    holder = new Effect(() => mirror.get(), { channel: manual });
+    source.set(1);
+    assert.strictEqual(mirror.get(), 10, "not a CircularDependencyError");
+    assert.strictEqual(mirror.isConnected(), false);
+  });
+
+  it("throws the failure of a node that failed while it resolved", () => {
+    const manual = new UpdateChannel({ name: "manual", manual: true });
+    const source = Signal.of(0);
+    /** @type {import("./subscribable.js").Subscribable<number>} */
+    const dead = {
+      subscribe(observer) {
+        observer.error?.(new Error("dead source"));
+        return { unsubscribe() {} };
+      },
+    };
+    const mirror = new Derived(() => (source.get() === 1 ? valueOf(dead, () => -1) : 0));
+    // Dies of `dead source` too, which is expected; heard here so that it
+    // is not reported as unhandled.
+    const holder = new Effect(() => mirror.get(), { channel: manual, onError() {} });
+    source.set(1);
+    // Failing lets go of the graph, as being let go of by a reader does,
+    // and the read hears the failure rather than a run on a dead node.
+    assert.throws(() => mirror.get(), /dead source/);
+    assert.throws(() => mirror.get(), /dead source/);
     holder.dispose();
   });
 });

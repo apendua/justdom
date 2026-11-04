@@ -140,13 +140,6 @@ const BOOM = "model: the run throws";
 const warming = [];
 
 /**
- * The effects the queue is resolving, warming or running right now.
- *
- * @type {Set<Effect>}
- */
-const active = new Set();
-
-/**
  * The world the current case runs in, for the wrappers on `Effect` that
  * count resets.
  *
@@ -232,14 +225,13 @@ function buildWorld(specs, nodeSpecs) {
           signals[write].set(value % 5);
         }
         if (kill && kill.on === value) {
-          // Never one that is resolving or running, nor one with a nested
-          // effect that might be. An effect disposed partway through its
-          // dependency check, its warm or its run carries on regardless, and
-          // what that builds is never torn down. That is an `Effect` matter,
-          // not the queue's, and is left out here until it is fixed.
-          const live = liveProbes(world).filter(
-            (probe) => !active.has(probe.effect) && probe.running === 0 && !probe.spec.child,
-          );
+          // Never one with a run on the stack, its own or its nested
+          // effect's. A run goes on after something it read disposed its
+          // effect, and reads the rest of its nodes uncached; an uncached
+          // read keeps its value's teardown until that node next evaluates,
+          // as any read outside a computation does. That is how `Derived`
+          // reads, not the queue's doing.
+          const live = liveProbes(world).filter((probe) => probe.running === 0);
           const warm = warming[warming.length - 1];
           const wasLive = world.nodes.map((node) => node.isLive());
           live[kill.probe % live.length]?.effect.dispose();
@@ -677,20 +669,17 @@ describe("UpdateQueue, model-based", () => {
       warn(...args);
     });
     // Wrapped so that a node's evaluation can tell whose warm it is under,
-    // and which effects are partway through being resolved or run.
-    const { warm, runFromQueue, flush } = Effect.prototype;
+    // and so that a throw is counted as a reset where it leaves a drain.
+    const { warm, runFromQueue } = Effect.prototype;
     Effect.prototype.warm = function () {
       warming.push(this.channel);
-      active.add(this);
       try {
         warm.call(this);
       } finally {
         warming.pop();
-        active.delete(this);
       }
     };
     Effect.prototype.runFromQueue = function () {
-      active.add(this);
       try {
         runFromQueue.call(this);
       } catch (err) {
@@ -706,16 +695,6 @@ describe("UpdateQueue, model-based", () => {
           current.resets += 1;
         }
         throw err;
-      } finally {
-        active.delete(this);
-      }
-    };
-    Effect.prototype.flush = function () {
-      active.add(this);
-      try {
-        flush.call(this);
-      } finally {
-        active.delete(this);
       }
     };
     try {
@@ -755,7 +734,7 @@ describe("UpdateQueue, model-based", () => {
         },
       );
     } finally {
-      Object.assign(Effect.prototype, { warm, runFromQueue, flush });
+      Object.assign(Effect.prototype, { warm, runFromQueue });
       mock.restoreAll();
     }
   });

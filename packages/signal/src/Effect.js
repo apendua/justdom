@@ -429,6 +429,13 @@ export class Effect extends ReactiveNode {
       return;
     }
     for (const dependency of this.dependencies()) {
+      if (this.#disposed) {
+        // Disposed by what the warm just resolved. The rest of what this
+        // effect read is nobody's to resolve now: brought up to date on a
+        // node this effect has let go of, it would be a value with no reader
+        // and teardowns that never run.
+        return;
+      }
       if (!(dependency instanceof ReactiveNode)) {
         continue;
       }
@@ -471,6 +478,13 @@ export class Effect extends ReactiveNode {
       this.state = CLEAN;
       return;
     }
+    if (this.#disposed) {
+      // Disposed by the check itself: a node this effect reads disposed it
+      // while resolving. Running the body now would read every node afresh
+      // on an effect that has let go of them, and build what nothing would
+      // tear down.
+      return;
+    }
     this.state = CLEAN;
     this.#execute();
   }
@@ -496,6 +510,22 @@ export class Effect extends ReactiveNode {
     // last effect in its lane, what a warm set aside for the lane is owed
     // after this run has read the new value, not when the dequeue empties it.
     updateQueue.flushTask(this);
+  }
+
+  /**
+   * A teardown registered once this effect is disposed — by a run that goes
+   * on after something it did disposed its own effect — runs at once. The
+   * sweep it would have waited for has already been, and a nested effect
+   * built after it would otherwise be left running for good.
+   *
+   * @param {() => void} fn
+   * @returns {void}
+   */
+  onCleanup(fn) {
+    super.onCleanup(fn);
+    if (this.#disposed) {
+      this.cleanup();
+    }
   }
 
   /**
@@ -576,22 +606,15 @@ export class Effect extends ReactiveNode {
                 `A teardown is called with none, so this one can never be given what it asks for.`,
             );
           }
-          if (this.#disposed) {
-            // Disposed on the way through, by something that is not a failure —
-            // the run calling `dispose()` on its own effect — so the sweep that
-            // would have run this teardown has already been and gone.
-            // Registering it now would park it on a list nothing reads again,
-            // which for a run that took a subscription means the subscription
-            // stays. A failure does not get here: it waits in `#pendingFailure`
-            // to be applied below, *after* this teardown is registered —
-            // whether the run leaves by the `catch` or falls through it —
-            // precisely so that the sweep pays it.
-            /** @type {() => void} */ (teardown)();
-          } else {
-            // Registered after the run, because `track` clears the previous
-            // run's cleanups on the way in.
-            this.onCleanup(/** @type {() => void} */ (teardown));
-          }
+          // Registered after the run, because `track` clears the previous
+          // run's cleanups on the way in. On an effect the run disposed — by
+          // something that is not a failure, the run calling `dispose()` on
+          // its own effect — `onCleanup` runs it at once, since the sweep
+          // that would have run it has already been and gone. A failure does
+          // not get there: it waits in `#pendingFailure` to be applied below,
+          // *after* this teardown is registered, precisely so that the sweep
+          // pays it.
+          this.onCleanup(/** @type {() => void} */ (teardown));
         }
       } catch (err) {
         // Settling the teardown threw: one that takes arguments is refused

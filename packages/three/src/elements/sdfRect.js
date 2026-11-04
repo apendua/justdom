@@ -107,7 +107,14 @@ rectGeometry.setAttribute(
 // px, both are `object-fit`'s arithmetic already done on the CPU, and the
 // composite is ordinary source-over so a translucent PNG shows the
 // background through it. uImageOpacity at zero is the whole feature
-// switched off, which is what every element that is not an image carries.
+// switched off, which is what every element without a picture carries.
+//
+// A box's `background-image: url()` is the same layer, laid out by the
+// background's own properties: uImageRect is one tile, uImageClip the
+// padding box, and uImageMode says which axes the tile repeats along (a
+// repeating axis samples the picture's wrapped coordinate and is bounded by
+// the clip alone) and whether the gradient is listed above the picture, in
+// which case the picture goes under the gradient rather than over it.
 
 // The gradient layer, which CSS paints between the background colour and
 // the picture, and so does this. `gradient.js` has done everything that does
@@ -292,6 +299,7 @@ uniform sampler2D uImage;
 uniform vec4 uImageRect;
 uniform vec4 uImageClip;
 uniform float uImageOpacity;
+uniform vec3 uImageMode;
 uniform vec4 uGradient;
 uniform vec4 uGradientGeometry;
 uniform vec4 uGradientTile;
@@ -299,29 +307,43 @@ uniform vec2 uGradientRamp;
 ${HALF_PLANES_FRAGMENT_GLSL}
 ${SDF_GLSL}
 ${GRADIENT_GLSL}
+vec4 withPicture(vec4 fill, vec2 q) {
+  // An axis that repeats tiles the clip box with copies of the picture, so it
+  // is bounded by the clip box alone and samples the picture's own wrapped
+  // coordinate; one that does not is bounded by where the picture lands.
+  vec4 bounds = vec4(
+    mix(uImageRect.xy, uImageClip.xy, uImageMode.xy),
+    mix(uImageRect.zw, uImageClip.zw, uImageMode.xy)
+  );
+  vec2 uv = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
+  uv = mix(uv, fract(uv), uImageMode.xy);
+  // Textures are uploaded flipped, so v runs up while the portal's y runs
+  // down; the clamp is what makes the wrap mode enough to keep a stray
+  // fragment from sampling the far edge.
+  vec4 texel = texture2D(uImage, clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0));
+  float over = texel.a * uImageOpacity * boxCoverage(q, bounds) * boxCoverage(q, uImageClip);
+  float under = fill.a * (1.0 - over);
+  float composited = over + under;
+  return vec4(
+    composited > 0.0 ? (texel.rgb * over + fill.rgb * under) / composited : vec3(0.0),
+    composited
+  );
+}
 void main() {
   clipHalfPlanes();
   vec2 coverages = sdfCoverages(vUnit, uSize, uRadii, uBorder, uClip, uClipRadii);
   float fillCoverage = coverages.x;
   float borderCoverage = coverages.y;
-  vec4 fill = withGradient(
-    uFillColor, vUnit * uSize, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
+  vec2 q = vUnit * uSize;
+  // A background lists its picture under its gradient (uImageMode.z) or
+  // over it; an <img>'s picture is always over both.
+  bool pictureUnder = uImageOpacity > 0.0 && uImageMode.z > 0.5;
+  vec4 fill = pictureUnder ? withPicture(uFillColor, q) : uFillColor;
+  fill = withGradient(
+    fill, q, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
   );
-  if (uImageOpacity > 0.0) {
-    vec2 q = vUnit * uSize;
-    vec2 uv = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
-    // Textures are uploaded flipped, so v runs up while the portal's y runs
-    // down; the clamp is what makes the wrap mode enough to keep a stray
-    // fragment from sampling the far edge.
-    vec4 texel = texture2D(uImage, clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0));
-    float over = texel.a * uImageOpacity *
-      boxCoverage(q, uImageRect) * boxCoverage(q, uImageClip);
-    float under = fill.a * (1.0 - over);
-    float composited = over + under;
-    fill = vec4(
-      composited > 0.0 ? (texel.rgb * over + fill.rgb * under) / composited : vec3(0.0),
-      composited
-    );
+  if (uImageOpacity > 0.0 && !pictureUnder) {
+    fill = withPicture(fill, q);
   }
   float alpha = fill.a * fillCoverage + uBorderColor.a * borderCoverage;
   if (alpha < 0.001) {
@@ -367,6 +389,9 @@ export function createRectUniforms() {
     uImageRect: { value: new THREE.Vector4(0, 0, 0, 0) },
     uImageClip: { value: new THREE.Vector4(0, 0, 0, 0) },
     uImageOpacity: { value: 0 },
+    // Repeat across, repeat down, and under the gradient: all off for an
+    // `<img>`, whose picture lands once, over the background.
+    uImageMode: { value: new THREE.Vector3(0, 0, 0) },
     // No gradient until something writes one: kind 0 in `uGradient.x` skips
     // the layer. The ramp texture and its height are the page's, shared by
     // reference with every other box — see `rampUniforms`.
@@ -536,6 +561,11 @@ export function writeImageUniforms(uniforms, image) {
   const { content } = image;
   uImageClip.value.set(content.left, content.top, content.right, content.bottom);
   uImageOpacity.value = image.opacity;
+  uniforms.uImageMode.value.set(
+    image.repeatX ? 1 : 0,
+    image.repeatY ? 1 : 0,
+    image.underGradient ? 1 : 0,
+  );
 }
 
 /**

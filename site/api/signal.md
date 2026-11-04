@@ -87,6 +87,8 @@ A `Derived` that builds something costly, a texture, a compiled shader, a worker
 through `onCleanup` is a first-class use of the library, with these rules:
 
 ```js
+import { Derived, Effect, onCleanup } from "justdom-signal";
+
 const texture = new Derived(
   () => {
     const built = gl.createTexture(spec.get());
@@ -160,6 +162,18 @@ or a bare `Computation`.
 `batch(fn)` runs `fn` and holds every effect it invalidates until it returns, so a block of writes
 costs one run per effect. Nested batches merge into the outer one.
 
+A `Derived` resolving outside a batch (a plain read, `Effect.flush()`, an effect's first run) holds
+the queue the same way until the reader has its value. A signal the node writes as it evaluates then
+runs its readers once the node is resolved, not while a reader would still find the old value or
+take the evaluation for a cycle. A channel's `warm()` asked for in that time declines, as it does
+inside a batch.
+
+Teardowns are held the same way. When a node lets go of its dependencies, or the queue releases what
+a warm set aside, a teardown that writes a signal runs that signal's readers once every teardown has
+run, so a reader that throws cannot cut the rest short. When a failed pass resets the queue, what
+the reset's teardowns queued drains after it, and the failure that started the pass is the one
+rethrown.
+
 ### Update channels
 
 An effect belongs to an `UpdateChannel`, which decides when its queue drains and how long a pass may
@@ -178,7 +192,7 @@ const frame = new UpdateChannel({
 });
 
 withChannel(frame, () => {
-  new Effect(() => (element.style.top = `${top.get()}px`));
+  new Effect(() => (element.style.top = `${offset.get()}px`));
 });
 ```
 
@@ -213,6 +227,8 @@ halfway through a `batch()` and again on the next write. An `Effect` goes on the
 it:
 
 ```js
+import { Effect } from "justdom-signal";
+
 node.subscribe({ next: () => node.get() }); // runs once per write
 new Effect(() => node.get()); // runs once per batch
 ```
@@ -252,6 +268,14 @@ vocabulary without naming RxJS:
 - `Emitter` is a plain event emitter with `addEventListener` and `removeEventListener`;
   `fromEvent(emitter, event)` is its events as a source. `timer(due, period?)` and
   `interval(period)` are sources of counts.
+
+### `justdom-signal/dom`
+
+Types only. `on` and `fromEvent` read an emitter's events from a property, `__EVENT_MAP__`, that the
+DOM's own types do not give an element, the window, the document or `document.fonts`. This entry
+declares it for them. `justdom-core` and `justdom-three` reference it from their entry points, so an
+app that imports either needs nothing more; a program that uses this package alone with the DOM adds
+`/// <reference types="justdom-signal/dom" />` to one of its files.
 
 ### `justdom-signal/rxjs`
 
@@ -294,6 +318,8 @@ is a store too, and a store assigned to one is held as itself. An array's method
 on the array's own keys the method read, and does depend on what else it read. A getter with no
 setter is readonly. A store is also an `Emitter`: `emit(store, event, payload)` fires an event the
 `on` operator in its effects list hears, which is how a child component tells its parent something.
+Its events are typed by `store`'s second type parameter, which TypeScript can pass as
+`store<Props, { change: boolean }>(...)`. Without it any event takes any payload.
 
 | Function                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -344,8 +370,10 @@ equality cutoff keeps the previous value and releases whatever the run that just
 claimed. The idiom
 
 ```js
+import { Derived } from "justdom-signal";
+
 const d = new Derived(() => {
-  element.style.top = `${top.get()}px`;
+  element.style.top = `${offset.get()}px`;
 });
 const sub = d.subscribe({}); // used to force it to run
 ```
@@ -353,8 +381,10 @@ const sub = d.subscribe({}); // used to force it to run
 becomes
 
 ```js
+import { Effect } from "justdom-signal";
+
 const effect = new Effect(() => {
-  element.style.top = `${top.get()}px`;
+  element.style.top = `${offset.get()}px`;
 });
 ```
 

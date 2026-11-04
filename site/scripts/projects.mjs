@@ -36,9 +36,11 @@ export function projects() {
 }
 
 /**
- * The demos, which are the site's "workspace:*" dependencies: Rush builds
- * them before the site for that reason, and the site serves each one at
- * `/demos/<slug>/`, where the slug is its folder's name.
+ * The demos, which are the site's "workspace:*" dependencies under `apps/`:
+ * Rush builds them before the site for that reason, and the site serves each
+ * one at `/demos/<slug>/`, where the slug is its folder's name. The site's
+ * other "workspace:*" dependencies are the packages, which
+ * scripts/snippets.mjs type-checks the docs' code blocks against.
  *
  * @returns {(Project & { slug: string })[]}
  */
@@ -52,5 +54,6 @@ export function demos() {
       const project = all.find((p) => p.packageName === name);
       if (!project) throw new Error(`${name} is not a project in rush.json`);
       return { ...project, slug: posix.basename(project.projectFolder) };
-    });
+    })
+    .filter((project) => posix.dirname(project.projectFolder) === "apps");
 }

@@ -236,6 +236,13 @@ export default class UpdateQueue {
   #isFlushing = false;
 
   /**
+   * How many node resolutions are on the stack: see `deferDrain`.
+   *
+   * @type {number}
+   */
+  #deferrals = 0;
+
+  /**
    * @param {UpdateChannel} defaultChannel
    */
   constructor(defaultChannel) {
@@ -280,6 +287,37 @@ export default class UpdateQueue {
       // managed to make before it failed are real, and the effects that read
       // them are stale until they run.
       this.#isBatching = false;
+      this.flush();
+    }
+  }
+
+  /**
+   * Hold the drain while a node resolves, until the matching `resumeDrain`.
+   *
+   * A signal written while a node evaluates outside any drain — a plain
+   * read, `Effect.flush()`, an effect's first run — would drain the queue
+   * then and there, and run the node's readers while it is half done: marked
+   * clean and still holding its old value, or still evaluating, which a
+   * reader takes for a cycle. `batch()` would hold the drain too, but it
+   * costs a closure and a frame on every resolution, and these are the
+   * reads a panel does thousands of times a frame. A count costs neither.
+   *
+   * @returns {void}
+   */
+  deferDrain() {
+    this.#deferrals += 1;
+  }
+
+  /**
+   * Undo one `deferDrain`, and drain what the resolutions held once the last
+   * of them is done. Inside a batch or a drain that is a no-op: the batch's
+   * end, or the drain itself, sees to it.
+   *
+   * @returns {void}
+   */
+  resumeDrain() {
+    this.#deferrals -= 1;
+    if (this.#deferrals === 0) {
       this.flush();
     }
   }
@@ -411,7 +449,20 @@ export default class UpdateQueue {
       // and releasing here first would let a teardown enqueue into a lane
       // the reset is about to wipe.
       if (lane.size === 0 && lane.running === 0 && (!threw || !this.#isFlushing)) {
-        this.#release(lane);
+        if (threw) {
+          // The release's own drain can fail too, and a throw from here
+          // would replace the run's failure. The run's is the one the caller
+          // hears of; the release's goes to a timer, as in `#release`.
+          try {
+            this.#release(lane);
+          } catch (later) {
+            setTimeout(() => {
+              throw later;
+            });
+          }
+        } else {
+          this.#release(lane);
+        }
       }
     }
   }
@@ -468,14 +519,24 @@ export default class UpdateQueue {
     // the stack is setting aside into this one (`withHeldCleanups`), and
     // whatever it holds after this has to land where the next release finds
     // it.
-    for (const cleanups of held.splice(0)) {
-      try {
-        runCleanups(cleanups);
-      } catch (err) {
-        setTimeout(() => {
-          throw err;
-        });
+    //
+    // The drain is held until every teardown has run. One can write a
+    // signal, and a drain then and there would run effects with half the
+    // old values still open, and hand a failure of theirs to the teardown's
+    // own catch below.
+    this.deferDrain();
+    try {
+      for (const cleanups of held.splice(0)) {
+        try {
+          runCleanups(cleanups);
+        } catch (err) {
+          setTimeout(() => {
+            throw err;
+          });
+        }
       }
+    } finally {
+      this.resumeDrain();
     }
   }
 
@@ -522,16 +583,17 @@ export default class UpdateQueue {
    * `budget` milliseconds, running none of them. The first half of an atomic
    * pass, offered on its own; see `UpdateChannel.warm`.
    *
-   * Declined outright inside a batch or a flush — there is no request to
-   * record, because a caller asking whether the channel is warm wants an
-   * answer now, and "not yet" is the true one.
+   * Declined outright inside a batch or a flush, or while a node resolves
+   * (`deferDrain`) — there is no request to record, because a caller asking
+   * whether the channel is warm wants an answer now, and "not yet" is the
+   * true one.
    *
    * @param {UpdateChannel} channel
    * @param {number} budget
    * @returns {boolean} whether everything queued in the channel is now warm
    */
   warmChannel(channel, budget) {
-    if (this.#isBatching || this.#isFlushing) {
+    if (this.#isBatching || this.#isFlushing || this.#deferrals > 0) {
       return false;
     }
     const lane = this.#lanes.get(channel);
@@ -573,6 +635,8 @@ export default class UpdateQueue {
       return warm;
     } catch (err) {
       this.#reset();
+      this.#isFlushing = false;
+      this.#drainReleased();
       throw err;
     } finally {
       this.#isFlushing = false;
@@ -611,10 +675,11 @@ export default class UpdateQueue {
       // run, or none.
       return;
     }
-    if (this.#isBatching || this.#isFlushing) {
-      // Draining now would run effects against a half-written model, or
-      // interleave two passes. Both are exactly what the caller does not
-      // want; record the request and satisfy it when the queue is free.
+    if (this.#isBatching || this.#isFlushing || this.#deferrals > 0) {
+      // Draining now would run effects against a half-written model or a
+      // node still resolving, or interleave two passes. None of that is what
+      // the caller wants; record the request and satisfy it when the queue
+      // is free.
       if (target) {
         this.#request(target, budget);
       }
@@ -632,6 +697,8 @@ export default class UpdateQueue {
       // clean slate, so this clears every channel and not only the one that
       // threw.
       this.#reset();
+      this.#isFlushing = false;
+      this.#drainReleased();
       throw err;
     } finally {
       this.#isFlushing = false;
@@ -1008,6 +1075,29 @@ export default class UpdateQueue {
   }
 
   /**
+   * Drain what `#reset` queued as it released the lanes. A teardown it ran
+   * may have written a signal, and the effect that write queued landed with
+   * the flushing flag still up: in a channel that drains of its own accord
+   * it would otherwise sit there until something else is enqueued. Called
+   * with the flag down, after the reset and before the failure is rethrown.
+   *
+   * @returns {void}
+   */
+  #drainReleased() {
+    try {
+      this.#drain(null, Infinity);
+    } catch (later) {
+      // The failure that started the reset is the one the caller hears of,
+      // as `runCleanups` keeps the first of several. This drain has reset
+      // the queue in its turn, and its own failure is reported the way
+      // `#release` reports a teardown's: from a timer, so it is not lost.
+      setTimeout(() => {
+        throw later;
+      });
+    }
+  }
+
+  /**
    * @returns {void}
    */
   #reset() {
@@ -1034,7 +1124,8 @@ export default class UpdateQueue {
       // What the old values held open is released below, once the queue's
       // own counters are back to zero: a teardown may write a signal, and the
       // enqueue that follows has to land in a lane the queue believes it has,
-      // not in one it is about to forget.
+      // not in one it is about to forget. `#drainReleased` drains it once the
+      // flushing flag is down.
     }
     this.#size = 0;
     this.#requested.clear();

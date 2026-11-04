@@ -323,7 +323,8 @@ export default class UpdateChannel {
    *
    * Called during a `batch()` or a flush it does nothing and says so: the
    * values it would resolve are the ones the batch is halfway through
-   * changing.
+   * changing. The same while a `Derived` is resolving, from inside its
+   * evaluation: what the pass runs would read that node half done.
    *
    * @param {{ budget?: number }} [options]
    * @returns {boolean} whether everything queued is now warm — which nothing

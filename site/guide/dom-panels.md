@@ -12,7 +12,9 @@ true: a ray's click is a click, so the app's handlers are the ones a page would 
 for a panel that exists only in the scene:
 
 ```js
-import { dom } from "justdom-three";
+import * as THREE from "three";
+import { effects } from "justdom-signal";
+import { $, children, dom } from "justdom-three";
 
 $(new THREE.Group(), [
   effects((group) => {
@@ -28,8 +30,11 @@ interface first, and a session as something extra, already has its DOM, laid out
 to its state, and nothing is built twice:
 
 ```js
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+
 const hud = document.getElementById("hud");
-dom(ctx, hud, [set({ position })]);
+dom(ctx, hud, [effects((panel) => panel.position.copy(position))]);
 ```
 
 The element stays in the document with the styles the page gave it. Whatever it holds when the
@@ -90,6 +95,7 @@ panel once through `render()`'s `panelOptions`. `keyboard(props)` from
 [`justdom-three-ui`](/api/three-ui) is such a board, dressed in the app's own classes:
 
 ```js
+import { render } from "justdom-three";
 import { keyboard } from "justdom-three-ui";
 
 render(Scene, {

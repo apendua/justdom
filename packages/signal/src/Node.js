@@ -7,6 +7,7 @@ import {
   skipSynchronousValues,
   withComputation,
 } from "./core.js";
+import { updateQueue } from "./scheduler.js";
 
 /**
  * @import {Observer, Unsubscribable} from "./subscribable.js";
@@ -579,11 +580,21 @@ export default class ReactiveNode {
       return;
     }
     this.#connected = false;
-    for (const [dependency, edge] of this.#edges) {
-      this.#detach(dependency, edge);
+    // The drain is held until this node has let go of everything. Letting go
+    // of a dependency can take it out of the graph too, and its teardowns can
+    // write a signal: a drain then and there would run effects against a
+    // node half disconnected, and one that threw would stop it halfway,
+    // leaving whatever it had not yet let go of held for ever.
+    updateQueue.deferDrain();
+    try {
+      for (const [dependency, edge] of this.#edges) {
+        this.#detach(dependency, edge);
+      }
+      this.cleanup();
+      this.onDisconnect();
+    } finally {
+      updateQueue.resumeDrain();
     }
-    this.cleanup();
-    this.onDisconnect();
   }
 
   /**

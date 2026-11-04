@@ -1,3 +1,5 @@
+/// <reference types="justdom-signal/dom" preserve="true" />
+/// <reference path="../types/three.d.ts" preserve="true" />
 import { box } from "../elements/div.js";
 import { isSvgElement, isSvgRoot } from "../elements/plugins.js";
 import { toMatrix4 } from "./geometry.js";

@@ -10,6 +10,7 @@ import {
   holdCleanups,
   resource,
 } from "./core.js";
+import { updateQueue } from "./scheduler.js";
 
 /**
  * @import {Subscribable} from "./subscribable.js";
@@ -242,16 +243,39 @@ export class Derived extends ReactiveNode {
    * @returns {T}
    */
   #resolveConnected() {
-    this.updateIfNecessary();
-    if (this.#error) {
-      throw this.#error.error;
+    // Held until the value is in hand, not only until the node is resolved:
+    // an effect the drain runs can let go of this node, which drops its value
+    // on the way out of the graph.
+    updateQueue.deferDrain();
+    /** @type {{ value: T } | null} */
+    let computed;
+    try {
+      this.updateIfNecessary();
+      if (!this.isConnected()) {
+        // Let go of while it resolved: resolving upstream disposed its last
+        // reader, which dropped the cached value on the way out. The read is
+        // still owed an answer, and an unconnected node's answer is computed
+        // afresh, as `get` gives one that was never connected — unless it
+        // was let go of by failing, which `get` answers with the failure too.
+        const failure = this.failure;
+        if (failure) {
+          throw failure.value;
+        }
+        return this.#evaluateUncached();
+      }
+      if (this.#error) {
+        throw this.#error.error;
+      }
+      computed = this.#current;
+    } finally {
+      updateQueue.resumeDrain();
     }
-    const computed = this.#current;
     if (computed === null) {
       // Connected, up to date as far as the state says, and holding nothing.
-      // The only way to be all three is to be *inside* this node's own
-      // evaluation: `updateIfNecessary` settles the state to `CLEAN` before
-      // running the function, so a read that comes back round from within it
+      // Of a node still connected after resolving, the only way to be all
+      // three is to be *inside* this node's own evaluation:
+      // `updateIfNecessary` settles the state to `CLEAN` before running the
+      // function, so a read that comes back round from within it
       // finds a node claiming to be current that has not produced a value
       // yet. Which is a cycle, and saying so beats the `TypeError` about a
       // property of `null` that reading the value used to raise.
@@ -310,7 +334,39 @@ export class Derived extends ReactiveNode {
     if (this.#evaluating) {
       throw new CircularDependencyError();
     }
-    if (this.state === CHECK && !this.hasStaleDependencies()) {
+    // Held while this node resolves, upstream and its own run alike, so that
+    // a signal written on the way drains once the value is in hand.
+    updateQueue.deferDrain();
+    try {
+      this.#resolve();
+    } finally {
+      updateQueue.resumeDrain();
+    }
+  }
+
+  /**
+   * The body of `updateIfNecessary`, with the drain held.
+   *
+   * @returns {void}
+   */
+  #resolve() {
+    if (!this.isConnected()) {
+      // A value is cached only while this node holds its dependencies open
+      // (`onDisconnect` lets go of it), and one computed now would keep
+      // teardowns nobody will run. A reader gets its value from `get()`,
+      // which computes afresh; the only callers that land here are
+      // dependents that have let go of this node partway through resolving
+      // it — an effect disposed by something else it reads — and a plain
+      // read whose resolution disposed the node's last reader, which
+      // `#resolveConnected` then answers uncached.
+      return;
+    }
+    const stale = this.state === DIRTY || this.hasStaleDependencies();
+    if (!this.isConnected()) {
+      // Let go of by its last reader while asking upstream: see above.
+      return;
+    }
+    if (!stale) {
       // Asked upstream rather than assuming, and every dependency came back
       // at the version last seen. Nothing really moved, so this node keeps
       // its value — which is how an `isEqual` that swallows a change stops
@@ -461,6 +517,10 @@ export class Derived extends ReactiveNode {
     }
     this.#evaluating = true;
     this.#evaluations += 1;
+    // Held as in `updateIfNecessary`, and resumed once this node is no
+    // longer evaluating, so a reader the drain runs does not take it for a
+    // cycle.
+    updateQueue.deferDrain();
     try {
       const value = this.track(() => this.#evaluate(this.#getContext()));
       if (this.#pendingFailure) {
@@ -473,6 +533,7 @@ export class Derived extends ReactiveNode {
     } finally {
       this.#evaluating = false;
       this.#pendingFailure = null;
+      updateQueue.resumeDrain();
     }
   }
 

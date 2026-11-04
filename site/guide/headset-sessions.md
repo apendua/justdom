@@ -14,6 +14,8 @@ frame rate, and installs a crash panel that writes an uncaught error onto the pa
 read on the headset. Each of those is an option that can be turned off.
 
 ```js
+import { createXRButton, render } from "justdom-three";
+
 render(Scene).subscribe((renderer) => {
   document.body.appendChild(renderer.domElement);
   createXRButton(renderer).then((button) => document.body.appendChild(button));
@@ -27,6 +29,8 @@ what those get wrong about recording the session, which the source of `button.js
 A control in the room ends the session with `end()` on the session itself:
 
 ```js
+import { getXRSession } from "justdom-three";
+
 getXRSession(ctx)?.end();
 ```
 
@@ -55,6 +59,8 @@ visitor on a laptop. `offerHeadset(scene)` installs the emulator if the query as
 platform whether it can present at all, and only then imports the module that makes the scene:
 
 ```js
+import { just } from "justdom-signal";
+import { children } from "justdom-core";
 import { offerHeadset } from "justdom-xr/offer";
 
 just(root, [children(TodoApp({}))]).subscribe();
@@ -73,6 +79,7 @@ session starting or ending. A × on a card that ends the session, shown only whi
 reads it like any other signal:
 
 ```js
+import { $, on, set } from "justdom-core";
 import { xrSession } from "justdom-xr/session";
 
 $("button", [
@@ -95,6 +102,7 @@ says when an opaque backdrop should stand round the viewer.
 `justdom-xr/scene` has the parts a headset scene repeats: `Backdrop(color)`, a sphere of one colour
 round the viewer for an AR session, where three clears the frame to transparent whatever
 `scene.background` says; `inputModels()`, the controller and hand models for `render()`'s options,
-loaded from three's default CDN when a controller connects; and `clientRect(element)`, an element's
-rect read again when it is resized, for a panel whose scale follows the page's layout. This entry
-imports three.js, so import it from the module that makes the scene, never from the page's entry.
+loaded from three's default CDN when a controller connects, or from the app's own copy of the
+profiles when it names one; and `clientRect(element)`, an element's rect read again when it is
+resized, for a panel whose scale follows the page's layout. This entry imports three.js, so import
+it from the module that makes the scene, never from the page's entry.

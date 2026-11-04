@@ -1,3 +1,4 @@
+/// <reference types="justdom-signal/dom" preserve="true" />
 import { just, Stream } from "justdom-signal";
 import { children } from "./dom.js";
 

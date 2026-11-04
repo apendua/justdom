@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Reference justdom-signal/dom and the package's own Object3D and WebXRManager event maps from the entry points, so an app no longer declares __EVENT_MAP__ itself; carriable() takes any Object3D",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

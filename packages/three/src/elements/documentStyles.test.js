@@ -2,6 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { enableThemingMode, leadingClass, watchDocumentStyles } from "./documentStyles.js";
 import { forgetComputedStyles } from "../test/computedStyles.js";
+import { CLASS_NAME, stylesheet } from "justdom-core";
+import { Signal, toObservable } from "justdom-signal";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver.
 if (typeof globalThis.MutationObserver === "undefined") {
@@ -588,6 +590,35 @@ describe("watchDocumentStyles", () => {
       stop();
       element.remove();
       style.remove();
+    }
+  });
+
+  test("a justdom stylesheet's :hover rule stays rewritten as its signal changes", async () => {
+    const color = Signal.of("rgb(255, 0, 0)");
+    /** @type {string[]} */
+    const names = [];
+    const subscription =
+      stylesheet`.${CLASS_NAME}:hover { color: ${toObservable(color)}; }`.subscribe((name) =>
+        names.push(name),
+      );
+    const element = document.createElement("div");
+    element.className = names[0];
+    element.setAttribute("data-xr-hover", "");
+    document.body.appendChild(element);
+    const watcher = watch();
+    try {
+      assert.equal(window.getComputedStyle(element).color, "rgb(255, 0, 0)");
+      // justdom writes the new text into the same <style>, which gives it a
+      // new sheet, with a :hover rule the panel has not rewritten yet.
+      color.set("rgb(0, 0, 255)");
+      await flush();
+      forgetComputedStyles();
+      assert.equal(window.getComputedStyle(element).color, "rgb(0, 0, 255)");
+      assert.equal(watcher.count(), 1, "the edit is announced, once");
+    } finally {
+      watcher.stop();
+      subscription.unsubscribe();
+      element.remove();
     }
   });
 

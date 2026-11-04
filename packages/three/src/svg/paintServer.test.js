@@ -142,6 +142,31 @@ describe("paint servers", () => {
     s.teardown();
   });
 
+  test("a userSpaceOnUse gradient given in numbers reads no viewport", () => {
+    const s = setup(
+      `<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="1" y1="2" x2="3" y2="4">` +
+        `<stop offset="0" stop-color="red"/></linearGradient>`,
+    );
+    let reads = 0;
+    const g = gradient(
+      readPaintServer(/** @type {Element} */ (document.getElementById("shape")), "url(#g)", () => {
+        reads += 1;
+        return { width: 200, height: 100 };
+      }),
+    );
+    assertClose(g.coords, [1, 2, 3, 4]);
+    assert.equal(reads, 0);
+    s.teardown();
+  });
+
+  test("a focus that does not parse is unspecified, so on the centre", () => {
+    const s = setup(
+      `<radialGradient id="g" cx="0.2" cy="0.3" fx="abc" fy=""><stop offset="0" stop-color="red"/></radialGradient>`,
+    );
+    assertClose(gradient(s.read("url(#g)")).coords, [0.2, 0.3, 0.5, 0.2, 0.3, 0]);
+    s.teardown();
+  });
+
   test("spreadMethod and gradientTransform are read", () => {
     const s = setup(
       `<linearGradient id="a" spreadMethod="reflect" gradientTransform="translate(2 3) scale(2)">` +

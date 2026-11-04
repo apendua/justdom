@@ -113,7 +113,8 @@ const MAX_CHAIN = 32;
  *   is resolved.
  * @param {string} value The property's value, as drawn (`readDrawnProperty`).
  * @param {() => { width: number, height: number } | null} viewport The
- *   viewport a `userSpaceOnUse` percentage is of. Read only for one.
+ *   viewport a `userSpaceOnUse` percentage is of. Read only for one, a
+ *   default included.
  * @returns {PaintServer | null}
  */
 export function readPaintServer(element, value, viewport) {
@@ -212,14 +213,12 @@ function readGradient(gradient, viewport) {
   } else {
     const cx = coord("cx", "50%", "width");
     const cy = coord("cy", "50%", "height");
-    const fx = inherited(chain, "fx", "radialGradient");
-    const fy = inherited(chain, "fy", "radialGradient");
     coords = [
       cx,
       cy,
       coord("r", "50%", "diagonal"),
-      fx === null ? cx : coord("fx", "50%", "width"),
-      fy === null ? cy : coord("fy", "50%", "height"),
+      coord("fx", cx, "width"),
+      coord("fy", cy, "height"),
       coord("fr", "0%", "diagonal"),
     ];
   }
@@ -241,12 +240,15 @@ function readGradient(gradient, viewport) {
 }
 
 /**
- * @typedef {(name: string, fallback: string, axis: "width" | "height" | "diagonal") => number} CoordinateReader
+ * @typedef {(name: string, fallback: string | number, axis: "width" | "height" | "diagonal") => number} CoordinateReader
  */
 
 /**
  * A reader of the server's coordinates along its chain, each in the
- * server's units, falling back to the default SVG gives it.
+ * server's units, or its default when no server of the kind sets it or the
+ * value does not parse, as SVG treats an invalid attribute as unspecified.
+ * The default, a value to read in the units or one already read, is read
+ * only when it is used, so a coordinate given in numbers reads no viewport.
  *
  * @param {Element[]} chain
  * @param {string} tag The kind of server a coordinate is taken from.
@@ -265,9 +267,14 @@ function coordinates(chain, tag, objectBox, viewport) {
     },
   };
   return (name, fallback, axis) => {
-    const value = (inherited(chain, name, tag) ?? fallback).trim();
-    const fallbackNumber = readCoordinate(fallback, objectBox, reference[axis]);
-    return readCoordinate(value, objectBox, reference[axis]) ?? fallbackNumber ?? 0;
+    const value = inherited(chain, name, tag);
+    return (
+      (value === null ? null : readCoordinate(value.trim(), objectBox, reference[axis])) ??
+      (typeof fallback === "number"
+        ? fallback
+        : readCoordinate(fallback, objectBox, reference[axis])) ??
+      0
+    );
   };
 }
 

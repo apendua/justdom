@@ -128,6 +128,11 @@ published package needs a change file, which CI checks with `rush change --verif
 node common/scripts/install-run-rush.js change
 ```
 
+A script that calls another script spells it `npm run --loglevel=warn <name>`. npm 12 prints the
+banner of every `npm run` as an `npm notice` line on stderr, and Rush counts any stderr output as a
+warning, which fails `rush build` and so the release script. The flag hides those notices and keeps
+npm's warnings.
+
 [`site/`](site) is justdom.dev, built with VitePress and deployed to GitHub Pages on every push to
 `develop`. [`site/README.md`](site/README.md) says how to work on it.
 

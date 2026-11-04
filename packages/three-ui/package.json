@@ -34,10 +34,10 @@
     "lib-types"
   ],
   "scripts": {
-    "build": "npm run test && npm run build:types",
+    "build": "npm run --loglevel=warn test && npm run --loglevel=warn build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "test": "npm run test:syntax && npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
-    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test": "npm run --loglevel=warn test:syntax && npm run --loglevel=warn test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run --loglevel=warn test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""

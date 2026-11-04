@@ -125,7 +125,19 @@ function main() {
   }
   if (!dryRun) {
     checkCheckout();
-    run("node", [rush, "build", "--to", `version-policy:${policy}`]);
+    try {
+      run("node", [rush, "build", "--to", `version-policy:${policy}`]);
+    } catch {
+      // Rush prints why above, but a build that only warned ends in a
+      // summary that reads much like success. Say what failing means here.
+      throw new Error(
+        "The build failed, so nothing was published. Rush fails a build on " +
+          "warnings as well as errors, and any output on stderr counts as a " +
+          "warning. Rush's summary above heads the result FAILURE or SUCCESS " +
+          "WITH WARNINGS, and its FAILURE: and WARNING: blocks name the " +
+          "projects and show their output.",
+      );
+    }
   }
 
   const pending = packagesInOrder().filter((p) => {

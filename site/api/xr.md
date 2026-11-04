@@ -77,9 +77,12 @@ the module that makes the scene, never from the page's entry.
   says, so that the passthrough shows; the sphere is a background three has no rule about. It is
   drawn first and takes no part in the depth test. A scene sets its `background` to the same colour
   for a VR session, where three honours it.
-- `inputModels()` returns `createControllerModel` and `createHandModel` for `render()`'s options.
-  Both read the WebXR input profiles from three's default, the jsDelivr CDN, when a controller or
-  hand connects, so a headset with no network draws neither.
+- `inputModels(profiles?)` returns `createControllerModel` and `createHandModel` for `render()`'s
+  options. Both read the WebXR input profiles when a controller or hand connects. With no argument
+  they read them from three's default, the jsDelivr CDN, so a headset with no network draws neither.
+  `profiles` names a copy of `@webxr-input-profiles/assets`' `dist/profiles` that the app serves
+  itself, such as `` `${import.meta.env.BASE_URL}profiles` ``, resolved against the page's address;
+  a service worker that precaches its `.glb` and `.json` files lets an offline headset draw them.
 - `clientRect(element)` is the element's client rect, read again whenever the element is resized:
   called inside a panel's `effects`, it runs them again on each resize. A scale worked out from it
   follows the element when the window is resized during a session, rather than keeping the one it

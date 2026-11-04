@@ -102,6 +102,7 @@ says when an opaque backdrop should stand round the viewer.
 `justdom-xr/scene` has the parts a headset scene repeats: `Backdrop(color)`, a sphere of one colour
 round the viewer for an AR session, where three clears the frame to transparent whatever
 `scene.background` says; `inputModels()`, the controller and hand models for `render()`'s options,
-loaded from three's default CDN when a controller connects; and `clientRect(element)`, an element's
-rect read again when it is resized, for a panel whose scale follows the page's layout. This entry
-imports three.js, so import it from the module that makes the scene, never from the page's entry.
+loaded from three's default CDN when a controller connects, or from the app's own copy of the
+profiles when it names one; and `clientRect(element)`, an element's rect read again when it is
+resized, for a panel whose scale follows the page's layout. This entry imports three.js, so import
+it from the module that makes the scene, never from the page's entry.

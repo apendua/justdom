@@ -77,8 +77,8 @@ control.
 
 The things a page does that a panel does not, most often met:
 
-- A `url()` background image, and all but the topmost of stacked backgrounds. A gradient is drawn; a
-  picture goes in an `<img>`.
+- All but the topmost gradient and the topmost `url()` picture of stacked backgrounds. A box with a
+  picture is drawn on its own rather than in its panel's batch.
 - `background-clip`; the background fills the padding box.
 - Dashed, dotted and double borders, drawn solid, and sides bordered in different colours, drawn in
   the first side's.

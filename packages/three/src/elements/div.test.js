@@ -16,14 +16,15 @@ import { describeScroller } from "../test/scroller.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { registerPanel } from "./dragAndDrop.js";
-import { rectGeometry } from "./sdfRect.js";
+import { batchedBoxMaterial, rectGeometry } from "./sdfRect.js";
 import { text } from "./text.js";
 import { InputFocusContext, textInput } from "./textInput.js";
 import { markedBox } from "./listMarker.js";
 import { installRange } from "../test/textRange.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
-import { BOX_BUCKET_BIAS, BoxBatchContext } from "./boxBatch.js";
+import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
+import { getObjectDrawOrder } from "../drawOrder.js";
 import { paintBatch } from "../test/textRuns.js";
 import { shape } from "../svg/shape.js";
 import { drawText } from "../svg/text.js";
@@ -2061,5 +2062,147 @@ describe("div gradients", () => {
     assert.equal(rampAtlas.size, before + 1);
     box.subscription.unsubscribe();
     assert.equal(rampAtlas.size, before, "teardown releases the row");
+  });
+});
+
+describe("a box's background-image: url()", () => {
+  /**
+   * A texture loader that hands back a picture of `width` by `height` only
+   * when `land` is called, as a network would. Restore it when done.
+   *
+   * @param {number} width
+   * @param {number} height
+   */
+  function deferredPictures(width, height) {
+    const original = THREE.TextureLoader.prototype.load;
+    /** @type {(() => void)[]} */
+    const pending = [];
+    THREE.TextureLoader.prototype.load = function (_url, onLoad) {
+      const texture = new THREE.Texture(/** @type {HTMLImageElement} */ ({ width, height }));
+      pending.push(() => onLoad?.(/** @type {THREE.Texture<HTMLImageElement>} */ (texture)));
+      return /** @type {THREE.Texture<HTMLImageElement>} */ (new THREE.Texture());
+    };
+    return {
+      land: () => {
+        for (const callback of pending.splice(0)) {
+          callback();
+        }
+      },
+      restore: () => {
+        THREE.TextureLoader.prototype.load = original;
+      },
+    };
+  }
+
+  /**
+   * One card drawn by a panel's batch, and how to read its box.
+   *
+   * @param {string} cssText
+   */
+  function batchedCard(cssText) {
+    const board = setupSiblings();
+    const container = new THREE.Group();
+    const draws = paintBatch(container);
+    const batch = draws.boxes;
+    const card = board.place(`position: absolute; ${cssText}`, [0, 0, 200, 100]);
+    const object = board.drawWith(card, (ctx) => div(BoxBatchContext.set(ctx, batch), card));
+    container.add(object);
+    const box = /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>} */ (
+      object.children.find(
+        (child) => child instanceof THREE.Mesh && child.geometry === rectGeometry,
+      )
+    );
+    assert.ok(box, "expected the card's box");
+    return {
+      board,
+      card,
+      box,
+      /** Whether the box is drawn by the batch rather than by itself. */
+      batched: () => box.material === batchedBoxMaterial(),
+      teardown: () => {
+        board.teardown();
+        draws.dispose();
+        batch.dispose();
+      },
+    };
+  }
+
+  test("is drawn over the colour at cover, by the box itself", () => {
+    const pictures = deferredPictures(100, 100);
+    const drawn = batchedCard(
+      "background-color: rgb(0, 0, 255); background-image: url(/cover.png); background-size: cover; background-position: center",
+    );
+    try {
+      assert.equal(drawn.batched(), false, "a box with a picture leaves the batch");
+      const { uImage, uImageOpacity } = drawn.box.material.uniforms;
+      assert.equal(uImageOpacity.value, 0, "nothing until the picture lands");
+      pictures.land();
+      assert.ok(uImage.value, "the picture is bound");
+      assert.equal(uImageOpacity.value, 1);
+      // 100 by 100 covering 200 by 100: 200 by 200, centred.
+      const rect = drawn.box.material.uniforms.uImageRect.value;
+      assert.deepEqual([rect.x, rect.y, rect.z, rect.w], [0, -50, 200, 150]);
+      const clip = drawn.box.material.uniforms.uImageClip.value;
+      assert.deepEqual([clip.x, clip.y, clip.z, clip.w], [0, 0, 200, 100]);
+      const mode = drawn.box.material.uniforms.uImageMode.value;
+      assert.deepEqual([mode.x, mode.y, mode.z], [1, 1, 0], "background-repeat is repeat");
+    } finally {
+      drawn.teardown();
+      pictures.restore();
+    }
+  });
+
+  test("is laid out at a fixed size, once, under a gradient listed above it", () => {
+    const pictures = deferredPictures(100, 50);
+    const drawn = batchedCard(
+      "background-image: linear-gradient(rgba(0, 0, 0, 0), rgb(0, 0, 0)), url(/fixed.png); background-size: 40px auto; background-repeat: no-repeat; background-position: 10px 20px",
+    );
+    try {
+      pictures.land();
+      const { uImageRect, uImageMode } = drawn.box.material.uniforms;
+      // 40px across keeps the picture's two to one.
+      const rect = uImageRect.value;
+      assert.deepEqual([rect.x, rect.y, rect.z, rect.w], [10, 20, 50, 40]);
+      const mode = uImageMode.value;
+      assert.deepEqual([mode.x, mode.y, mode.z], [0, 0, 1], "the gradient is drawn over it");
+    } finally {
+      drawn.teardown();
+      pictures.restore();
+    }
+  });
+
+  test("a box that gains one leaves its batch, and joins it again without, with its draw order kept", () => {
+    const pictures = deferredPictures(10, 10);
+    const drawn = batchedCard("background-color: rgb(255, 0, 0)");
+    /** @param {string} image */
+    const restyle = (image) => {
+      drawn.card.style.backgroundImage = image;
+      drawn.board.mirror.attributeChanged(drawn.card);
+    };
+    try {
+      assert.equal(drawn.batched(), true, "a box with no picture is batched");
+      // The order the box's level gives it, which the batch draws past.
+      const level = drawn.box.renderOrder;
+      assert.equal(getObjectDrawOrder(drawn.box), level + BOX_BUCKET_BIAS);
+      // A hover happens more than once: the picture is built again after
+      // the box lost it.
+      for (const url of ["/hover.png", "/hover-again.png"]) {
+        restyle(`url(${url})`);
+        pictures.land();
+        assert.equal(drawn.batched(), false);
+        assert.ok(drawn.box.material.uniforms.uImage.value, `${url} is bound`);
+        assert.equal(drawn.box.material.uniforms.uImageOpacity.value, 1);
+        assert.equal(drawn.box.renderOrder, level + UNBATCHED_BOX_BIAS);
+        assert.equal(getObjectDrawOrder(drawn.box), level + UNBATCHED_BOX_BIAS);
+        restyle("none");
+        assert.equal(drawn.batched(), true);
+        assert.equal(drawn.box.material.uniforms.uImageOpacity.value, 0);
+        assert.equal(drawn.box.renderOrder, level);
+        assert.equal(getObjectDrawOrder(drawn.box), level + BOX_BUCKET_BIAS);
+      }
+    } finally {
+      drawn.teardown();
+      pictures.restore();
+    }
   });
 });

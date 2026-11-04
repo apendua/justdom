@@ -1,6 +1,11 @@
 # Change Log - justdom-vite-hmr
 
-This log was last generated on Mon, 02 Nov 2026 22:24:26 GMT and should not be manually modified.
+This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+
+## 0.5.2
+Wed, 04 Nov 2026 20:25:47 GMT
+
+_Version update only_
 
 ## 0.5.1
 Mon, 02 Nov 2026 22:24:26 GMT

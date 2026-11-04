@@ -23,6 +23,14 @@ import { failuresOf } from "./operators.js";
  */
 
 /**
+ * The event map of a store, or of its operators, that is given none: any
+ * event, with any payload. `emit` and `on` then work on a store made without
+ * one, as every store in plain JavaScript is; passing a map has both checked.
+ *
+ * @typedef {Record<string, any>} AnyEventMap
+ */
+
+/**
  * @template {object} TEventMap
  */
 class Emitter {

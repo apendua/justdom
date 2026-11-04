@@ -14,6 +14,9 @@ disabled control, or anything else that comes and goes can leave and rejoin the 
 leaving the scene:
 
 ```js
+import * as THREE from "three";
+import { $ } from "justdom-three";
+
 $(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
 ```
 
@@ -66,7 +69,7 @@ The rules:
 pointing at something, gone with the hit:
 
 ```js
-import { cursors, pointers } from "justdom-three";
+import { children, cursors } from "justdom-three";
 
 children(
   cursors(ctx), // a white ball, 1 cm across, on every ray hit
@@ -93,6 +96,9 @@ release on the canvas are its `selectstart`, `selectend` and `select`, so anythi
 ray answers the mouse, and `cursors(ctx)` puts the hover mark on the page too.
 
 ```js
+import { useEffects } from "justdom-signal";
+import { children, cursors, getScene, mouse } from "justdom-three";
+
 useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
 ```
 
@@ -115,6 +121,9 @@ It hands back `draggable()`, the operator for the object's list, and `held()`, a
 saying which hand has it, or null.
 
 ```js
+import { effects, on } from "justdom-signal";
+import { $, drag } from "justdom-three";
+
 const { draggable, held } = drag(ctx, { enabled: () => props.movable });
 
 $(mesh, [
@@ -164,6 +173,9 @@ where it has got to, and how far it has turned about the vertical — and poses 
 from them rather than reparenting it, so a level board stays level.
 
 ```js
+import * as THREE from "three";
+import { $, carry, children } from "justdom-three";
+
 const board = carry(ctx, { enabled: () => phase.get() === "build" });
 
 $(new THREE.Group(), [
@@ -206,6 +218,9 @@ controller-model factory draws a controller for it. With the feature, `render()`
 space per slot beside the target ray and the grip, and `controllers(ctx)` hands it out:
 
 ```js
+import { effects, useEffects } from "justdom-signal";
+import { controllers, render, useFrame } from "justdom-three";
+
 render(Scene, {
   createControllerModel: (grip) => new XRControllerModelFactory().createControllerModel(grip),
   createHandModel: (hand) => new OculusHandModel(hand),
@@ -214,7 +229,7 @@ render(Scene, {
 for (const handle of controllers(ctx)) {
   useEffects(handle.grip, [
     // Re-runs when the player picks the controllers up or puts them down.
-    effect(() => {
+    effects(() => {
       handle.tracked(); // "controller" | "hand" | null
     }),
   ]);

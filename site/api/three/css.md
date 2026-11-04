@@ -2,9 +2,9 @@
 
 A panel is drawn from its elements' computed style, and this page says which of it: lists and their
 markers, transforms, the document's stylesheets, hover and press, animation, text revealed to a
-cursor, the paint order, images, gradients, clipping and scrolling, and inline SVG. Each section
-ends with what is followed and what is not. [Writing CSS for a panel](/guide/panel-css) in the guide
-is the short version.
+cursor, the paint order, images, gradients, background pictures, clipping and scrolling, and inline
+SVG. Each section ends with what is followed and what is not.
+[Writing CSS for a panel](/guide/panel-css) in the guide is the short version.
 
 ## Lists
 
@@ -60,8 +60,9 @@ with no re-layout and no re-rasterized text. Prefer it for motion, as on the fla
 - 3D is real depth: `rotateY` swings half the element _behind_ its own surface, up to half its width
   deep, and the panel covers that half (see [Paint order](#paint-order)). Give anything 3D-rotated
   enough `translateZ` to keep the swing in front.
-- A transformed element paints over the earlier siblings it overlaps, the way a positioned one does
-  (see [Paint order](#paint-order)).
+- A transformed element paints over the earlier siblings it overlaps, and over every sibling in the
+  flow it overlaps, earlier or later, the way a positioned one does (see
+  [Paint order](#paint-order)).
 - A panel laid flat has its y axis along the surface it lies on, so a key pressed with the page's
   `translateY(3px)` slides sideways across the desk. An effect that should move toward the viewer is
   `translateZ`, whatever the page uses for the same press.
@@ -191,7 +192,7 @@ first frame, the browser wraps it once, and how many glyphs are drawn is answere
 shader.
 
 ```js
-import { makeReveal } from "justdom-three";
+import { dom, makeReveal } from "justdom-three";
 // The element builders are justdom-core's, as they are for any panel; `$`
 // and `children` here are that package's, not the ones justdom-three hands
 // out for Three objects.
@@ -287,10 +288,11 @@ Followed:
 Not followed:
 
 - **Flow siblings are not ordered against each other.** Only an element that is positioned or
-  transformed clears its siblings, and only those that are too. A box pulled over a neighbour by a
-  negative margin keeps its level in the tree, and so does a positioned box over a flow sibling,
-  which then draws under that sibling's descendants: the positioned box's own text can sit behind a
-  child of the box it covers.
+  transformed clears its siblings, so a box pulled over a neighbour by a negative margin keeps its
+  level in the tree.
+- **A positioned box clears a flow sibling it covers whole, descendants included.** A page paints
+  that sibling's positioned descendants in tree order with the box, so one later in the tree than
+  the box draws under it here and over it on a page.
 - Only the sign of `z-index` counts. Two overlays stack in tree order, whatever their numbers, and
   two layers in one plane are ordered by that sign, as siblings are. A `z-index` inside a box that
   forms no stacking context is read where the box is, not let out of it.
@@ -373,7 +375,6 @@ Not followed:
   but there is no `alt` text and no broken-image frame.
 - An SVG behind a URL that names no such type, a blob URL or an endpoint with no extension, is
   uploaded as it came.
-- A box's `background-image: url()` (see [Gradients](#gradients)).
 
 ## Gradients
 
@@ -409,8 +410,8 @@ Followed:
 
 Not followed:
 
-- **One layer.** A background that stacks several images is drawn as its topmost gradient over its
-  background colour; the others, and any `url()` image, are not drawn.
+- **One gradient.** A background that stacks several gradients is drawn as its topmost one over its
+  background colour, with its topmost `url()` picture (below); the other layers are not drawn.
 - **`background-clip`.** The background, colour and gradient alike, fills the padding box, so a
   `content-box` clip draws wider than the page does.
 - **`space` repeats as `repeat`**: tiles are laid edge to edge rather than spaced out.
@@ -422,6 +423,48 @@ Not followed:
 
 Prefer percentage stops on anything that resizes: a `px` stop is a different fraction of the
 gradient at every size, so a box animating its width bakes a new row every frame it moves.
+
+## Background pictures
+
+A `background-image: url()` is drawn through the same texture cache as an `<img>`, laid out by the
+same `background-size`, `-position`, `-repeat` and `-origin` a gradient follows, and cropped to the
+padding box:
+
+```css
+.hero {
+  background:
+    linear-gradient(rgb(0 0 0 / 0), rgb(0 0 0 / 0.6)),
+    url("hero.jpg") center / cover no-repeat;
+}
+```
+
+A box draws one picture and one gradient, each its topmost of the kind, in the order the page lists
+them, so a scrim over a photo and a picture over a gradient both come out as on the page. While it
+has a picture, the box is drawn on its own, one draw call, as an `<img>` is; every other box stays
+in its panel's batch. A class or a hover that adds a picture or takes it away moves the box out of
+the batch or back.
+
+Followed:
+
+- `background-size`: `cover`, `contain`, `auto`, lengths and percentages, one of them `auto` keeping
+  the picture's proportions.
+- `background-position`, `background-origin`, and `background-repeat`: `repeat`, `repeat-x`,
+  `repeat-y`, `no-repeat` and `round`.
+
+Not followed:
+
+- **One picture.** Of several `url()` layers the topmost is drawn and the others are not.
+- **`space` repeats as `repeat`**, and `background-clip` and `background-attachment` are not
+  followed, as for a gradient.
+- **An SVG with no size of its own**, only a `viewBox`, is laid out at the size Chrome reports for
+  it, 150 px tall or 300 px wide, where a page sizes it as `contain` under `background-size: auto`.
+  Give it a `width` and a `height`, or give the background a size.
+- `image-set()` and `cross-fade()` are not drawn, and a picture that fails to load draws nothing, as
+  an `<img>`'s does.
+- **An `<img>` with a `url()` background** draws its own picture and not the background, which a
+  page paints under it: a box has one picture slot.
+- A checkbox does not draw a `url()` background: it draws its own tick, which is what a page with
+  `appearance: none` gives as one.
 
 ## Clipping and scrolling
 

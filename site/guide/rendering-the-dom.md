@@ -13,7 +13,7 @@ import { $, children, set, on, text, style } from "justdom-core";
 const count = Signal.of(0);
 
 const Counter = $("button", [
-  set("className", "counter"),
+  set({ className: "counter" }),
   style("fontWeight", () => (count.get() > 9 ? "bold" : "normal")),
   on("click", () => count.set(count.get() + 1)),
   children(text`Clicked ${() => count.get()} times`),
@@ -26,15 +26,15 @@ const Counter = $("button", [
 created when the tree is mounted, not when `$()` is called, so the same source can be mounted in two
 places and each gets a node of its own. `$$(tag, effects)` is the same for SVG elements.
 
-The operators are factories of entity effects, and each takes a value in three shapes: a plain
-value, written once; a getter, re-run when anything it read moves; or a subscribable, written on
-every emission.
+The operators are factories of entity effects. Given a key, each takes its value as a getter, re-run
+when anything it read moves, or as a subscribable, written on every emission. A plain value, written
+once, goes in the object form instead: `set({ className: "counter" })`.
 
 | Operator               | Writes                                                                                                                                                         |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `set(key, value)`      | A property. `set({ type: "checkbox", get checked() { return props.completed; } })` assigns an object of properties, and runs again when a getter's reads move. |
 | `attr(name, value)`    | An attribute; `undefined` removes it. `attr({ "data-id": id })` writes several.                                                                                |
-| `data(key, value)`     | A `dataset` entry.                                                                                                                                             |
+| `data(key, value)`     | A `dataset` entry; `undefined` deletes it. `data({ id })` writes several.                                                                                      |
 | `style(name, value)`   | A style property, custom properties included; `style({ ... })` writes several.                                                                                 |
 | `on(event, handler)`   | A listener, removed with the element. The handler runs inside a computation, so a throw fails the mounting rather than vanishing.                              |
 | `children(...sources)` | The element's children: each source emits a mountable, and a new emission replaces the nodes the last one placed.                                              |
@@ -44,6 +44,7 @@ its props are whatever it was given:
 
 ```js
 import { component, store, emit } from "justdom-signal";
+import { $, attr, children, on, set, text } from "justdom-core";
 
 const TodoItem = component((ctx, id, operators) => {
   const props = store({ text: "", completed: false }, operators);
@@ -85,6 +86,8 @@ subscribable; a getter or a source that yields `null` or `undefined` renders as 
 records that is re-ordered moves its rows rather than rebuilding them, and `getIndex()` is reactive:
 
 ```js
+import { children, list, set } from "justdom-core";
+
 children(
   list(
     () => todos.get(),
@@ -112,7 +115,7 @@ interpolates its own generated name wherever `CLASS_NAME` appears, for a sheet w
 selector:
 
 ```js
-import { className, stylesheet, CLASS_NAME } from "justdom-core";
+import { $, children, className, set, stylesheet, CLASS_NAME } from "justdom-core";
 
 const label = className`
   flex-grow: 1;
@@ -137,6 +140,8 @@ is an `@font-face` rule on the same terms.
 wait for, and `withFallback(ctx, content)` renders the fallback until every registered promise has
 settled, then the content:
 
+<!-- snippet: skip -->
+
 ```js
 ctx = suspend(ctx, () => ProgressBar(1000));
 waitFor(ctx, loadTodos());
@@ -151,6 +156,7 @@ as its children.
 
 ```js
 import { just } from "justdom-signal";
+import { children } from "justdom-core";
 
 const subscription = just(document.querySelector("#app"), [children(App({}))]).subscribe();
 // later

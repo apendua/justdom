@@ -1,6 +1,6 @@
 {
   "name": "justdom-three",
-  "version": "0.30.1",
+  "version": "0.31.0",
   "description": "Reactive Three.js scene graph built on justdom-signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",
@@ -19,6 +19,7 @@
   },
   "license": "MIT",
   "author": "apendua",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -41,10 +42,10 @@
     "lib-types"
   ],
   "scripts": {
-    "build": "npm run test && npm run build:types",
+    "build": "npm run --loglevel=warn test && npm run --loglevel=warn build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "test": "npm run test:syntax && npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
-    "test:coverage": "npm run test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test": "npm run --loglevel=warn test:syntax && npm run --loglevel=warn test:typecheck && node --import ./src/test/setup-jsdom.js --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run --loglevel=warn test:typecheck && node --import ./src/test/setup-jsdom.js --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
@@ -54,6 +55,7 @@
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@webgpu/types": "^0.1.65",
+    "esbuild": "^0.27.4",
     "eslint": "^9.37.0",
     "fast-check": "^4.3.0",
     "justdom-core": "workspace:*",

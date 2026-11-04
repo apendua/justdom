@@ -64,7 +64,7 @@ export function rewriteLinks(markdown, { from, pages, lookup }) {
  * @param {string} markdown
  * @returns {{ code: boolean, text: string }[]}
  */
-function splitFences(markdown) {
+export function splitFences(markdown) {
   const parts = [];
   let last = 0;
   for (const match of markdown.matchAll(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm)) {

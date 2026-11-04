@@ -8,7 +8,7 @@
     "directory": "apps/euclid"
   },
   "scripts": {
-    "build": "npm run test && npm run compile && vite build",
+    "build": "npm run --loglevel=warn test && npm run --loglevel=warn compile && vite build",
     "build:watch": "",
     "compile": "tsc",
     "dev": "vite",

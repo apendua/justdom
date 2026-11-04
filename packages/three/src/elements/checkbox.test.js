@@ -115,6 +115,37 @@ describe("checkbox", () => {
     subscription.unsubscribe();
   });
 
+  test("a page's url() tick is left to the page, beside the checkbox's own", () => {
+    // The todo app's checkbox: `appearance: none`, and the tick as a
+    // background picture over a gradient. The checkbox draws its own tick,
+    // so the picture is not drawn a second time: its box binds no texture.
+    // Pictures land at once, so that one asked for would be bound.
+    const load = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function (_url, onLoad) {
+      const texture = new THREE.Texture(/** @type {HTMLImageElement} */ ({ width: 1, height: 1 }));
+      onLoad?.(/** @type {THREE.Texture<HTMLImageElement>} */ (texture));
+      return /** @type {THREE.Texture<HTMLImageElement>} */ (texture);
+    };
+    const { element, object, marks, restyle, subscription } = setup({ checked: true });
+    try {
+      restyle(
+        "width: 20px; height: 20px; background-image: url(/tick.png), linear-gradient(red, blue)",
+      );
+    } finally {
+      THREE.TextureLoader.prototype.load = load;
+    }
+    const box = /** @type {Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>} */ (
+      object.children.find(
+        (child) => child instanceof THREE.Mesh && child.material instanceof THREE.ShaderMaterial,
+      )
+    );
+    assert.ok(box);
+    assert.equal(box.material.uniforms.uImageOpacity.value, 0);
+    assert.equal(marks.length, 1);
+    assert.ok(element.checked);
+    subscription.unsubscribe();
+  });
+
   test("a ticked box has a mark in it", () => {
     const { marks, subscription } = setup({ checked: true });
     assert.equal(marks.length, 1);

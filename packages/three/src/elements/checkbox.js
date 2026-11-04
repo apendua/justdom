@@ -227,6 +227,10 @@ export function checkbox(ctx, element) {
   const checked = new Derived(() => getCheckedCached(element));
 
   const surface$ = box(ctx, element, {
+    // The tick below is the checkbox's mark. A page that styles its own,
+    // with `appearance: none`, gives it as a `url()` background, and two
+    // ticks are not drawn over each other.
+    backgroundPicture: false,
     // A control is there to be operated. An ordinary box has to say it is
     // clickable through `cursor: pointer`, because nothing else tells a button
     // apart from the card it sits on; a checkbox needs no such declaration,

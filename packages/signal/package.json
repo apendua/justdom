@@ -1,6 +1,6 @@
 {
   "name": "justdom-signal",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A dependency-tracked reactive signals library",
   "keywords": [
     "signals",
@@ -26,6 +26,9 @@
     "./rxjs": {
       "types": "./lib-types/rxjs.d.ts",
       "import": "./src/rxjs.js"
+    },
+    "./dom": {
+      "types": "./src/types/dom.d.ts"
     }
   },
   "main": "./src/index.js",
@@ -36,10 +39,10 @@
   ],
   "scripts": {
     "bench": "node --test \"src/**/*.bench.js\"",
-    "build": "npm run test && npm run build:types",
+    "build": "npm run --loglevel=warn test && npm run --loglevel=warn build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "test": "npm run test:syntax && npm run test:typecheck && node --test \"src/**/*.test.js\"",
-    "test:coverage": "npm run test:typecheck && node --test --experimental-test-coverage \"src/**/*.test.js\"",
+    "test": "npm run --loglevel=warn test:syntax && npm run --loglevel=warn test:typecheck && node --test \"src/**/*.test.js\"",
+    "test:coverage": "npm run --loglevel=warn test:typecheck && node --test --experimental-test-coverage \"src/**/*.test.js\"",
     "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --test --watch \"src/**/*.test.js\""

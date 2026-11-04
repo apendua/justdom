@@ -2,6 +2,18 @@
   "name": "@apendua/geometry",
   "entries": [
     {
+      "version": "0.1.1",
+      "tag": "@apendua/geometry_v0.1.1",
+      "date": "Tue, 03 Nov 2026 22:19:23 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Drop the unused lodash dependency"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.0",
       "tag": "@apendua/geometry_v0.1.0",
       "date": "Mon, 02 Nov 2026 22:24:26 GMT",

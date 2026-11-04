@@ -1,3 +1,4 @@
+/// <reference types="justdom-signal/dom" preserve="true" />
 /**
  * The part of this package a page uses with no scene to hand: asking which
  * panel an element is mirrored into, scrolling an element the way a panel

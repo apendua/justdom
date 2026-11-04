@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Reference justdom-signal/dom from the entry points, so an app gets the element's events for on() without declaring __EVENT_MAP__ itself",
+      "type": "minor",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

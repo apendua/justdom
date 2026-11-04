@@ -19,8 +19,6 @@ npm install justdom-three justdom-signal three
 
 ## Usage
 
-<!-- snippet: skip -->
-
 ```js
 import * as THREE from "three";
 import { render, $, children, getScene, useFrame } from "justdom-three";

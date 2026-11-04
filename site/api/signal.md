@@ -269,6 +269,14 @@ vocabulary without naming RxJS:
   `fromEvent(emitter, event)` is its events as a source. `timer(due, period?)` and
   `interval(period)` are sources of counts.
 
+### `justdom-signal/dom`
+
+Types only. `on` and `fromEvent` read an emitter's events from a property, `__EVENT_MAP__`, that the
+DOM's own types do not give an element, the window, the document or `document.fonts`. This entry
+declares it for them. `justdom-core` and `justdom-three` reference it from their entry points, so an
+app that imports either needs nothing more; a program that uses this package alone with the DOM adds
+`/// <reference types="justdom-signal/dom" />` to one of its files.
+
 ### `justdom-signal/rxjs`
 
 `rx(source)` carries a `Source` into an RxJS `Observable`, so an operator can be applied to it, and
@@ -310,6 +318,8 @@ is a store too, and a store assigned to one is held as itself. An array's method
 on the array's own keys the method read, and does depend on what else it read. A getter with no
 setter is readonly. A store is also an `Emitter`: `emit(store, event, payload)` fires an event the
 `on` operator in its effects list hears, which is how a child component tells its parent something.
+Its events are typed by `store`'s second type parameter, which TypeScript can pass as
+`store<Props, { change: boolean }>(...)`. Without it any event takes any payload.
 
 | Function                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

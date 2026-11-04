@@ -9,8 +9,6 @@ mutation through a signal effect.
 npm install justdom-three justdom-signal three
 ```
 
-<!-- snippet: skip -->
-
 ```js
 import * as THREE from "three";
 import { render, $, children, getScene, useFrame } from "justdom-three";

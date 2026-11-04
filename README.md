@@ -160,13 +160,14 @@ registry.npmjs.org and that the checkout is a clean, up-to-date `develop`, then 
 does not have yet with `pnpm publish`, which turns `workspace:*` into the versions it points at,
 tags each as `<package>_v<version>` and pushes those tags. It uses your own `npm login`, which has
 to name the registry: a plain `npm login` logs in to the registry your `~/.npmrc` sets, and without
-a login for npmjs.org the upload fails with a 404 that reads as a missing package. A login session
-does not bypass the second factor, so npm asks for it once for each package it uploads. `--dry-run`
-only lists what is on npm and what would be published. A publish that stops partway can be run
-again: it skips what is already on npm. A version that npm put into staged publishing is not on npm
-until you approve it on npmjs.com, so approve what is staged before you run the script again, or it
-tries to publish that version a second time. If a `pnpm publish` fails after npm took the upload,
-the rerun skips that version without tagging it; tag it by hand as `<package>_v<version>`.
+a valid login for npmjs.org the upload fails with a 404 that reads as a missing package. A login
+session also expires, so log in again when the script says it has none. A login session does not
+bypass the second factor, so npm asks for it once for each package it uploads. `--dry-run` only
+lists what is on npm and what would be published. A publish that stops partway can be run again: it
+skips what is already on npm. A version that npm put into staged publishing is not on npm until you
+approve it on npmjs.com, so approve what is staged before you run the script again, or it tries to
+publish that version a second time. If a `pnpm publish` fails after npm took the upload, the rerun
+skips that version without tagging it; tag it by hand as `<package>_v<version>`.
 
 The script replaces `rush publish`, which the first release used. Rush ran npm with a home directory
 of its own, so the login had to be copied into an environment variable, and it read

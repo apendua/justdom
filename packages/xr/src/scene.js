@@ -56,17 +56,34 @@ export const Backdrop = component(
 /**
  * The models `render()` draws for the controllers and the tracked hands,
  * spread into `render()`'s options. Both factories fetch the WebXR input
- * profiles from three's default, the jsDelivr CDN, when a controller or hand
- * connects, so a headset with no network draws neither.
+ * profiles when a controller or hand connects. With no argument they fetch
+ * them from three's default, the jsDelivr CDN, so a headset with no network
+ * draws neither.
  *
+ * `profiles` names a copy of that tree the app serves itself, such as
+ * `` `${import.meta.env.BASE_URL}profiles` ``, resolved against the page's
+ * address. The models then come from the app's own origin, and a headset
+ * with no network draws them if the app's service worker precaches the
+ * `.glb` and `.json` files under it. The tree has the layout of
+ * `@webxr-input-profiles/assets`' `dist/profiles`.
+ *
+ * @param {string} [profiles]
  * @returns {{
  *   createControllerModel: (grip: THREE.XRGripSpace) => THREE.Object3D,
  *   createHandModel: (hand: THREE.XRHandSpace) => THREE.Object3D,
  * }}
  */
-export function inputModels() {
+export function inputModels(profiles) {
   const controllers = new XRControllerModelFactory();
   const hands = new XRHandModelFactory();
+  if (profiles !== undefined) {
+    const path = new URL(profiles, location.href).href.replace(/\/$/, "");
+    // The two paths are spelled differently on purpose: the controller
+    // factory joins `/profilesList.json` onto its own, and the hand model
+    // joins `<handedness>.glb` onto its own with no separator.
+    controllers.setPath(path);
+    hands.setPath(`${path}/generic-hand/`);
+  }
   return {
     createControllerModel: (grip) => controllers.createControllerModel(grip),
     createHandModel: (hand) => hands.createHandModel(hand, "mesh"),

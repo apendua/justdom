@@ -86,9 +86,9 @@ keyboard({
   classes: { root, row, key, keyActive },
   onKey: ({ key, code, shiftKey }) => {
     if (key === "Backspace") {
-      text.set(text.get().slice(0, -1));
+      typed.set(typed.get().slice(0, -1));
     } else if (key.length === 1) {
-      text.set(text.get() + key);
+      typed.set(typed.get() + key);
     }
   },
 });
@@ -132,6 +132,9 @@ field gets `MOBILE_LAYOUT`. `NUMERIC_LAYOUT` is a phone's pad, four keys across:
 and a decimal point, with backspace, and `esc` and `enter` bottom left and bottom right.
 
 ```js
+import { render } from "justdom-three";
+import { keyboard } from "justdom-three-ui";
+
 render(Scene, {
   panelOptions: {
     keyboard: {
@@ -147,6 +150,8 @@ In a scene, a list scrolls by itself: `justdom-three` makes anything that clips 
 draggable the moment it has more inside than fits. For a scrollbar's kind of control, visible,
 precise, resting, there is `scrollable(props)`: arrows, a track and a thumb, built out of ordinary
 elements like the dropdown.
+
+<!-- snippet: skip -->
 
 ```js
 import { scrollable } from "justdom-three-ui";
@@ -191,6 +196,8 @@ pieces: an object holding what the readout knows and whether it is shown, and an
 measures and draws it.
 
 ```js
+import { effects, effectsOnly, useEffects } from "justdom-signal";
+import { children, getScene } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
 
 const App = effectsOnly((ctx) => {

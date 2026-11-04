@@ -2,6 +2,53 @@
   "name": "justdom-xr",
   "entries": [
     {
+      "version": "0.2.0",
+      "tag": "justdom-xr_v0.2.0",
+      "date": "Wed, 04 Nov 2026 20:25:47 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Scripts that call other scripts pass `--loglevel=warn` to `npm run`, so the notices npm 12 prints on stderr no longer fail `rush build` with warnings."
+          }
+        ],
+        "minor": [
+          {
+            "comment": "inputModels() takes an optional path to the app's own copy of the WebXR input profiles, so a headset can draw controllers and hands without the CDN"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.1.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.31.0`"
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.1.2",
+      "tag": "justdom-xr_v0.1.2",
+      "date": "Tue, 03 Nov 2026 22:19:23 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "The driver imports playwright-core as an optional peer dependency, so it runs outside the justdom repository"
+          }
+        ],
+        "none": [
+          {
+            "comment": "Comments call justdom-three by its name instead of freedom"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.30.2`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.1",
       "tag": "justdom-xr_v0.1.1",
       "date": "Mon, 02 Nov 2026 22:24:26 GMT",

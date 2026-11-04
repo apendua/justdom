@@ -1,6 +1,15 @@
 # Change Log - justdom-signal
 
-This log was last generated on Mon, 02 Nov 2026 22:24:26 GMT and should not be manually modified.
+This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+
+## 1.1.0
+Wed, 04 Nov 2026 20:25:47 GMT
+
+### Minor changes
+
+- An effect disposed by a node it reads, during its dependency check, a warm or its own run, stops there instead of registering teardowns that leak
+- A signal written by a teardown, during a dispose, a release or a failed pass's reset, drains once every teardown has run instead of cutting the dispose short or sitting in the queue
+- A Derived resolving outside a drain holds the queue until its reader has the value, so a signal it writes as it evaluates no longer hands readers the old value or a false CircularDependencyError
 
 ## 1.0.1
 Mon, 02 Nov 2026 22:24:26 GMT

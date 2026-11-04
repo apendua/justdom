@@ -32,6 +32,8 @@ can be asserted on.
 to the scene and a `play(position)` that sounds a click at a point in _that object's_ coordinates:
 
 ```js
+import { createClicks } from "@apendua/sound";
+
 const clicks = createClicks(listener);
 // Inside the board, so a click sounds from the cell it belongs to.
 board.add(clicks.object);
@@ -64,6 +66,8 @@ are exported for an app writing a noise of its own.
 the only thing plugged in, and the browser's own choice is not always the one the player is wearing:
 
 ```js
+import { audioOutputSelection } from "@apendua/sound";
+
 const output = audioOutputSelection();
 // output.outputs — everything sound could be sent to, as a signal
 // output.deviceId — the chosen one, empty until the player picks
@@ -88,6 +92,9 @@ silent until the headset goes on. Volume and output are followed live, so turnin
 takes the gain of the track that is playing rather than starting it over from the top.
 
 ```js
+import * as THREE from "three";
+import { createMusicControls, Music } from "@apendua/sound/xr";
+
 const listener = new THREE.AudioListener();
 const music = createMusicControls({ track: glass_desk_habits, volume: 0.35 });
 // ...in the scene, with the listener on the camera:

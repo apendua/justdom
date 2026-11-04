@@ -290,8 +290,10 @@ export function applyLevelPose(object, pose) {
 
 /**
  * @typedef {object} Carry
- * @property {<T extends Object3D<XREventMap>>() => EntityEffect<T>} carriable
- *   The operator for the object that is carried, for its operator list.
+ * @property {<T extends Object3D>() => EntityEffect<T>} carriable
+ *   The operator for the object that is carried, for its operator list. It
+ *   takes any object, whatever events it is typed with: the presses arrive at
+ *   the handles, and the carried object is only posed.
  * @property {<T extends Object3D<XREventMap>>() => EntityEffect<T>} handle
  *   The operator for a handle: an object a press on takes the carried thing
  *   by. It listens for the presses; it does not make the object pointable,
@@ -440,7 +442,7 @@ export function carry(ctx, options = {}) {
   };
 
   /**
-   * @template {Object3D<XREventMap>} T
+   * @template {Object3D} T
    * @returns {EntityEffect<T>}
    */
   const carriable = () => (entity) => {

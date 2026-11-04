@@ -1,6 +1,6 @@
 {
   "name": "justdom-xr",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
   "repository": {
     "type": "git",
@@ -39,9 +39,9 @@
     "lib-types"
   ],
   "scripts": {
-    "build": "npm run test && npm run build:types",
+    "build": "npm run --loglevel=warn test && npm run --loglevel=warn build:types",
     "build:types": "tsc --project tsconfig.types.json",
-    "test": "npm run test:syntax && npm run test:typecheck && node --test \"src/**/*.test.js\"",
+    "test": "npm run --loglevel=warn test:syntax && npm run --loglevel=warn test:typecheck && node --test \"src/**/*.test.js\"",
     "test:syntax": "node --experimental-vm-modules --no-warnings ../../common/scripts/check-native-syntax.mjs src",
     "test:typecheck": "tsc --project tsconfig.json --noEmit",
     "test:watch": "node --test --watch \"src/**/*.test.js\""

@@ -1194,4 +1194,96 @@ describe("Effect", () => {
       assert.strictEqual(inner?.isDisposed, true, "and nothing it built is left running");
     });
   });
+
+  describe("disposed by something it reads", () => {
+    /**
+     * A node that disposes `target()` once its source reaches 1, next to
+     * one that records each of its values' teardowns.
+     *
+     * @param {() => Effect | null} target
+     */
+    function makeGraph(target) {
+      const source = Signal.of(0);
+      /** @type {string[]} */
+      const log = [];
+      const killer = new Derived(() => {
+        const value = source.get();
+        if (value === 1) {
+          target()?.dispose();
+        }
+        return value;
+      });
+      const other = new Derived(() => {
+        const value = source.get();
+        log.push(`made ${value}`);
+        onCleanup(() => log.push(`torn down ${value}`));
+        return value;
+      });
+      return { source, log, killer, other };
+    }
+
+    it("does not run once its dependency check has disposed it", () => {
+      /** @type {Effect | null} */
+      let effect = null;
+      const { source, log, killer, other } = makeGraph(() => effect);
+      let runs = 0;
+      effect = new Effect(() => {
+        runs += 1;
+        killer.get();
+        other.get();
+      });
+
+      source.set(1);
+      assert.strictEqual(effect.isDisposed, true);
+      assert.strictEqual(runs, 1, "the body did not run again after the check disposed it");
+      assert.deepStrictEqual(log, ["made 0", "torn down 0"], "nothing was made for no one");
+    });
+
+    it("stops warming once what it warmed has disposed it", () => {
+      const channel = new UpdateChannel({ name: "atomic", manual: true, atomic: true });
+      /** @type {Effect | null} */
+      let effect = null;
+      const { source, log, killer, other } = makeGraph(() => effect);
+      effect = new Effect(
+        () => {
+          killer.get();
+          other.get();
+        },
+        { channel },
+      );
+
+      source.set(1);
+      channel.warm({ budget: Infinity });
+      assert.strictEqual(effect.isDisposed, true);
+      assert.deepStrictEqual(log, ["made 0", "torn down 0"], "nothing was made for no one");
+      channel.flush({ budget: Infinity });
+    });
+
+    it("tears down at once what its run registers after disposing it", () => {
+      const source = Signal.of(0);
+      /** @type {string[]} */
+      const log = [];
+      /** @type {Effect[]} */
+      const inners = [];
+      /** @type {Effect | null} */
+      let effect = null;
+      effect = new Effect(() => {
+        if (source.get() === 1) {
+          effect?.dispose();
+        }
+        onCleanup(() => log.push("cleanup"));
+        inners.push(useEffect(() => {}));
+      });
+      log.length = 0;
+
+      source.set(1);
+      assert.strictEqual(effect.isDisposed, true);
+      assert.deepStrictEqual(log, ["cleanup", "cleanup"], "the first run's and this one's");
+      assert.deepStrictEqual(
+        inners.map((inner) => inner.isDisposed),
+        [true, true],
+        "no nested effect it built is left running",
+      );
+    });
+  });
 });

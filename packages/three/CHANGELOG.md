@@ -1,6 +1,20 @@
 # Change Log - justdom-three
 
-This log was last generated on Mon, 02 Nov 2026 22:24:26 GMT and should not be manually modified.
+This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+
+## 0.31.0
+Wed, 04 Nov 2026 20:25:47 GMT
+
+### Minor changes
+
+- A positioned box now draws after every flow sibling it covers, earlier or later in the tree
+
+## 0.30.2
+Tue, 03 Nov 2026 22:19:23 GMT
+
+### Patches
+
+- The package declares no side effects, so a bundler leaves the renderer out of a page that imports only the page's side from the main entry
 
 ## 0.30.1
 Mon, 02 Nov 2026 22:24:26 GMT

@@ -40,6 +40,7 @@ describe("inputModels", () => {
   });
   afterEach(() => {
     globalThis.fetch = realFetch;
+    delete (/** @type {any} */ (globalThis).location);
   });
 
   /** Let the promise callbacks queued so far run. */
@@ -81,6 +82,52 @@ describe("inputModels", () => {
     assert.deepEqual(fetched, [
       "https://cdn.jsdelivr.net/npm/@webxr-input-profiles/assets@1.0/dist/profiles/generic-hand/left.glb",
     ]);
+  });
+
+  it("asks for a controller's model from the app's own profiles when named", async () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { href: "https://example.test/apps/euclid/?emulator" },
+    });
+    const { createControllerModel } = inputModels("/apps/euclid/profiles");
+    const grip = /** @type {THREE.XRGripSpace} */ (new THREE.Group());
+    createControllerModel(grip);
+    const warn = console.warn;
+    console.warn = () => {};
+    grip.dispatchEvent(
+      /** @type {any} */ ({
+        type: "connected",
+        data: {
+          targetRayMode: "tracked-pointer",
+          handedness: "right",
+          profiles: ["meta-quest-touch-plus"],
+          gamepad: {},
+        },
+      }),
+    );
+    await settle();
+    console.warn = warn;
+    assert.deepEqual(fetched, ["https://example.test/apps/euclid/profiles/profilesList.json"]);
+  });
+
+  it("and a tracked hand's from the same tree, with or without a trailing slash", async () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: { href: "https://example.test/apps/euclid/?emulator" },
+    });
+    for (const profiles of ["profiles", "profiles/"]) {
+      fetched = [];
+      const { createHandModel } = inputModels(profiles);
+      const hand = /** @type {THREE.XRHandSpace} */ (new THREE.Group());
+      createHandModel(hand);
+      hand.dispatchEvent(
+        /** @type {any} */ ({ type: "connected", data: { handedness: "left", hand: {} } }),
+      );
+      await settle();
+      assert.deepEqual(fetched, [
+        "https://example.test/apps/euclid/profiles/generic-hand/left.glb",
+      ]);
+    }
   });
 });
 

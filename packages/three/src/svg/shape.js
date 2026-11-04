@@ -86,7 +86,7 @@ import {
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
  * @import {Matrix2D, Rect} from './geometry.js';
- * @import {HitRule, ShapeGeometry} from './style.js';
+ * @import {HitRule, Paint, ShapeGeometry} from './style.js';
  * @import {PaintServer} from './paintServer.js';
  * @import {PaintDraw} from './paintShader.js';
  */
@@ -276,6 +276,14 @@ export function buildShapePath(geometry) {
     }
   }
 }
+
+/**
+ * What a gradient or a pattern draws over: a white material, which the
+ * paint patch multiplies by the colour it computes.
+ *
+ * @type {Paint}
+ */
+const WHITE = { color: new THREE.Color(1, 1, 1), alpha: 1 };
 
 /** How finely a `<path>`'s curves are sampled for its bounding box. */
 const BOX_DIVISIONS = 64;
@@ -1486,8 +1494,9 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * @property {EntityEffect<THREE.Mesh>[]} paint The effects that write the
  *   material's colour, map and opacity.
  * @property {(material: THREE.MeshBasicMaterial) => void} [patch] More to
- *   install on the material once it carries its clip patch: a shape's
- *   gradient patch (`applyPaint`).
+ *   install on the material once it carries its clip patch: the paint
+ *   patch (`applyPaint`) of a region a gradient or a pattern paints. A
+ *   region in a flat colour has none.
  * @property {() => boolean} hidden Whether `visibility` hides the element
  *   this mesh paints.
  * @property {() => boolean} hit Whether a ray can hit this region.
@@ -1905,10 +1914,45 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
     const scale = new Derived(() => samplingScale(matrixScale(node.chain().ctm)));
 
     /**
-     * What one region's mesh paints with, and whether it paints at all: a
-     * flat colour written to the material, or a gradient or a pattern's
-     * tile written to the paint patch's uniforms over a white material, all
-     * under the region's opacity. A server that draws nothing on this shape
+     * @param {THREE.Mesh} obj
+     * @param {Paint} paint
+     * @param {string} opacityName
+     */
+    const writeColor = (obj, paint, opacityName) => {
+      const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+      material.color.copy(paint.color);
+      material.opacity = paint.alpha * node.opacity() * parseNumber(read(opacityName), 1);
+    };
+
+    /**
+     * What a region painted in a flat colour paints with: the colour,
+     * written to the material under the region's opacity, and nothing else.
+     * No paint patch, no uniforms, no ramp row and no tiles, so a shape that
+     * uses no gradient or pattern pays nothing for them. A server that
+     * turns into a gradient or a pattern remounts the mesh with `serverTint`
+     * (`paintRoute`), and until then this draws nothing for it.
+     *
+     * @param {Derived<PaintServer | null>} server
+     * @param {string} opacityName `fill-opacity` or `stroke-opacity`.
+     * @returns {Pick<MeshOptions, "paints" | "paint">}
+     */
+    const colorTint = (server, opacityName) => ({
+      paints: () => server.get()?.kind === "color",
+      paint: [
+        effects((obj) => {
+          const current = server.get();
+          if (current?.kind === "color") {
+            writeColor(obj, current.paint, opacityName);
+          }
+        }),
+      ],
+    });
+
+    /**
+     * What a region painted by a gradient or a pattern paints with, and
+     * whether it paints at all: the gradient or the pattern's tile written
+     * to the paint patch's uniforms over a white material, under the
+     * region's opacity. A server that draws nothing on this shape
      * (`toGradientSpace`, `patternLayout`) paints nothing. A pattern whose
      * tile is not ready draws the tile it drew before, or else its fallback
      * colour, or else nothing (`TileHold`). The uniforms are written apart
@@ -1920,7 +1964,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
      * @param {string} opacityName `fill-opacity` or `stroke-opacity`.
      * @returns {Pick<MeshOptions, "paints" | "paint" | "patch">}
      */
-    const tint = (server, opacityName) => {
+    const serverTint = (server, opacityName) => {
       const uniforms = createPaintUniforms();
       const ramp = new RampSlot();
       const tiles = new TileHold();
@@ -1967,18 +2011,9 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
             writePaint(uniforms, drawn.get(), ramp);
           }),
           effects((obj) => {
-            const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
             const current = drawn.get();
-            if (!current) {
-              return;
-            }
-            const opacity = node.opacity() * parseNumber(read(opacityName), 1);
-            if (current.kind === "color") {
-              material.color.copy(current.paint.color);
-              material.opacity = current.paint.alpha * opacity;
-            } else {
-              material.color.setRGB(1, 1, 1);
-              material.opacity = opacity;
+            if (current) {
+              writeColor(obj, current.kind === "color" ? current.paint : WHITE, opacityName);
             }
           }),
           effects(() => {
@@ -1989,6 +2024,20 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
           }),
         ],
       };
+    };
+
+    /**
+     * @param {Derived<PaintServer | null>} server
+     * @param {() => boolean} hit
+     * @returns {"color" | "server" | null} Which tint the region's mesh
+     *   takes, or null for no mesh: neither painted nor hit.
+     */
+    const paintRoute = (server, hit) => {
+      const current = server.get();
+      if (current === null) {
+        return hit() ? "color" : null;
+      }
+      return current.kind === "color" ? "color" : "server";
     };
 
     return {
@@ -2004,22 +2053,24 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
           // Fill before stroke: with equal render order and depth the sort
           // falls back to mesh id, and the stroke has to cover the fill's
           // edge.
-          flatMap((/** @type {boolean} */ filled) =>
-            filled
+          flatMap((/** @type {"color" | "server" | null} */ route) =>
+            route
               ? node.mesh({
                   geometry: () => {
                     const current = path.get();
                     return current ? buildFillGeometry(current, fillRule.get(), scale.get()) : null;
                   },
-                  ...tint(fillPaint, "fill-opacity"),
+                  ...(route === "server"
+                    ? serverTint(fillPaint, "fill-opacity")
+                    : colorTint(fillPaint, "fill-opacity")),
                   hidden: () => hidden.get(),
                   hit: () => fillHit.get(),
                   layer: 0,
                 })
               : Nothing(),
-          )(observable(() => fillPaint.get() !== null || fillHit.get())),
-          flatMap((/** @type {boolean} */ stroked) =>
-            stroked
+          )(observable(() => paintRoute(fillPaint, () => fillHit.get()))),
+          flatMap((/** @type {"color" | "server" | null} */ route) =>
+            route
               ? node.mesh({
                   geometry: () => {
                     const current = path.get();
@@ -2027,13 +2078,15 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
                       ? buildStrokeGeometry(current, strokeSpec.get(), scale.get())
                       : null;
                   },
-                  ...tint(strokePaint, "stroke-opacity"),
+                  ...(route === "server"
+                    ? serverTint(strokePaint, "stroke-opacity")
+                    : colorTint(strokePaint, "stroke-opacity")),
                   hidden: () => hidden.get(),
                   hit: () => strokeHit.get(),
                   layer: 1,
                 })
               : Nothing(),
-          )(observable(() => strokePaint.get() !== null || strokeHit.get())),
+          )(observable(() => paintRoute(strokePaint, () => strokeHit.get()))),
         ),
         ...(decorate?.({
           read,

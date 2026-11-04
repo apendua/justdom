@@ -976,6 +976,18 @@ describe("svg shape", () => {
   });
 });
 
+/**
+ * The one mesh among `meshes` painted in a flat colour, which carries no
+ * paint patch.
+ *
+ * @param {Mesh[]} meshes
+ */
+function flatMesh(meshes) {
+  const flat = meshes.filter((mesh) => clipUniformsOf(mesh).paintKind === undefined);
+  assert.equal(flat.length, 1, "one mesh in a flat colour");
+  return flat[0];
+}
+
 describe("svg shape painted by a gradient", () => {
   const STOPS = `<stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/>`;
 
@@ -1074,8 +1086,8 @@ describe("svg shape painted by a gradient", () => {
     );
     assert.equal(rampAtlas.size, before + 1, "fill and stroke share the row");
     s.setAttribute("fill", "red");
-    assert.equal(paintOf(s.meshes[0]).kind, 0);
-    assert.equal(material(s.meshes[0]).color.getHexString(), "ff0000");
+    const fill = flatMesh(s.meshes);
+    assert.equal(material(fill).color.getHexString(), "ff0000");
     assert.equal(rampAtlas.size, before + 1, "the stroke still holds it");
     s.teardown();
     assert.equal(rampAtlas.size, before);
@@ -1098,8 +1110,39 @@ describe("svg shape painted by a gradient", () => {
 
   test("a reference to no gradient draws the fallback colour, flat", () => {
     const s = setup("rect", { width: "10", height: "10", fill: "url(#missing) red" }, { defs: "" });
-    assert.equal(paintOf(s.meshes[0]).kind, 0);
-    assert.equal(material(s.meshes[0]).color.getHexString(), "ff0000");
+    const fill = flatMesh(s.meshes);
+    assert.equal(material(fill).color.getHexString(), "ff0000");
+    s.teardown();
+  });
+
+  test("a flat colour carries no paint patch, and gains it with a gradient", () => {
+    const s = setup(
+      "rect",
+      { width: "10", height: "10", fill: "red", stroke: "blue" },
+      { defs: `<linearGradient id="g">${STOPS}</linearGradient>` },
+    );
+    assert.equal(s.meshes.length, 2);
+    for (const mesh of s.meshes) {
+      assert.equal(clipUniformsOf(mesh).paintKind, undefined, "no paint uniforms");
+      assert.doesNotMatch(material(mesh).customProgramCacheKey(), /svg-paint/);
+    }
+    s.setAttribute("fill", "url(#g)");
+    const painted = s.meshes.filter((mesh) => clipUniformsOf(mesh).paintKind !== undefined);
+    assert.equal(painted.length, 1, "the fill alone takes the patch");
+    assert.equal(paintOf(painted[0]).kind, 1);
+    assert.equal(material(painted[0]).color.getHexString(), "ffffff");
+    s.setAttribute("fill", "lime");
+    assert.deepEqual(
+      s.meshes.map((mesh) => [
+        material(mesh).color.getHexString(),
+        clipUniformsOf(mesh).paintKind === undefined,
+      ]),
+      [
+        ["0000ff", true],
+        ["00ff00", true],
+      ],
+      "back to a flat colour, the fill's patch gone with its mesh",
+    );
     s.teardown();
   });
 
@@ -1200,7 +1243,7 @@ describe("svg shape painted by a pattern", () => {
       const s = setup("rect", { width: "40", height: "10", fill: "url(#p)" }, { defs: DEFS });
       const { disposed } = loader.loads[0].land(4, 4);
       s.setAttribute("fill", "red");
-      assert.equal(clipUniformsOf(s.meshes[0]).paintTile.value, null);
+      assert.equal(material(flatMesh(s.meshes)).color.getHexString(), "ff0000");
       releaseIdleImages();
       assert.equal(disposed(), 1);
       s.teardown();

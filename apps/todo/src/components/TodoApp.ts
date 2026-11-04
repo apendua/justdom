@@ -80,7 +80,8 @@ const inputContainerStyle = className`
 // draws the caret and takes the keys; in the scene justdom-three draws the
 // value and the caret, and the keyboard the scene mounts under the panel types
 // through the same `input` and `keydown` events. `:focus` is the page's focus
-// ring and `[data-xr-focus]` the scene's: the field the board is typing into.
+// ring and, in the scene, the field the board is typing into: justdom-three
+// rewrites it to answer `[data-xr-focus]` as well.
 const inputStyle = stylesheet`
   .${CLASS_NAME} {
     flex-grow: 1;
@@ -101,8 +102,7 @@ const inputStyle = stylesheet`
     border-color: #7ab4ff;
   }
 
-  .${CLASS_NAME}:focus,
-  .${CLASS_NAME}[data-xr-focus] {
+  .${CLASS_NAME}:focus {
     outline: none;
     border-color: #007bff;
   }
@@ -129,7 +129,7 @@ const buttonStyle = stylesheet`
     cursor: pointer;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background-color: #0056b3;
     background-image: ${blueGradientHover};
   }
@@ -169,7 +169,7 @@ const exitStyle = stylesheet`
     cursor: pointer;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     color: white;
     background-color: #d9434f;
     /* A lit red dome, its highlight up and to the left. */
@@ -249,7 +249,7 @@ const scrollStyles = {
       user-select: none;
     }
 
-    .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+    .${CLASS_NAME}:hover {
       background-color: #0056b3;
       background-image: ${blueGradientHover};
     }

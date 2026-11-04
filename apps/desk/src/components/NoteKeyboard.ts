@@ -50,7 +50,7 @@ const keyStyle = stylesheet`
     transition: transform 0.07s;
   }
 
-  .${CLASS_NAME}:active, .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME}:active {
     transform: translateZ(0.5px);
   }
 `;
@@ -58,7 +58,7 @@ const keyStyle = stylesheet`
 // Same specificity as the press rule and later in the document, so a held
 // shift stays lit while the ray is on it.
 const keyHeldStyle = stylesheet`
-  .${CLASS_NAME}, .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME}, .${CLASS_NAME}:active {
     color: #fff3e6;
     background: linear-gradient(180deg, #e88a5a, #c6512b);
     border-color: #7d2e14;

@@ -42,7 +42,7 @@ const handleStyle = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     color: #007bff;
   }
 `;
@@ -82,7 +82,7 @@ const checkboxStyle = stylesheet`
     cursor: pointer;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     border-color: #007bff;
   }
 
@@ -113,7 +113,7 @@ const deleteButtonStyle = stylesheet`
     margin-left: 0.5rem;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: #cc0000 linear-gradient(to bottom, #e03131, #a61e1e);
   }
 `;

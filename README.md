@@ -159,9 +159,11 @@ registry.npmjs.org and that the checkout is a clean, up-to-date `develop`, then 
 `publishable` policy, and asks npm about each package's exact version. It publishes the ones npm
 does not have yet with `pnpm publish`, which turns `workspace:*` into the versions it points at,
 tags each as `<package>_v<version>` and pushes those tags. It uses your own `npm login`, which has
-to name the registry: a plain `npm login` logs in to the registry your `~/.npmrc` sets, and without
-a valid login for npmjs.org the upload fails with a 404 that reads as a missing package. A login
-session also expires, so log in again when the script says it has none. A login session does not
+to name the registry, since a plain `npm login` logs in to the registry your `~/.npmrc` sets. A
+login session also expires, and npm keeps sending the expired token: the registry then hides the
+package from it, and the upload fails with a 404 that reads as a missing package. The script runs
+`npm whoami` against npmjs.org before the build, which answers an expired token with 401 and a
+missing one with `ENEEDAUTH`, and stops with the command to log in again. A login session does not
 bypass the second factor, so npm asks for it once for each package it uploads. `--dry-run` only
 lists what is on npm and what would be published. A publish that stops partway can be run again: it
 skips what is already on npm. A version that npm put into staged publishing is not on npm until you

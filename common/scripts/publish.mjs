@@ -108,23 +108,26 @@ function packagesInOrder() {
 }
 
 /**
- * Who npm is logged in as on the registry the script publishes to. A plain
- * `npm login` logs in to whatever registry the user's ~/.npmrc names, and a
- * login also expires. Without a valid login for npmjs.org, npm sends the
- * upload without a token and the registry answers 404 Not Found, which reads
- * as a missing package. Asking first turns that into a message that says
- * what to run.
+ * Who npm is logged in as on the registry the script publishes to. A login
+ * session expires, but npm keeps the token and still sends it. The registry
+ * hides the package from a token it no longer accepts, so the upload fails
+ * with 404 Not Found, which reads as a missing package, and only after the
+ * build. `npm whoami` answers the same token with 401, so asking first turns
+ * that into a message that says what to run. With no token for npmjs.org at
+ * all, as after a plain `npm login` to the registry ~/.npmrc names, npm
+ * refuses with ENEEDAUTH, which this check also catches before the build.
  */
 function checkLogin() {
   const result = spawnSync("npm", ["whoami", "--registry", registry], {
     cwd: root,
     encoding: "utf8",
   });
-  const user = result.stdout.trim();
+  const user = result.stdout?.trim() ?? "";
   if (result.status !== 0 || user === "") {
+    const reason = result.error?.message ?? result.stderr.trim();
     throw new Error(
       `npm has no valid login for ${registry}. The login may have expired, or\n` +
-        `\`npm login\` may have logged in to another registry.\n${result.stderr.trim()}\n` +
+        `\`npm login\` may have logged in to another registry.\n${reason}\n` +
         `Run \`npm login --registry ${registry}\` and try again.`,
     );
   }

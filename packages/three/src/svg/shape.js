@@ -1848,8 +1848,9 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   });
 
   /**
-   * The fill bounding box an `objectBoundingBox` gradient is laid over, for
-   * the fill and the stroke alike. Read only for such a gradient.
+   * The fill bounding box an `objectBoundingBox` gradient or pattern is
+   * laid over, for the fill and the stroke alike. Read only for a server in
+   * those units, or a pattern whose content is.
    */
   const box = new Derived(
     () => {

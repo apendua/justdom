@@ -72,6 +72,14 @@ const PRESENTATION = [
   "font-weight",
   "text-anchor",
   "dominant-baseline",
+  "transform",
+  "clip-path",
+  "mask",
+  "marker-start",
+  "marker-mid",
+  "marker-end",
+  "paint-order",
+  "vector-effect",
 ];
 
 /** Elements left out of the markup: nothing a picture would draw. */
@@ -197,7 +205,11 @@ export function serializePatternContent(source) {
   // Grows as it is walked: what a referenced element refers to is written
   // after it.
   for (let i = 0; i < referenced.length; i++) {
-    defs += write(referenced[i]);
+    // Written since it was referred to, in the content or inside an
+    // element written before it: once is enough.
+    if (!written.has(referenced[i])) {
+      defs += write(referenced[i]);
+    }
   }
   return defs ? `${content}<defs>${defs}</defs>` : content;
 }

@@ -93,6 +93,18 @@ describe("a pattern's content", () => {
     p.teardown();
   });
 
+  test("writes an element once, however it is referred to", () => {
+    const p = page(
+      `<defs><linearGradient id="g"><stop id="s" offset="0" stop-color="red"/></linearGradient></defs>` +
+        `<pattern id="p"><use href="#later"/><circle id="later" r="1"/>` +
+        `<rect width="1" height="1" fill="url(#g)" stroke="url(#s)"/></pattern>`,
+    );
+    const markup = serializePatternContent(p.get("p"));
+    assert.equal(markup.match(/id="later"/g)?.length, 1);
+    assert.equal(markup.match(/id="s"/g)?.length, 1);
+    p.teardown();
+  });
+
   test("is nothing when nothing in it draws", () => {
     const p = page(`<pattern id="p"> <title>dots</title> </pattern>`);
     assert.equal(serializePatternContent(p.get("p")), "");

@@ -633,13 +633,13 @@ lends what a pattern leaves unset, its content included. A tile with no width or
 content, paints nothing.
 
 The tile is a picture: its content is written out as an SVG image, each element carrying its
-computed fill, stroke, opacity and font, and decoded through the same cache an `<img>` uses, at
-twice the size the shape is drawn at and at most 1024 pixels a side. Shapes that ask for the same
-tile at the same size share it. Until the picture is ready, the shape draws the tile it drew before,
-or else the fallback colour after the reference, or else nothing. An edit inside the pattern draws a
-new picture. Being a picture, a tile draws text in the fonts the image decoder has rather than the
-page's web fonts, an `<image>` in it only from a `data:` URL, and an animation in it as it stood
-when the tile was drawn.
+computed fill, stroke, opacity, font, transform, clip, mask and markers, and decoded through the
+same cache an `<img>` uses, at twice the size the shape is drawn at and at most 1024 pixels a side.
+Shapes that ask for the same tile at the same size share it. Until the picture is ready, the shape
+draws the tile it drew before, or else the fallback colour after the reference, or else nothing. An
+edit inside the pattern draws a new picture. Being a picture, a tile draws text in the fonts the
+image decoder has rather than the page's web fonts, an `<image>` in it only from a `data:` URL, and
+an animation in it as it stood when the tile was drawn.
 
 **`clip-path`.** A `clip-path` is drawn when it names a `<clipPath>` that holds one `<rect>`, the
 one shape the clip box a nested `<svg>` uses can hold:

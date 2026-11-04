@@ -2,6 +2,38 @@
   "name": "justdom-signal",
   "entries": [
     {
+      "version": "1.1.0",
+      "tag": "justdom-signal_v1.1.0",
+      "date": "Wed, 04 Nov 2026 20:25:47 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "An effect disposed by a node it reads, during its dependency check, a warm or its own run, stops there instead of registering teardowns that leak"
+          },
+          {
+            "comment": "A signal written by a teardown, during a dispose, a release or a failed pass's reset, drains once every teardown has run instead of cutting the dispose short or sitting in the queue"
+          },
+          {
+            "comment": "A Derived resolving outside a drain holds the queue until its reader has the value, so a signal it writes as it evaluates no longer hands readers the old value or a false CircularDependencyError"
+          }
+        ],
+        "none": [
+          {
+            "comment": "Comments name the core package justdom-core instead of justdom"
+          },
+          {
+            "comment": "Scripts that call other scripts pass `--loglevel=warn` to `npm run`, so the notices npm 12 prints on stderr no longer fail `rush build` with warnings."
+          },
+          {
+            "comment": "Comments call justdom-three by its name instead of freedom"
+          },
+          {
+            "comment": "Test the update queue against random sequences of use"
+          }
+        ]
+      }
+    },
+    {
       "version": "1.0.1",
       "tag": "justdom-signal_v1.0.1",
       "date": "Mon, 02 Nov 2026 22:24:26 GMT",

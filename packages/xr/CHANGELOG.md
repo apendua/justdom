@@ -1,6 +1,13 @@
 # Change Log - justdom-xr
 
-This log was last generated on Tue, 03 Nov 2026 22:19:23 GMT and should not be manually modified.
+This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+
+## 0.2.0
+Wed, 04 Nov 2026 20:25:47 GMT
+
+### Minor changes
+
+- inputModels() takes an optional path to the app's own copy of the WebXR input profiles, so a headset can draw controllers and hands without the CDN
 
 ## 0.1.2
 Tue, 03 Nov 2026 22:19:23 GMT

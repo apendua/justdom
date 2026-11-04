@@ -2,6 +2,41 @@
   "name": "justdom-three-ui",
   "entries": [
     {
+      "version": "0.3.8",
+      "tag": "justdom-three-ui_v0.3.8",
+      "date": "Wed, 04 Nov 2026 20:25:47 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Scripts that call other scripts pass `--loglevel=warn` to `npm run`, so the notices npm 12 prints on stderr no longer fail `rush build` with warnings."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.4.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.1.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.31.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.2`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.4.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.1.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.31.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.7",
       "tag": "justdom-three-ui_v0.3.7",
       "date": "Tue, 03 Nov 2026 22:19:23 GMT",

@@ -2,6 +2,26 @@
   "name": "justdom-core",
   "entries": [
     {
+      "version": "0.4.1",
+      "tag": "justdom-core_v0.4.1",
+      "date": "Wed, 04 Nov 2026 20:25:47 GMT",
+      "comments": {
+        "none": [
+          {
+            "comment": "Scripts that call other scripts pass `--loglevel=warn` to `npm run`, so the notices npm 12 prints on stderr no longer fail `rush build` with warnings."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.1.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.2`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.4.0",
       "tag": "justdom-core_v0.4.0",
       "date": "Tue, 03 Nov 2026 22:19:23 GMT",

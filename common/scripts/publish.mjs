@@ -123,7 +123,8 @@ function checkLogin() {
   const user = result.stdout.trim();
   if (result.status !== 0 || user === "") {
     throw new Error(
-      `npm is not logged in to ${registry}:\n${result.stderr.trim()}\n` +
+      `npm has no valid login for ${registry}. The login may have expired, or\n` +
+        `\`npm login\` may have logged in to another registry.\n${result.stderr.trim()}\n` +
         `Run \`npm login --registry ${registry}\` and try again.`,
     );
   }

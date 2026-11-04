@@ -84,7 +84,8 @@ const MAX_CHAIN = 32;
  *   is resolved.
  * @param {string} value The property's value, as drawn (`readDrawnProperty`).
  * @param {() => { width: number, height: number } | null} viewport The
- *   viewport a `userSpaceOnUse` percentage is of. Read only for one.
+ *   viewport a `userSpaceOnUse` percentage is of. Read only for one, a
+ *   default included.
  * @returns {PaintServer | null}
  */
 export function readPaintServer(element, value, viewport) {
@@ -174,15 +175,26 @@ function readGradient(gradient, viewport) {
     },
   };
   /**
+   * A coordinate along the chain, or its default when no gradient of the
+   * kind sets it or the value does not parse, as SVG treats an invalid
+   * attribute as unspecified. The default is read only when it is used, so
+   * a coordinate the gradient gives in numbers reads no viewport.
+   *
    * @param {string} name
-   * @param {string} fallback
+   * @param {string | number} fallback A default to read in the units, or
+   *   one already read.
    * @param {"width" | "height" | "diagonal"} axis
    * @returns {number}
    */
   const coord = (name, fallback, axis) => {
-    const value = (inherited(chain, name, gradient.localName) ?? fallback).trim();
-    const fallbackNumber = readCoordinate(fallback, objectBox, reference[axis]);
-    return readCoordinate(value, objectBox, reference[axis]) ?? fallbackNumber ?? 0;
+    const value = inherited(chain, name, gradient.localName);
+    return (
+      (value === null ? null : readCoordinate(value.trim(), objectBox, reference[axis])) ??
+      (typeof fallback === "number"
+        ? fallback
+        : readCoordinate(fallback, objectBox, reference[axis])) ??
+      0
+    );
   };
 
   /** @type {number[]} */
@@ -197,14 +209,12 @@ function readGradient(gradient, viewport) {
   } else {
     const cx = coord("cx", "50%", "width");
     const cy = coord("cy", "50%", "height");
-    const fx = inherited(chain, "fx", "radialGradient");
-    const fy = inherited(chain, "fy", "radialGradient");
     coords = [
       cx,
       cy,
       coord("r", "50%", "diagonal"),
-      fx === null ? cx : coord("fx", "50%", "width"),
-      fy === null ? cy : coord("fy", "50%", "height"),
+      coord("fx", cx, "width"),
+      coord("fy", cy, "height"),
       coord("fr", "0%", "diagonal"),
     ];
   }

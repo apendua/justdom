@@ -602,14 +602,18 @@ where a percentage is of the viewport. `gradientTransform` applies after them, a
 pads, reflects or repeats past the ends. A radial gradient takes `fx`, `fy` and `fr`, and a focal
 circle outside the end circle draws the cone between the two, leaving the rest unpainted, as
 Chromium does. Whatever a gradient leaves unset, its stops included, comes from the gradient its
-`href` names, down the chain. A stop's colour and opacity are its computed `stop-color` and
-`stop-opacity`, so a stylesheet can restyle them, and the colours between two stops are interpolated
-without premultiplying, as a browser draws an SVG gradient, so a fade to a transparent stop passes
-through the transparent stop's colour. A stroke is laid over the fill bounding box too, so an
-`objectBoundingBox` gradient on a horizontal or vertical line draws nothing, as in a browser. A
-gradient with no length or no radius paints its last stop's colour, one with no stops paints
-nothing, and a reference to anything else draws the fallback colour, if there is one. The stops are
-baked into the same ramp texture the CSS gradients use, 256 texels long.
+`href` names, down the chain, the coordinates only from a gradient of the same kind: a radial
+gradient whose `href` names a linear one takes its units, transform, spread and stops, but not its
+centre. A stop's colour and opacity are its computed `stop-color` and `stop-opacity`, so a
+stylesheet can restyle them, and the colours between two stops are interpolated without
+premultiplying, as a browser draws an SVG gradient, so a fade to a transparent stop passes through
+the transparent stop's colour. The fill bounding box is exact for every shape but a `<path>`, whose
+curves are sampled, so a gradient over an arc can sit a hair inside the exact box. A stroke is laid
+over the fill bounding box too, so an `objectBoundingBox` gradient on a horizontal or vertical line
+draws nothing, as in a browser. A gradient with no length or no radius paints its last stop's
+colour, one with no stops paints nothing, and a reference to anything else draws the fallback
+colour, if there is one. The stops are baked into the same ramp texture the CSS gradients use, 256
+texels long.
 
 **`clip-path`.** A `clip-path` is drawn when it names a `<clipPath>` that holds one `<rect>`, the
 one shape the clip box a nested `<svg>` uses can hold:

@@ -10,7 +10,7 @@
   },
   "type": "module",
   "scripts": {
-    "build": "npm run test && npm run snippets && node scripts/pages.mjs && vitepress build 2>&1 && node scripts/copy-demos.mjs",
+    "build": "npm run --loglevel=warn test && npm run --loglevel=warn snippets && node scripts/pages.mjs && vitepress build 2>&1 && node scripts/copy-demos.mjs",
     "build:watch": "",
     "dev": "node scripts/pages.mjs && vitepress dev",
     "preview": "vitepress preview",

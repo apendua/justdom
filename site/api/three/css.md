@@ -583,6 +583,34 @@ its shapes the ray is on, so a diagram can style a node by its group:
 }
 ```
 
+**Gradients.** A shape's `fill` or `stroke` that names a `<linearGradient>` or a `<radialGradient>`
+draws it, evaluated per pixel over the shape:
+
+```html
+<defs>
+  <linearGradient id="sky" x2="0" y2="1">
+    <stop offset="0" stop-color="#4a90d9" />
+    <stop offset="1" stop-color="#4a90d9" stop-opacity="0" />
+  </linearGradient>
+</defs>
+<rect width="120" height="40" fill="url(#sky)" />
+```
+
+The gradient is read as SVG defines it. Its coordinates are fractions of the shape's fill bounding
+box under `gradientUnits="objectBoundingBox"`, the default, and user units under `userSpaceOnUse`,
+where a percentage is of the viewport. `gradientTransform` applies after them, and `spreadMethod`
+pads, reflects or repeats past the ends. A radial gradient takes `fx`, `fy` and `fr`, and a focal
+circle outside the end circle draws the cone between the two, leaving the rest unpainted, as
+Chromium does. Whatever a gradient leaves unset, its stops included, comes from the gradient its
+`href` names, down the chain. A stop's colour and opacity are its computed `stop-color` and
+`stop-opacity`, so a stylesheet can restyle them, and the colours between two stops are interpolated
+without premultiplying, as a browser draws an SVG gradient, so a fade to a transparent stop passes
+through the transparent stop's colour. A stroke is laid over the fill bounding box too, so an
+`objectBoundingBox` gradient on a horizontal or vertical line draws nothing, as in a browser. A
+gradient with no length or no radius paints its last stop's colour, one with no stops paints
+nothing, and a reference to anything else draws the fallback colour, if there is one. The stops are
+baked into the same ramp texture the CSS gradients use, 256 texels long.
+
 **`clip-path`.** A `clip-path` is drawn when it names a `<clipPath>` that holds one `<rect>`, the
 one shape the clip box a nested `<svg>` uses can hold:
 
@@ -611,9 +639,12 @@ chain is read. A `<title>`, `<desc>` or `<metadata>` beside the rect is skipped.
 
 Not followed:
 
-- Gradients and patterns: a `url(#…)` paint reads as `none`, though it still counts as painted for a
-  ray, and one given a fallback colour, `url(#hatch) black`, is drawn in that colour. `mask`,
-  filters, `<foreignObject>` and `vector-effect`.
+- Patterns, and a gradient on text: a `url(#…)` paint that names a `<pattern>`, or any server on a
+  `<text>`, reads as `none`, though it still counts as painted for a ray, and one given a fallback
+  colour, `url(#hatch) black`, is drawn in that colour. `mask`, filters, `<foreignObject>` and
+  `vector-effect`.
+- A gradient that is not in the document when the shape is first drawn is found the next time the
+  shape's `fill` or `stroke` changes.
 - A `clip-path` of any shape but the rect above — a circle, a path, two shapes, a basic shape such
   as `inset()` — clips nothing, and so does a `clip-path` on an `<svg>` root as it stands on the
   page. The corners are square whatever the rect's `rx` and `ry`, and a rect turned or skewed
@@ -627,9 +658,9 @@ Not followed:
   measured copy.
 - A `<use>` target that appears only after the `<use>` mounted, such as a sprite fetched and
   injected later.
-- An edit inside a `<marker>`, a `<symbol>` or a `<clipPath>` reaches every copy when the template
-  is inside the panel, wherever its `<defs>` sits there; one elsewhere on the page is drawn as it
-  was first read, since the portal observes only its own panel.
+- An edit inside a `<marker>`, a `<symbol>`, a `<clipPath>` or a gradient reaches every copy when
+  the template is inside the panel, wherever its `<defs>` sits there; one elsewhere on the page is
+  drawn as it was first read, since the portal observes only its own panel.
 - Markers and the copies a `<use>` draws are not ray targets: a press on an arrowhead goes to what
   is behind it.
 - A `getBBox()` read for a `clip-path` under `objectBoundingBox` forces a layout, once for each

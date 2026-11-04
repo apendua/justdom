@@ -18,6 +18,7 @@ import { place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
+import { RampSlot } from "../elements/gradient.js";
 import {
   getAttributeCached,
   getBorderBoxSize,
@@ -57,10 +58,11 @@ import {
   viewportMatrix,
 } from "./geometry.js";
 import { dashRuns } from "./dash.js";
+import { paintServerEqual, readPaintServer } from "./paintServer.js";
+import { applyPaint, createPaintUniforms, toGradientSpace, writePaint } from "./paintShader.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import {
   clipsViewport,
-  paintEqual,
   isPainted,
   parseDashArray,
   parseFillRule,
@@ -68,7 +70,6 @@ import {
   parseLineCap,
   parseLineJoin,
   parseNumber,
-  parsePaint,
   parsePointerEvents,
   parseUrlReference,
   readProperty,
@@ -84,7 +85,8 @@ import {
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from '../elements/clip.js';
  * @import {Matrix2D, Rect} from './geometry.js';
- * @import {HitRule, Paint, ShapeGeometry} from './style.js';
+ * @import {HitRule, ShapeGeometry} from './style.js';
+ * @import {PaintServer} from './paintServer.js';
  */
 
 /**
@@ -271,6 +273,83 @@ export function buildShapePath(geometry) {
       return path;
     }
   }
+}
+
+/** How finely a `<path>`'s curves are sampled for its bounding box. */
+const BOX_DIVISIONS = 64;
+
+/**
+ * The shape's fill bounding box, in user units: the box around its
+ * geometry, with no stroke and no markers, as `getBBox` measures it. Read
+ * from the geometry's numbers, exactly, for every kind but a `<path>`, whose
+ * curves are sampled. Null for a path with no points.
+ *
+ * @param {ShapeGeometry} geometry
+ * @param {() => ShapePath | null} path The outline, read only for a
+ *   `<path>`.
+ * @returns {Box | null}
+ */
+export function fillBox(geometry, path) {
+  switch (geometry.kind) {
+    case "rect":
+      return { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height };
+    case "circle": {
+      const { cx, cy, r } = geometry;
+      return { x: cx - r, y: cy - r, width: 2 * r, height: 2 * r };
+    }
+    case "ellipse": {
+      const { cx, cy, rx, ry } = geometry;
+      return { x: cx - rx, y: cy - ry, width: 2 * rx, height: 2 * ry };
+    }
+    case "line":
+      return boxAround([geometry.x1, geometry.y1, geometry.x2, geometry.y2]);
+    case "polyline":
+    case "polygon":
+      return boxAround(geometry.points);
+    case "path": {
+      /** @type {number[]} */
+      const points = [];
+      for (const subPath of path()?.subPaths ?? []) {
+        for (const point of subPath.getPoints(BOX_DIVISIONS)) {
+          points.push(point.x, point.y);
+        }
+      }
+      return boxAround(points);
+    }
+  }
+}
+
+/**
+ * @param {number[]} points `x y` pairs.
+ * @returns {Box | null}
+ */
+function boxAround(points) {
+  if (points.length < 2) {
+    return null;
+  }
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (let i = 0; i + 1 < points.length; i += 2) {
+    left = Math.min(left, points[i]);
+    right = Math.max(right, points[i]);
+    top = Math.min(top, points[i + 1]);
+    bottom = Math.max(bottom, points[i + 1]);
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * @param {Box | null} a
+ * @param {Box | null} b
+ * @returns {boolean}
+ */
+function boxEqual(a, b) {
+  return (
+    a === b ||
+    (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height)
+  );
 }
 
 /**
@@ -1404,6 +1483,9 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  *   fill or a stroke that is not `none`, a picture that has loaded.
  * @property {EntityEffect<THREE.Mesh>[]} paint The effects that write the
  *   material's colour, map and opacity.
+ * @property {(material: THREE.MeshBasicMaterial) => void} [patch] More to
+ *   install on the material once it carries its clip patch: a shape's
+ *   gradient patch (`applyPaint`).
  * @property {() => boolean} hidden Whether `visibility` hides the element
  *   this mesh paints.
  * @property {() => boolean} hit Whether a ray can hit this region.
@@ -1433,7 +1515,7 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * @param {ReturnType<typeof clipUniforms>} uniforms
  * @returns {Source<Component>}
  */
-function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, uniforms) {
+function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slot, uniforms) {
   const { clip, clipMatrix, clipBox } = uniforms;
   const mesh = new THREE.Mesh();
   registerDrawOrder(mesh);
@@ -1457,6 +1539,7 @@ function paintedMesh({ geometry, paints, paint, hidden, hit, layer }, slot, unif
       // not the depth buffer decides what covers what on one plane.
       const material = new THREE.MeshBasicMaterial(MARK_MATERIAL_SETTINGS);
       applyClip(material, clip, clipMatrix);
+      patch?.(material);
       onCleanup(() => {
         material.dispose();
       });
@@ -1755,8 +1838,24 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
   /** @param {string} name */
   const read = (name) => readDrawnProperty(element, name, instance);
 
-  const fillPaint = new Derived(() => parsePaint(read("fill")), { isEqual: paintEqual });
-  const strokePaint = new Derived(() => parsePaint(read("stroke")), { isEqual: paintEqual });
+  const fillPaint = new Derived(() => readPaintServer(element, read("fill"), viewport), {
+    isEqual: paintServerEqual,
+  });
+  const strokePaint = new Derived(() => readPaintServer(element, read("stroke"), viewport), {
+    isEqual: paintServerEqual,
+  });
+
+  /**
+   * The fill bounding box an `objectBoundingBox` gradient is laid over, for
+   * the fill and the stroke alike. Read only for such a gradient.
+   */
+  const box = new Derived(
+    () => {
+      const current = geometry.get();
+      return current ? fillBox(current, () => path.get()) : null;
+    },
+    { isEqual: boxEqual },
+  );
   const fillRule = new Derived(() => parseFillRule(read("fill-rule")));
   const strokeSpec = new Derived(() => readStrokeSpec(read, viewport), {
     isEqual: strokeSpecEqual,
@@ -1803,19 +1902,62 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
     const scale = new Derived(() => samplingScale(matrixScale(node.chain().ctm)));
 
     /**
-     * @param {Derived<Paint | null>} paint
+     * What one region's mesh paints with, and whether it paints at all: a
+     * flat colour written to the material, or a gradient written to the
+     * paint patch's uniforms over a white material, both under the region's
+     * opacity. A gradient that draws nothing on this shape
+     * (`toGradientSpace`) paints nothing. The uniforms are written apart
+     * from the colour, so an opacity animated above the shape writes the
+     * material alone. Each mesh holds its own ramp row and lets go of it
+     * when the mesh goes.
+     *
+     * @param {Derived<PaintServer | null>} server
      * @param {string} opacityName `fill-opacity` or `stroke-opacity`.
-     * @returns {EntityEffect<THREE.Mesh>}
+     * @returns {Pick<MeshOptions, "paints" | "paint" | "patch">}
      */
-    const tint = (paint, opacityName) =>
-      effects((obj) => {
-        const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
-        const current = paint.get();
-        if (current) {
-          material.color.copy(current.color);
-          material.opacity = current.alpha * (node.opacity() * parseNumber(read(opacityName), 1));
-        }
+    const tint = (server, opacityName) => {
+      const uniforms = createPaintUniforms();
+      const ramp = new RampSlot();
+      const space = new Derived(() => {
+        const current = server.get();
+        return current && current.kind !== "color"
+          ? toGradientSpace(current, () => box.get())
+          : null;
       });
+      return {
+        paints: () => {
+          const current = server.get();
+          return current !== null && (current.kind === "color" || space.get() !== null);
+        },
+        patch: (material) => applyPaint(material, uniforms),
+        paint: [
+          effects(() => {
+            const current = server.get();
+            writePaint(uniforms, current?.kind === "color" ? null : current, space.get(), ramp);
+          }),
+          effects((obj) => {
+            const material = /** @type {THREE.MeshBasicMaterial} */ (obj.material);
+            const current = server.get();
+            if (!current) {
+              return;
+            }
+            const opacity = node.opacity() * parseNumber(read(opacityName), 1);
+            if (current.kind === "color") {
+              material.color.copy(current.paint.color);
+              material.opacity = current.paint.alpha * opacity;
+            } else {
+              material.color.setRGB(1, 1, 1);
+              material.opacity = opacity;
+            }
+          }),
+          effects(() => {
+            onCleanup(() => {
+              ramp.release();
+            });
+          }),
+        ],
+      };
+    };
 
     return {
       /**
@@ -1837,8 +1979,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
                     const current = path.get();
                     return current ? buildFillGeometry(current, fillRule.get(), scale.get()) : null;
                   },
-                  paints: () => fillPaint.get() !== null,
-                  paint: [tint(fillPaint, "fill-opacity")],
+                  ...tint(fillPaint, "fill-opacity"),
                   hidden: () => hidden.get(),
                   hit: () => fillHit.get(),
                   layer: 0,
@@ -1854,8 +1995,7 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
                       ? buildStrokeGeometry(current, strokeSpec.get(), scale.get())
                       : null;
                   },
-                  paints: () => strokePaint.get() !== null,
-                  paint: [tint(strokePaint, "stroke-opacity")],
+                  ...tint(strokePaint, "stroke-opacity"),
                   hidden: () => hidden.get(),
                   hit: () => strokeHit.get(),
                   layer: 1,

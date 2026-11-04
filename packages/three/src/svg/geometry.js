@@ -278,6 +278,81 @@ export function parseCssMatrix(value) {
 }
 
 /**
+ * An SVG transform list, as `gradientTransform` and `patternTransform` are
+ * written: `matrix()`, `translate()`, `scale()`, `rotate()` with or without
+ * a centre, `skewX()` and `skewY()`, separated by whitespace or commas and
+ * applied right to left, as the list composes. Null for an empty or absent
+ * list, and for one that does not parse, which SVG draws as no transform.
+ *
+ * @param {string | null | undefined} value
+ * @returns {Matrix2D | null}
+ */
+export function parseTransformList(value) {
+  if (!value || !value.trim()) {
+    return null;
+  }
+  const item = /\s*,?\s*(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/y;
+  /** @type {Matrix2D} */
+  let matrix = IDENTITY;
+  let at = 0;
+  const text = value.trim();
+  while (at < text.length) {
+    item.lastIndex = at;
+    const match = item.exec(text);
+    if (!match) {
+      return null;
+    }
+    at = item.lastIndex;
+    const args =
+      match[2].trim() === ""
+        ? []
+        : match[2]
+            .trim()
+            .split(/[\s,]+/)
+            .map(Number);
+    if (args.some((n) => !Number.isFinite(n))) {
+      return null;
+    }
+    const step = transformItem(match[1], args);
+    if (!step) {
+      return null;
+    }
+    matrix = multiply(matrix, step);
+  }
+  return matrix;
+}
+
+/**
+ * @param {string} name
+ * @param {number[]} args
+ * @returns {Matrix2D | null}
+ */
+function transformItem(name, args) {
+  const n = args.length;
+  switch (name) {
+    case "matrix":
+      return n === 6 ? [args[0], args[1], args[2], args[3], args[4], args[5]] : null;
+    case "translate":
+      return n === 1 || n === 2 ? translation(args[0], args[1] ?? 0) : null;
+    case "scale":
+      return n === 1 || n === 2 ? scaling(args[0], args[1] ?? args[0]) : null;
+    case "rotate": {
+      if (n !== 1 && n !== 3) {
+        return null;
+      }
+      const turn = rotation((args[0] * Math.PI) / 180);
+      return n === 3 ? aboutOrigin(turn, args[1], args[2]) : turn;
+    }
+    case "skewX":
+      return n === 1 ? [1, 0, Math.tan((args[0] * Math.PI) / 180), 1, 0, 0] : null;
+    case "skewY":
+      return n === 1 ? [1, Math.tan((args[0] * Math.PI) / 180), 0, 1, 0, 0] : null;
+    default:
+      return null;
+  }
+}
+
+/**
  * @typedef {object} ViewBox
  * @property {number} x
  * @property {number} y

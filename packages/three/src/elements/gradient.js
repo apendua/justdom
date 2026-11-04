@@ -820,6 +820,8 @@ export const GRADIENT_CONIC = 3;
  * @property {{ color: RGBA, position: number }[]} stops
  * @property {(number | null)[]} hints `hints[i]` is the hint between stop `i`
  *   and stop `i + 1`, if there is one.
+ * @property {boolean} [straight] Interpolate the stops in straight alpha, as
+ *   an SVG gradient is, rather than premultiplied, as a CSS one is.
  */
 
 /**
@@ -1184,9 +1186,12 @@ export const RAMP_WIDTH = 256;
  * @param {ResolvedRamp} ramp
  * @returns {string}
  */
-function rampKeyOf(ramp) {
+export function rampKeyOf(ramp) {
   const round = (/** @type {number} */ x) => Math.round(x * 1e4) / 1e4;
   let key = ramp.repeating ? `r${round(ramp.start)}/${round(ramp.period)}` : "n";
+  if (ramp.straight) {
+    key += "s";
+  }
   for (let i = 0; i < ramp.stops.length; i++) {
     const { color, position } = ramp.stops[i];
     key += `|${round(position)}:${color.map(round).join(",")}`;
@@ -1202,6 +1207,8 @@ function rampKeyOf(ramp) {
  * The colour at a point of the gradient line, interpolated the way CSS does
  * it: between the two stops around it, in premultiplied sRGB, bent toward a
  * hint if the transition has one. Past either end it holds the end's colour.
+ * A `straight` ramp, an SVG gradient's, interpolates the channels without
+ * the alpha, as Chromium draws one.
  *
  * @param {ResolvedRamp} ramp
  * @param {number} t
@@ -1240,6 +1247,10 @@ export function colorAt(ramp, t) {
   /** @type {RGBA} */
   const color = [0, 0, 0, alpha];
   for (let c = 0; c < 3; c++) {
+    if (ramp.straight) {
+      color[c] = a.color[c] + (b.color[c] - a.color[c]) * weight;
+      continue;
+    }
     const premultiplied =
       a.color[c] * a.color[3] + (b.color[c] * b.color[3] - a.color[c] * a.color[3]) * weight;
     color[c] = premultiplied / alpha;
@@ -1446,7 +1457,7 @@ export class RampSlot {
   row = 0;
 
   /**
-   * @param {GradientLayout | null} layout
+   * @param {Pick<GradientLayout, "rampKey" | "ramp"> | null} layout
    * @returns {number} The row, or 0 when there is no layout.
    */
   set(layout) {

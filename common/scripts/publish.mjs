@@ -133,8 +133,9 @@ function main() {
       throw new Error(
         "The build failed, so nothing was published. Rush fails a build on " +
           "warnings as well as errors, and any output on stderr counts as a " +
-          "warning. The FAILURE and WARNING blocks in Rush's summary above " +
-          "name the projects and show their output.",
+          "warning. Rush's summary above heads the result FAILURE or SUCCESS " +
+          "WITH WARNINGS, and its FAILURE: and WARNING: blocks name the " +
+          "projects and show their output.",
       );
     }
   }

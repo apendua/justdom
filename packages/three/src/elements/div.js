@@ -15,7 +15,7 @@ import {
   writeRectUniforms,
 } from "./sdfRect.js";
 import { RampSlot } from "./gradient.js";
-import { contentImage, isImageElement } from "./image.js";
+import { backgroundImage, contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import {
   getBorderBoxSize,
@@ -205,6 +205,10 @@ const committedPlacements = new WeakMap();
  *   else belongs inside the box, on top of its background — the tick in a
  *   checkbox, and nothing at all for an element whose contents are its own
  *   child nodes.
+ * @property {boolean} [backgroundPicture] Whether a `background-image:
+ *   url()` is drawn. True unless a control draws that part itself: a
+ *   checkbox draws its own tick, which a page with `appearance: none` gives
+ *   as a `url()` picture.
  * @property {(target: THREE.Matrix4) => void} [contentMatrix] Where the
  *   element's children are drawn from, if not from its border-box corner:
  *   writes the matrix from the children's frame to the element's into
@@ -245,6 +249,7 @@ export function box(ctx, element, options = {}) {
     contentMatrix,
     onPress,
     interactions: ownInteractions = [],
+    backgroundPicture = true,
   } = options;
   /** @type {THREE.Object3D<XREventMap>} */
   const object = new THREE.Object3D();
@@ -302,13 +307,38 @@ export function box(ctx, element, options = {}) {
   /**
    * The picture this element paints inside its box, for the ones that have
    * any. Built only for elements that can carry one, and a tag never changes,
-   * so this is decided once rather than watched: an ordinary div pays nothing
-   * — no signal, no effect, no uniform write — for a feature it will never
-   * use, which matters when a panel is a few hundred of them.
+   * so this is decided once rather than watched. An ordinary div still pays
+   * for the picture slot it shares with a `url()` background (below): one
+   * effect that reads one memoized string, and two uniform writes when it
+   * mounts.
    *
    * @type {Derived<import('./image.js').ContentImage | null> | null}
    */
   const image = isImageElement(element) ? contentImage(element, properties) : null;
+
+  /**
+   * The picture a `background-image: url()` paints, built the first time
+   * the box has one, so that a box that never does builds nothing. An
+   * `<img>`'s box draws its own picture and not this one: a box has one
+   * picture slot.
+   *
+   * @type {Derived<import('./image.js').ContentImage | null> | null}
+   */
+  let background = null;
+  /** Whether this box draws a `url()` background now. */
+  const drawsBackgroundPicture = () =>
+    backgroundPicture && properties.backgroundPictureUrl !== null;
+  /** @returns {import('./image.js').ContentImage | null} */
+  const shownPicture = () => {
+    if (image) {
+      return image.get();
+    }
+    if (!drawsBackgroundPicture()) {
+      return null;
+    }
+    background ??= backgroundImage(properties);
+    return background.get();
+  };
 
   /**
    * What this element's overflow-hiding ancestors leave of it, in its own
@@ -371,13 +401,20 @@ export function box(ctx, element, options = {}) {
    *
    * @type {import('./boxBatch.js').BoxBatch | null}
    */
-  const batch = image ? null : BoxBatchContext.get(ctx);
+  const panelBatch = image ? null : BoxBatchContext.get(ctx);
+
+  /**
+   * The batch this box is drawn by now. A box with a `url()` background
+   * leaves it for as long as it has one, for the same reason an `<img>`
+   * never joins, and a class or a hover can give it one or take it away, so
+   * this is read where it decides something rather than once. A box without
+   * one reads a memoized string to find out.
+   *
+   * @returns {import('./boxBatch.js').BoxBatch | null}
+   */
+  const batch = () => (drawsBackgroundPicture() ? null : panelBatch);
   /** The panel's order of its layers, null outside a portal. */
   const layerOrder = LayerOrderContext.get(ctx);
-  // The panel draws the box level with what it covers, so the hit test goes
-  // by the order it draws at: the one batch's, or its own for a box that
-  // draws itself.
-  registerDrawOrder(boxMesh, batch ? BOX_BUCKET_BIAS : 0);
 
   /**
    * The text of this panel, which has to hear about this element moving even
@@ -407,7 +444,7 @@ export function box(ctx, element, options = {}) {
    * @returns {void}
    */
   const batchChanged = () => {
-    batch?.invalidate();
+    batch()?.invalidate();
     textBatch?.invalidate();
   };
 
@@ -794,15 +831,22 @@ export function box(ctx, element, options = {}) {
       // layout animation affordable and a style change nearly free.
       $(boxMesh, [
         set("material", () => {
-          if (batch) {
+          const drawnBy = batch();
+          // The panel draws the box level with what it covers, so the hit
+          // test goes by the order it draws at: the one batch's, or its own
+          // for a box that draws itself. It follows the draw the box is in
+          // now, from the first run at mount on.
+          registerDrawOrder(boxMesh, drawnBy ? BOX_BUCKET_BIAS : 0);
+          if (drawnBy) {
             // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
             // The numbers live in `uniforms` instead, which is what the batch
             // reads.
             return batchedBoxMaterial();
           }
-          // No batch to draw this box: an `<img>`, whose picture is a texture
-          // binding and so a draw of its own, or a panel built outside a
-          // portal. Those still draw themselves, from a material of their own.
+          // No batch to draw this box: an `<img>` or a box with a `url()`
+          // background, whose picture is a texture binding and so a draw of
+          // its own, or a panel built outside a portal. Those still draw
+          // themselves, from a material of their own.
           const material = createRectMaterial(uniforms);
           // The panel's depth is one quad over its root's
           // (`createDepthQuad`), and no box writes any.
@@ -813,15 +857,17 @@ export function box(ctx, element, options = {}) {
           return material;
         }),
         // After the material, which is what carries the flag that takes this
-        // mesh out of the draw — and which is built once, since its factory
-        // reads nothing that changes while the box is in its panel.
+        // mesh out of the draw. Both read `batch()`, so a box that gains or
+        // loses a picture builds its material again, and this runs after it
+        // on every such change.
         effects(() => {
-          if (!batch) {
+          const drawnBy = batch();
+          if (!drawnBy) {
             return;
           }
-          batch.add(boxMesh, uniforms);
+          drawnBy.add(boxMesh, uniforms);
           onCleanup(() => {
-            batch.remove(boxMesh);
+            drawnBy.remove(boxMesh);
           });
         }),
         // A box that is a layer's root is one of the planes the panel's walk
@@ -870,19 +916,15 @@ export function box(ctx, element, options = {}) {
           // bias added there. One that draws itself takes its own, behind its
           // integer, since its origin, level with the container's, cannot
           // order it against the text.
-          obj.renderOrder = properties.renderOrder + (batch ? 0 : UNBATCHED_BOX_BIAS);
+          obj.renderOrder = properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS);
           batchChanged();
         }),
-        // Its own effect, and only where there is a picture: a texture
-        // arriving late must not look like a reason to rewrite the box, and
-        // the box moving must not look like a reason to rebind a texture.
-        ...(image
-          ? [
-              effects((obj) => {
-                writeImageUniforms(uniforms, image.get());
-              }),
-            ]
-          : []),
+        // Its own effect: a texture arriving late must not look like a reason
+        // to rewrite the box, and the box moving must not look like a reason
+        // to rebind a texture.
+        effects(() => {
+          writeImageUniforms(uniforms, shownPicture());
+        }),
       ]),
       ...content({
         properties,

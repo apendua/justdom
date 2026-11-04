@@ -16,7 +16,7 @@ import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { getDrawLevel, getRenderBand } from "./elevation.js";
-import { layoutGradient, parseBackground } from "./gradient.js";
+import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradient.js";
 
 /**
  * @import {GradientLayout} from './gradient.js';
@@ -518,7 +518,17 @@ export default class VisualProperties {
     if (!background) {
       return null;
     }
-    return layoutGradient(background, {
+    return layoutGradient(background, this.backgroundBox);
+  }
+
+  /**
+   * The edges a background layer is laid out between, gradient and picture
+   * alike.
+   *
+   * @returns {import('./gradient.js').BackgroundBox}
+   */
+  get backgroundBox() {
+    return {
       width: this.totalWidth,
       height: this.totalHeight,
       border: [
@@ -533,7 +543,41 @@ export default class VisualProperties {
         parseSize(this.#props.paddingBottom, this.unitsH),
         parseSize(this.#props.paddingLeft, this.unitsW),
       ],
+    };
+  }
+
+  /**
+   * The `url()` layer of the background, as parsed and before its picture
+   * has a size, or `null` for none. `image.js` lays it out once the picture
+   * has loaded (`backgroundImage`).
+   *
+   * @returns {import('./gradient.js').BackgroundPicture | null}
+   */
+  get backgroundPicture() {
+    const props = this.#props;
+    if (props.backgroundImage === "none") {
+      return null;
+    }
+    return parseBackgroundPicture({
+      image: props.backgroundImage,
+      size: props.backgroundSize,
+      positionX: props.backgroundPositionX,
+      positionY: props.backgroundPositionY,
+      position: props.backgroundPosition,
+      repeat: props.backgroundRepeat,
+      origin: props.backgroundOrigin,
     });
+  }
+
+  /**
+   * The address of the background's picture, or `null`: whether the box
+   * draws a picture of its own, which is what takes it out of its panel's
+   * batch. A string, so that a restyle that keeps the picture tells nobody.
+   *
+   * @returns {string | null}
+   */
+  get backgroundPictureUrl() {
+    return this.backgroundPicture?.url ?? null;
   }
 
   get borderColor() {
@@ -595,6 +639,9 @@ decorate(VisualProperties.prototype, "backgroundColor", memo());
 decorate(VisualProperties.prototype, "backgroundAlpha", memo());
 decorate(VisualProperties.prototype, "background", memo());
 decorate(VisualProperties.prototype, "backgroundGradient", memo());
+decorate(VisualProperties.prototype, "backgroundBox", memo());
+decorate(VisualProperties.prototype, "backgroundPicture", memo());
+decorate(VisualProperties.prototype, "backgroundPictureUrl", memo());
 decorate(VisualProperties.prototype, "borderColor", memo());
 decorate(VisualProperties.prototype, "borderAlpha", memo());
 decorate(VisualProperties.prototype, "textColor", memo());

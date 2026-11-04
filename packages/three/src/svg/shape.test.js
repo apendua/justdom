@@ -1131,7 +1131,14 @@ describe("svg shape painted by a gradient", () => {
     assert.equal(painted.length, 1, "the fill alone takes the patch");
     assert.equal(paintOf(painted[0]).kind, 1);
     assert.equal(material(painted[0]).color.getHexString(), "ffffff");
+    // The remounted fill has a later mesh id than the stroke, and still
+    // draws under it, by its layer's render order.
+    const [stroke, fill] = s.meshes;
+    assert.equal(fill, painted[0]);
+    assert.ok(fill.renderOrder < stroke.renderOrder, "the fill draws under the stroke");
     s.setAttribute("fill", "lime");
+    const [, flatFill] = s.meshes;
+    assert.ok(flatFill.renderOrder < stroke.renderOrder, "and again once flat");
     assert.deepEqual(
       s.meshes.map((mesh) => [
         material(mesh).color.getHexString(),

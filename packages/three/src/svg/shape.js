@@ -2027,6 +2027,12 @@ export function shape(ctx, element, { instance = null, decorate } = {}) {
     };
 
     /**
+     * Which tint a region takes. Two colours, or two servers, in a row keep
+     * the mesh; a paint that crosses between them remounts it, its
+     * geometry rebuilt. A gradient with no length or no radius is read as
+     * a colour (`readGradient`), so an animated `x2` sweeping through `x1`,
+     * or an `r` through 0, crosses twice though only one gradient changed.
+     *
      * @param {Derived<PaintServer | null>} server
      * @param {() => boolean} hit
      * @returns {"color" | "server" | null} Which tint the region's mesh

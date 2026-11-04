@@ -20,10 +20,14 @@ import { SPREAD_PAD } from "./paintServer.js";
  * 0 to 1, and the fragment samples the tile's picture there
  * (`svg/patternTile.js`).
  *
- * Every shape mesh carries the patch, a flat colour as much as a server,
- * so that a paint that changes between the two writes uniforms and never
- * compiles a second program. For a flat colour the fragment skips the
- * patch on one uniform.
+ * Only a region painted by a server carries the patch. A region in a flat
+ * colour has a plain clipped material, and a paint that crosses between a
+ * flat colour and a server remounts the region's mesh with a new material
+ * (`paintRoute` in `svg/shape.js`), which compiles the other program. A
+ * flat colour still goes through the patch in two places, a pattern
+ * drawing its fallback colour and a server that draws nothing on the
+ * shape (`writePaint`), and there the fragment skips the patch on one
+ * uniform.
  */
 
 /** @typedef {import('./geometry.js').Matrix2D} Matrix2D */

@@ -613,7 +613,10 @@ over the fill bounding box too, so an `objectBoundingBox` gradient on a horizont
 draws nothing, as in a browser. A gradient with no length or no radius paints its last stop's
 colour, one with no stops paints nothing, and a reference to anything else draws the fallback
 colour, if there is one. The stops are baked into the same ramp texture the CSS gradients use, 256
-texels long.
+texels long. A paint that changes between a flat colour and a gradient or a pattern, on a hover say,
+rebuilds the region's mesh and its geometry, and a degenerate gradient counts as a colour for this.
+A change from one colour to another, or one gradient or pattern to another, writes the new paint and
+rebuilds nothing.
 
 **Patterns.** A `fill` or `stroke` that names a `<pattern>` draws its tile, repeated over the shape:
 

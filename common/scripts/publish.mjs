@@ -2,7 +2,7 @@
 // Publishes the packages of the "publishable" version policy whose current
 // version is not on npm yet, then tags each one it published.
 //
-//   npm login
+//   npm login --registry https://registry.npmjs.org/
 //   node common/scripts/publish.mjs            # build, publish, tag, push tags
 //   node common/scripts/publish.mjs --dry-run  # say what would be published
 //
@@ -107,6 +107,29 @@ function packagesInOrder() {
   return ordered;
 }
 
+/**
+ * Who npm is logged in as on the registry the script publishes to. A plain
+ * `npm login` logs in to whatever registry the user's ~/.npmrc names, and a
+ * login also expires. Without a valid login for npmjs.org, npm sends the
+ * upload without a token and the registry answers 404 Not Found, which reads
+ * as a missing package. Asking first turns that into a message that says
+ * what to run.
+ */
+function checkLogin() {
+  const result = spawnSync("npm", ["whoami", "--registry", registry], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  const user = result.stdout.trim();
+  if (result.status !== 0 || user === "") {
+    throw new Error(
+      `npm is not logged in to ${registry}:\n${result.stderr.trim()}\n` +
+        `Run \`npm login --registry ${registry}\` and try again.`,
+    );
+  }
+  console.log(`Publishing as ${user} on ${registry}`);
+}
+
 function checkCheckout() {
   if (git(["status", "--porcelain"]) !== "") {
     throw new Error("The working tree has changes. Publish from a clean checkout.");
@@ -123,6 +146,7 @@ function main() {
       "pnpm is not installed yet. Run `node common/scripts/install-run-rush.js install`.",
     );
   }
+  checkLogin();
   if (!dryRun) {
     checkCheckout();
     try {

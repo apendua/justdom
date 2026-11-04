@@ -1,3 +1,4 @@
+/// <reference types="justdom-signal/dom" preserve="true" />
 export { $, $$, children, list, keyedList } from "./dom.js";
 export { stylesheet, fontFace, className, CLASS_NAME } from "./stylesheet.js";
 export { renderText, text, textNode } from "./text.js";

@@ -572,6 +572,9 @@ importers:
       '@webgpu/types':
         specifier: ^0.1.65
         version: 0.1.74
+      esbuild:
+        specifier: ^0.27.4
+        version: 0.27.7
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
@@ -691,6 +694,27 @@ importers:
 
   ../../site:
     devDependencies:
+      '@apendua/euclid-core':
+        specifier: workspace:*
+        version: link:../packages/euclid-core
+      '@apendua/euclid-lang':
+        specifier: workspace:*
+        version: link:../packages/euclid-lang
+      '@apendua/geometry':
+        specifier: workspace:*
+        version: link:../packages/geometry
+      '@apendua/jsdom-env':
+        specifier: workspace:*
+        version: link:../packages/jsdom-env
+      '@apendua/sound':
+        specifier: workspace:*
+        version: link:../packages/sound
+      '@types/node':
+        specifier: ^24.7.0
+        version: 24.19.2
+      '@types/three':
+        specifier: ~0.185.0
+        version: 0.185.4
       castle:
         specifier: workspace:*
         version: link:../apps/castle
@@ -700,6 +724,24 @@ importers:
       euclid:
         specifier: workspace:*
         version: link:../apps/euclid
+      justdom-core:
+        specifier: workspace:*
+        version: link:../packages/core
+      justdom-signal:
+        specifier: workspace:*
+        version: link:../packages/signal
+      justdom-three:
+        specifier: workspace:*
+        version: link:../packages/three
+      justdom-three-ui:
+        specifier: workspace:*
+        version: link:../packages/three-ui
+      justdom-vite-hmr:
+        specifier: workspace:*
+        version: link:../packages/vite-hmr
+      justdom-xr:
+        specifier: workspace:*
+        version: link:../packages/xr
       knights:
         specifier: workspace:*
         version: link:../apps/knights
@@ -709,12 +751,24 @@ importers:
       playwright-core:
         specifier: ^1.56.0
         version: 1.64.1
+      rxjs:
+        specifier: ^7.8.2
+        version: 7.8.2
       showcase:
         specifier: workspace:*
         version: link:../apps/showcase
+      three:
+        specifier: ~0.185.0
+        version: 0.185.1
       todo:
         specifier: workspace:*
         version: link:../apps/todo
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: ^7.1.9
+        version: 7.3.7(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
       vitepress:
         specifier: 1.6.4
         version: 1.6.4(@algolia/client-search@5.61.0)(@types/node@24.19.2)(postcss@8.5.32)(terser@5.51.2)(typescript@7.0.2)

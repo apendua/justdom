@@ -138,7 +138,10 @@ browser knows. The grip's `contextmenu` comes alone, as before.
 a page that zooms or pans on `wheel`:
 
 ```js
-dom(ctx, drawing, [set({ position })], { thumbstickWheel: true });
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+
+dom(ctx, drawing, [effects((panel) => panel.position.copy(position))], { thumbstickWheel: true });
 ```
 
 While the hand's ray is on the panel and the hand holds no button, pushing the stick forward or
@@ -191,9 +194,12 @@ first, and an immersive session as something extra, already has its DOM — laid
 its state — and `dom()` mirrors it where it stands:
 
 ```js
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+
 const hud = document.getElementById("hud");
 
-dom(ctx, hud, [set({ position })]);
+dom(ctx, hud, [effects((panel) => panel.position.copy(position))]);
 ```
 
 Nothing about the element changes hands. It stays in the document with the styles the page gave it;
@@ -377,7 +383,10 @@ arrives rather than when the listener goes up, since which panel a node is in ch
 starts and ends:
 
 ```js
+import { getPortalRoot } from "justdom-three";
+
 document.addEventListener("click", (event) => {
+  if (!(event.target instanceof Node)) return;
   if (root.contains(event.target)) return; // inside
   const panel = getPortalRoot(root);
   if (panel && !panel.contains(event.target)) return; // the page, not the panel
@@ -394,7 +403,10 @@ and `scrollable` widgets in [`justdom-three-ui`](../three-ui) do it this way.
 A panel with nothing to press can say so and stop stopping rays:
 
 ```js
-dom(ctx, panel, [set({ position })], { opaqueToRays: false });
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+
+dom(ctx, panel, [effects((panel) => panel.position.copy(position))], { opaqueToRays: false });
 ```
 
 That is for readouts, and mainly for a head-locked overlay, which rides between the eye and the
@@ -417,15 +429,18 @@ frame keeps its rate however large the mount.
 | `onLoadingChanged` | none                                              | Called once, with `false`, when everything the initial content brought has been built and settled.                                                                                                       |
 
 ```js
+import { effects } from "justdom-signal";
+import { dom, render } from "justdom-three";
+
 render(Scene, {
   // A sliver while a hand is busy, generous otherwise; `Infinity` would
   // finish every mount in flight within the next frame.
   portalBudget: () => (interacting.get() ? 1 : 8),
 });
 
-dom(ctx, panel, [set({ position })], { priority: 1 });
-dom(ctx, readout, [set({ position })], { loadingFrame: false });
-dom(ctx, menu, [set({ position })], {
+dom(ctx, panel, [effects((panel) => panel.position.copy(position))], { priority: 1 });
+dom(ctx, readout, [effects((panel) => panel.position.copy(position))], { loadingFrame: false });
+dom(ctx, menu, [effects((panel) => panel.position.copy(position))], {
   loadingFrame: { color: "white", fill: "black", fillOpacity: 0.4, radius: 8 },
 });
 ```
@@ -586,7 +601,10 @@ list; a grip not felt closing is not felt opening either. Nothing is marked: a p
 it is felt, and so is the keyboard.
 
 ```js
-dom(ctx, numberPad, [set({ position })], {
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+
+dom(ctx, numberPad, [effects((panel) => panel.position.copy(position))], {
   haptics: { hover: true, strength: 0.6, flavor: "knock" },
 });
 ```
@@ -628,6 +646,9 @@ itself. `createBakery(ctx, faces, options)` draws each distinct face exactly onc
 parked out of sight, and hands out copies:
 
 ```js
+import { component, useEffects } from "justdom-signal";
+import { $, children, createBakery, getScene, Nothing } from "justdom-three";
+
 const bakery = createBakery(ctx, {
   timber: () => card("TIMBER", "#2f6b3a"),
   clay: () => card("CLAY", "#b4553a"),
@@ -717,6 +738,7 @@ ordinary boxes, mirrored by a portal of its own; `keyboard(props)` in
 so a scene gives it a factory, once, for every panel:
 
 ```js
+import { dom, render } from "justdom-three";
 import { keyboard } from "justdom-three-ui";
 
 render(Scene, {
@@ -814,6 +836,10 @@ being recomposed every frame on the chance it moved, which is most of what makes
 cheap. Place the panel however you like:
 
 ```js
+import * as THREE from "three";
+import { effects } from "justdom-signal";
+import { $, children, dom } from "justdom-three";
+
 $(new THREE.Group(), [
   effects((group) => {
     group.position.set(0, 1, -2);
@@ -832,7 +858,7 @@ a panel that is not moving costs a matrix multiply (`place.js` says how). `place
 ```js
 import { place, placeAndScale } from "justdom-three";
 
-placeAndScale(group, 0, 1, -2, 0.01, 0.01, 0.01);
+placeAndScale(stand, 0, 1, -2, 0.01, 0.01, 0.01);
 ```
 
 Both take the object first and commit its matrix, since a bare `position.set` on such an object
@@ -842,8 +868,10 @@ from position, quaternion and scale.
 ### Letting the player move a panel
 
 ```js
+import { dom } from "justdom-three";
+
 dom(ctx, Settings(ctx), [], { draggable: true });
-dom(ctx, Map(ctx), [], { draggable: { level: false, handleWidth: 20 } });
+dom(ctx, MapView(ctx), [], { draggable: { level: false, handleWidth: 20 } });
 ```
 
 | Option        | Default   | What it does                                                                                                         |
@@ -875,6 +903,8 @@ re-rasterize because you drifted a centimetre. `textScale.js` says why the ladde
 root two and why four is the ceiling.
 
 ```js
+import { dom } from "justdom-three";
+
 dom(ctx, List(ctx), [], { maxTextScale: 2 });
 ```
 
@@ -904,6 +934,9 @@ Some of what a panel is told belongs to the scene rather than to any one panel. 
 them once, as `panelOptions`, and every panel in the scene starts from them:
 
 ```js
+import { render } from "justdom-three";
+import { keyboard } from "justdom-three-ui";
+
 render(Scene, {
   panelOptions: {
     maxTextScale: 2,

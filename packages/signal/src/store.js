@@ -9,7 +9,7 @@ import { isPlainObject } from "./util.js";
 /**
  * @import {ComputationLike} from "./core.js"
  * @import {EntityEffect} from "./types.js"
- * @import {IEmitter} from "./Emitter.js";
+ * @import {AnyEventMap, IEmitter} from "./Emitter.js";
  * @typedef {Map<PropertyKey, PropertyDescriptor>} Descriptors
  */
 
@@ -389,7 +389,7 @@ export function replace(oldValue, newValue) {
 
 /**
  * @template {object} T
- * @template {object} [TEventMap={}]
+ * @template {object} [TEventMap=AnyEventMap]
  * @overload
  * @param {T} data
  * @param {Array<EntityEffect<T & IEmitter<TEventMap>>>} [operators]

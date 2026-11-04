@@ -116,21 +116,56 @@ export function attr(keyOrValues, value) {
  */
 
 /**
- * @template {ObjectWithData} TEntity
+ * Write one `dataset` entry. `undefined` deletes it; anything else is stored
+ * the way `dataset` stores it, as its string, `null` as `"null"`.
+ * See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset#setting_values
+ *
+ * @param {DOMStringMap} dataset
  * @param {string} key
- * @param {Subscribable<Primitive>} value
+ * @param {Primitive} value
+ * @returns {void}
+ */
+function applyData(dataset, key, value) {
+  if (value === undefined) {
+    delete dataset[key];
+  } else {
+    dataset[key] = value === null ? "null" : value.toString();
+  }
+}
+
+/**
+ * @template {ObjectWithData} TEntity
+ * @overload
+ * @param {string} key
+ * @param {Subscribable<Primitive> | (() => Primitive)} value
  * @returns {EntityEffect<TEntity>}
  */
-export function data(key, value) {
-  return write(value, (entity, v) => {
-    if (v === undefined) {
-      delete entity.dataset[key];
-    } else {
-      // We are trying to mimic the behavior of the dataset property
-      // See: https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset#setting_values
-      entity.dataset[key] = v === null ? "null" : v.toString();
-    }
-  });
+
+/**
+ * @template {ObjectWithData} TEntity
+ * @overload
+ * @param {Record<string, Primitive>} values
+ * @returns {EntityEffect<TEntity>}
+ */
+
+/**
+ * @template {ObjectWithData} TEntity
+ * @param {string|Record<string, Primitive>} keyOrValues
+ * @param {Subscribable<Primitive> | (() => Primitive)} [value]
+ * @returns {EntityEffect<TEntity>}
+ */
+export function data(keyOrValues, value) {
+  if (typeof keyOrValues === "object") {
+    return effects((entity) => {
+      for (const [key, val] of Object.entries(keyOrValues)) {
+        applyData(entity.dataset, key, val);
+      }
+    });
+  }
+  if (!value) {
+    throw new Error("Value observable is required when key is provided.");
+  }
+  return write(value, (entity, v) => applyData(entity.dataset, keyOrValues, v));
 }
 
 /**

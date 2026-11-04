@@ -42,8 +42,12 @@ It returns the JSDOM instance, which is what you want when the document itself i
 than the fixture:
 
 ```js
+import { setupJsdom } from "@apendua/jsdom-env";
+import { just } from "justdom-signal";
+import { children } from "justdom-core";
+
 const dom = setupJsdom({ html: "<!doctype html><html><body></body></html>" });
-render(app, document.body);
+just(document.body, [children(App({}))]).subscribe();
 const markup = dom.serialize();
 dom.window.close();
 ```

@@ -64,6 +64,8 @@ session itself, which is how a control in the room — a power button on a desk,
 — lets the player leave with a press rather than through the headset's own menu:
 
 ```js
+import { getXRSession } from "justdom-three";
+
 getXRSession(ctx)?.end();
 ```
 

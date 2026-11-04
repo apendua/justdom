@@ -88,7 +88,7 @@ const mounting = just(
   [
     set("label", () => label.get()), // written again whenever `label` moves
     on("done", (event) => finish(event)),
-    effects((thing) => thing.poll(interval.get())), // the identity, for a named lambda
+    effects((thing) => thing.poll(period.get())), // the identity, for a named lambda
   ],
 );
 
@@ -110,7 +110,7 @@ nested plain object or array is a store too, and an array's mutating methods, `p
 `sort` and the rest, each run as one update.
 
 ```js
-import { store } from "justdom-signal";
+import { Effect, store } from "justdom-signal";
 
 const props = store({ text: "", completed: false });
 new Effect(() => console.log(props.completed)); // re-runs on `props.completed = true` alone

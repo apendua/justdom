@@ -192,7 +192,7 @@ first frame, the browser wraps it once, and how many glyphs are drawn is answere
 shader.
 
 ```js
-import { makeReveal } from "justdom-three";
+import { dom, makeReveal } from "justdom-three";
 // The element builders are justdom-core's, as they are for any panel; `$`
 // and `children` here are that package's, not the ones justdom-three hands
 // out for Three objects.

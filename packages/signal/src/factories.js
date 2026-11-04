@@ -26,7 +26,14 @@ export function observable(fn) {
 }
 
 /**
- * @template {unknown[]} TArgs
+ * `TArgs` is bounded by `any[]`, not `unknown[]`, for a callback whose
+ * parameters say no type, which is every one in plain JavaScript. TypeScript
+ * gives such a parameter the bound's element type, and with `unknown` a
+ * `ctx.get(...)` in the body would be an error. With `any` the body reads as
+ * it would outside the call; a callback that annotates its parameters still
+ * gets exactly those types.
+ *
+ * @template {any[]} TArgs
  * @template TValue
  * @param {(...args: TArgs) => Subscribable<TValue>} fn
  * @returns {(...args: TArgs) => Source<TValue>}
@@ -55,7 +62,9 @@ export function component(fn) {
  * caller — it is the shape `$reloadable` swaps, so a module built out of these
  * is one hot reload can replace.
  *
- * @template {unknown[]} TArgs
+ * `TArgs` is bounded by `any[]` for the reason given at `component`.
+ *
+ * @template {any[]} TArgs
  * @param {(...args: TArgs) => void} fn
  * @returns {(...args: TArgs) => Source<never>}
  */

@@ -87,3 +87,6 @@ apps/*/tests/output/
 site/packages/
 site/demos/
 site/.vitepress/cache/
+
+# The docs' code blocks, written out by site/scripts/snippets.mjs for tsc.
+site/.snippets/

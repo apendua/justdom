@@ -1,0 +1,25 @@
+{
+  "name": "justdom-bundle-size",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Measures what a minimal app costs to ship with justdom, Solid, React and React Three Fiber",
+  "type": "module",
+  "scripts": {
+    "measure": "node measure.mjs"
+  },
+  "dependencies": {
+    "@react-three/fiber": "9.8.2",
+    "@react-three/uikit": "1.0.78",
+    "justdom-core": "0.3.8",
+    "justdom-signal": "1.0.1",
+    "justdom-three": "0.30.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "solid-js": "1.9.18",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "vite": "7.3.7",
+    "vite-plugin-solid": "2.11.15"
+  }
+}

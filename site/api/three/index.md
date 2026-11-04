@@ -51,7 +51,10 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
   on a page asks of a portal, and `FOCUS_ATTRIBUTE`, from an entry point that imports nothing from
   three.js. A widget a page shows before any session, and a panel may mirror during one, imports
   them from there, so that the page's own bundle does not carry the renderer; the dropdown and the
-  scrolling list in `justdom-three-ui` do.
+  scrolling list in `justdom-three-ui` do. The package declares no side effects, so a bundler that
+  shakes trees also leaves the renderer out of a page that imports the same names from
+  `justdom-three`. A dev server does not bundle, though, and loads every module the main entry
+  names, which is why the page's entry stays the one to import from.
 - From `justdom-three/svg`: `shape`, `group`, `image` and `drawText` are the builders
   `svgElements()` dispatches to, for a plugin that draws one SVG element its own way and hands the
   rest to them.

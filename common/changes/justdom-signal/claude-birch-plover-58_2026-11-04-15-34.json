@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "An effect disposed by a node it reads, during its dependency check, a warm or its own run, stops there instead of registering teardowns that leak",
+      "type": "minor",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

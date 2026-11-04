@@ -162,6 +162,18 @@ or a bare `Computation`.
 `batch(fn)` runs `fn` and holds every effect it invalidates until it returns, so a block of writes
 costs one run per effect. Nested batches merge into the outer one.
 
+A `Derived` resolving outside a batch (a plain read, `Effect.flush()`, an effect's first run) holds
+the queue the same way until the reader has its value. A signal the node writes as it evaluates then
+runs its readers once the node is resolved, not while a reader would still find the old value or
+take the evaluation for a cycle. A channel's `warm()` asked for in that time declines, as it does
+inside a batch.
+
+Teardowns are held the same way. When a node lets go of its dependencies, or the queue releases what
+a warm set aside, a teardown that writes a signal runs that signal's readers once every teardown has
+run, so a reader that throws cannot cut the rest short. When a failed pass resets the queue, what
+the reset's teardowns queued drains after it, and the failure that started the pass is the one
+rethrown.
+
 ### Update channels
 
 An effect belongs to an `UpdateChannel`, which decides when its queue drains and how long a pass may

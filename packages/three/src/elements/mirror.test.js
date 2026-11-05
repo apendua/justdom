@@ -1547,7 +1547,7 @@ describe("text layout under transforms", () => {
     // Shared by every text in the box, the copy dresses each inline element
     // in it, not only the path to the first text measured: which text came
     // first must not change what the others are measured against. What is
-    // laid out in a box of its own keeps its classes only.
+    // inside a box of its own keeps its classes only.
     const style = document.createElement("style");
     style.textContent = ".desk .card .other, .desk .card .inner { letter-spacing: 3px; }";
     document.head.appendChild(style);
@@ -1568,6 +1568,37 @@ describe("text layout under transforms", () => {
         /** @type {HTMLElement} */ (copy.querySelector(".inner")).style.letterSpacing,
         "",
       );
+    } finally {
+      held.dispose();
+      desk.remove();
+      style.remove();
+      restore();
+    }
+  });
+
+  test("a block styled from above the box stays a block in the copy", () => {
+    // The desk's ticket stub: `.stub small` makes the line under the title a
+    // block. With its classes alone the copy's `<small>` was inline, its
+    // words joined the title's line, and the title broke in two.
+    const style = document.createElement("style");
+    style.textContent = ".desk .card small { display: block; margin-top: 2px; }";
+    document.head.appendChild(style);
+    const desk = document.createElement("div");
+    desk.className = "desk";
+    const { card, mirror, texts } = cardOfTexts();
+    const small = document.createElement("small");
+    small.appendChild(document.createTextNode("ADMIT ONE"));
+    card.appendChild(small);
+    desk.appendChild(card);
+    document.body.appendChild(desk);
+    mirror.adopt(desk);
+    mirror.adopt(small);
+    const { roots, restore } = recordCopies();
+    const held = holdTextLayout(texts.inLabel);
+    try {
+      const copied = /** @type {HTMLElement} */ (roots[0].querySelector("small"));
+      assert.equal(copied.style.display, "block");
+      assert.equal(copied.style.marginTop, "2px");
     } finally {
       held.dispose();
       desk.remove();

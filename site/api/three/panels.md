@@ -284,7 +284,10 @@ and `height` size a box in the page and reach its siblings as any attribute does
 declared unable to move it. Colour, background, border colour, opacity and `transform` all work; a
 width, a padding or a font size that changes under the ray is not mirrored, and the boxes stay the
 size they were. Three of the four carry a second restriction: **`data-xr-hover`, `data-xr-active`
-and `data-xr-focus` may only style the element they match and its subtree.**
+and `data-xr-focus` may only style the element they match and its subtree.** A page's `:hover`,
+`:active` and `:focus` rules are rewritten to name these attributes
+([Hover, press and focus](./css#hover-press-and-focus)), so the same holds for them:
+`.row:hover ~ .row` is ignored as `.row[data-xr-hover] ~ .row` is.
 
 ```css
 .row[data-xr-hover] {

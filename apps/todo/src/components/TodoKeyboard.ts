@@ -49,7 +49,7 @@ const keyStyle = stylesheet`
     cursor: pointer;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background-color: #4f4f4f;
   }
 `;
@@ -57,7 +57,7 @@ const keyStyle = stylesheet`
 // Same specificity as the hover rule and later in the document, so a held
 // shift stays lit while the ray is resting on it.
 const keyHeldStyle = stylesheet`
-  .${CLASS_NAME}, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}, .${CLASS_NAME}:hover {
     background-color: #007bff;
   }
 `;

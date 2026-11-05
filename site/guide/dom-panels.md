@@ -61,12 +61,13 @@ from where it was pressed, a board drawn as one `<svg>`, reads the place a mouse
 it.
 
 Hover and press are written onto the element as attributes, since `:hover` and `:active` cannot be
-set from outside: `data-xr-hover` while a ray is on it and `data-xr-active` while it is held. A
-stylesheet styles both states in one rule, and the same for a ticked box and a focused field:
+set from outside: `data-xr-hover` while a ray is on it and `data-xr-active` while it is held. The
+page's own `:hover`, `:active` and `:focus` rules answer them as written, since the portal rewrites
+each to name its attribute too ([Hover, press and focus](/api/three/css#hover-press-and-focus)). A
+ticked box is the one a stylesheet still styles in both states itself:
 
 ```css
-.button:hover,
-.button[data-xr-hover] {
+.button:hover {
   background: #0056b3;
 }
 .done:checked,

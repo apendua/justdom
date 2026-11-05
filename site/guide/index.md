@@ -19,7 +19,9 @@ one says what a part of the family is for, shows it in a few lines, and points t
 8. [DOM panels](./dom-panels) — ordinary DOM mirrored into the scene, pointed at and typed into.
 9. [Writing CSS for a panel](./panel-css) — what a panel draws of the page's CSS and what it leaves
    out.
-10. [Development](./development) — hot reloading with live state, theming and outlines modes, the
+10. [Mirrors and HTML-in-Canvas](./html-in-canvas) — how a mirrored panel differs from one the
+    browser paints into a texture, and when to use each.
+11. [Development](./development) — hot reloading with live state, theming and outlines modes, the
     frame rate readout.
 
 The [demos](/demos/) are full apps built on these packages, and each one links to its source.

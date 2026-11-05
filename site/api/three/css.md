@@ -678,6 +678,67 @@ its shapes the ray is on, so a diagram can style a node by its group:
 }
 ```
 
+**Gradients.** A shape's `fill` or `stroke` that names a `<linearGradient>` or a `<radialGradient>`
+draws it, evaluated per pixel over the shape:
+
+```html
+<defs>
+  <linearGradient id="sky" x2="0" y2="1">
+    <stop offset="0" stop-color="#4a90d9" />
+    <stop offset="1" stop-color="#4a90d9" stop-opacity="0" />
+  </linearGradient>
+</defs>
+<rect width="120" height="40" fill="url(#sky)" />
+```
+
+The gradient is read as SVG defines it. Its coordinates are fractions of the shape's fill bounding
+box under `gradientUnits="objectBoundingBox"`, the default, and user units under `userSpaceOnUse`,
+where a percentage is of the viewport. `gradientTransform` applies after them, and `spreadMethod`
+pads, reflects or repeats past the ends. A radial gradient takes `fx`, `fy` and `fr`, and a focal
+circle outside the end circle draws the cone between the two, leaving the rest unpainted, as
+Chromium does. Whatever a gradient leaves unset, its stops included, comes from the gradient its
+`href` names, down the chain, the coordinates only from a gradient of the same kind: a radial
+gradient whose `href` names a linear one takes its units, transform, spread and stops, but not its
+centre. A stop's colour and opacity are its computed `stop-color` and `stop-opacity`, so a
+stylesheet can restyle them, and the colours between two stops are interpolated without
+premultiplying, as a browser draws an SVG gradient, so a fade to a transparent stop passes through
+the transparent stop's colour. The fill bounding box is exact for every shape but a `<path>`, whose
+curves are sampled, so a gradient over an arc can sit a hair inside the exact box. A stroke is laid
+over the fill bounding box too, so an `objectBoundingBox` gradient on a horizontal or vertical line
+draws nothing, as in a browser. A gradient with no length or no radius paints its last stop's
+colour, one with no stops paints nothing, and a reference to anything else draws the fallback
+colour, if there is one. The stops are baked into the same ramp texture the CSS gradients use, 256
+texels long. A paint that changes between a flat colour and a gradient or a pattern, on a hover say,
+rebuilds the region's mesh and its geometry, and a degenerate gradient counts as a colour for this.
+A change from one colour to another, or one gradient or pattern to another, writes the new paint and
+rebuilds nothing.
+
+**Patterns.** A `fill` or `stroke` that names a `<pattern>` draws its tile, repeated over the shape:
+
+```html
+<defs>
+  <pattern id="dots" width="8" height="8" patternUnits="userSpaceOnUse">
+    <circle cx="4" cy="4" r="2" fill="#4a90d9" />
+  </pattern>
+</defs>
+<rect width="120" height="40" fill="url(#dots) #4a90d9" />
+```
+
+The tile is `x`, `y`, `width` and `height` in `patternUnits`, fractions of the shape's fill bounding
+box by default, and its content is in `patternContentUnits`, user units by default, or fitted into
+the tile by a `viewBox` and `preserveAspectRatio`. `patternTransform` applies after them, and `href`
+lends what a pattern leaves unset, its content included. A tile with no width or no height, or no
+content, paints nothing.
+
+The tile is a picture: its content is written out as an SVG image, each element carrying its
+computed fill, stroke, opacity, font, transform, clip, mask and markers, and decoded through the
+same cache an `<img>` uses, at twice the size the shape is drawn at and at most 1024 pixels a side.
+Shapes that ask for the same tile at the same size share it. Until the picture is ready, the shape
+draws the tile it drew before, or else the fallback colour after the reference, or else nothing. An
+edit inside the pattern draws a new picture. Being a picture, a tile draws text in the fonts the
+image decoder has rather than the page's web fonts, an `<image>` in it only from a `data:` URL, and
+an animation in it as it stood when the tile was drawn.
+
 **`clip-path`.** A `clip-path` is drawn when it names a `<clipPath>` that holds one `<rect>`, the
 one shape the clip box a nested `<svg>` uses can hold:
 
@@ -706,9 +767,11 @@ chain is read. A `<title>`, `<desc>` or `<metadata>` beside the rect is skipped.
 
 Not followed:
 
-- Gradients and patterns: a `url(#…)` paint reads as `none`, though it still counts as painted for a
-  ray, and one given a fallback colour, `url(#hatch) black`, is drawn in that colour. `mask`,
-  filters, `<foreignObject>` and `vector-effect`.
+- A gradient or a pattern on text: a `url(#…)` paint on a `<text>` reads as `none`, though it still
+  counts as painted for a ray, and one given a fallback colour, `url(#hatch) black`, is drawn in
+  that colour. `mask`, filters, `<foreignObject>` and `vector-effect`.
+- A gradient or a pattern that is not in the document when the shape is first drawn is found the
+  next time the shape's `fill` or `stroke` changes.
 - A `clip-path` of any shape but the rect above — a circle, a path, two shapes, a basic shape such
   as `inset()` — clips nothing, and so does a `clip-path` on an `<svg>` root as it stands on the
   page. The corners are square whatever the rect's `rx` and `ry`, and a rect turned or skewed
@@ -722,9 +785,9 @@ Not followed:
   measured copy.
 - A `<use>` target that appears only after the `<use>` mounted, such as a sprite fetched and
   injected later.
-- An edit inside a `<marker>`, a `<symbol>` or a `<clipPath>` reaches every copy when the template
-  is inside the panel, wherever its `<defs>` sits there; one elsewhere on the page is drawn as it
-  was first read, since the portal observes only its own panel.
+- An edit inside a `<marker>`, a `<symbol>`, a `<clipPath>`, a gradient or a pattern reaches every
+  copy when the template is inside the panel, wherever its `<defs>` sits there; one elsewhere on the
+  page is drawn as it was first read, since the portal observes only its own panel.
 - Markers and the copies a `<use>` draws are not ray targets: a press on an arrowhead goes to what
   is behind it.
 - A `getBBox()` read for a `clip-path` under `objectBoundingBox` forces a layout, once for each

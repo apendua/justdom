@@ -18,6 +18,7 @@ import {
   parseUrl,
   RAMP_WIDTH,
   rampAtlas,
+  rampKeyOf,
   rampUniforms,
   RampSlot,
   resolveStops,
@@ -278,6 +279,19 @@ describe("stops", () => {
     const { stops, hints } = resolveStops(gradient.stops, 100);
     const ramp = { repeating: false, start: 0, period: 1, stops, hints };
     assertClose(colorAt(ramp, 0.5), [1, 0, 0, 0.5]);
+  });
+
+  test("a straight ramp, an SVG gradient's, interpolates the channels apart from alpha", () => {
+    // Red to a transparent blue: premultiplied keeps the red to the end,
+    // straight goes through purple, as Chromium draws an SVG gradient.
+    const stops = [
+      { color: /** @type {[number, number, number, number]} */ ([1, 0, 0, 1]), position: 0 },
+      { color: /** @type {[number, number, number, number]} */ ([0, 0, 1, 0]), position: 1 },
+    ];
+    const ramp = { repeating: false, start: 0, period: 1, stops, hints: [null, null] };
+    assertClose(colorAt(ramp, 0.5), [1, 0, 0, 0.5]);
+    assertClose(colorAt({ ...ramp, straight: true }, 0.5), [0.5, 0, 0.5, 0.5]);
+    assert.notEqual(rampKeyOf(ramp), rampKeyOf({ ...ramp, straight: true }), "never one row");
   });
 
   test("a hint moves the midpoint of its transition", () => {

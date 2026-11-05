@@ -1,6 +1,28 @@
 # Change Log - justdom-three
 
-This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+
+## 0.32.0
+Thu, 05 Nov 2026 23:28:58 GMT
+
+### Minor changes
+
+- Draw an element's ::before and ::after inside it: the text, the box and a content: url() picture, laid out where the page lays them out.
+- Order ::before and ::after in the paint order as an element's first and last child, so a positioned one draws over the children it covers
+- A ::before or ::after positioned with a positive z-index is an overlay: a layer of its own, lifted off its element, with a blocker that clicks its element.
+- SVG shapes draw linearGradient and radialGradient fills and strokes
+- Shapes painted in a flat colour no longer set up the gradient and pattern machinery or carry its shader patch
+- A box's background-image: url() is drawn, with its topmost gradient, in the order the page lists them; a box with a picture is drawn outside its panel's batch
+- Reference justdom-signal/dom and the package's own Object3D and WebXRManager event maps from the entry points, so an app no longer declares __EVENT_MAP__ itself; carriable() takes any Object3D
+- A page's :hover, :active, :focus and :focus-visible rules are rewritten in place while a panel is up, so they answer the attributes the portal writes
+- Export `HOVER_ATTRIBUTE` and `ACTIVE_ATTRIBUTE`, the names of `data-xr-hover` and `data-xr-active`, from the package and from `justdom-three/page`
+- Export `followUserActions()`, which has the page's `:hover`, `:active` and `:focus` rules answer the ray's flags with no panel up, for a page that sets the flags itself.
+- SVG shapes draw pattern fills and strokes
+
+### Patches
+
+- A page whose rules style no ::before or ::after pays nothing per element for pseudo-element support.
+- The line box copy keeps the resolved style of an element laid out in a box of its own, so a block styled from above the box no longer joins the line its text is measured in.
 
 ## 0.31.0
 Wed, 04 Nov 2026 20:25:47 GMT

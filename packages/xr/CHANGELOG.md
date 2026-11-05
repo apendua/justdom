@@ -1,6 +1,13 @@
 # Change Log - justdom-xr
 
-This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+
+## 0.3.0
+Thu, 05 Nov 2026 23:28:58 GMT
+
+### Minor changes
+
+- `launch({ args })` in `justdom-xr/driver` passes extra flags to Chromium, such as a Blink feature a check needs
 
 ## 0.2.0
 Wed, 04 Nov 2026 20:25:47 GMT

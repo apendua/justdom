@@ -2,6 +2,18 @@
   "name": "justdom-signal",
   "entries": [
     {
+      "version": "1.2.0",
+      "tag": "justdom-signal_v1.2.0",
+      "date": "Thu, 05 Nov 2026 23:28:58 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Ship the DOM's __EVENT_MAP__ declarations as the types-only entry justdom-signal/dom; type an unannotated callback's arguments to component() and effectsOnly() as any; a store, or an Op, given no event map takes any event"
+          }
+        ]
+      }
+    },
+    {
       "version": "1.1.0",
       "tag": "justdom-signal_v1.1.0",
       "date": "Wed, 04 Nov 2026 20:25:47 GMT",

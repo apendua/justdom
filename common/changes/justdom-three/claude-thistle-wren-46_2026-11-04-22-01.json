@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The line box copy keeps the resolved style of an element laid out in a box of its own, so a block styled from above the box no longer joins the line its text is measured in.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

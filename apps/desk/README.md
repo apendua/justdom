@@ -161,8 +161,10 @@ the trigger, and for a `draggable` element moved 4 px with the trigger held, `dr
 run unchanged, and the floppy dragged from its panel onto the monitor's loads. A press focuses the
 nearest focusable element, as a real one does, unless `mousedown` was cancelled. `:hover` and
 `:active` cannot be set by a script, so the elements under the ray carry `data-xr-hover` and the
-pressed ones `data-xr-active`, as the mirror marks them, and the looks' stylesheets already answer
-both.
+pressed ones `data-xr-active`, as the mirror marks them. The looks write `:hover` and `:active`
+alone, which a portal rewrites to answer the flags while a panel watches the page's styles. No panel
+watches in texture mode, so the session turns the rewrite on with `followUserActions()` from
+`justdom-three/page`.
 
 What it does not do that the mirror does:
 

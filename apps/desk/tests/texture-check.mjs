@@ -12,7 +12,8 @@
  * - the desk's element is moved into the renderer's canvas, and the
  *   browser paints it there;
  * - the right controller's ray, aimed at the power control from the
- *   figures the scene poses the monitor by, puts `data-xr-hover` on it;
+ *   figures the scene poses the monitor by, puts `data-xr-hover` on it,
+ *   and one of the look's `:hover` rules, rewritten, matches it;
  * - for the first look, a key of the keyboard, aimed at and pressed, types
  *   on the monitor, and a floppy dragged onto the drive loads its program;
  * - the trigger on the power control ends the session, and the desk goes
@@ -201,6 +202,32 @@ async function main() {
           () => document.querySelector("[data-power]")?.hasAttribute("data-xr-hover") ?? false,
         ),
         "the ray is on the power control",
+      );
+      // The looks write `:hover` alone, so the flag lights the control only
+      // while the session has the page's rules rewritten to answer it.
+      check(
+        await page.evaluate(() => {
+          const power = document.querySelector("[data-power]");
+          for (const sheet of document.styleSheets) {
+            let rules;
+            try {
+              rules = sheet.cssRules;
+            } catch {
+              continue;
+            }
+            for (const rule of rules) {
+              if (
+                rule instanceof CSSStyleRule &&
+                rule.selectorText.includes("[data-xr-hover]") &&
+                power?.matches(rule.selectorText)
+              ) {
+                return true;
+              }
+            }
+          }
+          return false;
+        }),
+        "a :hover rule of the look's answers the ray on the power control",
       );
       if (SHOTS) {
         await page.screenshot({ path: join(SHOTS, `texture-${id}-power.png`) });

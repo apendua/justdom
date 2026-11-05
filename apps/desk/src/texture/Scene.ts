@@ -4,6 +4,7 @@ import {
   $,
   children,
   cursors,
+  followUserActions,
   getScene,
   getXRSession,
   interactions,
@@ -115,6 +116,10 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           canvas.setAttribute("layoutsubtree", "");
           canvas.append(root);
           canvas.requestPaint?.();
+          // The looks write `:hover` and `:active` alone, which a panel's
+          // portal rewrites to answer the flags the forwarder sets. Nothing
+          // here mirrors the desk, so the session asks for the rewrite.
+          const stopFollowing = followUserActions();
 
           // A pointer for each hand, the first to point the primary one.
           const forwarders = new Map<object, PointerForwarder>();
@@ -167,6 +172,7 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
               home.append(root);
             }
             canvas.removeAttribute("layoutsubtree");
+            stopFollowing();
           });
 
           const panel = (zone: HTMLElement) => {

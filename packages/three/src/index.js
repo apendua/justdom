@@ -37,7 +37,7 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal } from "./elements/portal.js";
-export { enableThemingMode } from "./elements/documentStyles.js";
+export { enableThemingMode, followUserActions } from "./elements/documentStyles.js";
 export { enableOutlinesMode, outlinesReport } from "./elements/outlines.js";
 export {
   ACTIVE_ATTRIBUTE,

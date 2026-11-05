@@ -1,5 +1,10 @@
 import * as THREE from "three";
 import { getPaintLayer } from "./elevation.js";
+import { isGenerated } from "./pseudoElements.js";
+
+/**
+ * @import {PaintNode} from './elevation.js';
+ */
 
 /*
  * The tree a panel drawn in paint order orders its layers with: a binary
@@ -36,8 +41,8 @@ export const COPLANAR = 0.01;
  * layer.
  */
 export class Polygon {
-  /** @type {Element} */
-  layer = /** @type {Element} */ (/** @type {unknown} */ (null));
+  /** @type {PaintNode} */
+  layer = /** @type {PaintNode} */ (/** @type {unknown} */ (null));
   /** How many layers the layer is nested in. */
   depth = 0;
   /** The order the polygon was added in, for ties. */
@@ -100,6 +105,52 @@ class TreeNode {
 }
 
 /**
+ * What a node is painted inside of: a pseudo-element's element, or an
+ * element's parent.
+ *
+ * @param {PaintNode} node
+ * @returns {PaintNode | null}
+ */
+function paintParent(node) {
+  return isGenerated(node) ? node.element : node.parentElement;
+}
+
+/**
+ * Whether `node` is painted inside `ancestor`, at any depth.
+ *
+ * @param {PaintNode} ancestor
+ * @param {PaintNode} node
+ * @returns {boolean}
+ */
+function paintsInside(ancestor, node) {
+  if (isGenerated(ancestor)) {
+    return false;
+  }
+  const inner = isGenerated(node) ? node.element : node;
+  return ancestor === inner ? isGenerated(node) : ancestor.contains(inner);
+}
+
+/**
+ * Which of two children of one element is first in tree order, negative
+ * for `a`: a `::before` before the child nodes and an `::after` after
+ * them (`getPaintChildren`).
+ *
+ * @param {PaintNode} a
+ * @param {PaintNode} b
+ * @returns {number}
+ */
+function compareTreeOrder(a, b) {
+  /** @param {PaintNode} node */
+  const end = (node) => (isGenerated(node) ? (node.kind === "before" ? -1 : 1) : 0);
+  const ends = end(a) - end(b);
+  if (ends !== 0) {
+    return ends;
+  }
+  const following = /** @type {Element} */ (a).compareDocumentPosition(/** @type {Element} */ (b));
+  return following & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+}
+
+/**
  * Which of two layers' roots a page paints first, negative for `a`. Two
  * roots are compared where their paths from the root split, by the two
  * children of their nearest common ancestor that hold them: by
@@ -107,34 +158,32 @@ class TreeNode {
  * after, and tree order within each. A box in the flow counts as the rest:
  * it forms no stacking context, so the roots inside it are painted with
  * the positioned boxes around it, in tree order, not at its own step. A
- * root paints before the layers inside it.
+ * root paints before the layers inside it. A pseudo-element is a child of
+ * its element, its first or its last.
  *
- * @param {Element} a
- * @param {Element} b
+ * @param {PaintNode} a
+ * @param {PaintNode} b
  * @returns {number}
  */
 export function comparePaintOrder(a, b) {
   if (a === b) {
     return 0;
   }
-  if (a.contains(b)) {
+  if (paintsInside(a, b)) {
     return -1;
   }
-  if (b.contains(a)) {
+  if (paintsInside(b, a)) {
     return 1;
   }
   let left = a;
-  while (!(/** @type {Element} */ (left.parentElement).contains(b))) {
-    left = /** @type {Element} */ (left.parentElement);
+  while (!paintsInside(/** @type {PaintNode} */ (paintParent(left)), b)) {
+    left = /** @type {PaintNode} */ (paintParent(left));
   }
   let right = b;
-  while (right.parentElement !== left.parentElement) {
-    right = /** @type {Element} */ (right.parentElement);
+  while (paintParent(right) !== paintParent(left)) {
+    right = /** @type {PaintNode} */ (paintParent(right));
   }
-  return (
-    (getPaintLayer(left) ?? 0) - (getPaintLayer(right) ?? 0) ||
-    (left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
-  );
+  return (getPaintLayer(left) ?? 0) - (getPaintLayer(right) ?? 0) || compareTreeOrder(left, right);
 }
 
 /**
@@ -217,7 +266,7 @@ export class LayerTree {
    * from its own frame into the panel's. Leaves out a box with no area, or
    * one that a perspective takes to or behind the eye, and says so.
    *
-   * @param {Element} layer
+   * @param {PaintNode} layer
    * @param {number} depth How many layers it is nested in.
    * @param {THREE.Matrix4} matrix
    * @param {number} width

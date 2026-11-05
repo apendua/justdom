@@ -82,6 +82,8 @@ The things a page does that a panel does not, most often met:
 - `background-clip`; the background fills the padding box.
 - Dashed, dotted and double borders, drawn solid, and sides bordered in different colours, drawn in
   the first side's.
+- A `::before` or `::after` positioned against a box other than its own element, or given a
+  `z-index`, and the counters and quotes in a `content`.
 - `box-shadow`. A `text-shadow` is drawn, baked into the text's texture, and that text re-draws per
   colour change.
 - `:has()`, `:nth-last-child()`, and a sibling combinator on `data-xr-hover`, `data-xr-active` or

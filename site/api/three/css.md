@@ -2,8 +2,8 @@
 
 A panel is drawn from its elements' computed style, and this page says which of it: lists and their
 markers, transforms, the document's stylesheets, hover and press, animation, text revealed to a
-cursor, the paint order, images, gradients, background pictures, clipping and scrolling, and inline
-SVG. Each section ends with what is followed and what is not.
+cursor, the paint order, images, gradients, background pictures, `::before` and `::after`, clipping
+and scrolling, and inline SVG. Each section ends with what is followed and what is not.
 [Writing CSS for a panel](/guide/panel-css) in the guide is the short version.
 
 ## Lists
@@ -268,8 +268,9 @@ still one.
 Followed:
 
 - A panel is a set of layers: its root, every overlay, and every element whose transform takes it
-  out of its parent's plane (`getLayer` in `elevation.js`). A transformed layer sits where its
-  transform puts it; nothing but an overlay is lifted.
+  out of its parent's plane (`getLayer` in `elevation.js`). A `::before` or `::after` with a
+  positive `z-index` is an overlay too ([Before and after](#before-and-after)). A transformed layer
+  sits where its transform puts it; nothing but an overlay is lifted.
 - Within a layer, the draw order is the paint order. Every element that a page paints over a sibling
   draws after everything that sibling draws, opaque or not, so a pile of cards climbs a draw level a
   card, while a list of rows stays at one row's levels however long it is. A card that is not opaque
@@ -295,6 +296,9 @@ Not followed:
 - **Flow siblings are not ordered against each other.** Only an element that is positioned or
   transformed clears its siblings, so a box pulled over a neighbour by a negative margin keeps its
   level in the tree.
+- **A negative `z-index` is under its positioned siblings, not under the flow.** A box with one is
+  level with the flow siblings it covers, where a page paints it under them. Ordering it under the
+  flow would have every flow box watch its siblings for one, and rerun on every row added to a list.
 - **A positioned box clears a flow sibling it covers whole, descendants included.** A page paints
   that sibling's positioned descendants in tree order with the box, so one later in the tree than
   the box draws under it here and over it on a page.
@@ -470,6 +474,88 @@ Not followed:
   page paints under it: a box has one picture slot.
 - A checkbox does not draw a `url()` background: it draws its own tick, which is what a page with
   `appearance: none` gives as one.
+
+## Before and after
+
+An element's `::before` and `::after` are drawn as boxes of their own inside it, with their
+background, border and `background-image`, and the text or the `content: url()` picture they
+generate:
+
+```css
+.tag::before {
+  content: "★";
+  display: inline-block;
+  width: 1.5em;
+  margin-right: 0.5em;
+  background: #d00;
+  color: #fff;
+}
+
+.tab {
+  position: relative;
+}
+
+.tab:hover::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #007bff;
+}
+```
+
+A pseudo-element has no client rect, so the portal lays it out where the page does by measuring a
+copy of its element that holds a real `<span>` in its place, dressed in its resolved style. For an
+inline element, such as a link in a paragraph, the copy is of the box its line is in, so that the
+line is laid out as on the page. The copy is measured again when the element's children, its size,
+what restyles it from above, or the pseudo-element's own style change, and not on a hover that
+leaves them as they were. Only an element that some rule of the document's styles gives a `::before`
+or an `::after` reads the pseudo-element's style at all; the `:hover` in such a rule answers the ray
+as every other `:hover` does ([Hover, press and focus](#hover-press-and-focus)).
+
+It paints inside its element as a page paints it, ordered as the element's first child (a
+`::before`) or its last (an `::after`) would be, by the same rules as every element in the
+[paint order](#paint-order). In the flow, a `::before` is over its element's own box and level with
+its children. Positioned, either one draws over the children it covers, and a later positioned child
+draws over a positioned `::before` it covers. An element's positioned `::after` draws after its
+descendants' own, and a sibling that covers the element draws over its `::after` too. Positioned
+with a positive `z-index`, it is an overlay as an element would be: a layer of its own, lifted in
+front of its element, ordered among the panel's layers, and opaque to rays, so a press on it is a
+click on its element and reaches nothing behind it. Its box is drawn by the panel's batch, as an
+element's is, unless it has a picture, and then it is one draw call of its own. A ray that meets it
+meets its element, as a click on a page's `::before` icon is a click on the element.
+
+Followed:
+
+- `content`: strings, an `attr()`, which the browser resolves, and a single `url()`, drawn at the
+  picture's own size where the page lays it out, inline on the baseline of its line. `""` draws the
+  box alone, the usual way to draw a bar or a dot.
+- Inline, block, inline-block, flex and grid items laid out among the element's children, and a box
+  positioned `absolute` against its element: an element that is `position`ed or transformed.
+- `display: none` and a `content` of `none` or `normal` draw nothing, and the pseudo-element's own
+  `visibility` hides it, as it shows one whose element is hidden.
+- A rule nested in another, such as `&::before` inside `.chip { }`.
+
+Not followed:
+
+- **A positioned pseudo-element against another box.** One that is `absolute` in an element that is
+  not its containing block, and one that is `fixed`, is not drawn. Give its element
+  `position: relative`.
+- **An in-flow `::after` over its element's children.** Flow boxes are not ordered against each
+  other, so one pulled over an earlier child by a negative margin draws level with it. Position it
+  to draw it over what it covers.
+- **A negative `z-index`** keeps a pseudo-element level with the flow it covers, as it keeps an
+  element (see [Paint order](#paint-order)), rather than under it.
+- `counter()`, `counters()` and the quotes, which the browser leaves for the page to count. The text
+  of such a `content` is not drawn, its box is. Text and a `url()` in one `content` draw the text.
+- A `content: url()` picture taller than its line, in a box with a background or a border: the
+  picture is clipped to the box. In a box that paints nothing of its own, it is drawn whole.
+- A transition or an animation on a pseudo-element: its end is drawn.
+- `::first-letter`, `::first-line`, `::selection`, `::backdrop`, and a pseudo-element on a replaced
+  element, such as an `<img>` or an `<input>`.
+- A rule added through the CSSOM, as for every rule (see [Stylesheets](#stylesheets)).
 
 ## Clipping and scrolling
 

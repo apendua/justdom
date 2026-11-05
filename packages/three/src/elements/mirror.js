@@ -19,6 +19,7 @@ import {
 } from "./textLines.js";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
 import { classify } from "./animationClock.js";
+import { GENERATED_COPY_ATTRIBUTE, withGeneratedCopyRule } from "./documentStyles.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
@@ -3960,12 +3961,7 @@ function parkMeasurementClone(element, clone, host) {
 function copyStillStyle(element, clone, computed = window.getComputedStyle(element)) {
   // Written as one declaration list, which the browser parses once, rather
   // than a `setProperty` per property: a computed style has some 350.
-  /** @type {string[]} */
-  const declarations = [];
-  for (let i = 0; i < computed.length; i++) {
-    const property = computed[i];
-    declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
-  }
+  const declarations = stillDeclarations(computed);
   // The custom properties the clone's own inline style sets go after them,
   // since Chromium enumerates none in a computed style, and a child styled
   // with `var(--gap)` would lose the `--gap` the element sets. Those alone:
@@ -3982,12 +3978,30 @@ function copyStillStyle(element, clone, computed = window.getComputedStyle(eleme
       );
     }
   }
+  clone.style.cssText = declarations.join("; ");
+}
+
+/**
+ * Every resolved property of `computed` as a declaration, and then the
+ * transform, transitions and animations switched off: `copyStillStyle`'s
+ * list, but for the custom properties.
+ *
+ * @param {CSSStyleDeclaration} computed
+ * @returns {string[]}
+ */
+function stillDeclarations(computed) {
+  /** @type {string[]} */
+  const declarations = [];
+  for (let i = 0; i < computed.length; i++) {
+    const property = computed[i];
+    declarations.push(`${property}: ${computed.getPropertyValue(property)}`);
+  }
   declarations.push(
     "transform: none !important",
     "transition: none !important",
     "animation: none !important",
   );
-  clone.style.cssText = declarations.join("; ");
+  return declarations;
 }
 
 /**
@@ -4665,6 +4679,145 @@ function dressLaidOut(live, copy) {
       dressLaidOut(element, childCopy);
     }
   }
+}
+
+/**
+ * Where an element's `::before` or `::after` is laid out, and its text.
+ *
+ * @typedef {object} GeneratedLayout
+ * @property {number} x The left of the generated box's border box, in the
+ *   element's border-box frame and before any scroll: the frame a box's
+ *   content is drawn in, less the scroll the caller takes off.
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ * @property {TextLayout | null} text The generated text, placed relative to
+ *   the generated box's border box (`left`, `top`), or null for a box with
+ *   no text.
+ * @property {ClientBox | null} picture Where the `content: url()` picture is
+ *   laid out, relative to the generated box's border box: inline, on the
+ *   baseline of the line it is on, not at the content box's corner. Null
+ *   for a box with no picture.
+ */
+
+/**
+ * @typedef {object} ClientBox
+ * @property {number} x
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * A pseudo-element's resolved style as one declaration list, as a copy is
+ * dressed in it (`copyStillStyle`), with its transform, transitions and
+ * animations off. Two equal strings lay the box out alike, so a restyle of
+ * the element that leaves its pseudo-element as it was measures nothing.
+ *
+ * @param {CSSStyleDeclaration} style
+ * @returns {string}
+ */
+export function describeStillStyle(style) {
+  return stillDeclarations(style).join("; ");
+}
+
+/**
+ * Measure an element's `::before` or `::after`, which has no client rect of
+ * its own, by laying it out as a real element: a span dressed in the
+ * pseudo-element's resolved style, first or last among the children of a
+ * copy of the element, with the generated text in it, or a picture of
+ * `picture`'s size for a `content: url()`. The copy's own generated boxes
+ * are switched off while it stands (`withGeneratedCopyRule`). The span's
+ * place in the copy is the box's place in the element.
+ *
+ * The copy is of the box the element is laid out in, as a text's line box
+ * copy is (`measureTextLayout`): the element itself, or, for an element
+ * that splits across lines, the nearest ancestor that does not. An inline
+ * element copied on its own would be parked as an absolutely positioned
+ * box, which makes it a block, and its line would be laid out anew: a
+ * `::before` on a link in a paragraph would land some pixels off the line
+ * the link is on.
+ *
+ * The element's copy is the containing block of whatever is absolutely
+ * positioned in it only when the element is positioned, so a positioned
+ * pseudo-element is placed right only when the element is its containing
+ * block on the page too; the caller asks that.
+ *
+ * It depends on what a line box copy does (`getLineBoxCopy`) for the box it
+ * copies: its shape, what restyles it from above, and its size; and on the
+ * element's size. The copy is taken down before this returns.
+ *
+ * @param {HTMLElement} element
+ * @param {"before" | "after"} kind
+ * @param {string} declarations The pseudo-element's style
+ *   (`describeStillStyle`).
+ * @param {string} text
+ * @param {{ width: number, height: number } | null} picture
+ * @returns {GeneratedLayout}
+ */
+export function measureGeneratedBox(element, kind, declarations, text, picture) {
+  let lineBox = element;
+  while (!isPortalRoot(lineBox) && lineBox.parentElement && splitsAcrossLines(lineBox)) {
+    lineBox = lineBox.parentElement;
+  }
+  getLineBoxShape(lineBox);
+  readRestyledFromAbove(lineBox);
+  getBorderBoxSize(lineBox);
+  getBorderBoxSize(element);
+  const copy = /** @type {HTMLElement} */ (lineBox.cloneNode(true));
+  dressLaidOut(lineBox, copy);
+  const host = lineBox === element ? copy : counterpart(element, lineBox, copy);
+  if (!(host instanceof HTMLElement)) {
+    throw new NoValueError("The copy does not hold the element yet");
+  }
+  host.setAttribute(GENERATED_COPY_ATTRIBUTE, "");
+  const stand = document.createElement("span");
+  // A `content` on an element, not a pseudo-element, would make the span a
+  // picture of its own in Chromium.
+  stand.style.cssText = `${declarations}; content: normal`;
+  /** @type {HTMLImageElement | null} */
+  let image = null;
+  if (picture) {
+    image = document.createElement("img");
+    image.width = picture.width;
+    image.height = picture.height;
+    stand.append(image);
+  } else if (text) {
+    stand.append(text);
+  }
+  if (kind === "before") {
+    host.prepend(stand);
+  } else {
+    host.append(stand);
+  }
+  return withGeneratedCopyRule(() => {
+    const root = parkMeasurementClone(lineBox, copy, null);
+    try {
+      const frame = frameFor(root);
+      const origin = measureClientRect(host, frame);
+      const rect = measureClientRect(stand, frame);
+      const content = stand.firstChild;
+      const placed = image ? measureClientRect(image, frame) : null;
+      return {
+        x: rect.left - origin.left,
+        y: rect.top - origin.top,
+        width: rect.width,
+        height: rect.height,
+        text:
+          content instanceof Text
+            ? measureTextRects(content, stand, stand.style.whiteSpace || "normal", false, false)
+            : null,
+        picture: placed && {
+          x: placed.left - rect.left,
+          y: placed.top - rect.top,
+          width: placed.width,
+          height: placed.height,
+        },
+      };
+    } finally {
+      root.remove();
+    }
+  });
 }
 
 /** @type {WeakMap<Text, Derived<TextLayout>>} */

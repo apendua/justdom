@@ -40,10 +40,10 @@ function placed(z, angle = 0) {
  *
  * @param {LayerTree} tree
  * @param {THREE.Vector3} viewpoint
- * @returns {Element[]}
+ * @returns {import("./elevation.js").PaintNode[]}
  */
 function walked(tree, viewpoint) {
-  /** @type {Element[]} */
+  /** @type {import("./elevation.js").PaintNode[]} */
   const order = [];
   tree.walk(viewpoint, (piece) => order.push(piece.layer));
   return order;

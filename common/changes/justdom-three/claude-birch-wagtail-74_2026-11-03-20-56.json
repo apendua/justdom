@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Order ::before and ::after in the paint order as an element's first and last child, so a positioned one draws over the children it covers",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

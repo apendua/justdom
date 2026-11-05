@@ -1,4 +1,5 @@
 import { ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE, HOVER_ATTRIBUTE } from "./portalRoot.js";
+import { walkStyleRules } from "./styleRules.js";
 
 /**
  * The page's own `:hover`, `:active` and `:focus` rules, made to answer the
@@ -155,52 +156,6 @@ function rewrittenFrom(rule) {
 }
 
 /**
- * Call `visit` on every style rule in `rules`, and in every rule nested in
- * them: inside `@media`, `@supports`, `@layer` and `@container`, inside a
- * style rule's own nested rules, and in a sheet an `@import` brings.
- *
- * @param {CSSRuleList} rules
- * @param {(rule: CSSStyleRule) => void} visit
- * @returns {void}
- */
-function walkRules(rules, visit) {
-  for (const rule of rules) {
-    // By the properties rather than by `instanceof`, which needs each rule
-    // class to be a global.
-    const style = /** @type {Partial<CSSStyleRule>} */ (rule);
-    if (typeof style.selectorText === "string") {
-      visit(/** @type {CSSStyleRule} */ (rule));
-    }
-    const imported = /** @type {Partial<CSSImportRule>} */ (rule).styleSheet;
-    if (imported) {
-      walkSheet(imported, visit);
-    }
-    const nested = /** @type {Partial<CSSGroupingRule>} */ (rule).cssRules;
-    if (nested) {
-      walkRules(nested, visit);
-    }
-  }
-}
-
-/**
- * @param {CSSStyleSheet} sheet
- * @param {(rule: CSSStyleRule) => void} visit
- * @returns {void}
- */
-function walkSheet(sheet, visit) {
-  /** @type {CSSRuleList} */
-  let rules;
-  try {
-    rules = sheet.cssRules;
-  } catch {
-    // From another origin without CORS, or still loading: its rules are not
-    // the script's to read, and not to rewrite either.
-    return;
-  }
-  walkRules(rules, visit);
-}
-
-/**
  * Rewrite every rule in `sheets` that names a user-action pseudo-class and
  * was not rewritten already, and answer the rules it rewrote, so that the
  * caller can say what they style.
@@ -211,27 +166,25 @@ function walkSheet(sheet, visit) {
 export function rewriteUserActions(sheets) {
   /** @type {CSSStyleRule[]} */
   const rewritten = [];
-  for (const sheet of sheets) {
-    walkSheet(sheet, (rule) => {
-      if (rewrittenFrom(rule) !== undefined) {
-        return;
-      }
-      const original = rule.selectorText;
-      const next = rewriteSelector(original);
-      if (next === null) {
-        return;
-      }
-      rule.selectorText = next;
-      // A browser ignores a selector it cannot parse and keeps the old one.
-      // Nothing above should produce one, but a rule left as it was is not
-      // one to restore.
-      if (rule.selectorText === original) {
-        return;
-      }
-      rewrites.set(rule, { original, rewritten: rule.selectorText });
-      rewritten.push(rule);
-    });
-  }
+  walkStyleRules(sheets, (rule) => {
+    if (rewrittenFrom(rule) !== undefined) {
+      return;
+    }
+    const original = rule.selectorText;
+    const next = rewriteSelector(original);
+    if (next === null) {
+      return;
+    }
+    rule.selectorText = next;
+    // A browser ignores a selector it cannot parse and keeps the old one.
+    // Nothing above should produce one, but a rule left as it was is not
+    // one to restore.
+    if (rule.selectorText === original) {
+      return;
+    }
+    rewrites.set(rule, { original, rewritten: rule.selectorText });
+    rewritten.push(rule);
+  });
   return rewritten;
 }
 
@@ -254,13 +207,11 @@ export function originalSelector(rule) {
  * @returns {void}
  */
 export function restoreUserActions(sheets) {
-  for (const sheet of sheets) {
-    walkSheet(sheet, (rule) => {
-      const original = rewrittenFrom(rule);
-      if (original !== undefined) {
-        rule.selectorText = original;
-      }
-      rewrites.delete(rule);
-    });
-  }
+  walkStyleRules(sheets, (rule) => {
+    const original = rewrittenFrom(rule);
+    if (original !== undefined) {
+      rule.selectorText = original;
+    }
+    rewrites.delete(rule);
+  });
 }

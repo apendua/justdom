@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Draw an element's ::before and ::after inside it: the text, the box and a content: url() picture, laid out where the page lays them out.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

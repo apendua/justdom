@@ -19,9 +19,19 @@ import { composeTransform, getOwnTransform, hasDepthTransform } from "./cssTrans
 import { isSvgElement } from "./plugins.js";
 import { getShadowBleed, parseTextShadow } from "./textHelpers.js";
 import { isTextInput } from "./typing.js";
+import { getPaintChildren, isGenerated } from "./pseudoElements.js";
 
 /**
  * @import {Derived} from 'justdom-signal';
+ * @import {Generated} from './pseudoElements.js';
+ */
+
+/**
+ * What the paint order orders: an element, or an element's `::before` or
+ * `::after`, which stands among its element's children where a page paints
+ * it (`getPaintChildren`).
+ *
+ * @typedef {Element | Generated} PaintNode
  */
 
 /*
@@ -32,16 +42,25 @@ import { isTextInput } from "./typing.js";
  *
  * Every element belongs to a layer (`getLayer`): the panel's root, an
  * overlay (`isOverlay`) or an element transformed out of its parent's
- * plane. Within a layer the draw level (`getDrawLevel`) counts from the
- * layer's root, a level past the parent, and an element that clears a
- * sibling (`getClearedSiblings`) draws after everything that sibling draws.
- * Each layer draws from a base (`getLayerBase`), which a walk of the panel's
- * layers in their tree (`layerTree.js`) writes, ordering them by their
- * planes (`layerOrder.js`). Only an overlay sits at a distance,
- * `OVERLAY_LIFT` in front of its parent's content, so that a menu still
- * floats in stereo; an element transformed out of its parent's plane is
- * where its own matrix puts it, and everything else is level with its
- * parent's content.
+ * plane. A pseudo-element that would be an overlay, positioned with a
+ * positive `z-index`, is a layer of its own too. Within a layer the draw
+ * level (`getDrawLevel`) counts from the layer's root, a level past the
+ * parent, and an element that clears a sibling (`getClearedSiblings`) draws
+ * after everything that sibling draws. Each layer draws from a base
+ * (`getLayerBase`), which a walk of the panel's layers in their tree
+ * (`layerTree.js`) writes, ordering them by their planes
+ * (`layerOrder.js`). Only an overlay sits at a distance, `OVERLAY_LIFT` in
+ * front of its parent's content (a pseudo-element's in front of its
+ * element's), so that a menu still floats in stereo; an element transformed
+ * out of its parent's plane is where its own matrix puts it, and everything
+ * else is level with its parent's content.
+ *
+ * An element's `::before` and `::after` are ordered as its first and last
+ * child would be: each function here takes their stand-in (`Generated`)
+ * where it takes an element, and walks an element's paint children
+ * (`getPaintChildren`) where it would walk its child nodes. A stand-in reads
+ * its paint layer from the pseudo-element's style and its bounds from the
+ * box its quad covers (`Generated.quad`).
  *
  * SVG content is drawn within the `<svg>`'s content level (`paintSlot` in
  * `svg/shape.js`), so an SVG element is never a layer of its own.
@@ -67,11 +86,16 @@ import { isTextInput } from "./typing.js";
  *   over or under it.
  * - Flow siblings are not ordered against each other. Only an element that
  *   is positioned or transformed clears its siblings, so a box pulled over
- *   a neighbour by a negative margin keeps its tree level.
+ *   a neighbour by a negative margin keeps its tree level. So does an
+ *   `::after` in the flow, level with the earlier children it covers.
  * - A positioned box clears a flow sibling it covers whole, descendants
  *   included. A page paints that sibling's positioned descendants in tree
  *   order with the box, so one later in the tree than the box draws under
  *   it here and over it on a page.
+ * - A box with a negative `z-index` is under its positioned siblings but
+ *   level with the flow siblings it covers, not under them. Ordering it
+ *   under the flow would have every flow box read its siblings' layers, and
+ *   rerun on every child added to its parent.
  * - Only the sign of `z-index` counts. Two overlays stack in tree order,
  *   whatever their numbers.
  * - A child that overflows its parent is not counted. Overlap is tested on
@@ -123,7 +147,7 @@ export function isOverlay(element) {
   return Number.isFinite(zIndex) && zIndex > 0;
 }
 
-/** @type {WeakMap<Element, Derived<Element>>} */
+/** @type {WeakMap<Element, Derived<PaintNode>>} */
 const layerCache = nodeCache();
 
 /**
@@ -135,10 +159,19 @@ const layerCache = nodeCache();
  * Gated by identity, so a restyle that leaves an element in its layer
  * stops here.
  *
- * @param {Element} element
- * @returns {Element}
+ * A pseudo-element is drawn in its element's layer, unless it is in the
+ * paint layer an overlay is in (`getPaintLayer`), positioned with a
+ * positive `z-index`: then it is an overlay of its own, lifted off its
+ * element as an overlay is off its parent, with a blocker that hands a
+ * press to its element (`generatedContent.js`).
+ *
+ * @param {PaintNode} element
+ * @returns {PaintNode}
  */
 export function getLayer(element) {
+  if (isGenerated(element)) {
+    return getPaintLayer(element) === 1 ? element : getLayer(element.element);
+  }
   let signal = layerCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
@@ -167,7 +200,7 @@ export function getLayer(element) {
  * edges with whatever was behind the panel instead, and writes depth that
  * then keeps the surface out.
  *
- * @param {HTMLElement} element
+ * @param {HTMLElement | Generated} element
  * @returns {number}
  */
 export function getContentRenderOrder(element) {
@@ -193,11 +226,11 @@ export function bandBase(order) {
   return Math.floor(order / PIECE_BAND) * PIECE_BAND;
 }
 
-/** @type {WeakMap<Element, Signal<number | null>>} */
+/** @type {WeakMap<PaintNode, Signal<number | null>>} */
 const layerBases = new WeakMap();
 
 /**
- * @param {Element} layer
+ * @param {PaintNode} layer
  * @returns {Signal<number | null>}
  */
 function layerBaseSignal(layer) {
@@ -216,19 +249,17 @@ function layerBaseSignal(layer) {
  * `PIECE_BAND` for each layer it is nested in. Reactive, so a layer the
  * walk moves takes its boxes and marks with it.
  *
- * @param {Element} layer
+ * @param {PaintNode} layer
  * @returns {number}
  */
 export function getLayerBase(layer) {
-  return (
-    layerBaseSignal(layer).get() ?? getElevation(/** @type {HTMLElement} */ (layer)) * PIECE_BAND
-  );
+  return layerBaseSignal(layer).get() ?? getElevation(layer) * PIECE_BAND;
 }
 
 /**
  * Put a layer's first piece where the panel's walk puts it.
  *
- * @param {Element} layer
+ * @param {PaintNode} layer
  * @param {number} base A whole number of `PIECE_BAND`s.
  */
 export function setLayerBase(layer, base) {
@@ -242,14 +273,14 @@ export function setLayerBase(layer, base) {
  * Where the element's draw level counts from in the scene's draw order: its
  * layer's base.
  *
- * @param {HTMLElement} element
+ * @param {HTMLElement | Generated} element
  * @returns {number}
  */
 export function getRenderBand(element) {
   return getLayerBase(getLayer(element));
 }
 
-/** @type {WeakMap<HTMLElement, Derived<number>>} */
+/** @type {WeakMap<Element, Derived<number>>} */
 const elevationCache = nodeCache();
 
 /**
@@ -259,12 +290,16 @@ const elevationCache = nodeCache();
  * layer's base before the panel's first walk (`getLayerBase`). Cached for
  * each element as its parent's count and its own, so that a restyle above it
  * reaches its readers only when the count changes, and a box that left the
- * panel keeps the count it was drawn with (`nodeDerived`).
+ * panel keeps the count it was drawn with (`nodeDerived`). A pseudo-element
+ * counts as a child of its element.
  *
- * @param {HTMLElement} element
+ * @param {PaintNode} element
  * @returns {number}
  */
 export function getElevation(element) {
+  if (isGenerated(element)) {
+    return (getLayer(element) === element ? 1 : 0) + getElevation(element.element);
+  }
   let signal = elevationCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
@@ -320,7 +355,12 @@ export function overlaps(a, b) {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-/** @type {WeakMap<Element, Derived<PaintLayer>>} */
+/**
+ * Keyed by stand-ins too, which go with the element's own cached reads
+ * (`getGenerated`).
+ *
+ * @type {WeakMap<PaintNode, Derived<PaintLayer>>}
+ */
 const paintLayerCache = nodeCache();
 
 /**
@@ -334,21 +374,27 @@ const paintLayerCache = nodeCache();
  * whatever the tree order. As with `isOverlay`, the number itself is not
  * modelled, only its sign.
  *
+ * A pseudo-element's is read from its own style. It is drawn without a
+ * transform of its own, so only its position and `z-index` count.
+ *
  * Behind its own signal, so that a restyle which leaves the answer alone
  * does not re-run the sibling scan in `getClearedSiblings` for every other
  * sibling.
  *
- * @param {Element} element
+ * @param {PaintNode} element
  * @returns {PaintLayer}
  */
 export function getPaintLayer(element) {
   let signal = paintLayerCache.get(element);
   if (!signal) {
-    signal = nodeDerived(element, () => {
-      const style = getComputedStyleCached(element);
+    const owner = isGenerated(element) ? element.element : element;
+    signal = nodeDerived(owner, () => {
+      const style = isGenerated(element) ? element.style() : getComputedStyleCached(element);
       const positioned = !!style.position && style.position !== "static";
       if (!positioned) {
-        return hasTransform(getTransformStyle(element).transform) ? 0 : null;
+        return !isGenerated(element) && hasTransform(getTransformStyle(element).transform)
+          ? 0
+          : null;
       }
       const zIndex = parseInt(style.zIndex, 10);
       return zIndex < 0 ? -1 : zIndex > 0 ? 1 : 0;
@@ -405,7 +451,7 @@ function drawsOwnText(element) {
 const cornerMatrix = new THREE.Matrix4();
 const corner = new THREE.Vector3();
 
-/** @type {WeakMap<Element, Derived<PaintedBounds>>} */
+/** @type {WeakMap<PaintNode, Derived<PaintedBounds>>} */
 const paintedBoundsCache = nodeCache();
 
 /** The origin `paintedBoundsInto` is given with no matrix to apply it to. */
@@ -479,28 +525,45 @@ export function paintedBoundsInto(out, element, x, y, borderWidth, borderHeight,
  * counted. The box takes in the shadow of the element's own text, which is
  * ink past it (`getShadowBleed`).
  *
- * @param {HTMLElement} element
+ * A pseudo-element covers what its quad covers (`Generated.quad`): the
+ * border box measured for it, or a picture that reaches past it, in its
+ * element's content space, the frame its element's children are placed in.
+ *
+ * @param {HTMLElement | Generated} element
  * @returns {PaintedBounds}
  */
 export function getPaintedBounds(element) {
   let signal = paintedBoundsCache.get(element);
-  if (!signal) {
+  if (!signal && isGenerated(element)) {
+    const generated = element;
     signal = nodeDerived(
-      element,
+      generated.element,
+      () => {
+        const at = generated.quad();
+        return { left: at.x, top: at.y, right: at.x + at.width, bottom: at.y + at.height };
+      },
+      { isEqual: boundsEqual },
+    );
+    paintedBoundsCache.set(element, signal);
+  }
+  if (!signal) {
+    const html = /** @type {HTMLElement} */ (element);
+    signal = nodeDerived(
+      html,
       () => {
         // A box the scroll moves against its siblings overlaps different
         // ones at every step of the scroll. Taken to cover everything, it
         // keeps the draw levels, and the sibling scans behind them, out of
         // the scroll's frames.
-        if (!isTransformed(element) && movesAgainstScroll(element)) {
+        if (!isTransformed(html) && movesAgainstScroll(html)) {
           return EVERYWHERE;
         }
-        const size = getBorderBoxSize(element);
-        const offset = getBoxOffset(element);
-        const own = getOwnTransform(element);
+        const size = getBorderBoxSize(html);
+        const offset = getBoxOffset(html);
+        const own = getOwnTransform(html);
         return paintedBoundsInto(
           { left: 0, top: 0, right: 0, bottom: 0 },
-          element,
+          html,
           offset.x,
           offset.y,
           size.width,
@@ -516,19 +579,48 @@ export function getPaintedBounds(element) {
   return signal.get();
 }
 
-/** @type {readonly Element[]} */
+/** @type {readonly PaintNode[]} */
 const NOTHING_CLEARED = Object.freeze([]);
 
 /**
- * @param {readonly Element[]} a
- * @param {readonly Element[]} b
+ * @param {readonly PaintNode[]} a
+ * @param {readonly PaintNode[]} b
  * @returns {boolean}
  */
 function clearedEqual(a, b) {
   return a.length === b.length && a.every((sibling, i) => sibling === b[i]);
 }
 
-/** @type {WeakMap<Element, Derived<readonly Element[]>>} */
+/**
+ * The element a node is painted inside of within its panel: a
+ * pseudo-element's own element, an element's parent, or null for the
+ * panel's root, above which everything is the page's.
+ *
+ * @param {PaintNode} node
+ * @returns {HTMLElement | null}
+ */
+function getPanelParent(node) {
+  if (isGenerated(node)) {
+    return node.element;
+  }
+  return node.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(node);
+}
+
+/**
+ * A paint child as what the paint order orders, or null for a text node or
+ * a comment, which is drawn as its element's content.
+ *
+ * @param {Node | Generated} child
+ * @returns {PaintNode | null}
+ */
+function paintNode(child) {
+  if (isGenerated(child)) {
+    return child;
+  }
+  return child.nodeType === Node.ELEMENT_NODE ? /** @type {Element} */ (child) : null;
+}
+
+/** @type {WeakMap<PaintNode, Derived<readonly PaintNode[]>>} */
 const clearedCache = nodeCache();
 
 /**
@@ -539,8 +631,12 @@ const clearedCache = nodeCache();
  * since a page paints the flow first. Without that, the text of one card
  * would draw over a later card that covers it. Siblings that do not overlap
  * are not cleared, so a board of separate cards shares its levels however
- * many cards it holds. A box with a negative `z-index` clears nothing, and nor
- * does the portal's root.
+ * many cards it holds. A box with a negative `z-index` clears nothing, and
+ * nor does the portal's root.
+ *
+ * The siblings are the paint children of the parent (`getPaintChildren`),
+ * so an element's `::before` and `::after` clear and are cleared as a first
+ * and a last child would be.
  *
  * This is the one place the paint-layer and overlap rules are applied.
  * Whatever orders an element against its siblings reads it rather than
@@ -554,50 +650,55 @@ const clearedCache = nodeCache();
  * built, and again when its first child moves, since every later child's
  * scan read that child's bounds. Flow siblings are painted under it too, so
  * one badge in a list of n rows reads n bounds, and its scan reruns when
- * any row's layout changes. Behind an equality gate, so a sibling that
- * moved without changing what is cleared stops here.
+ * any row's layout changes. A flow element clears nothing and reads only its
+ * own paint layer, so a row added to a list reruns no other row's scan.
+ * Behind an equality gate, so a sibling that moved without changing what is
+ * cleared stops here.
  *
- * @param {Element} element
- * @returns {readonly Element[]}
+ * @param {PaintNode} element
+ * @returns {readonly PaintNode[]}
  */
 export function getClearedSiblings(element) {
   let signal = clearedCache.get(element);
   if (!signal) {
+    const owner = isGenerated(element) ? element.element : element;
     signal = nodeDerived(
-      element,
+      owner,
       () => {
-        // The portal's root has no siblings inside the portal.
-        const layer = element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getPaintLayer(element);
+        const layer = getPaintLayer(element);
         // A box with a negative `z-index` clears nothing either: anything it
         // cleared would also put it after its flow siblings, which a page
         // paints over it.
         if (layer === null || layer === -1) {
           return NOTHING_CLEARED;
         }
-        const parent = getParentElement(element);
+        // The portal's root has no siblings inside the portal.
+        const parent = getPanelParent(element);
         if (!parent) {
           return NOTHING_CLEARED;
         }
-        const bounds = getPaintedBounds(/** @type {HTMLElement} */ (element));
-        /** @type {Element[] | null} */
+        const bounds = getPaintedBounds(/** @type {HTMLElement | Generated} */ (element));
+        /** @type {PaintNode[] | null} */
         let cleared = null;
         let earlier = true;
-        for (const node of getChildNodes(parent)) {
-          if (node === element) {
+        for (const child of getPaintChildren(parent)) {
+          if (child === element) {
             earlier = false;
             continue;
           }
-          if (node.nodeType !== Node.ELEMENT_NODE) {
+          const sibling = paintNode(child);
+          if (!sibling) {
             continue;
           }
-          const sibling = /** @type {HTMLElement} */ (node);
           const below = getPaintLayer(sibling);
           // A flow sibling is under the element in either tree order: a
           // page paints the flow before any positioned box.
           if (below !== null && (below > layer || (below === layer && !earlier))) {
             continue;
           }
-          if (!overlaps(bounds, getPaintedBounds(sibling))) {
+          if (
+            !overlaps(bounds, getPaintedBounds(/** @type {HTMLElement | Generated} */ (sibling)))
+          ) {
             continue;
           }
           (cleared ??= []).push(sibling);
@@ -611,18 +712,7 @@ export function getClearedSiblings(element) {
   return signal.get();
 }
 
-/**
- * The element's parent within its panel, or null for the panel's root,
- * above which everything is the page's.
- *
- * @param {Element} element
- * @returns {HTMLElement | null}
- */
-function getPanelParent(element) {
-  return element.hasAttribute(PORTAL_ATTRIBUTE) ? null : getParentElement(element);
-}
-
-/** @type {WeakMap<Element, Derived<number>>} */
+/** @type {WeakMap<PaintNode, Derived<number>>} */
 const drawLevelCache = nodeCache();
 
 /**
@@ -638,14 +728,16 @@ const drawLevelCache = nodeCache();
  * is higher, and its subtree comes with it. Only the siblings in its own
  * layer count: the panel's walk places the rest, sibling layers included.
  * A pile of cards climbs a level a card, which `PIECE_BAND` is sized for.
+ * A pseudo-element counts as a child of its element.
  *
- * @param {Element} element
+ * @param {PaintNode} element
  * @returns {number}
  */
 export function getDrawLevel(element) {
   let signal = drawLevelCache.get(element);
   if (!signal) {
-    signal = nodeDerived(element, () => {
+    const owner = isGenerated(element) ? element.element : element;
+    signal = nodeDerived(owner, () => {
       const parent = getPanelParent(element);
       if (!parent || getLayer(element) === element) {
         return 0;
@@ -671,12 +763,18 @@ const drawReachCache = nodeCache();
  * its own content alone, and more for each descendant whose box or content
  * draws later. A layer inside it is left out, since the panel's walk places
  * it, and so is what is inside an `<svg>`, which is drawn within the
- * `<svg>`'s content level (`paintSlot` in `svg/shape.js`).
+ * `<svg>`'s content level (`paintSlot` in `svg/shape.js`). Its `::before`
+ * and `::after` count as children with their own content alone, so an
+ * element's subtree reaches past its `::after`, and a sibling drawn after
+ * the element draws after it too.
  *
- * @param {Element} element
+ * @param {PaintNode} element
  * @returns {number}
  */
 function getDrawReach(element) {
+  if (isGenerated(element)) {
+    return 1;
+  }
   let signal = drawReachCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
@@ -685,15 +783,12 @@ function getDrawReach(element) {
       }
       const level = getDrawLevel(element);
       let reach = 1;
-      for (const node of getChildNodes(element)) {
-        if (node.nodeType !== Node.ELEMENT_NODE) {
+      for (const child of getPaintChildren(element)) {
+        const node = paintNode(child);
+        if (!node || getLayer(node) === node) {
           continue;
         }
-        const child = /** @type {HTMLElement} */ (node);
-        if (getLayer(child) === child) {
-          continue;
-        }
-        reach = Math.max(reach, getDrawLevel(child) - level + getDrawReach(child));
+        reach = Math.max(reach, getDrawLevel(node) - level + getDrawReach(node));
       }
       return reach;
     });

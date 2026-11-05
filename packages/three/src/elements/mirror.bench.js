@@ -43,38 +43,18 @@
  */
 
 import * as THREE from "three";
-import { Derived, Signal } from "justdom-signal";
+import { Signal } from "justdom-signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
 import { LOADING_ATTRIBUTE } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { makeReveal } from "./reveal.js";
+import { countEvaluations } from "../test/evaluations.js";
 import { forgetStyle, makeCard, makeRow, pxOf, reads, relayout } from "../test/benchLayout.js";
 
 // Every reactive evaluation in the process, counted. The wall-clock below is
 // jsdom's; this number is the library's own and is what scales.
-//
-// `track` is the one funnel every evaluation goes through — it is what opens
-// the scope a run's reads are recorded against — and it lives on the base
-// class every signal and derived shares. This used to patch `run`, which is
-// not a method of anything: the column read 0 in every row of every table
-// below, which looks exactly like a portal that costs nothing.
-let evaluations = 0;
-/** @type {any} */
-const nodePrototype = Object.getPrototypeOf(Derived.prototype);
-const originalTrack = nodePrototype.track;
-if (typeof originalTrack !== "function") {
-  throw new Error("Cannot count evaluations: the reactive node has no `track`.");
-}
-/**
- * @this {unknown}
- * @param {...unknown} args
- * @returns {unknown}
- */
-nodePrototype.track = function countingTrack(...args) {
-  evaluations += 1;
-  return originalTrack.apply(this, args);
-};
+const evaluations = countEvaluations();
 
 // --------------------------------------------------------------------------
 
@@ -96,14 +76,14 @@ function nextMacrotask() {
  * @returns {Promise<Sample>}
  */
 async function sample(fn) {
-  evaluations = 0;
+  evaluations.count = 0;
   reads.rects = 0;
   reads.ranges = 0;
   const started = performance.now();
   await fn();
   await nextMacrotask();
   return {
-    evaluations,
+    evaluations: evaluations.count,
     rectReads: reads.rects,
     rangeReads: reads.ranges,
     ms: performance.now() - started,

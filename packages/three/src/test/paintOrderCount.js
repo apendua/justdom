@@ -45,6 +45,10 @@
  *   the like. A `<use>`'s copy is read with the target's own computed
  *   style, not the one the `<use>` passes down. Each picture and shape is a
  *   draw of its own.
+ * - An element's `::before` and `::after` are counted as its first and last
+ *   child, while they draw (`getPaintChildren`): a box when they paint one
+ *   or a picture for a `content: url()`, and a run for their text, at
+ *   their own level (`getDrawLevel` of the stand-in).
  * - A run's size class is the array its raster goes in (`sizeClass`). The
  *   text batch binds one array a draw, so two batches draw text a class at
  *   a time.
@@ -82,6 +86,8 @@ import * as THREE from "three";
 /**
  * @import {TextLine} from "../elements/textLines.js";
  * @import {Polygon} from "../elements/layerTree.js";
+ * @import {PaintNode} from "../elements/elevation.js";
+ * @import {Generated} from "../elements/pseudoElements.js";
  */
 import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
@@ -113,6 +119,7 @@ import {
 } from "../elements/textHelpers.js";
 import { PASSWORD_BULLET } from "../elements/textInput.js";
 import { getShownValue, isTextInput } from "../elements/typing.js";
+import { getPaintChildren, isGenerated, paintsBox } from "../elements/pseudoElements.js";
 import { MARKABLE_TAGS, markerVertices } from "../svg/marker.js";
 import { buildShapePath, readDrawnProperty, SHAPE_TAGS, viewportSize } from "../svg/shape.js";
 import { parseNumber, parsePaint, parseUrlReference, readShapeGeometry } from "../svg/style.js";
@@ -123,8 +130,9 @@ import { findReferenced, GROUP_TAGS } from "../svg/template.js";
  *
  * @typedef {object} Entry
  * @property {Kind} kind
- * @property {Element} element
- * @property {Element} layer The root of the layer it is drawn in.
+ * @property {PaintNode} element What draws it: an element, or an element's
+ *   `::before` or `::after`.
+ * @property {PaintNode} layer The root of the layer it is drawn in.
  * @property {number} level Its draw level, within its layer.
  * @property {string | null} size A run's size class, the array its raster
  *   goes in; null for a run that draws itself, empty for any other kind.
@@ -139,11 +147,38 @@ function isRoot(element) {
 }
 
 /**
+ * How many layers a layer root is nested in, which the walk splits by
+ * (`LayerTree`), counted up its ancestors. It counts every layer above it,
+ * the panel's root included, and `getElevation` the layer itself and none
+ * for the root, which comes to the same. A lifted pseudo-element counts
+ * from its element, as a child of it.
+ *
+ * @param {PaintNode} layer
+ * @returns {number}
+ */
+export function layerDepth(layer) {
+  let depth = 0;
+  const start = isGenerated(layer) ? layer.element : isRoot(layer) ? null : getParentElement(layer);
+  for (let el = start; el; el = getParentElement(el)) {
+    if (getLayer(el) === el) depth += 1;
+    if (isRoot(el)) break;
+  }
+  return depth;
+}
+
+/**
  * @param {Element} element
  * @returns {boolean}
  */
 function paints(element) {
-  const style = getComputedStyleCached(element);
+  return paintsStyle(getComputedStyleCached(element));
+}
+
+/**
+ * @param {CSSStyleDeclaration} style
+ * @returns {boolean}
+ */
+function paintsStyle(style) {
   return (
     parseAlpha(style.backgroundColor) > 0 ||
     (style.backgroundImage || "none") !== "none" ||
@@ -313,17 +348,17 @@ function markersOf(shape) {
  *
  * @param {Element} root The panel's root, the element carrying
  *   `data-xr-portal`.
- * @returns {{ entries: Entry[], layers: Element[] }}
+ * @returns {{ entries: Entry[], layers: PaintNode[] }}
  */
 export function listPaintOrder(root) {
   /** @type {Entry[]} */
   const entries = [];
-  /** @type {Element[]} */
+  /** @type {PaintNode[]} */
   const layers = [];
 
   /**
    * @param {Kind} kind
-   * @param {Element} element
+   * @param {PaintNode} element
    * @param {number} step 0 for the box, 1 for its content.
    * @param {string | null} [size] A run's size class, null for one that
    *   draws itself.
@@ -422,6 +457,32 @@ export function listPaintOrder(root) {
   };
 
   /**
+   * What an element's `::before` or `::after` draws, as `generatedContent.js`
+   * draws it: its picture, or its box where it paints one, and its text.
+   *
+   * @param {Generated} generated
+   */
+  const visitGenerated = (generated) => {
+    const content = generated.content.get();
+    if (!content) {
+      return;
+    }
+    if (getLayer(generated) === generated) {
+      layers.push(generated);
+    }
+    const style = generated.style();
+    if (content.url !== null) {
+      push("picture", generated, 0);
+    } else if (paintsBox(style)) {
+      push("box", generated, 0);
+    }
+    const placed = generated.layout.get().text;
+    if (content.text !== "" && placed) {
+      push("run", generated, 1, sizeClass(style, placed.lines, placed.bounds));
+    }
+  };
+
+  /**
    * @param {Element} element
    */
   const visit = (element) => {
@@ -462,8 +523,12 @@ export function listPaintOrder(root) {
     if (tag === "TEXTAREA" || tag === "SELECT" || tag === "INPUT") {
       return;
     }
-    for (const node of getChildNodes(element)) {
-      if (node.nodeType === Node.TEXT_NODE) {
+    for (const node of getPaintChildren(element)) {
+      if (isGenerated(node)) {
+        if (shown) {
+          visitGenerated(node);
+        }
+      } else if (node.nodeType === Node.TEXT_NODE) {
         const text = /** @type {Text} */ (node);
         if (shown && getTextDataCached(text).trim() !== "") {
           const { lines, bounds } = getTextLayout(text);
@@ -477,6 +542,26 @@ export function listPaintOrder(root) {
 
   visit(root);
   return { entries, layers };
+}
+
+/**
+ * Where a layer's plane sits in the panel's frame: an element's box, or a
+ * lifted pseudo-element's quad, at its corner in its element's frame,
+ * scrolled, and `OVERLAY_LIFT` in front (`generatedContent.js`).
+ *
+ * @param {PaintNode} layer
+ * @param {Map<Element, THREE.Matrix4>} cache
+ * @returns {THREE.Matrix4}
+ */
+function layerFrame(layer, cache) {
+  if (!isGenerated(layer)) {
+    return frameOf(layer, cache);
+  }
+  const quad = layer.quad();
+  const scroll = getScrollOffset(layer.element);
+  return new THREE.Matrix4()
+    .makeTranslation(quad.x - scroll.left, quad.y - scroll.top, -OVERLAY_LIFT)
+    .premultiply(frameOf(layer.element, cache));
 }
 
 /** Scratch for one element's step down from its parent. */
@@ -566,7 +651,7 @@ export function countPanel(root) {
   /** @type {Set<string>} */
   const classes = new Set();
   /**
-   * @type {Map<Element, {
+   * @type {Map<PaintNode, {
    *   boxLevels: Set<number>,
    *   runLevels: Map<number, Set<string>>,
    *   ownLevels: Set<number>,
@@ -597,22 +682,19 @@ export function countPanel(root) {
   const frames = new Map();
   const tree = new LayerTree();
   tree.begin();
-  /** @type {Set<Element>} */
+  /** @type {Set<PaintNode>} */
   const planed = new Set();
   for (const layer of layerRoots) {
-    let depth = 0;
-    for (let el = getParentElement(layer); el && !isRoot(layer); el = getParentElement(el)) {
-      if (getLayer(el) === el) depth += 1;
-      if (isRoot(el)) break;
-    }
-    const { width, height } = getBorderBoxSize(/** @type {HTMLElement} */ (layer));
-    if (tree.add(layer, depth, frameOf(layer, frames), width, height)) {
+    const { width, height } = isGenerated(layer)
+      ? layer.quad()
+      : getBorderBoxSize(/** @type {HTMLElement} */ (layer));
+    if (tree.add(layer, layerDepth(layer), layerFrame(layer, frames), width, height)) {
       planed.add(layer);
     }
   }
   tree.build();
   const { pieces, nodes } = tree;
-  /** @type {Map<Element, number>} */
+  /** @type {Map<PaintNode, number>} */
   const piecesOf = new Map();
   let mostHalfPlanes = 0;
   for (const piece of pieces) {
@@ -630,7 +712,7 @@ export function countPanel(root) {
    * quads there, the size classes of its runs there, and whether a picture
    * or a shape breaks it there.
    *
-   * @type {Map<Element, Step[]>}
+   * @type {Map<PaintNode, Step[]>}
    */
   const runOf = new Map();
   for (const [layer, counts] of perLayer) {
@@ -657,7 +739,7 @@ export function countPanel(root) {
   // breaks only at a picture or a shape, or where the pieces' half-planes
   // change, since a draw's half-planes are its uniforms. A layer with no
   // plane is drawn whole, in a node of its own.
-  /** @type {Map<number, { layer: Element, piece: Polygon | null }[]>} */
+  /** @type {Map<number, { layer: PaintNode, piece: Polygon | null }[]>} */
   const byNode = new Map();
   for (const piece of pieces) {
     let members = byNode.get(piece.node);

@@ -10,30 +10,46 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { BENCH_SCENES, LAYER_SCENES, mountScene } from "../test/paintOrderScenes.js";
 import { countPanel } from "../test/paintOrderCount.js";
-import { getChildNodes, getParentElement } from "./mirror.js";
+import { getParentElement } from "./mirror.js";
 import { getClearedSiblings, getDrawLevel, getLayer } from "./elevation.js";
+import { getPaintChildren, isGenerated } from "./pseudoElements.js";
 import { getLayerOrder } from "./layerOrder.js";
 import { isSvgElement } from "./plugins.js";
 
 /**
- * The elements of a layer under `element`, itself included, left in it:
- * not into a layer nested in it, and not into an `<svg>`, whose content
- * draws within its own content level.
- *
- * @param {Element} element
- * @returns {Element[]}
+ * @import {PaintNode} from "./elevation.js";
  */
-function layerSubtree(element) {
-  /** @type {Element[]} */
-  const found = [element];
-  if (isSvgElement(element)) {
-    return found;
+
+/**
+ * The elements and pseudo-elements a node paints inside of, in paint order:
+ * its paint children (`getPaintChildren`), but for its text.
+ *
+ * @param {PaintNode} node
+ * @returns {PaintNode[]}
+ */
+function paintChildren(node) {
+  if (isGenerated(node) || isSvgElement(node)) {
+    return [];
   }
-  for (const node of getChildNodes(element)) {
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-      continue;
-    }
-    const child = /** @type {Element} */ (node);
+  return /** @type {PaintNode[]} */ (
+    getPaintChildren(node).filter(
+      (child) => isGenerated(child) || child.nodeType === Node.ELEMENT_NODE,
+    )
+  );
+}
+
+/**
+ * The elements and pseudo-elements of a layer under `node`, itself
+ * included, left in it: not into a layer nested in it, and not into an
+ * `<svg>`, whose content draws within its own content level.
+ *
+ * @param {PaintNode} node
+ * @returns {PaintNode[]}
+ */
+function layerSubtree(node) {
+  /** @type {PaintNode[]} */
+  const found = [node];
+  for (const child of paintChildren(node)) {
     if (getLayer(child) !== child) {
       found.push(...layerSubtree(child));
     }
@@ -53,11 +69,16 @@ function layerSubtree(element) {
 function levelBreaks(root) {
   /** @type {string[]} */
   const breaks = [];
-  /** @param {Element} element */
-  const name = (element) => element.id || element.localName;
-  /** @param {Element} element */
+  /**
+   * @param {PaintNode} node
+   * @returns {string}
+   */
+  const name = (node) =>
+    isGenerated(node) ? `${name(node.element)}${node.pseudo}` : node.id || node.localName;
+  /** @param {PaintNode} element */
   const visit = (element) => {
-    const parent = element === root ? null : getParentElement(element);
+    const parent =
+      element === root ? null : isGenerated(element) ? element.element : getParentElement(element);
     const level = getDrawLevel(element);
     const isRoot = getLayer(element) === element;
     if (parent && !isRoot && level <= getDrawLevel(parent)) {
@@ -74,13 +95,8 @@ function levelBreaks(root) {
         }
       }
     }
-    if (isSvgElement(element)) {
-      return;
-    }
-    for (const node of getChildNodes(element)) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        visit(/** @type {Element} */ (node));
-      }
+    for (const child of paintChildren(element)) {
+      visit(child);
     }
   };
   visit(root);

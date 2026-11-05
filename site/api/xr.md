@@ -146,7 +146,7 @@ through the device `install` leaves on `window.xrDevice`:
 
 | Export                                         | What it does                                                                                                                                       |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `launch()`                                     | Chromium on SwiftShader, which is what draws a session with no GPU.                                                                                |
+| `launch({ args })`                             | Chromium on SwiftShader, which is what draws a session with no GPU. `args` adds flags a check needs on top, such as a Blink feature.               |
 | `frames(page, n)`                              | Waits for the page to draw `n` frames.                                                                                                             |
 | `observeThree(page)`                           | Keeps the scenes and renderers three makes in `window.threeScenes` and `window.threeRenderers`.                                                    |
 | `headPosition(page)`                           | The origin of the `local` space.                                                                                                                   |

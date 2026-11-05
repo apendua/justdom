@@ -2807,6 +2807,30 @@ export function getAttributeCached(element, name) {
   return signal.get();
 }
 
+/** @type {WeakMap<Element, Derived<string>>} */
+const attributeNamesCache = nodeCache();
+
+/**
+ * The names of the attributes an element carries, joined by spaces, as a
+ * dependency on its own attribute changes: for a reader that copies every
+ * attribute, and so has to see one added as well as one changed. Compared
+ * as a string, so an attribute changing its value alone stops here.
+ *
+ * @param {Element} element
+ * @returns {string}
+ */
+export function getAttributeNamesCached(element) {
+  let signal = attributeNamesCache.get(element);
+  if (!signal) {
+    signal = probedRead(element, () => {
+      readRecordOf(element)?.self.get();
+      return element.getAttributeNames().join(" ");
+    });
+    attributeNamesCache.set(element, signal);
+  }
+  return signal.get();
+}
+
 /**
  * @typedef {object} TransformStyle
  * @property {string} transform The computed `transform`.
@@ -4474,8 +4498,9 @@ const lineBoxCopyCache = nodeCache();
  * there. Where they do differ is a rule that needs the mark on the box
  * itself, which nothing in the box carries. `p[inert]` matches the copy's
  * root, whose resolved style is inline and wins over any rule that is not
- * `!important`. `p[inert] .chip` also matches inside it, and restyles an
- * element laid out in a box of its own, which keeps only its classes.
+ * `!important`. `p[inert] .chip` also matches inside it, and restyles what
+ * is inside an element laid out in a box of its own, where only classes
+ * are kept.
  *
  * A reader that is not itself read by anything, as a test may be, builds the
  * copy afresh on every read, and the build it leaves stays parked until the
@@ -4616,11 +4641,17 @@ function describeShape(node, parts) {
  * splits across lines, inside others that do) keep their resolved style,
  * with their transforms, transitions and animations off, so a selector that
  * reaches above the box still sizes them, and which text was measured first
- * does not change what the others are measured against. Everything else is
+ * does not change what the others are measured against.
+ *
+ * An element laid out in a box of its own keeps its resolved style too,
+ * since its `display`, its size and its margins decide where the line's
+ * texts break. A `<small>` that `.stub small` makes a block ends the line
+ * in the box; restyled by its classes alone it would be inline again, and
+ * its words would join the line. What is inside it is not dressed. It is
  * copied as `createMeasurementClone` copies descendants, with its classes
- * only: a selector that reaches above the box does not style it, and its
- * animations start again, either of which can move a text in a centred or
- * flex line box.
+ * only, and its resolved width and height hold its size, and so where the
+ * line's texts break. They do not hold an `inline-block`'s baseline, which
+ * a restyle inside it can still move.
  *
  * Nothing here is a dependency. The copy depends on what `getLineBoxCopy`
  * reads, and `display` is read straight from the computed style: through
@@ -4643,8 +4674,8 @@ function dressLaidOut(live, copy) {
     }
     const element = /** @type {HTMLElement} */ (child);
     const computed = window.getComputedStyle(element);
+    copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
     if (displaySplitsAcrossLines(element, computed.display)) {
-      copyStillStyle(element, /** @type {HTMLElement} */ (childCopy), computed);
       dressLaidOut(element, childCopy);
     }
   }

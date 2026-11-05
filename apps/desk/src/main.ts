@@ -4,6 +4,7 @@ import { lookFromSearch, type Look } from "./looks.js";
 import { mountLookPicker } from "./lookPicker.js";
 import { presenting } from "./session.js";
 import { mountStage } from "./stage.js";
+import { canDrawHtmlInCanvas, panelsFromSearch } from "./texture/panels.js";
 import { offerXR } from "./xr.js";
 import "./index.css";
 
@@ -15,6 +16,13 @@ function find<T extends Element = HTMLElement>(selector: string): T {
   return element;
 }
 
+// The texture variant types the monitor's listing into the page in a
+// session as on the page, since the page is what its panels show; the
+// mirror reveals a listing it holds whole.
+const panels = panelsFromSearch(location.search);
+document.documentElement.dataset.panels = panels;
+const reveal = panels === "texture" ? { get: () => false } : presenting;
+
 const desk = find("[data-desk]");
 const stage = mountStage(find(".stage"), desk, presenting);
 const fonts = find<HTMLLinkElement>("[data-look-fonts]");
@@ -24,7 +32,7 @@ document.head.appendChild(style);
 /** Put `look` up, in place of whichever was up. */
 function show(look: Look): MountedDesk {
   fonts.href = look.fonts;
-  return mountDesk(desk, style, look, stage.scale);
+  return mountDesk(desk, style, look, stage.scale, reveal);
 }
 
 // The desk on the page is whichever look the address names. The scene reads
@@ -52,6 +60,9 @@ find("[data-notes-toggle]").addEventListener("click", () => {
 
 // And the headset, offered to a page that can open one: the scene mirrors
 // the very elements the page is showing.
-offerXR(current).catch((err) => {
+if (panels === "texture" && !canDrawHtmlInCanvas()) {
+  find("[data-panels-notice]").hidden = false;
+}
+offerXR(current, panels).catch((err) => {
   console.error("Could not offer an XR session:", err);
 });

@@ -138,6 +138,11 @@ attributes outside a session.
 
 Rules written for both states, `.button:hover, .button[data-xr-hover]`, go on working.
 
+A page that sets the attributes itself with no panel up, as one whose elements the browser draws
+into a texture does, turns the rewrite on with `followUserActions()` from `justdom-three/page`. It
+counts as one more panel watching: the rules stay rewritten until it and every panel have stopped,
+and the function it returns stops it.
+
 Not followed:
 
 - **An ancestor that is not a ray target.** A page's `:hover` holds for every ancestor of the

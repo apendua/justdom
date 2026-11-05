@@ -22,7 +22,10 @@ import {
 import { isBlocker } from "./blocker.js";
 import { getLayerOrder } from "./layerOrder.js";
 import { comparePaintOrder } from "./layerTree.js";
-import { listPaintOrder } from "../test/paintOrderCount.js";
+import { fakeClock } from "../test/clock.js";
+import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
+import { getPanel } from "./dragAndDrop.js";
+import { layerDepth, listPaintOrder } from "../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "./documentStyles.js";
 import { generatedHost, splitSelectorList } from "./styleRules.js";
 import { HOVER_ATTRIBUTE } from "./portalRoot.js";
@@ -363,13 +366,14 @@ function removePseudoStubs() {
  * A page-owned root with `markup` in it, and a portal over it.
  *
  * @param {string} markup
+ * @param {Parameters<typeof createPortal>[1]} [options]
  */
-function generatedPanel(markup) {
+function generatedPanel(markup, options = {}) {
   const ctx = InteractionContext.set({}, new InteractionManager());
   const root = document.createElement("div");
   root.innerHTML = markup;
   document.body.appendChild(root);
-  const portal = createPortal(ctx, { root });
+  const portal = createPortal(ctx, { ...options, root });
   const parent = new THREE.Group();
   portal.addTo(parent);
   return {
@@ -916,6 +920,9 @@ describe("an element's ::before and ::after in the paint order", () => {
     assert.equal(getLayer(after), after, "a layer of its own");
     assert.equal(getDrawLevel(after), 0, "the root of its layer");
     assert.equal(getElevation(after), getElevation(card) + 1);
+    // The paint-order count nests it as deep, for the walk it reproduces.
+    assert.equal(layerDepth(after), getElevation(after));
+    assert.equal(layerDepth(panel.root), getElevation(panel.root));
     let order = await walk(panel);
     const layers = order.pieces().map((piece) => piece.layer);
     assert.deepEqual(layers, [panel.root, after], "walked after the layer it floats over");
@@ -986,6 +993,78 @@ describe("an element's ::before and ::after in the paint order", () => {
     assert.deepEqual(clicked, [card.className]);
 
     panel.cleanup();
+  });
+
+  /**
+   * Where a child 20 wide is drawn while it steps from 0 to `to`, near the
+   * card's `::after` at 150 to 200, as the panel's channel waits to
+   * commit: the
+   * motion step holds a step that changes what the child overlaps until
+   * the commit (`keepsOverlaps` in `div.js`).
+   *
+   * @param {string} css The `::after`'s style.
+   * @param {number} to
+   * @returns {Promise<number>} The child's x a few frames into the step.
+   */
+  const stepAcross = async (css, to) => {
+    pseudoRule(".card", "after", '""', css);
+    const clock = fakeClock();
+    const panel = generatedPanel(
+      `
+      <div class="card" style="position: relative" data-rect="0,0,200,100" data-after="150,0,50,50">
+        <div class="mover" style="position: relative; transform: ${shifted(0)}" data-rect="0,0,20,20"></div>
+      </div>
+    `,
+      { budget: 0 },
+    );
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    const mover = /** @type {HTMLElement} */ (panel.root.querySelector(".mover"));
+    // A transformed box is measured by its layout offsets.
+    for (const [name, value] of [
+      ["offsetLeft", 0],
+      ["offsetTop", 0],
+      ["offsetWidth", 20],
+      ["offsetHeight", 20],
+    ]) {
+      Object.defineProperty(mover, name, { configurable: true, get: () => value });
+    }
+    const reported = reportTransform(mover, shifted(0));
+    /** @type {(() => void) | undefined} */
+    let stop;
+    try {
+      await settle(panel.portal);
+      const object = getPanel(panel.parent.children[0])?.objectOf(mover);
+      assert.ok(object);
+      assert.equal(object.matrix.elements[12], 0);
+      stop = flicker(card);
+      card.appendChild(document.createElement("div"));
+      transformTransition(mover, "transitionrun");
+      reported.value = shifted(to);
+      for (let frame = 0; frame < 3; frame++) {
+        flushFrame();
+        await nextMacrotask();
+      }
+      return object.matrix.elements[12];
+    } finally {
+      transformTransition(mover, "transitionend");
+      stop?.();
+      reported.restore();
+      clock.restore();
+      panel.cleanup();
+    }
+  };
+
+  test("a child stepping onto a positioned ::after holds until the commit", async () => {
+    const css = "position: absolute; background-color: red";
+    assert.equal(await stepAcross(css, 100), 100, "a step short of it is drawn");
+    assert.equal(await stepAcross(css, 140), 0, "and one onto it holds");
+  });
+
+  test("a child stepping onto a lifted ::after is drawn at once", async () => {
+    // The lifted one is a layer, ordered by the walk, and the child's draw
+    // level skips it, as it skips a sibling that is a layer.
+    const css = "position: absolute; z-index: 1; background-color: red";
+    assert.equal(await stepAcross(css, 140), 140);
   });
 
   test("a stand-in sorts among its element's children, by paint layer first", async () => {

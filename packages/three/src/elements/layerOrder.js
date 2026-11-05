@@ -10,7 +10,7 @@ import {
 } from "./halfPlanes.js";
 import { LayerTree } from "./layerTree.js";
 import { getBorderBoxSize } from "./mirror.js";
-import { getLayerObject, isGenerated } from "./pseudoElements.js";
+import { isGenerated } from "./pseudoElements.js";
 
 /**
  * @import {Polygon} from './layerTree.js';
@@ -309,7 +309,8 @@ export class LayerOrder {
     this.#root = root;
     // A lifted pseudo-element is no node the portal holds an object for;
     // it says itself which object it is drawn under.
-    this.#objectOf = (layer) => (isGenerated(layer) ? getLayerObject(layer) : objectOf(layer));
+    this.#objectOf = (layer) =>
+      isGenerated(layer) ? (layer.layerObject ?? undefined) : objectOf(layer);
     this.#batch = batch;
     batch.orderBy(this);
     this.#depthQuad = depthQuad;

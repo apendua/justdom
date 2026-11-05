@@ -3,7 +3,7 @@ import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal
 import { $, children, Nothing } from "../operators.js";
 import VisualProperties from "./VisualProperties.js";
 import { getInteriorClipBox, getScrollOffset, hidesVisibility } from "./mirror.js";
-import { getGenerated, KIND_BITS, paintsBox, setLayerObject } from "./pseudoElements.js";
+import { getGenerated, KIND_BITS, paintsBox } from "./pseudoElements.js";
 import {
   createRectUniforms,
   rectGeometry,
@@ -181,11 +181,11 @@ function generatedBox(ctx, generated, surface) {
       if (!layerOrder || !lifted.get()) {
         return;
       }
-      setLayerObject(generated, obj);
+      generated.layerObject = obj;
       layerOrder.addLayer(generated);
       onCleanup(() => {
         layerOrder.removeLayer(generated);
-        setLayerObject(generated, null);
+        generated.layerObject = null;
       });
     }),
     children(

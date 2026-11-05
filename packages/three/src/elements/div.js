@@ -660,9 +660,9 @@ export function box(ctx, element, options = {}) {
    * is a layer is skipped, since an overlap with it changes no draw level
    * (`getDrawLevel`). One in the flow is not: the element clears it
    * (`getClearedSiblings`). The parent's `::before` and `::after` are
-   * siblings too (`getPaintChildren`), tested against the box measured for
-   * them: neither moves but with its element's layout, which the commit
-   * brings.
+   * siblings too (`getPaintChildren`), skipped as well while lifted
+   * (`getLayer`), and otherwise tested against the box measured for them:
+   * neither moves but with its element's layout, which the commit brings.
    *
    * @param {PaintedBounds} was
    * @param {PaintedBounds} bounds
@@ -677,7 +677,7 @@ export function box(ctx, element, options = {}) {
       /** @type {PaintedBounds | null | undefined} */
       let theirs;
       if (isGenerated(node)) {
-        theirs = getPaintedBounds(node);
+        theirs = getLayer(node) === node ? null : getPaintedBounds(node);
       } else if (node !== element && node.nodeType === Node.ELEMENT_NODE) {
         theirs = committedPlacements.get(/** @type {Element} */ (node))?.get()?.bounds;
       }

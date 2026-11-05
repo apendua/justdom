@@ -357,6 +357,14 @@ export class Generated {
         ),
       { isEqual: generatedLayoutEqual },
     );
+    /**
+     * The object it is drawn under while it is a layer (`getLayer`), which
+     * the panel's walk takes as its layer's plane (`layerOrder.js`); null
+     * otherwise. `generatedContent.js` writes it.
+     *
+     * @type {import('three').Object3D | null}
+     */
+    this.layerObject = null;
   }
 
   /**
@@ -402,39 +410,6 @@ export function getGenerated(element, kind) {
     generatedCache.set(element, entry);
   }
   return (entry[kind] ??= new Generated(element, kind));
-}
-
-/**
- * The object each lifted pseudo-element (`getLayer`) is drawn under, which
- * the panel's walk takes as its layer's plane (`layerOrder.js`).
- *
- * @type {WeakMap<Generated, import('three').Object3D>}
- */
-const layerObjects = new WeakMap();
-
-/**
- * Say which object a pseudo-element that is a layer is drawn under, or,
- * with null, that it no longer is one.
- *
- * @param {Generated} generated
- * @param {import('three').Object3D | null} object
- */
-export function setLayerObject(generated, object) {
-  if (object) {
-    layerObjects.set(generated, object);
-  } else {
-    layerObjects.delete(generated);
-  }
-}
-
-/**
- * The object a pseudo-element that is a layer is drawn under.
- *
- * @param {Generated} generated
- * @returns {import('three').Object3D | undefined}
- */
-export function getLayerObject(generated) {
-  return layerObjects.get(generated);
 }
 
 /**

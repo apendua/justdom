@@ -147,6 +147,26 @@ function isRoot(element) {
 }
 
 /**
+ * How many layers a layer root is nested in, which the walk splits by
+ * (`LayerTree`), counted up its ancestors. It counts every layer above it,
+ * the panel's root included, and `getElevation` the layer itself and none
+ * for the root, which comes to the same. A lifted pseudo-element counts
+ * from its element, as a child of it.
+ *
+ * @param {PaintNode} layer
+ * @returns {number}
+ */
+export function layerDepth(layer) {
+  let depth = 0;
+  const start = isGenerated(layer) ? layer.element : isRoot(layer) ? null : getParentElement(layer);
+  for (let el = start; el; el = getParentElement(el)) {
+    if (getLayer(el) === el) depth += 1;
+    if (isRoot(el)) break;
+  }
+  return depth;
+}
+
+/**
  * @param {Element} element
  * @returns {boolean}
  */
@@ -665,19 +685,10 @@ export function countPanel(root) {
   /** @type {Set<PaintNode>} */
   const planed = new Set();
   for (const layer of layerRoots) {
-    // A lifted pseudo-element is nested in its element's layers, and one
-    // more for itself.
-    const generated = isGenerated(layer);
-    let depth = generated ? 1 : 0;
-    const start = generated ? layer.element : isRoot(layer) ? null : getParentElement(layer);
-    for (let el = start; el; el = getParentElement(el)) {
-      if (getLayer(el) === el) depth += 1;
-      if (isRoot(el)) break;
-    }
-    const { width, height } = generated
+    const { width, height } = isGenerated(layer)
       ? layer.quad()
       : getBorderBoxSize(/** @type {HTMLElement} */ (layer));
-    if (tree.add(layer, depth, layerFrame(layer, frames), width, height)) {
+    if (tree.add(layer, layerDepth(layer), layerFrame(layer, frames), width, height)) {
       planed.add(layer);
     }
   }

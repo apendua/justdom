@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "`launch({ args })` in `justdom-xr/driver` passes extra flags to Chromium, such as a Blink feature a check needs",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

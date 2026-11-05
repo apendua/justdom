@@ -12,13 +12,10 @@ import { revealedCount, type Terminal } from "./terminal.js";
  * and `makeReveal` draws as much of it as is typed, so a tick is a uniform
  * write rather than a re-measured, re-rasterized run. The terminal's state
  * is the same for both; only the node the listing is in changes, when a
- * session starts or ends.
+ * session starts or ends. `revealing` says which of the two it is: whether
+ * a session mirrors the desk, for a desk mirrored by `justdom-three`.
  */
-export function mountScreen(
-  screen: HTMLElement,
-  terminal: Terminal,
-  presenting: Readable<boolean>,
-) {
+export function mountScreen(screen: HTMLElement, terminal: Terminal, revealing: Readable<boolean>) {
   const program = screen.querySelector<HTMLElement>("[data-program]");
   const prompt = screen.querySelector<HTMLElement>("[data-prompt]");
   if (!program || !prompt) {
@@ -31,9 +28,7 @@ export function mountScreen(
 
   const subscriptions = [
     just(program, [
-      children(
-        component(() => (presenting.get() ? reveal.text`${listing}` : text`${typedPart}`))(),
-      ),
+      children(component(() => (revealing.get() ? reveal.text`${listing}` : text`${typedPart}`))()),
     ]).subscribe({ error: (err) => console.error("Could not draw the listing:", err) }),
     just(prompt, [children(text`${observable(() => terminal.console.get())}`)]).subscribe({
       error: (err) => console.error("Could not draw the prompt:", err),
@@ -52,7 +47,7 @@ export function mountScreen(
     const typed = terminal.typed.get();
     // The characters typed while a session reveals the listing, and nothing
     // otherwise, when the bottom is the place to be.
-    const revealed = presenting.get() && terminal.typing.get() ? typed : 0;
+    const revealed = revealing.get() && terminal.typing.get() ? typed : 0;
     queueMicrotask(() => {
       scrollElementBy(screen, 0, scrollTarget(screen, program, revealed) - screen.scrollTop);
     });

@@ -797,6 +797,20 @@ export function watchDocumentStyles(listener) {
 }
 
 /**
+ * Have the page's `:hover`, `:active`, `:focus` and `:focus-visible` rules
+ * answer `data-xr-hover`, `data-xr-active` and `data-xr-focus` as well, for
+ * a page that sets those flags itself with no panel mirroring it, as one
+ * whose elements a browser draws into a texture does. While a panel watches
+ * the document's styles the rules are rewritten already; this counts as one
+ * more watcher, so the rewrite stays until both have stopped.
+ *
+ * @returns {() => void} Stops following. Idempotent.
+ */
+export function followUserActions() {
+  return watchDocumentStyles(() => {});
+}
+
+/**
  * Turn theming mode on: every panel follows every change to the document's
  * rules, including the ones no observer reports. A rule edited or switched
  * off in the browser's developer tools, a rule added there, an `insertRule`

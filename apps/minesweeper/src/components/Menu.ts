@@ -33,9 +33,9 @@ interface MenuProps {
 }
 
 /*
- * Every hover and press rule is written twice, for `:hover` and `:active`
- * and for `[data-xr-hover]` and `[data-xr-active]`: the first pair is the
- * page's, the second is what a headset's ray sets on the element it is on.
+ * The hover and press rules are written for `:hover` and `:active` alone:
+ * in a headset session, justdom-three rewrites them to answer its ray as
+ * well (`[data-xr-hover]` and `[data-xr-active]`).
  * A control is anything with `cursor: pointer`, which is also what makes it
  * pressable by the ray.
  */
@@ -123,8 +123,7 @@ const segment = stylesheet`
     ${pressable}
   }
 
-  .${CLASS_NAME}:hover,
-  .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: #dee2e6;
   }
 
@@ -133,8 +132,7 @@ const segment = stylesheet`
     color: #ffffff;
   }
 
-  .${CLASS_NAME}:active,
-  .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME}:active {
     transform: scale(0.95);
   }
 
@@ -188,13 +186,11 @@ const restartButton = stylesheet`
     ${pressable}
   }
 
-  .${CLASS_NAME}:hover,
-  .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: #495057;
   }
 
-  .${CLASS_NAME}:active,
-  .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME}:active {
     transform: scale(0.97);
   }
 `;
@@ -226,14 +222,12 @@ const closeButton = stylesheet`
     ${pressable}
   }
 
-  .${CLASS_NAME}:hover,
-  .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: ${RED};
     color: #ffffff;
   }
 
-  .${CLASS_NAME}:active,
-  .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME}:active {
     transform: scale(0.92);
   }
 `;

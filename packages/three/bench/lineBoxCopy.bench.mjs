@@ -21,6 +21,11 @@
  * task, as a box re-measured after a layout change is; "one" measures the
  * first text alone, as a single label changing does. Each layout is held by
  * an effect while it is read, as the mirror holds it.
+ *
+ * "inline" is that paragraph as it stands. In "boxed" every other `<b>` is an
+ * `inline-block`, a box of its own: the copy of the `<p>` takes its resolved
+ * style without walking into it, and its word is measured in a copy of the
+ * `<b>` instead of the `<p>`.
  */
 import { Effect } from "justdom-signal";
 import { createMirror, getTextLayout } from "../src/elements/mirror.js";
@@ -105,8 +110,9 @@ window.Node.prototype.appendChild = function (child) {
 
 /**
  * @param {number} sentences
+ * @param {"inline" | "boxed"} shape
  */
-function makeCard(sentences) {
+function makeCard(sentences, shape) {
   const card = document.createElement("div");
   // A browser resolves a transform to a matrix, and jsdom does not resolve
   // one at all, so the card is given the matrix of a 4° turn.
@@ -116,6 +122,9 @@ function makeCard(sentences) {
   const texts = [];
   for (let i = 0; i < sentences; i++) {
     const bold = document.createElement("b");
+    if (shape === "boxed" && i % 2 === 1) {
+      bold.style.display = "inline-block";
+    }
     const word = document.createTextNode(`word${i}`);
     bold.appendChild(word);
     const rest = document.createTextNode(` and the rest of sentence ${i}. `);
@@ -136,10 +145,11 @@ function makeCard(sentences) {
 
 /**
  * @param {number} sentences
+ * @param {"inline" | "boxed"} shape
  * @param {"all" | "one"} which
  */
-function run(sentences, which) {
-  const { card, texts } = makeCard(sentences);
+function run(sentences, shape, which) {
+  const { card, texts } = makeCard(sentences, shape);
   nodesCloned = 0;
   stylesCopied = 0;
   copiesParked = 0;
@@ -155,15 +165,25 @@ function run(sentences, which) {
   return { nodesCloned, stylesCopied, copiesParked, ms };
 }
 
-for (const which of /** @type {const} */ (["all", "one"])) {
+for (const shape of /** @type {const} */ (["inline", "boxed"])) {
+  for (const which of /** @type {const} */ (["all", "one"])) {
+    printTable(shape, which);
+  }
+}
+
+/**
+ * @param {"inline" | "boxed"} shape
+ * @param {"all" | "one"} which
+ */
+function printTable(shape, which) {
   console.log(
-    `\n=== ${which === "all" ? "every text in the paragraph" : "the first text alone"} ===`,
+    `\n=== ${shape}: ${which === "all" ? "every text in the paragraph" : "the first text alone"} ===`,
   );
   console.log("sentences\ttexts\tcopies\tnodes cloned\tstyles copied\tms");
   for (const sentences of SIZES) {
     // One run to warm the JIT, then the one reported.
-    run(sentences, which);
-    const result = run(sentences, which);
+    run(sentences, shape, which);
+    const result = run(sentences, shape, which);
     console.log(
       [
         sentences,

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Export `followUserActions()`, which has the page's `:hover`, `:active` and `:focus` rules answer the ray's flags with no panel up, for a page that sets the flags itself.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

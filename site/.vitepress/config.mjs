@@ -56,6 +56,7 @@ export default defineConfig({
             { text: "Pointing and grabbing", link: "/guide/pointing-and-grabbing" },
             { text: "DOM panels", link: "/guide/dom-panels" },
             { text: "Writing CSS for a panel", link: "/guide/panel-css" },
+            { text: "Mirrors and HTML-in-Canvas", link: "/guide/html-in-canvas" },
           ],
         },
         {

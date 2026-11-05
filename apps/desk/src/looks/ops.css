@@ -45,12 +45,12 @@
 .spacer { flex: 1; }
 .knob-wrap { position: relative; }
 .knob { cursor: pointer; display: flex; align-items: center; gap: 8px; font: 700 9px/1 "JetBrains Mono", monospace; color: #c7cdd6; letter-spacing: .12em; background: #23272e; border: 1px solid #5a616d; border-radius: 4px; padding: 8px 10px; transition: background-color .15s, transform .1s; }
-.knob:hover, .knob[data-xr-hover] { background: #2f343c; }
-.knob:active, .knob[data-xr-active] { transform: scale(.96); }
+.knob:hover { background: #2f343c; }
+.knob:active { transform: scale(.96); }
 .knob i { width: 8px; height: 8px; border-radius: 50%; background: #ffb000; }
 .menu { position: absolute; z-index: 3; bottom: 100%; right: 0; margin-bottom: 6px; width: 160px; background: #0b0d11; border: 1px solid #5a616d; border-radius: 4px; padding: 4px; }
 .menu div { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px; font: 700 10px/1 "JetBrains Mono", monospace; color: #c7cdd6; letter-spacing: .1em; transition: background-color .12s, color .12s; }
-.menu div:hover, .menu div[data-xr-hover] { background: #ffb000; color: #0b0d11; }
+.menu div:hover { background: #ffb000; color: #0b0d11; }
 .menu i { width: 10px; height: 10px; border-radius: 2px; }
 /* the tape deck */
 .deck { display: flex; align-items: center; gap: 10px; width: 170px; height: 40px; border-radius: 4px; background: #1a1d22; border: 1px solid #5a616d; padding: 0 10px; transition: background-color .2s; }
@@ -118,7 +118,7 @@ svg.chart text { fill: #ff5a3c; font: 8px "JetBrains Mono", monospace; }
 .tickets { display: flex; flex-direction: column; gap: 8px; flex: 1; }
 .ticket { position: relative; padding: 12px 7px 7px; background: #fffdf3; border: 1px solid #d9d3bd; border-top: 5px solid #ffb000; font: 500 10px/1.3 "JetBrains Mono", monospace; color: #2a2e35; transition: transform .15s; }
 .ticket.red { border-top-color: #ff5a3c; } .ticket.blue { border-top-color: #1d4fb8; } .ticket.green { border-top-color: #3ddc84; }
-.ticket:hover, .ticket[data-xr-hover] { transform: translateZ(6px) rotate(-1.5deg); }
+.ticket:hover { transform: translateZ(6px) rotate(-1.5deg); }
 .ticket b { display: block; font: 700 9px/1 "Oswald", sans-serif; letter-spacing: .15em; color: #8a93a1; margin-bottom: 4px; }
 .magnet { position: absolute; z-index: 1; top: -9px; right: 8px; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffffff 0%, #9aa3b0 45%, #3a404b 100%); pointer-events: none; }
 .scribble { position: absolute; right: 14px; bottom: 12px; width: 110px; height: 70px; pointer-events: none; }
@@ -142,14 +142,14 @@ svg.chart text { fill: #ff5a3c; font: 8px "JetBrains Mono", monospace; }
 .key.accent { background: linear-gradient(180deg, #ffc23a, #e09600); }
 .key.accent .cap { color: #1a1d22; }
 .key.space { background: linear-gradient(180deg, #535a66, #3f444e); }
-.key:hover .cap, .key[data-xr-hover] .cap { color: #ffb000; }
-.key.accent:hover .cap, .key.accent[data-xr-hover] .cap { color: #000; }
-.key:active, .key[data-xr-active], .key[data-down] { transform: translateY(3px) scale(.97); }
+.key:hover .cap { color: #ffb000; }
+.key.accent:hover .cap { color: #000; }
+.key:active, .key[data-down] { transform: translateY(3px) scale(.97); }
 
 /* ---------- cassettes --------------------------------------------------- */
 #tapes { left: 70px; top: 690px; width: 360px; height: 240px; transform: perspective(1400px) rotateX(32deg); }
 .cassette { position: absolute; width: 168px; height: 106px; border-radius: 6px; padding: 8px; background: #1c1f24; border: 1px solid #000; transform: rotate(var(--tilt)); transition: transform .2s; }
-.cassette:hover, .cassette[data-xr-hover] { transform: rotate(var(--tilt)) translateY(-6px); }
+.cassette:hover { transform: rotate(var(--tilt)) translateY(-6px); }
 .cassette.clear { background: #4e5a66; } .cassette.orange { background: #c75b1c; }
 .c-label { height: 66px; border-radius: 3px; padding: 4px 7px; background: #f2ecda; }
 .cassette.orange .c-label { background: #fff3d6; }
@@ -190,7 +190,7 @@ svg.chart text { fill: #ff5a3c; font: 8px "JetBrains Mono", monospace; }
 .power i { width: 8px; height: 8px; border-radius: 50%; background: #3a1a0a; }
 html[data-presenting] .power { cursor: pointer; color: #c7cdd6; transition: background-color .15s; }
 html[data-presenting] .power i { background: #ff5a3c; }
-html[data-presenting] .power:hover, html[data-presenting] .power[data-xr-hover] { background: #5a1f14; }
+html[data-presenting] .power:hover { background: #5a1f14; }
 /* A cassette lifts as the ray reaches it: up the screen on the page, up off
    the desk in the room, where the cassettes lie flat. */
-html[data-presenting] .cassette:hover, html[data-presenting] .cassette[data-xr-hover] { transform: rotate(var(--tilt)) translateZ(6px); }
+html[data-presenting] .cassette:hover { transform: rotate(var(--tilt)) translateZ(6px); }

@@ -1,6 +1,14 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { enableThemingMode, leadingClass, watchDocumentStyles } from "./documentStyles.js";
+import {
+  enableThemingMode,
+  followUserActions,
+  leadingClass,
+  watchDocumentStyles,
+} from "./documentStyles.js";
+import { forgetComputedStyles } from "../test/computedStyles.js";
+import { CLASS_NAME, stylesheet } from "justdom-core";
+import { Signal, toObservable } from "justdom-signal";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver.
 if (typeof globalThis.MutationObserver === "undefined") {
@@ -526,6 +534,153 @@ describe("watchDocumentStyles", () => {
       );
     } finally {
       stop();
+    }
+  });
+
+  test("followUserActions rewrites the rules with no panel, and keeps them for one", () => {
+    // A page whose elements the browser draws into a texture sets the hover
+    // flag itself, with no panel watching the styles.
+    const style = document.createElement("style");
+    style.innerHTML = ".fu { color: rgb(0, 0, 0); } .fu:hover { color: rgb(255, 0, 0); }";
+    document.head.appendChild(style);
+    const element = document.createElement("div");
+    element.className = "fu";
+    element.setAttribute("data-xr-hover", "");
+    document.body.appendChild(element);
+    const sheet = style.sheet;
+    assert.ok(sheet);
+    const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[1]);
+    const stopFollowing = followUserActions();
+    let stopPanel = () => {};
+    try {
+      assert.equal(window.getComputedStyle(element).color, "rgb(255, 0, 0)");
+      stopPanel = watchDocumentStyles(() => {});
+      stopFollowing();
+      assert.equal(rule.selectorText, ".fu:is(:hover, [data-xr-hover])", "a panel still watches");
+      stopPanel();
+      assert.equal(rule.selectorText, ".fu:hover", "the page gets its own rule back");
+    } finally {
+      stopFollowing();
+      stopPanel();
+      element.remove();
+      style.remove();
+      forgetComputedStyles();
+    }
+  });
+
+  test("a page's :hover rule answers the hover flag while a panel watches", async () => {
+    const style = document.createElement("style");
+    style.innerHTML = ".hv { color: rgb(0, 0, 0); } .hv:hover { color: rgb(255, 0, 0); }";
+    document.head.appendChild(style);
+    const element = document.createElement("div");
+    element.className = "hv";
+    element.setAttribute("data-xr-hover", "");
+    document.body.appendChild(element);
+    const sheet = style.sheet;
+    assert.ok(sheet);
+    const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[1]);
+    const watcher = watch();
+    let stopped = false;
+    try {
+      assert.equal(window.getComputedStyle(element).color, "rgb(255, 0, 0)");
+      // The rewrite is the panel's own doing, not an edit to announce.
+      await flush();
+      assert.equal(watcher.count(), 0);
+      watcher.stop();
+      stopped = true;
+      assert.equal(rule.selectorText, ".hv:hover", "the page gets its own rule back");
+      forgetComputedStyles();
+      assert.equal(window.getComputedStyle(element).color, "rgb(0, 0, 0)");
+    } finally {
+      if (!stopped) {
+        watcher.stop();
+      }
+      element.remove();
+      style.remove();
+    }
+  });
+
+  test("a sheet that arrives later has its :hover rules rewritten, and says what they style", async () => {
+    /** @type {(ReadonlySet<string> | null)[]} */
+    const heard = [];
+    const stop = watchDocumentStyles((scope) => heard.push(scope));
+    const element = document.createElement("div");
+    element.className = "late";
+    element.setAttribute("data-xr-active", "");
+    document.body.appendChild(element);
+    const style = document.createElement("style");
+    try {
+      style.innerHTML = ".late:active { color: rgb(0, 128, 0); }";
+      document.head.appendChild(style);
+      await flush();
+      assert.equal(window.getComputedStyle(element).color, "rgb(0, 128, 0)");
+      assert.deepEqual(
+        heard.map((scope) => scope && [...scope]),
+        [["late"]],
+      );
+      // A library that rewrites its sheet gets new rules, rewritten too.
+      style.innerHTML = ".late:active { color: rgb(0, 0, 255); }";
+      await flush();
+      assert.equal(window.getComputedStyle(element).color, "rgb(0, 0, 255)");
+    } finally {
+      stop();
+      element.remove();
+      style.remove();
+    }
+  });
+
+  test("a justdom stylesheet's :hover rule stays rewritten as its signal changes", async () => {
+    const color = Signal.of("rgb(255, 0, 0)");
+    /** @type {string[]} */
+    const names = [];
+    const subscription =
+      stylesheet`.${CLASS_NAME}:hover { color: ${toObservable(color)}; }`.subscribe((name) =>
+        names.push(name),
+      );
+    const element = document.createElement("div");
+    element.className = names[0];
+    element.setAttribute("data-xr-hover", "");
+    document.body.appendChild(element);
+    const watcher = watch();
+    try {
+      assert.equal(window.getComputedStyle(element).color, "rgb(255, 0, 0)");
+      // justdom writes the new text into the same <style>, which gives it a
+      // new sheet, with a :hover rule the panel has not rewritten yet.
+      color.set("rgb(0, 0, 255)");
+      await flush();
+      forgetComputedStyles();
+      assert.equal(window.getComputedStyle(element).color, "rgb(0, 0, 255)");
+      assert.equal(watcher.count(), 1, "the edit is announced, once");
+    } finally {
+      watcher.stop();
+      subscription.unsubscribe();
+      element.remove();
+    }
+  });
+
+  test("theming mode does not take the rewrite for an edit", async () => {
+    const style = document.createElement("style");
+    style.innerHTML = ".tm:hover { color: red; }";
+    document.head.appendChild(style);
+    const watcher = watch();
+    const stopTheming = enableThemingMode({ interval: 5 });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.equal(watcher.count(), 0);
+      // A rule added through the CSSOM is rewritten at the next read.
+      const sheet = style.sheet;
+      assert.ok(sheet);
+      sheet.insertRule(".tm2:hover { color: blue; }", 1);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      assert.equal(watcher.count(), 1);
+      assert.equal(
+        /** @type {CSSStyleRule} */ (sheet.cssRules[1]).selectorText,
+        ".tm2:is(:hover, [data-xr-hover])",
+      );
+    } finally {
+      stopTheming();
+      watcher.stop();
+      style.remove();
     }
   });
 });

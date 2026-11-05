@@ -50,15 +50,16 @@ const keyStyle = stylesheet`
     transition: transform 0.07s;
   }
 
-  .${CLASS_NAME}:active, .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME}:active {
     transform: translateZ(0.5px);
   }
 `;
 
-// Same specificity as the press rule and later in the document, so a held
-// shift stays lit while the ray is on it.
+// Same specificity as the key's own rule and later in the document, so a
+// held shift's colours win by order. The press rule sets `transform` alone,
+// so the two never meet.
 const keyHeldStyle = stylesheet`
-  .${CLASS_NAME}, .${CLASS_NAME}[data-xr-active] {
+  .${CLASS_NAME} {
     color: #fff3e6;
     background: linear-gradient(180deg, #e88a5a, #c6512b);
     border-color: #7d2e14;

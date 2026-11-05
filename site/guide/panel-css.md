@@ -27,11 +27,12 @@ from `justdom-three/svg`, from the shapes' computed style, so a class on a `<pat
 - **Hover and press change colour, not size.** The attributes the portal writes, `data-xr-hover`,
   `data-xr-active`, `data-xr-checked` and `data-xr-focus`, are declared unable to move anything,
   which is what keeps a hover to one element's restyle. A width or a padding under one of them is
-  not mirrored. Write the page's pseudo-class and the attribute in one rule:
+  not mirrored. A page's `:hover`, `:active` and `:focus` rules answer them as written, since the
+  portal rewrites each to name its attribute too
+  ([Hover, press and focus](/api/three/css#hover-press-and-focus)):
 
   ```css
-  .button:hover,
-  .button[data-xr-hover] {
+  .button:hover {
     transform: translateZ(4px) scale(1.04); /* fine: a matrix write */
     padding: 12px; /* ignored: this is layout */
   }

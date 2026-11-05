@@ -69,7 +69,7 @@ export const actionButton = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: ${() => palette.buttonHover};
   }
 `;
@@ -97,7 +97,7 @@ export function actionButtonClass(enabled: Subscribable<boolean>) {
 
 /** Added to an action button that currently has nothing to act on. */
 const mutedButton = stylesheet`
-  .${CLASS_NAME}, .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}, .${CLASS_NAME}:hover {
     background: ${() => palette.buttonMuted};
     border-color: ${() => palette.buttonMutedEdge};
     color: ${() => palette.buttonMutedText};
@@ -131,7 +131,7 @@ export const stepButton = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: ${() => palette.buttonHover};
   }
 `;
@@ -172,7 +172,7 @@ const dropdownTrigger = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: ${() => palette.buttonHover};
   }
 `;
@@ -223,7 +223,7 @@ const dropdownOption = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: ${() => palette.panelWash};
   }
 `;

@@ -52,11 +52,11 @@
 .knob-wrap { position: relative; }
 .knob { cursor: pointer; font: 600 10px/1 "IBM Plex Mono", monospace; color: #514939; letter-spacing: .06em;
   background: linear-gradient(180deg, #f6f0de, #d8ceb3); border: 1px solid #9e937a; border-bottom-width: 3px; border-radius: 6px; padding: 7px 9px; transition: transform .1s, background-color .2s; }
-.knob:hover, .knob[data-xr-hover] { transform: translateY(-1px); }
-.knob:active, .knob[data-xr-active] { transform: translateY(1px); }
+.knob:hover { transform: translateY(-1px); }
+.knob:active { transform: translateY(1px); }
 .menu { position: absolute; z-index: 3; bottom: 100%; right: 0; margin-bottom: 6px; width: 150px; background: #2d2a24; border: 1px solid #14120f; border-radius: 8px; padding: 5px; }
 .menu div { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; font: 600 11px/1 "IBM Plex Mono", monospace; color: #e8dfc8; transition: background-color .15s; }
-.menu div:hover, .menu div[data-xr-hover] { background: #4a453b; }
+.menu div:hover { background: #4a453b; }
 .menu i { width: 12px; height: 12px; border-radius: 50%; }
 .drive { position: relative; width: 132px; height: 34px; border-radius: 5px; background: linear-gradient(180deg, #d3c8ac, #e6dec8); border: 1px solid #a1967b; display: flex; align-items: center; padding: 0 10px; gap: 10px; transition: background-color .2s; }
 .drive[data-over] { background: linear-gradient(180deg, #f6e9a8, #fff6cc); border-color: #c79b1f; }
@@ -97,7 +97,7 @@ svg.chart text { fill: #4f7a5b; font: 9px "IBM Plex Mono", monospace; }
 svg.flow { display: block; width: 100%; height: 118px; }
 svg.flow .node rect { fill: #f6f0de; stroke: #6d6450; stroke-width: 1.5; }
 svg.flow .node { cursor: pointer; }
-svg.flow .node:hover rect, svg.flow .node[data-xr-hover] rect { fill: #ffe9a3; }
+svg.flow .node:hover rect { fill: #ffe9a3; }
 svg.flow .node text { fill: #3d3628; font: 600 9px "IBM Plex Mono", monospace; text-anchor: middle; }
 svg.flow .edge { fill: none; stroke: #6d6450; stroke-width: 1.5; }
 svg.flow .edge.live { stroke: #c6512b; stroke-dasharray: 5 5; animation: march .8s linear infinite; }
@@ -114,7 +114,7 @@ svg.flow marker path { fill: #6d6450; }
 .cork { position: relative; height: 470px; border-radius: 3px; overflow: hidden;
   background: #c08d57 radial-gradient(circle at 2px 2px, rgba(92, 54, 20, .35) 1.2px, transparent 1.8px) 0 0 / 7px 9px; }
 .card { position: absolute; transform: rotate(var(--tilt, 0deg)); transition: transform .2s; padding: 16px 12px 12px; }
-.card:hover, .card[data-xr-hover] { transform: rotate(var(--tilt, 0deg)) translateZ(8px) scale(1.04); }
+.card:hover { transform: rotate(var(--tilt, 0deg)) translateZ(8px) scale(1.04); }
 .pin { position: absolute; z-index: 1; left: 50%; top: -5px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #ff9a8a 0%, #d63a2a 45%, #7a160c 100%); pointer-events: none; }
 .pin.blue { background: radial-gradient(circle at 35% 30%, #a8c8ff 0%, #2a5fd6 45%, #0c2a7a 100%); }
@@ -155,13 +155,13 @@ svg.flow marker path { fill: #6d6450; }
 .key.mod { background: linear-gradient(180deg, #cfc4a7, #b6ab8e); }
 .key.accent { background: linear-gradient(180deg, #e88a5a, #c6512b); border-color: #7d2e14; }
 .key.accent .cap { color: #fff3e6; }
-.key:hover, .key[data-xr-hover] { transform: translateY(-1px); }
-.key:active, .key[data-xr-active], .key[data-down] { transform: translateY(3px) scale(.98); }
+.key:hover { transform: translateY(-1px); }
+.key:active, .key[data-down] { transform: translateY(3px) scale(.98); }
 
 /* ---------- floppies -------------------------------------------------- */
 #floppies { left: 110px; top: 690px; width: 300px; height: 220px; transform: perspective(1400px) rotateX(30deg); }
 .floppy { position: absolute; width: 120px; height: 124px; border-radius: 4px 14px 4px 4px; background: #2b2d33; padding: 0 12px; transform: rotate(var(--tilt)); transition: transform .2s; }
-.floppy:hover, .floppy[data-xr-hover] { transform: rotate(var(--tilt)) translateY(-6px); }
+.floppy:hover { transform: rotate(var(--tilt)) translateY(-6px); }
 .floppy.blue { background: #234a8a; } .floppy.red { background: #9a2a22; }
 .shutter { width: 64px; height: 38px; margin: 0 auto; border-radius: 0 0 3px 3px; background: linear-gradient(90deg, #a9adb4, #e8eaee 45%, #9ca0a8); display: flex; justify-content: flex-end; padding: 7px 10px; }
 .shutter i { width: 12px; height: 22px; background: #2b2d33; border-radius: 2px; }
@@ -203,8 +203,8 @@ svg.flow marker path { fill: #6d6450; }
 /* The power button ends the session (src/power.ts), and only there is it a
    control: pointable, and big enough to aim a ray at across the desk. */
 html[data-presenting] .power { cursor: pointer; width: 34px; height: 34px; transition: background-color .15s; }
-html[data-presenting] .power:hover, html[data-presenting] .power[data-xr-hover] { background: #e88a5a; }
-html[data-presenting] .power:hover .pled, html[data-presenting] .power[data-xr-hover] .pled { background: radial-gradient(circle, #ffd0b8, #c6512b 70%); }
+html[data-presenting] .power:hover { background: #e88a5a; }
+html[data-presenting] .power:hover .pled { background: radial-gradient(circle, #ffd0b8, #c6512b 70%); }
 /* A floppy lifts as the ray reaches it. On the page that is up the screen;
    in the room the floppies lie on the desk, so it is up off the desk. */
-html[data-presenting] .floppy:hover, html[data-presenting] .floppy[data-xr-hover] { transform: rotate(var(--tilt)) translateZ(6px); }
+html[data-presenting] .floppy:hover { transform: rotate(var(--tilt)) translateZ(6px); }

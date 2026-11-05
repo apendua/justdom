@@ -45,11 +45,11 @@ html[data-presenting] .screen[data-typing] .cursor { visibility: hidden; }
    the board and a press pushes them into it, as a real one would. The
    phosphor knob stands on the monitor and is pressed the same way. */
 html[data-presenting] .key { transform: translateZ(4px); }
-html[data-presenting] .key:hover, html[data-presenting] .key[data-xr-hover] { transform: translateZ(5px); }
-html[data-presenting] .key:active, html[data-presenting] .key[data-xr-active], html[data-presenting] .key[data-down] { transform: translateZ(1px); }
+html[data-presenting] .key:hover { transform: translateZ(5px); }
+html[data-presenting] .key:active, html[data-presenting] .key[data-down] { transform: translateZ(1px); }
 html[data-presenting] .knob { transform: translateZ(3px); }
-html[data-presenting] .knob:hover, html[data-presenting] .knob[data-xr-hover] { transform: translateZ(4px); }
-html[data-presenting] .knob:active, html[data-presenting] .knob[data-xr-active] { transform: translateZ(1px); }
+html[data-presenting] .knob:hover { transform: translateZ(4px); }
+html[data-presenting] .knob:active { transform: translateZ(1px); }
 
 .krow { display: flex; gap: 5px; }
 .key { position: relative; display: flex; align-items: center; justify-content: center; flex: 1 1 0; min-width: 0; cursor: pointer; user-select: none; }

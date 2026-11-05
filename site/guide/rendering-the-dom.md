@@ -124,7 +124,7 @@ const label = className`
 
 const row = stylesheet`
   .${CLASS_NAME} { display: flex; padding: 0.5rem; }
-  .${CLASS_NAME}:hover, .${CLASS_NAME}[data-xr-hover] { background: #eef; }
+  .${CLASS_NAME}:hover { background: #eef; }
 `;
 
 $("li", [set("className", row), children($("span", [set("className", label)]))]);

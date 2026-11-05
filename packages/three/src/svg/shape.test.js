@@ -1,4 +1,4 @@
-import { describe, test } from "node:test";
+import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { clientRect } from "../test/clientRect.js";
 import { clipMatrixOf, clipUniformsOf } from "../test/clipUniforms.js";
@@ -12,7 +12,11 @@ import { bubble, forwardedPanel } from "../test/rays.js";
 import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { OBSERVER_OPTIONS } from "../elements/portal.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
-import { buildFillGeometry, buildShapePath, group, paintSlot, shape } from "./shape.js";
+import { buildFillGeometry, buildShapePath, fillBox, group, paintSlot, shape } from "./shape.js";
+import { RAMP_WIDTH, rampAtlas, rampUniforms } from "../elements/gradient.js";
+import { releaseIdleImages } from "../elements/image.js";
+import { deferredLoader } from "../test/deferredLoader.js";
+import { stubCanvas } from "../test/stubCanvas.js";
 import { parsePoints } from "./style.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
@@ -73,15 +77,28 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  *   puts on its own.
  * @param {HTMLElement} [options.inside] Where the `<svg>` goes on the page,
  *   adopted with it unless it is the body.
+ * @param {string} [options.defs] Markup for a `<defs>` ahead of the shape,
+ *   adopted node by node as the portal adopts a template.
  */
 function setup(
   tag,
   attributes,
-  { viewBox, width = 100, height = 50, manager, inside = document.body } = {},
+  { viewBox, width = 100, height = 50, manager, inside = document.body, defs } = {},
 ) {
   const root = document.createElementNS(SVG_NS, "svg");
   if (viewBox) {
     root.setAttribute("viewBox", viewBox);
+  }
+  /** @type {Node[]} */
+  const templates = [];
+  if (defs !== undefined) {
+    const holder = document.createElementNS(SVG_NS, "defs");
+    holder.innerHTML = defs;
+    root.appendChild(holder);
+    const walker = document.createTreeWalker(holder);
+    for (let node = walker.currentNode; node; node = /** @type {Node} */ (walker.nextNode())) {
+      templates.push(node);
+    }
   }
   root.getBoundingClientRect = () => clientRect(0, 0, width, height);
   const element = document.createElementNS(SVG_NS, tag);
@@ -96,6 +113,7 @@ function setup(
     mirror.adopt(inside);
   }
   mirror.adopt(root);
+  templates.forEach((node) => mirror.adopt(node));
   mirror.adopt(element);
 
   /** @type {Object3D} */
@@ -955,6 +973,291 @@ describe("svg shape", () => {
     }
     s.teardown();
     assert.deepEqual(disposed.sort(), ["geometry", "geometry", "material", "material"]);
+  });
+});
+
+/**
+ * The one mesh among `meshes` painted in a flat colour, which carries no
+ * paint patch.
+ *
+ * @param {Mesh[]} meshes
+ */
+function flatMesh(meshes) {
+  const flat = meshes.filter((mesh) => clipUniformsOf(mesh).paintKind === undefined);
+  assert.equal(flat.length, 1, "one mesh in a flat colour");
+  return flat[0];
+}
+
+describe("svg shape painted by a gradient", () => {
+  const STOPS = `<stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/>`;
+
+  /**
+   * The paint patch's uniforms, which the patch pass hands over with the
+   * clip patch's.
+   *
+   * @param {Mesh} mesh
+   */
+  function paintOf(mesh) {
+    const uniforms = clipUniformsOf(mesh);
+    return {
+      kind: /** @type {number} */ (uniforms.paintKind.value),
+      matrix: /** @type {THREE.Matrix3} */ (uniforms.paintMatrix.value),
+      row: /** @type {number} */ (uniforms.paintRamp.value),
+    };
+  }
+
+  /**
+   * Where the paint matrix takes a point of user space.
+   *
+   * @param {Mesh} mesh
+   * @param {number} x
+   * @param {number} y
+   */
+  function toGradient(mesh, x, y) {
+    const at = new THREE.Vector3(x, y, 1).applyMatrix3(paintOf(mesh).matrix);
+    return [round(at.x), round(at.y)];
+  }
+
+  /**
+   * The first texel of a ramp row, in bytes.
+   *
+   * @param {number} row
+   */
+  function firstTexel(row) {
+    const texture = /** @type {THREE.DataTexture} */ (rampUniforms.uRamp.value);
+    const data = /** @type {Uint8Array} */ (texture.image.data);
+    return [...data.slice(row * RAMP_WIDTH * 4, row * RAMP_WIDTH * 4 + 4)];
+  }
+
+  test("a fill that names a gradient draws it over its box, on a white material", () => {
+    const s = setup(
+      "rect",
+      { x: "10", y: "20", width: "40", height: "10", fill: "url(#g)", "fill-opacity": "0.5" },
+      { defs: `<linearGradient id="g">${STOPS}</linearGradient>` },
+    );
+    const [fill] = s.meshes;
+    assert.equal(material(fill).visible, true);
+    assert.equal(material(fill).color.getHexString(), "ffffff");
+    assert.equal(material(fill).opacity, 0.5);
+    assert.equal(paintOf(fill).kind, 1);
+    assert.deepEqual(toGradient(fill, 10, 20), [0, 0]);
+    assert.deepEqual(toGradient(fill, 50, 30), [1, 1]);
+    assert.deepEqual(firstTexel(paintOf(fill).row), [255, 0, 0, 255]);
+    s.teardown();
+  });
+
+  test("the box follows the geometry", () => {
+    const s = setup(
+      "circle",
+      { cx: "20", cy: "20", r: "10", fill: "url(#g)" },
+      { defs: `<radialGradient id="g">${STOPS}</radialGradient>` },
+    );
+    assert.equal(paintOf(s.meshes[0]).kind, 2);
+    assert.deepEqual(toGradient(s.meshes[0], 30, 30), [1, 1]);
+    s.setAttribute("r", "20");
+    assert.deepEqual(toGradient(s.meshes[0], 40, 40), [1, 1]);
+    s.teardown();
+  });
+
+  test("a stop recoloured reaches the ramp the mesh reads", () => {
+    const s = setup(
+      "rect",
+      { width: "10", height: "10", fill: "url(#g)" },
+      {
+        defs: `<linearGradient id="g"><stop id="first" offset="0" stop-color="red"/></linearGradient>`,
+      },
+    );
+    const [fill] = s.meshes;
+    assert.deepEqual(firstTexel(paintOf(fill).row), [255, 0, 0, 255]);
+    document.getElementById("first")?.setAttribute("stop-color", "lime");
+    s.flush();
+    assert.deepEqual(firstTexel(paintOf(fill).row), [0, 255, 0, 255]);
+    s.teardown();
+  });
+
+  test("a mesh lets go of its ramp row when it goes", () => {
+    const before = rampAtlas.size;
+    const s = setup(
+      "rect",
+      { width: "10", height: "10", fill: "url(#g)", stroke: "url(#g)" },
+      {
+        defs: `<linearGradient id="g"><stop offset="0" stop-color="rgb(1, 2, 3)"/></linearGradient>`,
+      },
+    );
+    assert.equal(rampAtlas.size, before + 1, "fill and stroke share the row");
+    s.setAttribute("fill", "red");
+    const fill = flatMesh(s.meshes);
+    assert.equal(material(fill).color.getHexString(), "ff0000");
+    assert.equal(rampAtlas.size, before + 1, "the stroke still holds it");
+    s.teardown();
+    assert.equal(rampAtlas.size, before);
+  });
+
+  test("an objectBoundingBox gradient on a shape with no height draws nothing", () => {
+    const defs =
+      `<linearGradient id="box">${STOPS}</linearGradient>` +
+      `<linearGradient id="user" gradientUnits="userSpaceOnUse">${STOPS}</linearGradient>`;
+    const s = setup(
+      "line",
+      { x1: "0", y1: "5", x2: "40", y2: "5", stroke: "url(#box)", "stroke-width": "2" },
+      { defs },
+    );
+    assert.equal(material(s.meshes[0]).visible, false);
+    s.setAttribute("stroke", "url(#user)");
+    assert.equal(material(s.meshes[0]).visible, true);
+    s.teardown();
+  });
+
+  test("a reference to no gradient draws the fallback colour, flat", () => {
+    const s = setup("rect", { width: "10", height: "10", fill: "url(#missing) red" }, { defs: "" });
+    const fill = flatMesh(s.meshes);
+    assert.equal(material(fill).color.getHexString(), "ff0000");
+    s.teardown();
+  });
+
+  test("a flat colour carries no paint patch, and gains it with a gradient", () => {
+    const s = setup(
+      "rect",
+      { width: "10", height: "10", fill: "red", stroke: "blue" },
+      { defs: `<linearGradient id="g">${STOPS}</linearGradient>` },
+    );
+    assert.equal(s.meshes.length, 2);
+    for (const mesh of s.meshes) {
+      assert.equal(clipUniformsOf(mesh).paintKind, undefined, "no paint uniforms");
+      assert.doesNotMatch(material(mesh).customProgramCacheKey(), /svg-paint/);
+    }
+    s.setAttribute("fill", "url(#g)");
+    const painted = s.meshes.filter((mesh) => clipUniformsOf(mesh).paintKind !== undefined);
+    assert.equal(painted.length, 1, "the fill alone takes the patch");
+    assert.equal(paintOf(painted[0]).kind, 1);
+    assert.equal(material(painted[0]).color.getHexString(), "ffffff");
+    // The remounted fill has a later mesh id than the stroke, and still
+    // draws under it, by its layer's render order.
+    const [stroke, fill] = s.meshes;
+    assert.equal(fill, painted[0]);
+    assert.ok(fill.renderOrder < stroke.renderOrder, "the fill draws under the stroke");
+    s.setAttribute("fill", "lime");
+    const [, flatFill] = s.meshes;
+    assert.ok(flatFill.renderOrder < stroke.renderOrder, "and again once flat");
+    assert.deepEqual(
+      s.meshes.map((mesh) => [
+        material(mesh).color.getHexString(),
+        clipUniformsOf(mesh).paintKind === undefined,
+      ]),
+      [
+        ["0000ff", true],
+        ["00ff00", true],
+      ],
+      "back to a flat colour, the fill's patch gone with its mesh",
+    );
+    s.teardown();
+  });
+
+  test("a path's box reaches the extremes of its curves, not its control points", () => {
+    const geometry = /** @type {const} */ ({ kind: "path", d: "M0 0 Q 50 100 100 0" });
+    const box = fillBox(geometry, () => buildShapePath(geometry));
+    assert.ok(box);
+    assert.equal(box.x, 0);
+    assert.equal(box.width, 100);
+    assert.ok(Math.abs(box.height - 50) < 0.1, `height ${box.height}`);
+  });
+});
+
+describe("svg shape painted by a pattern", () => {
+  afterEach(() => releaseIdleImages());
+
+  const DEFS = `<pattern id="p" width="0.5" height="0.5"><rect width="2" height="2"/></pattern>`;
+
+  test("draws its fallback until the tile lands, then the tile over a white material", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup(
+        "rect",
+        { x: "10", y: "20", width: "40", height: "10", fill: "url(#p) red" },
+        { defs: DEFS },
+      );
+      const [fill] = s.meshes;
+      const uniforms = clipUniformsOf(fill);
+      assert.equal(uniforms.paintKind.value, 0);
+      assert.equal(material(fill).color.getHexString(), "ff0000");
+      assert.equal(loader.loads.length, 1);
+      assert.match(loader.loads[0].url, /^data:image\/svg\+xml,/);
+      const { texture, disposed } = loader.loads[0].land(4, 4);
+      assert.equal(uniforms.paintKind.value, 3);
+      assert.equal(uniforms.paintTile.value, texture);
+      assert.equal(material(fill).color.getHexString(), "ffffff");
+      // Half the box a tile: the box's far corner is two tiles along.
+      const at = new THREE.Vector3(50, 30, 1).applyMatrix3(
+        /** @type {THREE.Matrix3} */ (uniforms.paintMatrix.value),
+      );
+      assert.deepEqual([round(at.x), round(at.y)], [2, 2]);
+      s.teardown();
+      releaseIdleImages();
+      assert.equal(disposed(), 1, "the tile is let go of with the mesh");
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
+  });
+
+  test("with no fallback, nothing is drawn until the tile lands", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup("rect", { width: "40", height: "10", fill: "url(#p)" }, { defs: DEFS });
+      assert.equal(material(s.meshes[0]).visible, false);
+      loader.loads[0].land(4, 4);
+      assert.equal(material(s.meshes[0]).visible, true);
+      s.teardown();
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
+  });
+
+  test("an edit inside the pattern asks for a new tile and keeps the old one until it lands", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup(
+        "rect",
+        { width: "40", height: "10", fill: "url(#p)" },
+        {
+          defs: `<pattern id="p" width="1" height="1"><rect id="inside" width="2" height="2"/></pattern>`,
+        },
+      );
+      const uniforms = clipUniformsOf(s.meshes[0]);
+      const old = loader.loads[0].land(4, 4);
+      document.getElementById("inside")?.setAttribute("fill", "blue");
+      s.flush();
+      assert.equal(loader.loads.length, 2);
+      assert.match(decodeURIComponent(loader.loads[1].url), /fill="blue"/);
+      assert.equal(uniforms.paintTile.value, old.texture, "the old tile while the new one loads");
+      const next = loader.loads[1].land(4, 4);
+      assert.equal(uniforms.paintTile.value, next.texture);
+      s.teardown();
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
+  });
+
+  test("a pattern given up for a colour lets go of its tile", () => {
+    const loader = deferredLoader();
+    const canvas = stubCanvas();
+    try {
+      const s = setup("rect", { width: "40", height: "10", fill: "url(#p)" }, { defs: DEFS });
+      const { disposed } = loader.loads[0].land(4, 4);
+      s.setAttribute("fill", "red");
+      assert.equal(material(flatMesh(s.meshes)).color.getHexString(), "ff0000");
+      releaseIdleImages();
+      assert.equal(disposed(), 1);
+      s.teardown();
+    } finally {
+      canvas.restore();
+      loader.restore();
+    }
   });
 });
 

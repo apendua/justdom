@@ -19,9 +19,8 @@ import type AppStore from "../store/App";
 import type { Tool } from "../store/App";
 
 /*
- * Every hover rule is written twice, for `:hover` and for `[data-xr-hover]`:
- * the first is the page's, the second is what a headset's ray sets on the
- * element it is on.
+ * The hover rules are written for `:hover` alone: in a headset session,
+ * justdom-three rewrites them to answer its ray as well (`[data-xr-hover]`).
  * A control is anything with `cursor: pointer`, which is also what makes it
  * pressable by the ray.
  */
@@ -52,8 +51,7 @@ const buttonStyle = className`
   background: #33302a;
   color: #d8d3c5;
   cursor: pointer;
-  &:hover,
-  &[data-xr-hover] {
+  &:hover {
     background: #403c34;
   }
   &:disabled {
@@ -64,8 +62,7 @@ const buttonStyle = className`
     background: #7c6f4f;
     color: #ffffff;
     border-color: #8d7f5c;
-    &:hover,
-    &[data-xr-hover] {
+    &:hover {
       background: #7c6f4f;
     }
   }
@@ -98,8 +95,7 @@ const closeStyle = className`
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  &:hover,
-  &[data-xr-hover] {
+  &:hover {
     background: #b91c1c;
     color: #ffffff;
   }
@@ -133,8 +129,7 @@ const pickerTrigger = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover,
-  .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: #403c34;
   }
 `;
@@ -174,8 +169,7 @@ const pickerOption = stylesheet`
     user-select: none;
   }
 
-  .${CLASS_NAME}:hover,
-  .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     background: #403c34;
   }
 `;

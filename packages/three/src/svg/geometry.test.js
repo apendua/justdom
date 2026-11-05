@@ -14,6 +14,7 @@ import {
   multiply,
   parseCssMatrix,
   parsePreserveAspectRatio,
+  parseTransformList,
   parseViewBox,
   samplingScale,
   toMatrix3,
@@ -185,6 +186,34 @@ describe("svg geometry", () => {
     assertClose([four.x, four.y, four.z], [x, y, 4], "4×4, z passed through");
     const three = new THREE.Vector3(2, 5, 1).applyMatrix3(toMatrix3(m, new THREE.Matrix3()));
     assertClose([three.x, three.y, three.z], [x, y, 1], "3×3, homogeneous");
+  });
+
+  test("a transform list composes its items as SVG writes them", () => {
+    assert.equal(parseTransformList(null), null);
+    assert.equal(parseTransformList("  "), null);
+    assertClose(
+      /** @type {Matrix2D} */ (parseTransformList("matrix(1 2 3 4 5 6)")),
+      [1, 2, 3, 4, 5, 6],
+    );
+    assertClose(/** @type {Matrix2D} */ (parseTransformList("translate(5)")), [1, 0, 0, 1, 5, 0]);
+    assertClose(/** @type {Matrix2D} */ (parseTransformList("scale(2)")), [2, 0, 0, 2, 0, 0]);
+    // The rightmost item applies first: scale, then move.
+    const list = /** @type {Matrix2D} */ (parseTransformList("translate(10,20) scale(2, 3)"));
+    assertClose(apply(list, 1, 1), [12, 23]);
+    const turn = /** @type {Matrix2D} */ (parseTransformList("rotate(90 10 10)"));
+    assertClose(apply(turn, 20, 10), [10, 20]);
+    const skew = /** @type {Matrix2D} */ (parseTransformList("skewX(45)"));
+    assertClose(apply(skew, 0, 1), [1, 1]);
+    const skewY = /** @type {Matrix2D} */ (parseTransformList("skewY(45)"));
+    assertClose(apply(skewY, 1, 0), [1, 1]);
+  });
+
+  test("a transform list that does not parse is no transform", () => {
+    assert.equal(parseTransformList("translate(1 2"), null);
+    assert.equal(parseTransformList("rotate(1 2)"), null, "a centre takes both coordinates");
+    assert.equal(parseTransformList("scale(1) bogus(2)"), null);
+    assert.equal(parseTransformList("matrix(1 2 3)"), null);
+    assert.equal(parseTransformList("translate(a)"), null);
   });
 
   test("the sampling scale climbs in half-octaves and never rounds down", () => {

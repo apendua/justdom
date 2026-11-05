@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   enableThemingMode,
+  followUserActions,
   GENERATED_COPY_ATTRIBUTE,
   getGeneratedSelectors,
   leadingClass,
@@ -560,6 +561,37 @@ describe("watchDocumentStyles", () => {
       );
     } finally {
       stop();
+    }
+  });
+
+  test("followUserActions rewrites the rules with no panel, and keeps them for one", () => {
+    // A page whose elements the browser draws into a texture sets the hover
+    // flag itself, with no panel watching the styles.
+    const style = document.createElement("style");
+    style.innerHTML = ".fu { color: rgb(0, 0, 0); } .fu:hover { color: rgb(255, 0, 0); }";
+    document.head.appendChild(style);
+    const element = document.createElement("div");
+    element.className = "fu";
+    element.setAttribute("data-xr-hover", "");
+    document.body.appendChild(element);
+    const sheet = style.sheet;
+    assert.ok(sheet);
+    const rule = /** @type {CSSStyleRule} */ (sheet.cssRules[1]);
+    const stopFollowing = followUserActions();
+    let stopPanel = () => {};
+    try {
+      assert.equal(window.getComputedStyle(element).color, "rgb(255, 0, 0)");
+      stopPanel = watchDocumentStyles(() => {});
+      stopFollowing();
+      assert.equal(rule.selectorText, ".fu:is(:hover, [data-xr-hover])", "a panel still watches");
+      stopPanel();
+      assert.equal(rule.selectorText, ".fu:hover", "the page gets its own rule back");
+    } finally {
+      stopFollowing();
+      stopPanel();
+      element.remove();
+      style.remove();
+      forgetComputedStyles();
     }
   });
 

@@ -163,10 +163,10 @@ export function parseNumber(value, fallback) {
 
 /**
  * A `fill` or `stroke` as the colour to draw and the alpha to draw it with,
- * or null for nothing to draw: `none`, and — until gradients and patterns
- * are drawn — a `url(#…)` paint server. A paint server given a fallback
- * colour, `url(#hatch) black`, is drawn in that colour, which is what a
- * browser draws when it cannot use the server either.
+ * or null for nothing to draw: `none`, and a `url(#…)` paint server, which
+ * `readPaintServer` reads where a server is drawn. A paint server given a
+ * fallback colour, `url(#hatch) black`, is drawn in that colour, which is
+ * what a browser draws when it cannot use the server either.
  *
  * @typedef {object} Paint
  * @property {THREE.Color} color
@@ -177,7 +177,19 @@ export function parseNumber(value, fallback) {
  * A paint server reference and what follows it: the fallback, if any. The
  * reference may be quoted, as a computed value always is.
  */
-const PAINT_SERVER = /^url\((?:"[^"]*"|'[^']*'|[^)]*)\)\s*(.*)$/;
+const PAINT_SERVER = /^(url\((?:"[^"]*"|'[^']*'|[^)]*)\))\s*(.*)$/;
+
+/**
+ * A paint that names a server, split into the `url(…)` and the fallback
+ * after it, or null for one that names none.
+ *
+ * @param {string} value
+ * @returns {{ reference: string, fallback: string } | null}
+ */
+export function splitPaintServer(value) {
+  const match = PAINT_SERVER.exec(value.trim());
+  return match ? { reference: match[1], fallback: match[2] } : null;
+}
 
 /**
  * @param {string} value
@@ -186,7 +198,7 @@ const PAINT_SERVER = /^url\((?:"[^"]*"|'[^']*'|[^)]*)\)\s*(.*)$/;
 export function parsePaint(value) {
   const trimmed = value.trim();
   if (trimmed.startsWith("url(")) {
-    const fallback = PAINT_SERVER.exec(trimmed)?.[1] ?? "";
+    const fallback = splitPaintServer(trimmed)?.fallback ?? "";
     return fallback.startsWith("url(") ? null : parsePaint(fallback);
   }
   if (!trimmed || trimmed === "none") {
@@ -225,9 +237,9 @@ export function paintEqual(a, b) {
 
 /**
  * Whether a `fill` or `stroke` paints anything, in the sense hit testing
- * uses. Any paint but `none` counts. A `url(#…)` paint server counts though
- * it is not drawn yet, and so does `transparent`, which is how a page makes
- * an invisible shape clickable.
+ * uses. Any paint but `none` counts. A `url(#…)` paint server counts
+ * whether it is drawn or not, as a server on text is not, and so does
+ * `transparent`, which is how a page makes an invisible shape clickable.
  *
  * @param {string} value
  * @returns {boolean}

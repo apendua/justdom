@@ -27,11 +27,11 @@
 .menubar { position: relative; display: flex; align-items: center; gap: 16px; height: 22px; padding: 0 10px; background: #fff; border-bottom: 1.5px solid #000; font: 700 11px/1 "Space Grotesk", sans-serif; color: #000; }
 .menubar .logo { width: 14px; height: 14px; }
 .menubar .item { cursor: pointer; padding: 3px 6px; transition: background-color .1s, color .1s; }
-.menubar .item:hover, .menubar .item[data-xr-hover] { background: #000; color: #fff; }
+.menubar .item:hover { background: #000; color: #fff; }
 .menubar .clock { margin-left: auto; font: 600 10px/1 "Fira Code", monospace; }
 .menu { position: absolute; z-index: 3; top: 100%; left: 0; margin-top: 3px; width: 170px; background: #fff; border: 1.5px solid #000; padding: 3px 0; }
 .menu div { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 5px 12px; font: 700 11px/1 "Space Grotesk", sans-serif; transition: background-color .1s, color .1s; }
-.menu div:hover, .menu div[data-xr-hover] { background: #000; color: #fff; }
+.menu div:hover { background: #000; color: #fff; }
 .menu i { width: 10px; height: 10px; border: 1px solid #000; }
 .icons { position: absolute; right: 12px; top: 34px; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .icon { display: flex; flex-direction: column; align-items: center; gap: 3px; font: 700 9px/1 "Space Grotesk", sans-serif; }
@@ -41,7 +41,7 @@
 .titlebar { position: relative; height: 20px; flex: none; display: flex; align-items: center; justify-content: center; border-bottom: 1.5px solid #000;
   background: #fff repeating-linear-gradient(180deg, #000 0 1px, transparent 1px 3px) 0 4px / 100% 11px no-repeat; }
 .titlebar .box { position: absolute; left: 8px; top: 4px; width: 11px; height: 11px; background: #fff; border: 1.5px solid #000; cursor: pointer; }
-.titlebar .box:hover, .titlebar .box[data-xr-hover] { background: #000; }
+.titlebar .box:hover { background: #000; }
 .titlebar b { background: #fff; padding: 0 8px; font: 700 11px/1 "Space Grotesk", sans-serif; }
 .screen { position: relative; flex: 1; overflow: hidden; padding: 10px 12px; background: #0d1410; }
 .screen[data-phosphor=amber] { background: #160f04; } .screen[data-phosphor=white] { background: #111214; }
@@ -70,7 +70,7 @@
 .tabs { display: flex; gap: 4px; padding: 6px 12px 0; }
 .tab { cursor: pointer; padding: 7px 12px 5px; border-radius: 6px 6px 0 0; font: 700 11px/1 "Space Grotesk", sans-serif; letter-spacing: .1em; color: #2f3b4c; background: #cfd6de; transition: transform .15s, background-color .15s; transform: translateY(3px); }
 .tab:nth-child(1) { background: #ffd6c9; } .tab:nth-child(2) { background: #cfe0ff; } .tab:nth-child(3) { background: #fff0b8; }
-.tab:hover, .tab[data-xr-hover] { transform: translateY(0); }
+.tab:hover { transform: translateY(0); }
 .tab[data-selected] { transform: translateY(0); background: #fbfbf6; }
 .page { position: relative; height: 520px; padding: 18px 18px 14px; overflow: hidden; border-radius: 0 0 4px 4px;
   background: #fbfbf6 conic-gradient(from 90deg at 1px 1px, transparent 25%, #d6e3f0 0) 0 0 / 16px 16px; }
@@ -101,7 +101,7 @@ svg.chart text { fill: #5a6270; font: 600 15px "Caveat", cursive; }
 svg.flow { display: block; width: 100%; height: 300px; margin-top: 6px; }
 svg.flow .node { cursor: pointer; }
 svg.flow .node rect, svg.flow .node circle { fill: #fbfbf6; stroke: #2f3b4c; stroke-width: 2; transition: fill .15s; }
-svg.flow .node:hover rect, svg.flow .node[data-xr-hover] rect, svg.flow .node:hover circle, svg.flow .node[data-xr-hover] circle { fill: var(--accent); }
+svg.flow .node:hover rect, svg.flow .node:hover circle { fill: var(--accent); }
 svg.flow .node text { fill: #2f3b4c; font: 700 18px "Caveat", cursive; text-anchor: middle; }
 svg.flow .edge { fill: none; stroke: #2f3b4c; stroke-width: 2; stroke-linecap: round; }
 svg.flow .edge.live { stroke: var(--accent-ink); stroke-dasharray: 7 6; animation: march .9s linear infinite; }
@@ -114,14 +114,14 @@ svg.flow .note { fill: #5a6270; font: 600 16px "Caveat", cursive; }
 .linen { position: relative; height: 520px; border-radius: 4px; overflow: hidden; border: 10px solid #f4f1ea;
   background: #d8d0bf repeating-linear-gradient(45deg, transparent 0 2px, rgba(255, 255, 255, .18) 2px 3px); }
 .card { position: absolute; transform: rotate(var(--tilt, 0deg)); transition: transform .2s; }
-.card:hover, .card[data-xr-hover] { transform: rotate(var(--tilt, 0deg)) translateZ(8px) scale(1.04); }
+.card:hover { transform: rotate(var(--tilt, 0deg)) translateZ(8px) scale(1.04); }
 .washi { position: absolute; z-index: 1; top: -9px; left: 50%; width: 64px; height: 18px; margin-left: -32px; transform: rotate(-4deg); pointer-events: none; opacity: .85;
   background: repeating-linear-gradient(90deg, #f6a6a6 0 6px, #fbd0d0 6px 12px); }
 .washi.b { background: repeating-linear-gradient(135deg, #a6c8f6 0 5px, #d6e6fb 5px 10px); }
 .washi.y { background: repeating-linear-gradient(90deg, #f6dc8a 0 3px, #fbecc0 3px 9px); }
 .swatches { width: 132px; background: #fff; padding: 8px 8px 4px; border: 1px solid #ddd8cc; }
 .swatch { cursor: pointer; margin-bottom: 6px; border: 1px solid #e3ded2; transition: transform .15s; }
-.swatch:hover, .swatch[data-xr-hover] { transform: translateX(4px); }
+.swatch:hover { transform: translateX(4px); }
 .swatch[data-selected] { border-color: #2f3b4c; }
 .swatch i { display: block; height: 30px; }
 .swatch span { display: block; padding: 3px 5px; font: 700 8px/1.2 "Space Grotesk", sans-serif; color: #2f3b4c; letter-spacing: .04em; }
@@ -156,15 +156,15 @@ svg.flow .note { fill: #5a6270; font: 600 16px "Caveat", cursive; }
 .key[data-key=CapsLock] { background: #2a5fd6; border-color: #163a8a; } .key[data-key=CapsLock] .cap { color: #fff; }
 .key[data-key=Shift] { background: #f2b134; border-color: #9a6a0c; }
 .key.accent { background: var(--accent); border-color: var(--accent-ink); } .key.accent .cap { color: #fff; }
-.key:hover, .key[data-xr-hover] { background: #fff; }
-.key.accent:hover, .key.accent[data-xr-hover] { background: var(--accent); }
-.key:active, .key[data-xr-active], .key[data-down] { transform: translateY(3px); }
+.key:hover { background: #fff; }
+.key.accent:hover { background: var(--accent); }
+.key:active, .key[data-down] { transform: translateY(3px); }
 
 /* ---------- cartridges ------------------------------------------------- */
 #carts { left: 120px; top: 690px; width: 330px; height: 230px; transform: perspective(1400px) rotateX(34deg); }
 .cart { position: absolute; width: 112px; height: 132px; border-radius: 6px 6px 3px 3px; padding: 22px 9px 0; transform: rotate(var(--tilt)); transition: transform .2s;
   background: #6b6f78 repeating-linear-gradient(180deg, rgba(0, 0, 0, .25) 0 2px, transparent 2px 5px) 0 4px / 100% 14px no-repeat; }
-.cart:hover, .cart[data-xr-hover] { transform: rotate(var(--tilt)) translateY(-6px); }
+.cart:hover { transform: rotate(var(--tilt)) translateY(-6px); }
 .cart.c2 { background-color: #2f3b4c; } .cart.c3 { background-color: #b33c2a; }
 .cart .art { height: 72px; border-radius: 3px; padding: 6px; display: flex; align-items: flex-end; background: linear-gradient(160deg, #ffd27a, #e4572e 55%, #5b2a86); }
 .cart.c2 .art { background: linear-gradient(160deg, #9cf0d0, #17a398 55%, #0b3a5a); }
@@ -213,4 +213,4 @@ svg.flow .note { fill: #5a6270; font: 600 16px "Caveat", cursive; }
 html[data-presenting] .titlebar .box { left: 4px; top: 1px; width: 16px; height: 16px; }
 /* A cartridge lifts as the ray reaches it: up the screen on the page, up off
    the desk in the room, where the cartridges lie flat. */
-html[data-presenting] .cart:hover, html[data-presenting] .cart[data-xr-hover] { transform: rotate(var(--tilt)) translateZ(6px); }
+html[data-presenting] .cart:hover { transform: rotate(var(--tilt)) translateZ(6px); }

@@ -1,5 +1,6 @@
 import { Derived, flatMap, observable, selector } from "justdom-signal";
-import { Nothing } from "../operators.js";
+import * as THREE from "three";
+import { $, children, Nothing } from "../operators.js";
 import { box } from "./div.js";
 import {
   getAttributeCached,
@@ -23,12 +24,12 @@ import {
 } from "./textHelpers.js";
 import { surfaceRun } from "./surfaceRun.js";
 import { generatedContent } from "./generatedContent.js";
+import { generatedRules } from "./pseudoElements.js";
 
 /**
  * @import {Component} from '../core.js';
  * @import {BoxSurface} from './div.js';
  * @import {Source} from 'justdom-signal';
- * @import * as THREE from 'three';
  */
 
 /** @typedef {"ltr" | "rtl"} Direction */
@@ -409,6 +410,9 @@ function markerRun(ctx, element, surface, marker) {
   });
 }
 
+/** The bit of `markedBox`'s gate for the marker, under the pseudo-elements'. */
+const MARKER_BIT = 1;
+
 /**
  * An element's box, and in front of it the list marker its computed style
  * gives it, for as long as it gives it one: `display: list-item` and a
@@ -451,12 +455,28 @@ export function markedBox(ctx, element) {
   );
   return box(ctx, element, {
     content: (surface) => [
-      // No equality gate between the two: `Derived` already stops a
-      // recomputation that lands on the value it held.
-      flatMap((/** @type {boolean} */ shown) =>
-        shown ? markerRun(ctx, element, surface, marker) : Nothing(),
-      )(observable(() => marker.get() !== null)),
-      generatedContent(ctx, element, surface),
+      // One gate for the marker and the ::before and ::after, rather than one
+      // each: nearly every box draws none of them, and a gate is a
+      // subscription per box. The bit for the marker, then the pseudo-
+      // elements' (`KIND_BITS`). So a list item whose ::after comes and goes
+      // builds its marker again, which is rare. No equality gate between the
+      // two: `Derived` already stops a recomputation that lands on the value
+      // it held.
+      flatMap((/** @type {number} */ drawn) => {
+        if (drawn === 0) {
+          return Nothing();
+        }
+        const group = new THREE.Group();
+        group.matrixAutoUpdate = false;
+        return $(group, [
+          children(
+            ...(drawn & MARKER_BIT ? [markerRun(ctx, element, surface, marker)] : []),
+            ...generatedContent(ctx, element, surface, drawn >> 1),
+          ),
+        ]);
+      })(
+        observable(() => (marker.get() !== null ? MARKER_BIT : 0) | (generatedRules(element) << 1)),
+      ),
     ],
   });
 }

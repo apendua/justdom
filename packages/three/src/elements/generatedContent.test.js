@@ -1,6 +1,7 @@
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { Derived } from "justdom-signal";
 import { clientRect } from "../test/clientRect.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
@@ -463,6 +464,41 @@ describe("an element's ::before and ::after in a panel", () => {
     assert.equal(quad.renderOrder, run.renderOrder - 1);
 
     panel.cleanup();
+  });
+
+  test("a box pays for pseudo-elements only once some rule of the page styles one", async () => {
+    // Every reactive evaluation while a panel mounts, counted at the one
+    // funnel they all go through, as `mirror.bench.js` counts them.
+    const node = Object.getPrototypeOf(Derived.prototype);
+    const track = node.track;
+    let evaluations = 0;
+    node.track = function counted(/** @type {unknown[]} */ ...args) {
+      evaluations += 1;
+      return track.apply(this, args);
+    };
+    /** @param {number} rows */
+    const mount = async (rows) => {
+      const panel = generatedPanel(
+        Array.from({ length: rows }, (_, i) => `<div data-rect="0,${i * 20},200,20"></div>`).join(
+          "",
+        ),
+      );
+      evaluations = 0;
+      await settle(panel.portal);
+      const counted = evaluations;
+      panel.cleanup();
+      return counted;
+    };
+    /** What one more row costs a panel. */
+    const perRow = async () => ((await mount(11)) - (await mount(1))) / 10;
+    try {
+      const none = await perRow();
+      pseudoRule(".elsewhere", "before", '""');
+      const some = await perRow();
+      assert.ok(none < some, `${none} per row with no rule, ${some} with one`);
+    } finally {
+      node.track = track;
+    }
   });
 
   test("reads no pseudo-element style of an element no rule gives one", async () => {

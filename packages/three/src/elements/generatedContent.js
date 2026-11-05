@@ -3,13 +3,7 @@ import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal
 import { $, children, Nothing } from "../operators.js";
 import VisualProperties from "./VisualProperties.js";
 import { getInteriorClipBox, getScrollOffset, hidesVisibility } from "./mirror.js";
-import {
-  getGenerated,
-  generatedRules,
-  KIND_BITS,
-  paintsBox,
-  setLayerObject,
-} from "./pseudoElements.js";
+import { getGenerated, KIND_BITS, paintsBox, setLayerObject } from "./pseudoElements.js";
 import {
   createRectUniforms,
   rectGeometry,
@@ -71,31 +65,22 @@ import { surfaceRun } from "./surfaceRun.js";
 const NO_SHIFT = Object.freeze({ x: 0, y: 0 });
 
 /**
- * An element's `::before` and `::after`, each for as long as it draws one.
- * Content for a box (`BoxOptions.content`). An element that no rule gives
- * either builds nothing below the one signal that says so
- * (`generatedRules`).
+ * An element's `::before` and `::after`, those of `kinds` that a rule
+ * styles (`generatedRules`), each for as long as it draws one. Content for
+ * a box (`BoxOptions.content`), under the gate of the box's own that reads
+ * `generatedRules` (`markedBox` in `listMarker.js`), so that an element no
+ * rule gives either builds nothing.
  *
  * @param {WeakKey} ctx
  * @param {HTMLElement} element
  * @param {BoxSurface} surface The element's.
- * @returns {Source<Component>}
+ * @param {number} kinds The bits of `KIND_BITS`.
+ * @returns {Source<Component>[]}
  */
-export function generatedContent(ctx, element, surface) {
-  return flatMap((/** @type {number} */ kinds) => {
-    if (kinds === 0) {
-      return Nothing();
-    }
-    const group = new THREE.Group();
-    group.matrixAutoUpdate = false;
-    return $(group, [
-      children(
-        .../** @type {GeneratedKind[]} */ (["before", "after"])
-          .filter((kind) => kinds & KIND_BITS[kind])
-          .map((kind) => drawnBox(ctx, getGenerated(element, kind), surface)),
-      ),
-    ]);
-  })(observable(() => generatedRules(element)));
+export function generatedContent(ctx, element, surface, kinds) {
+  return /** @type {GeneratedKind[]} */ (["before", "after"])
+    .filter((kind) => kinds & KIND_BITS[kind])
+    .map((kind) => drawnBox(ctx, getGenerated(element, kind), surface));
 }
 
 /**

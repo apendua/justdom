@@ -151,19 +151,24 @@ const ruleCache = nodeCache();
  * computed style, which every change that can make it match restyles: its
  * class or its attributes, the ray's flags among them, and the rules
  * themselves. While no rule styles a pseudo-element of any element, the
- * style is not read, and a restyle of the element tells this nothing.
+ * style is not read and the element has no signal for this at all: the
+ * reader depends on the document's rules alone, so a box that no page rule
+ * gives either costs nothing more for this than a read of them.
  *
  * @param {Element} element
  * @returns {number}
  */
 export function generatedRules(element) {
+  // No rule styles a pseudo-element of any element: the reader depends on
+  // the document's rules alone, and the element gets no signal of its own.
+  const { before, after } = getGeneratedSelectors();
+  if (before === null && after === null) {
+    return 0;
+  }
   let signal = ruleCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {
       const { before, after } = getGeneratedSelectors();
-      if (before === null && after === null) {
-        return 0;
-      }
       getComputedStyleCached(element);
       return (
         (before !== null && element.matches(before) ? KIND_BITS.before : 0) |
@@ -461,12 +466,19 @@ const paintChildrenCache = nodeCache();
  * against its siblings (`elevation.js`) walks this rather than the child
  * nodes, so a pseudo-element is ordered as a child in its place would be.
  * An element that no rule gives either has its child nodes alone, behind
- * the one signal that says so (`generatedRules`).
+ * the one signal that says so (`generatedRules`), and while no rule styles
+ * a pseudo-element of any element, with no signal in between.
  *
  * @param {Element} element
  * @returns {readonly (Node | Generated)[]}
  */
 export function getPaintChildren(element) {
+  // No rule styles a pseudo-element of any element, so none has paint
+  // children of its own: its child nodes, with no signal in between.
+  const { before, after } = getGeneratedSelectors();
+  if (before === null && after === null) {
+    return getChildNodes(element);
+  }
   let signal = paintChildrenCache.get(element);
   if (!signal) {
     signal = nodeDerived(

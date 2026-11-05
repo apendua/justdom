@@ -90,7 +90,7 @@ export const MotionChannelContext = createProperty(
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
  * @import {PaintedBounds, PaintLayer} from './elevation.js';
- * @import {EntityEffect, Subscribable} from 'justdom-signal';
+ * @import {EntityEffect, Source, Subscribable} from 'justdom-signal';
  */
 
 /**
@@ -192,6 +192,10 @@ const committedPlacements = new WeakMap();
  *   hides it, read reactively. Content drawn inside the box is the box's
  *   own painting and goes with it — unlike the element's child nodes, which
  *   answer for themselves.
+ * @property {(size: () => { width: number, height: number }, hidden: () => boolean) => Source<Component>} overlayBlocker
+ *   The blocker an overlay puts behind itself, covering `size` from the
+ *   corner of the object it is mounted under, opaque to rays while not
+ *   `hidden`. A press on it is a click on the element.
  */
 
 /**
@@ -322,6 +326,45 @@ export function box(ctx, element, options = {}) {
   /** The panel the box is in, for where a click on an overlay is on the page. */
   const panel = lazyPanel(object);
   const isPanelReady = PortalReadyContext.get(ctx);
+
+  /**
+   * The blocker an overlay puts behind itself, in the frame of the object
+   * it is mounted under, which covers `size` from that frame's corner: the
+   * element's own, or a lifted pseudo-element's (`generatedContent.js`).
+   * A press on it is a click on the element.
+   *
+   * @param {() => { width: number, height: number }} size
+   * @param {() => boolean} isHidden
+   * @returns {Source<Component>}
+   */
+  const overlayBlocker = (size, isHidden) => {
+    const blocker = createBlocker();
+    // Opaque only where the overlay is actually showing. The blocker is a
+    // unit plane covering the box rather than a mesh in element px, so it
+    // names the element as the frame the clip is read in.
+    clipRaycast(blocker, () => currentClipBox, object);
+    return $(blocker, [
+      makeInteractive(isPanelReady),
+      on("select", (e) => {
+        element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
+        // Unlike the portal's own blocker, which lets the scene behind a
+        // panel see the click as well, an overlay is a layer: what happens
+        // on it does not reach what it covers.
+        stopPropagation(e);
+      }),
+      effects((obj) => {
+        const { width, height } = size();
+        coverBox(obj, width, height, BLOCKER_OFFSET);
+      }),
+      // A hidden overlay covers nothing: rays pass through to what is behind
+      // it. `visible` rather than the registration alone, because a
+      // registered ancestor is raycast as a subtree and would find the plane
+      // regardless.
+      effects((obj) => {
+        obj.visible = !isHidden();
+      }),
+    ]);
+  };
   /**
    * Whether this element wants to be a ray target, as its own signal so that
    * the group below is attached and detached only when the answer actually
@@ -858,36 +901,14 @@ export function box(ctx, element, options = {}) {
       // No `distinctUntilChanged` between the two: `overlay` is a `Derived`,
       // and a recomputation that lands on the value it already held stops
       // there and tells nobody.
-      flatMap((/** @type {boolean} */ isElevated) => {
-        if (!isElevated) {
-          return Nothing();
-        }
-        const blocker = createBlocker();
-        // Opaque only where the overlay is actually showing. The blocker is
-        // a unit plane covering the element rather than a mesh in element
-        // px, so it names the element as the frame the box is read in.
-        clipRaycast(blocker, () => currentClipBox, object);
-        return $(blocker, [
-          makeInteractive(isPanelReady),
-          on("select", (e) => {
-            element.dispatchEvent(new MouseEvent("click", pressInit(panel(), e, false)));
-            // Unlike the portal's own blocker, which lets the scene
-            // behind a panel see the click as well, an overlay is a
-            // layer: what happens on it does not reach what it covers.
-            stopPropagation(e);
-          }),
-          effects((obj) => {
-            coverBox(obj, properties.totalWidth, properties.totalHeight, BLOCKER_OFFSET);
-          }),
-          // A hidden overlay covers nothing: rays pass through to what is
-          // behind it. `visible` rather than the registration alone, because
-          // a registered ancestor is raycast as a subtree and would find the
-          // plane regardless.
-          effects((obj) => {
-            obj.visible = !hidden();
-          }),
-        ]);
-      })(observable(() => overlay.get())),
+      flatMap((/** @type {boolean} */ isElevated) =>
+        isElevated
+          ? overlayBlocker(
+              () => ({ width: properties.totalWidth, height: properties.totalHeight }),
+              hidden,
+            )
+          : Nothing(),
+      )(observable(() => overlay.get())),
       // The whole box — background and border ring both — is one quad and a
       // distance field. Geometry is shared and never rebuilt: a resize is a
       // scale write, everything else a uniform write, which is what makes a
@@ -962,6 +983,7 @@ export function box(ctx, element, options = {}) {
         clipMesh: (mesh) => {
           clipRaycast(mesh, () => currentClipBox, object);
         },
+        overlayBlocker,
       }),
     ),
   ]);

@@ -42,16 +42,18 @@ import { getPaintChildren, isGenerated } from "./pseudoElements.js";
  *
  * Every element belongs to a layer (`getLayer`): the panel's root, an
  * overlay (`isOverlay`) or an element transformed out of its parent's
- * plane. Within a layer the draw level (`getDrawLevel`) counts from the
- * layer's root, a level past the parent, and an element that clears a
- * sibling (`getClearedSiblings`) draws after everything that sibling draws.
- * Each layer draws from a base (`getLayerBase`), which a walk of the panel's
- * layers in their tree (`layerTree.js`) writes, ordering them by their
- * planes (`layerOrder.js`). Only an overlay sits at a distance,
- * `OVERLAY_LIFT` in front of its parent's content, so that a menu still
- * floats in stereo; an element transformed out of its parent's plane is
- * where its own matrix puts it, and everything else is level with its
- * parent's content.
+ * plane. A pseudo-element that would be an overlay, positioned with a
+ * positive `z-index`, is a layer of its own too. Within a layer the draw
+ * level (`getDrawLevel`) counts from the layer's root, a level past the
+ * parent, and an element that clears a sibling (`getClearedSiblings`) draws
+ * after everything that sibling draws. Each layer draws from a base
+ * (`getLayerBase`), which a walk of the panel's layers in their tree
+ * (`layerTree.js`) writes, ordering them by their planes
+ * (`layerOrder.js`). Only an overlay sits at a distance, `OVERLAY_LIFT` in
+ * front of its parent's content (a pseudo-element's in front of its
+ * element's), so that a menu still floats in stereo; an element transformed
+ * out of its parent's plane is where its own matrix puts it, and everything
+ * else is level with its parent's content.
  *
  * An element's `::before` and `::after` are ordered as its first and last
  * child would be: each function here takes their stand-in (`Generated`)
@@ -145,7 +147,7 @@ export function isOverlay(element) {
   return Number.isFinite(zIndex) && zIndex > 0;
 }
 
-/** @type {WeakMap<Element, Derived<Element>>} */
+/** @type {WeakMap<Element, Derived<PaintNode>>} */
 const layerCache = nodeCache();
 
 /**
@@ -155,14 +157,20 @@ const layerCache = nodeCache();
  * parent's layer otherwise. What is inside an `<svg>` is drawn within the
  * `<svg>`'s content level, so an SVG element is never a layer of its own.
  * Gated by identity, so a restyle that leaves an element in its layer
- * stops here. A pseudo-element is drawn in its element's layer.
+ * stops here.
+ *
+ * A pseudo-element is drawn in its element's layer, unless it is in the
+ * paint layer an overlay is in (`getPaintLayer`), positioned with a
+ * positive `z-index`: then it is an overlay of its own, lifted off its
+ * element as an overlay is off its parent, with a blocker that hands a
+ * press to its element (`generatedContent.js`).
  *
  * @param {PaintNode} element
- * @returns {Element}
+ * @returns {PaintNode}
  */
 export function getLayer(element) {
   if (isGenerated(element)) {
-    return getLayer(element.element);
+    return getPaintLayer(element) === 1 ? element : getLayer(element.element);
   }
   let signal = layerCache.get(element);
   if (!signal) {
@@ -218,11 +226,11 @@ export function bandBase(order) {
   return Math.floor(order / PIECE_BAND) * PIECE_BAND;
 }
 
-/** @type {WeakMap<Element, Signal<number | null>>} */
+/** @type {WeakMap<PaintNode, Signal<number | null>>} */
 const layerBases = new WeakMap();
 
 /**
- * @param {Element} layer
+ * @param {PaintNode} layer
  * @returns {Signal<number | null>}
  */
 function layerBaseSignal(layer) {
@@ -241,19 +249,17 @@ function layerBaseSignal(layer) {
  * `PIECE_BAND` for each layer it is nested in. Reactive, so a layer the
  * walk moves takes its boxes and marks with it.
  *
- * @param {Element} layer
+ * @param {PaintNode} layer
  * @returns {number}
  */
 export function getLayerBase(layer) {
-  return (
-    layerBaseSignal(layer).get() ?? getElevation(/** @type {HTMLElement} */ (layer)) * PIECE_BAND
-  );
+  return layerBaseSignal(layer).get() ?? getElevation(layer) * PIECE_BAND;
 }
 
 /**
  * Put a layer's first piece where the panel's walk puts it.
  *
- * @param {Element} layer
+ * @param {PaintNode} layer
  * @param {number} base A whole number of `PIECE_BAND`s.
  */
 export function setLayerBase(layer, base) {
@@ -274,7 +280,7 @@ export function getRenderBand(element) {
   return getLayerBase(getLayer(element));
 }
 
-/** @type {WeakMap<HTMLElement, Derived<number>>} */
+/** @type {WeakMap<Element, Derived<number>>} */
 const elevationCache = nodeCache();
 
 /**
@@ -284,12 +290,16 @@ const elevationCache = nodeCache();
  * layer's base before the panel's first walk (`getLayerBase`). Cached for
  * each element as its parent's count and its own, so that a restyle above it
  * reaches its readers only when the count changes, and a box that left the
- * panel keeps the count it was drawn with (`nodeDerived`).
+ * panel keeps the count it was drawn with (`nodeDerived`). A pseudo-element
+ * counts as a child of its element.
  *
- * @param {HTMLElement} element
+ * @param {PaintNode} element
  * @returns {number}
  */
 export function getElevation(element) {
+  if (isGenerated(element)) {
+    return (getLayer(element) === element ? 1 : 0) + getElevation(element.element);
+  }
   let signal = elevationCache.get(element);
   if (!signal) {
     signal = nodeDerived(element, () => {

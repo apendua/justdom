@@ -3,7 +3,13 @@ import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal
 import { $, children, Nothing } from "../operators.js";
 import VisualProperties from "./VisualProperties.js";
 import { getInteriorClipBox, getScrollOffset, hidesVisibility } from "./mirror.js";
-import { getGenerated, generatedRules, KIND_BITS, paintsBox } from "./pseudoElements.js";
+import {
+  getGenerated,
+  generatedRules,
+  KIND_BITS,
+  paintsBox,
+  setLayerObject,
+} from "./pseudoElements.js";
 import {
   createRectUniforms,
   rectGeometry,
@@ -15,7 +21,14 @@ import {
 import { RampSlot } from "./gradient.js";
 import { backgroundImage, contentImageEqual, placeContentImage } from "./image.js";
 import { toLocalClipBox } from "./clip.js";
-import { getContentRenderOrder, getDrawLevel, getRenderBand } from "./elevation.js";
+import {
+  getContentRenderOrder,
+  getDrawLevel,
+  getLayer,
+  getRenderBand,
+  OVERLAY_LIFT,
+} from "./elevation.js";
+import { LayerOrderContext } from "./layerOrder.js";
 import { placeAndScale } from "./place.js";
 import { BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
@@ -40,8 +53,11 @@ import { surfaceRun } from "./surfaceRun.js";
  * Each is drawn where the paint order puts it (`elevation.js`), which orders
  * it as a child of its element in its place would be: a `::before` first, an
  * `::after` last, and either over the siblings it covers when it is
- * positioned. A ray that meets it meets its element, as a click on a page's
- * `::before` icon is a click on the element.
+ * positioned. One positioned with a positive `z-index` is an overlay: a
+ * layer of its own (`getLayer`), lifted `OVERLAY_LIFT` off its element and
+ * ordered among the panel's layers by their walk, with a blocker behind it.
+ * A ray that meets it meets its element, as a click on a page's `::before`
+ * icon is a click on the element.
  *
  * What is not drawn: a `counter()`, a `counters()` or a quote, which the
  * browser leaves for the page to count, so the text of such a `content` is
@@ -50,6 +66,9 @@ import { surfaceRun } from "./surfaceRun.js";
  * other than its element, whose place a copy of the element cannot give;
  * and its transitions and animations, of which the end is drawn.
  */
+
+/** The corner of a frame level with the element's own. */
+const NO_SHIFT = Object.freeze({ x: 0, y: 0 });
 
 /**
  * An element's `::before` and `::after`, each for as long as it draws one.
@@ -112,6 +131,25 @@ function generatedBox(ctx, generated, surface) {
   };
   /** Where its text draws, a level past its box (`getContentRenderOrder`). */
   const order = () => getContentRenderOrder(generated);
+  /** Whether it is an overlay, a layer of its own (`getLayer`). */
+  const lifted = new Derived(() => getLayer(generated) === generated);
+  /**
+   * The corner of the frame its quad and text are placed in, in the
+   * element's frame: the quad's own, scrolled, while it is lifted, since
+   * the panel's walk takes a layer's plane from its object's corner and
+   * size (`layerOrder.js`), and the element's corner otherwise.
+   */
+  const frame = () => {
+    if (!lifted.get()) {
+      return NO_SHIFT;
+    }
+    const quad = generated.quad();
+    const scroll = getScrollOffset(element);
+    return { x: quad.x - scroll.left, y: quad.y - scroll.top };
+  };
+  const layerOrder = LayerOrderContext.get(ctx);
+  const panelBatch = BoxBatchContext.get(ctx);
+  const textBatch = TextBatchContext.get(ctx);
 
   const properties = new VisualProperties();
   /** @type {BoxSurface} */
@@ -137,7 +175,7 @@ function generatedBox(ctx, generated, surface) {
     };
   };
 
-  // Level with the element's own frame, and never moved.
+  // At the corner of its frame, level with the element's own unless lifted.
   const group = new THREE.Group();
   group.matrixAutoUpdate = false;
   return $(group, [
@@ -145,9 +183,32 @@ function generatedBox(ctx, generated, surface) {
       const { width, height } = generated.quad();
       properties.setFromElement(element, pseudo, { width, height });
     }),
+    effects((obj) => {
+      const at = frame();
+      placeAndScale(obj, at.x, at.y, lifted.get() ? -OVERLAY_LIFT : 0, 1, 1, 1);
+      // The batches place what they draw from its world matrix.
+      panelBatch?.invalidate();
+      textBatch?.invalidate();
+    }),
+    // A lifted one is one of the planes the panel's walk orders, for as
+    // long as it is one.
+    effects((obj) => {
+      if (!layerOrder || !lifted.get()) {
+        return;
+      }
+      setLayerObject(generated, obj);
+      layerOrder.addLayer(generated);
+      onCleanup(() => {
+        layerOrder.removeLayer(generated);
+        setLayerObject(generated, null);
+      });
+    }),
     children(
+      flatMap((/** @type {boolean} */ isLifted) =>
+        isLifted ? surface.overlayBlocker(() => generated.quad(), own.hidden) : Nothing(),
+      )(observable(() => lifted.get())),
       flatMap((/** @type {boolean} */ paints) =>
-        paints ? generatedQuad(ctx, generated, own, origin) : Nothing(),
+        paints ? generatedQuad(ctx, generated, own, origin, frame) : Nothing(),
       )(observable(() => content.get()?.url != null || paintsBox(style()))),
       flatMap((/** @type {boolean} */ hasText) =>
         hasText
@@ -157,10 +218,17 @@ function generatedBox(ctx, generated, surface) {
               tint,
               origin: () => {
                 const at = origin();
+                const corner = frame();
                 const placed = layout.get().text;
-                return { x: at.x + (placed?.left ?? 0), y: at.y + (placed?.top ?? 0) };
+                return {
+                  x: at.x - corner.x + (placed?.left ?? 0),
+                  y: at.y - corner.y + (placed?.top ?? 0),
+                };
               },
-              clip: () => getInteriorClipBox(element),
+              clip: () => {
+                const corner = frame();
+                return toLocalClipBox(getInteriorClipBox(element), corner.x, corner.y);
+              },
             })
           : Nothing(),
       )(observable(() => text() !== "")),
@@ -179,9 +247,11 @@ function generatedBox(ctx, generated, surface) {
  * @param {Generated} generated
  * @param {BoxSurface} surface The generated box's own.
  * @param {() => { x: number, y: number }} origin The box's top left, scrolled.
+ * @param {() => { x: number, y: number }} frame The corner of the frame it
+ *   is placed in, in its element's (`generatedBox`).
  * @returns {Source<Component>}
  */
-function generatedQuad(ctx, generated, surface, origin) {
+function generatedQuad(ctx, generated, surface, origin, frame) {
   const { element, pseudo, content, picture, natural } = generated;
   const { properties } = surface;
   const mesh = new THREE.Mesh(rectGeometry);
@@ -242,10 +312,11 @@ function generatedQuad(ctx, generated, surface, origin) {
       const quad = generated.quad();
       const box = generated.layout.get();
       const at = { x: origin().x + quad.x - box.x, y: origin().y + quad.y - box.y };
+      const corner = frame();
       placeAndScale(
         obj,
-        at.x,
-        at.y,
+        at.x - corner.x,
+        at.y - corner.y,
         0,
         Math.max(properties.totalWidth, 1e-6),
         Math.max(properties.totalHeight, 1e-6),

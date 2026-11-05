@@ -745,7 +745,7 @@ describe("a panel drawn in paint order", () => {
     assert.deepEqual(
       [back, layers.lastIndexOf(card)].map((i) => i > layers.indexOf(overlay)),
       [false, true],
-      `${order.pieces().map((piece) => piece.layer.id)}`,
+      `${order.pieces().map((piece) => /** @type {Element} */ (piece.layer).id)}`,
     );
     const [first, second] = order.pieces().filter((piece) => piece.layer === card);
     assert.equal(first.halfPlanes.length, 1);
@@ -1563,7 +1563,12 @@ describe("a panel drawn in paint order", () => {
     ]);
     const order = await g.walk();
     assert.deepEqual(
-      order.pieces().map((piece) => `${piece.layer.id}${piece.halfPlanes.length ? "*" : ""}`),
+      order
+        .pieces()
+        .map(
+          (piece) =>
+            `${/** @type {Element} */ (piece.layer).id}${piece.halfPlanes.length ? "*" : ""}`,
+        ),
       ["root", "sibling*", "card", "sibling*"],
       "the sibling cut after the root",
     );

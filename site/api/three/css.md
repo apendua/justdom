@@ -263,8 +263,9 @@ still one.
 Followed:
 
 - A panel is a set of layers: its root, every overlay, and every element whose transform takes it
-  out of its parent's plane (`getLayer` in `elevation.js`). A transformed layer sits where its
-  transform puts it; nothing but an overlay is lifted.
+  out of its parent's plane (`getLayer` in `elevation.js`). A `::before` or `::after` with a
+  positive `z-index` is an overlay too ([Before and after](#before-and-after)). A transformed layer
+  sits where its transform puts it; nothing but an overlay is lifted.
 - Within a layer, the draw order is the paint order. Every element that a page paints over a sibling
   draws after everything that sibling draws, opaque or not, so a pile of cards climbs a draw level a
   card, while a list of rows stays at one row's levels however long it is. A card that is not opaque
@@ -514,10 +515,12 @@ It paints inside its element as a page paints it, ordered as the element's first
 [paint order](#paint-order). In the flow, a `::before` is over its element's own box and level with
 its children. Positioned, either one draws over the children it covers, and a later positioned child
 draws over a positioned `::before` it covers. An element's positioned `::after` draws after its
-descendants' own, and a sibling that covers the element draws over its `::after` too. Its box is
-drawn by the panel's batch, as an element's is, unless it has a picture, and then it is one draw
-call of its own. A ray that meets it meets its element, as a click on a page's `::before` icon is a
-click on the element.
+descendants' own, and a sibling that covers the element draws over its `::after` too. Positioned
+with a positive `z-index`, it is an overlay as an element would be: a layer of its own, lifted in
+front of its element, ordered among the panel's layers, and opaque to rays, so a press on it is a
+click on its element and reaches nothing behind it. Its box is drawn by the panel's batch, as an
+element's is, unless it has a picture, and then it is one draw call of its own. A ray that meets it
+meets its element, as a click on a page's `::before` icon is a click on the element.
 
 Followed:
 
@@ -540,8 +543,6 @@ Not followed:
   to draw it over what it covers.
 - **A negative `z-index`** keeps a pseudo-element level with the flow it covers, as it keeps an
   element (see [Paint order](#paint-order)), rather than under it.
-- **A positive `z-index`** orders a pseudo-element over its positioned siblings, but does not make
-  it an overlay that floats in front of the panel, as it makes an element.
 - `counter()`, `counters()` and the quotes, which the browser leaves for the page to count. The text
   of such a `content` is not drawn, its box is. Text and a `url()` in one `content` draw the text.
 - A `content: url()` picture taller than its line, in a box with a background or a border: the

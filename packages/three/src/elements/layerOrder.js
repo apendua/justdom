@@ -10,10 +10,12 @@ import {
 } from "./halfPlanes.js";
 import { LayerTree } from "./layerTree.js";
 import { getBorderBoxSize } from "./mirror.js";
+import { getLayerObject, isGenerated } from "./pseudoElements.js";
 
 /**
  * @import {Polygon} from './layerTree.js';
  * @import {HalfPlaneUniforms} from './halfPlanes.js';
+ * @import {PaintNode} from './elevation.js';
  */
 
 /*
@@ -165,7 +167,7 @@ export class LayerOrder {
   #container;
   /** @type {Element} */
   #root;
-  /** @type {(node: Element) => THREE.Object3D | undefined} */
+  /** @type {(layer: PaintNode) => THREE.Object3D | undefined} */
   #objectOf;
   /**
    * The batch that draws the panel's boxes and runs, which the cut finds a
@@ -178,9 +180,9 @@ export class LayerOrder {
   /** @type {THREE.Mesh | null} */
   #depthQuad;
 
-  /** @type {Set<Element>} */
+  /** @type {Set<PaintNode>} */
   #layers = new Set();
-  /** @type {Map<Element, Placed>} */
+  /** @type {Map<PaintNode, Placed>} */
   #placed = new Map();
   /** Whether a layer came or went since the last build. */
   #changed = true;
@@ -188,14 +190,14 @@ export class LayerOrder {
 
   /** The pieces of the last walk, in order. @type {Polygon[]} */
   #order = [];
-  /** Where each layer's first piece was put. @type {Map<Element, number>} */
+  /** Where each layer's first piece was put. @type {Map<PaintNode, number>} */
   #bases = new Map();
-  /** The last walk's, swapped with them. @type {Map<Element, number>} */
+  /** The last walk's, swapped with them. @type {Map<PaintNode, number>} */
   #lastBases = new Map();
   /**
    * Scratch for the layers' objects, each to its layer, which stop a
    * search for a layer's meshes at a nested layer.
-   * @type {Map<THREE.Object3D, Element>}
+   * @type {Map<THREE.Object3D, PaintNode>}
    */
   #layerOf = new Map();
   /**
@@ -204,7 +206,7 @@ export class LayerOrder {
    */
   #from = 0;
   #to = 0;
-  /** The layers the last walk found cut. @type {Map<Element, Polygon[]>} */
+  /** The layers the last walk found cut. @type {Map<PaintNode, Polygon[]>} */
   #cut = new Map();
   /** @type {Map<THREE.Mesh, Copied>} */
   #copies = new Map();
@@ -233,13 +235,13 @@ export class LayerOrder {
   #scene = null;
   /** Its distance from the viewpoint, as the panels were last sorted. */
   distance = 0;
-  /** Scratch for the layers cut before this walk. @type {Set<Element>} */
+  /** Scratch for the layers cut before this walk. @type {Set<PaintNode>} */
   #wasCut = new Set();
   /** The bases of the layers in `#cut`. @type {Set<number>} */
   #cutBases = new Set();
   /** And of the last walk's, swapped with them. @type {Set<number>} */
   #lastCutBases = new Set();
-  /** Scratch for the layers with a piece past the slot. @type {Set<Element>} */
+  /** Scratch for the layers with a piece past the slot. @type {Set<PaintNode>} */
   #overflowing = new Set();
   /** Scratch for the meshes drawn cut this walk. @type {Set<THREE.Mesh>} */
   #seen = new Set();
@@ -305,7 +307,9 @@ export class LayerOrder {
   constructor({ container, root, objectOf, batch, depthQuad }) {
     this.#container = container;
     this.#root = root;
-    this.#objectOf = objectOf;
+    // A lifted pseudo-element is no node the portal holds an object for;
+    // it says itself which object it is drawn under.
+    this.#objectOf = (layer) => (isGenerated(layer) ? getLayerObject(layer) : objectOf(layer));
     this.#batch = batch;
     batch.orderBy(this);
     this.#depthQuad = depthQuad;
@@ -314,9 +318,10 @@ export class LayerOrder {
   }
 
   /**
-   * An element of the panel became the root of a layer.
+   * An element of the panel, or a pseudo-element, became the root of a
+   * layer.
    *
-   * @param {Element} layer
+   * @param {PaintNode} layer
    */
   addLayer(layer) {
     this.#layers.add(layer);
@@ -324,9 +329,10 @@ export class LayerOrder {
   }
 
   /**
-   * An element of the panel is no longer the root of a layer.
+   * An element of the panel, or a pseudo-element, is no longer the root of
+   * a layer.
    *
-   * @param {Element} layer
+   * @param {PaintNode} layer
    */
   removeLayer(layer) {
     if (layer !== this.#root && this.#layers.delete(layer)) {
@@ -479,7 +485,7 @@ export class LayerOrder {
       // reaches its removal, which its budget can leave for a later frame.
       // It has no place meanwhile: out of the tree from the walk that finds
       // it gone, and keeping the base it had (`#place`).
-      if (!this.#root.contains(layer)) {
+      if (!this.#root.contains(nodeOf(layer))) {
         if (this.#placed.delete(layer)) {
           moved = true;
         }
@@ -492,7 +498,9 @@ export class LayerOrder {
       if (!inPanel(object, this.#container, layerToPanel)) {
         continue;
       }
-      const { width, height } = getBorderBoxSize(/** @type {HTMLElement} */ (layer));
+      const { width, height } = isGenerated(layer)
+        ? layer.quad()
+        : getBorderBoxSize(/** @type {HTMLElement} */ (layer));
       let placed = this.#placed.get(layer);
       if (!placed) {
         placed = { matrix: new THREE.Matrix4(), width: Number.NaN, height: 0 };
@@ -518,7 +526,7 @@ export class LayerOrder {
     for (const layer of this.#layers) {
       const placed = this.#placed.get(layer);
       if (placed) {
-        const depth = getElevation(/** @type {HTMLElement} */ (layer));
+        const depth = getElevation(layer);
         tree.add(layer, depth, placed.matrix, placed.width, placed.height);
       }
     }
@@ -547,7 +555,7 @@ export class LayerOrder {
     // the base it had, so that it does not draw over the rest until the
     // mirror takes it down.
     for (const layer of this.#layers) {
-      if (!bases.has(layer) && this.#root.contains(layer)) {
+      if (!bases.has(layer) && this.#root.contains(nodeOf(layer))) {
         bases.set(layer, this.#baseAt(place));
         place += 1;
       }
@@ -839,7 +847,7 @@ export class LayerOrder {
   }
 
   /**
-   * @param {Element} layer
+   * @param {PaintNode} layer
    * @param {Polygon[]} pieces In the walk's order.
    * @param {Set<THREE.Mesh>} seen The meshes drawn cut this frame.
    * @param {Set<THREE.Material>} written Their materials.
@@ -894,7 +902,7 @@ export class LayerOrder {
    * layers nested in it, and the batches' meshes whose order is in its
    * first piece's band.
    *
-   * @param {Element} layer
+   * @param {PaintNode} layer
    * @param {number} base
    * @returns {THREE.Mesh[]}
    */
@@ -966,11 +974,21 @@ function fartherFirst(a, b) {
 }
 
 /**
+ * The node a layer is on the page: its element, or a pseudo-element's.
+ *
+ * @param {PaintNode} layer
+ * @returns {Element}
+ */
+function nodeOf(layer) {
+  return isGenerated(layer) ? layer.element : layer;
+}
+
+/**
  * Visit every mesh under `object`, short of the objects in `stop`, which
  * are other layers', and of the proxies, which the cut stamps.
  *
  * @param {THREE.Object3D} object
- * @param {Map<THREE.Object3D, Element>} stop
+ * @param {Map<THREE.Object3D, PaintNode>} stop
  * @param {(mesh: THREE.Mesh) => void} visit
  */
 function eachMesh(object, stop, visit) {

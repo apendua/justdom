@@ -9,7 +9,18 @@ import { createPortal as createHeldPortal } from "./portal.js";
 import { resetMeasuringRangeForTests } from "./mirror.js";
 import { batchedBoxMaterial, rectGeometry } from "./sdfRect.js";
 import { getGenerated, parseGeneratedContent } from "./pseudoElements.js";
-import { getDrawLevel, getRenderBand } from "./elevation.js";
+import {
+  getDrawLevel,
+  getElevation,
+  getLayer,
+  getLayerBase,
+  getRenderBand,
+  OVERLAY_LIFT,
+  PIECE_BAND,
+} from "./elevation.js";
+import { isBlocker } from "./blocker.js";
+import { getLayerOrder } from "./layerOrder.js";
+import { comparePaintOrder } from "./layerTree.js";
 import { listPaintOrder } from "../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "./documentStyles.js";
 import { generatedHost, splitSelectorList } from "./styleRules.js";
@@ -363,6 +374,7 @@ function generatedPanel(markup) {
   return {
     portal,
     root,
+    parent,
     /**
      * The quads of the generated boxes, which carry their pseudo-element's
      * name.
@@ -832,6 +844,138 @@ describe("an element's ::before and ::after in the paint order", () => {
     await pump();
     assert.equal(panel.quads().length, 0);
     assert.equal(level(panel, ".tip"), tip);
+
+    panel.cleanup();
+  });
+
+  /**
+   * One frame's walk of the panel's layers, from a point in front of it.
+   *
+   * @param {ReturnType<typeof generatedPanel>} panel
+   */
+  const walk = async (panel) => {
+    const order = /** @type {import("./layerOrder.js").LayerOrder} */ (getLayerOrder(panel.root));
+    panel.parent.updateWorldMatrix(true, true);
+    order.walk(new THREE.Vector3(100, -50, 2000));
+    await pump();
+    order.cut();
+    return order;
+  };
+
+  test("a positioned pseudo-element with a positive z-index is a layer, lifted, and back", async () => {
+    pseudoRule(".card", "after", '""', "position: absolute; background-color: red");
+    pseudoRule(".card.up", "after", '""', "position: absolute; z-index: 1; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card up" style="position: relative" data-rect="0,0,200,100" data-after="150,0,50,50">
+        <div class="child" style="position: relative; background-color: green" data-rect="0,0,200,100"></div>
+      </div>
+    `);
+    // A root with an area, which the walk takes as a plane.
+    panel.root.setAttribute("data-rect", "0,0,400,300");
+    await settle(panel.portal);
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    const child = /** @type {HTMLElement} */ (panel.root.querySelector(".child"));
+    const after = getGenerated(card, "after");
+
+    assert.equal(getLayer(after), after, "a layer of its own");
+    assert.equal(getDrawLevel(after), 0, "the root of its layer");
+    assert.equal(getElevation(after), getElevation(card) + 1);
+    let order = await walk(panel);
+    const layers = order.pieces().map((piece) => piece.layer);
+    assert.deepEqual(layers, [panel.root, after], "walked after the layer it floats over");
+    assert.ok(getLayerBase(after) >= getLayerBase(getLayer(card)) + PIECE_BAND);
+    const [quad] = panel.quads();
+    assert.equal(quad.renderOrder, getLayerBase(after), "drawn from its own layer's base");
+    // Lifted off its element's plane, as an overlay element is, and still
+    // drawn where the copy lays it out.
+    const lifted = quad.parent;
+    assert.ok(lifted);
+    assert.equal(lifted.position.z, -OVERLAY_LIFT);
+    quad.updateWorldMatrix(true, false);
+    const corner = new THREE.Vector3().setFromMatrixPosition(quad.matrixWorld);
+    // The group its element's ::before and ::after hang in, level with the
+    // element's own frame.
+    const frame = /** @type {THREE.Object3D} */ (lifted.parent);
+    assert.deepEqual(
+      frame
+        .worldToLocal(corner)
+        .toArray()
+        .map((n) => Math.round(n) + 0),
+      [150, 0, -OVERLAY_LIFT],
+    );
+
+    // A plain positioned ::after again: level with its element, in its layer.
+    card.classList.remove("up");
+    await pump();
+    assert.equal(getLayer(after), getLayer(card));
+    assert.ok(getDrawLevel(after) > getDrawLevel(child));
+    order = await walk(panel);
+    assert.ok(order.pieces().every((piece) => piece.layer !== after));
+    const [level] = panel.quads();
+    assert.equal(level.parent?.position.z, 0);
+
+    panel.cleanup();
+  });
+
+  test("a press on a lifted pseudo-element's blocker clicks its element", async () => {
+    pseudoRule(".card", "after", '""', "position: absolute; z-index: 1; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative" data-rect="0,0,200,100" data-after="150,0,50,50">
+        <div class="child" style="cursor: pointer" data-rect="0,0,200,100"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    /** @type {THREE.Mesh[]} */
+    const blockers = [];
+    panel.parent.traverse((object) => {
+      if (object instanceof THREE.Mesh && isBlocker(object)) {
+        blockers.push(object);
+      }
+    });
+    const [quad] = panel.quads();
+    const blocker = blockers.find((mesh) => mesh.parent === quad.parent);
+    assert.ok(blocker, "the lifted ::after brings a blocker");
+
+    /** @type {string[]} */
+    const clicked = [];
+    /** @param {Event} event */
+    const hear = (event) => clicked.push(/** @type {Element} */ (event.target).className);
+    document.addEventListener("click", hear);
+    /** @type {any} */ (blocker).dispatchEvent({
+      type: "select",
+      intersection: { point: blocker.getWorldPosition(new THREE.Vector3()), object: blocker },
+    });
+    document.removeEventListener("click", hear);
+    assert.deepEqual(clicked, [card.className]);
+
+    panel.cleanup();
+  });
+
+  test("a stand-in sorts among its element's children, by paint layer first", async () => {
+    pseudoRule(".card", "before", '""', "position: absolute; z-index: 1");
+    pseudoRule(".card", "after", '""', "position: absolute");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative" data-rect="0,0,200,100" data-before="0,0,10,10" data-after="0,0,10,10">
+        <div class="child" data-rect="0,0,200,100"><span class="leaf">x</span></div>
+      </div>
+      <div class="next" data-rect="0,100,200,100"></div>
+    `);
+    await settle(panel.portal);
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    const child = /** @type {HTMLElement} */ (panel.root.querySelector(".child"));
+    const leaf = /** @type {HTMLElement} */ (panel.root.querySelector(".leaf"));
+    const next = /** @type {HTMLElement} */ (panel.root.querySelector(".next"));
+    const before = getGenerated(card, "before");
+    const after = getGenerated(card, "after");
+
+    assert.equal(comparePaintOrder(card, after), -1, "an element paints before what is in it");
+    assert.equal(comparePaintOrder(after, card), 1);
+    assert.equal(comparePaintOrder(child, after), -1, "an ::after after the children");
+    assert.equal(comparePaintOrder(after, leaf), 1, "and after what is in them");
+    assert.equal(comparePaintOrder(child, before), -1, "a ::before over the flow by its z-index");
+    assert.equal(comparePaintOrder(after, before), -1, "the higher paint layer last");
+    assert.equal(comparePaintOrder(before, next), -1, "the next sibling after all of it");
 
     panel.cleanup();
   });

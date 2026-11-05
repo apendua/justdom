@@ -132,7 +132,7 @@ import { findReferenced, GROUP_TAGS } from "../svg/template.js";
  * @property {Kind} kind
  * @property {PaintNode} element What draws it: an element, or an element's
  *   `::before` or `::after`.
- * @property {Element} layer The root of the layer it is drawn in.
+ * @property {PaintNode} layer The root of the layer it is drawn in.
  * @property {number} level Its draw level, within its layer.
  * @property {string | null} size A run's size class, the array its raster
  *   goes in; null for a run that draws itself, empty for any other kind.
@@ -328,12 +328,12 @@ function markersOf(shape) {
  *
  * @param {Element} root The panel's root, the element carrying
  *   `data-xr-portal`.
- * @returns {{ entries: Entry[], layers: Element[] }}
+ * @returns {{ entries: Entry[], layers: PaintNode[] }}
  */
 export function listPaintOrder(root) {
   /** @type {Entry[]} */
   const entries = [];
-  /** @type {Element[]} */
+  /** @type {PaintNode[]} */
   const layers = [];
 
   /**
@@ -447,6 +447,9 @@ export function listPaintOrder(root) {
     if (!content) {
       return;
     }
+    if (getLayer(generated) === generated) {
+      layers.push(generated);
+    }
     const style = generated.style();
     if (content.url !== null) {
       push("picture", generated, 0);
@@ -519,6 +522,26 @@ export function listPaintOrder(root) {
 
   visit(root);
   return { entries, layers };
+}
+
+/**
+ * Where a layer's plane sits in the panel's frame: an element's box, or a
+ * lifted pseudo-element's quad, at its corner in its element's frame,
+ * scrolled, and `OVERLAY_LIFT` in front (`generatedContent.js`).
+ *
+ * @param {PaintNode} layer
+ * @param {Map<Element, THREE.Matrix4>} cache
+ * @returns {THREE.Matrix4}
+ */
+function layerFrame(layer, cache) {
+  if (!isGenerated(layer)) {
+    return frameOf(layer, cache);
+  }
+  const quad = layer.quad();
+  const scroll = getScrollOffset(layer.element);
+  return new THREE.Matrix4()
+    .makeTranslation(quad.x - scroll.left, quad.y - scroll.top, -OVERLAY_LIFT)
+    .premultiply(frameOf(layer.element, cache));
 }
 
 /** Scratch for one element's step down from its parent. */
@@ -608,7 +631,7 @@ export function countPanel(root) {
   /** @type {Set<string>} */
   const classes = new Set();
   /**
-   * @type {Map<Element, {
+   * @type {Map<PaintNode, {
    *   boxLevels: Set<number>,
    *   runLevels: Map<number, Set<string>>,
    *   ownLevels: Set<number>,
@@ -639,22 +662,28 @@ export function countPanel(root) {
   const frames = new Map();
   const tree = new LayerTree();
   tree.begin();
-  /** @type {Set<Element>} */
+  /** @type {Set<PaintNode>} */
   const planed = new Set();
   for (const layer of layerRoots) {
-    let depth = 0;
-    for (let el = getParentElement(layer); el && !isRoot(layer); el = getParentElement(el)) {
+    // A lifted pseudo-element is nested in its element's layers, and one
+    // more for itself.
+    const generated = isGenerated(layer);
+    let depth = generated ? 1 : 0;
+    const start = generated ? layer.element : isRoot(layer) ? null : getParentElement(layer);
+    for (let el = start; el; el = getParentElement(el)) {
       if (getLayer(el) === el) depth += 1;
       if (isRoot(el)) break;
     }
-    const { width, height } = getBorderBoxSize(/** @type {HTMLElement} */ (layer));
-    if (tree.add(layer, depth, frameOf(layer, frames), width, height)) {
+    const { width, height } = generated
+      ? layer.quad()
+      : getBorderBoxSize(/** @type {HTMLElement} */ (layer));
+    if (tree.add(layer, depth, layerFrame(layer, frames), width, height)) {
       planed.add(layer);
     }
   }
   tree.build();
   const { pieces, nodes } = tree;
-  /** @type {Map<Element, number>} */
+  /** @type {Map<PaintNode, number>} */
   const piecesOf = new Map();
   let mostHalfPlanes = 0;
   for (const piece of pieces) {
@@ -672,7 +701,7 @@ export function countPanel(root) {
    * quads there, the size classes of its runs there, and whether a picture
    * or a shape breaks it there.
    *
-   * @type {Map<Element, Step[]>}
+   * @type {Map<PaintNode, Step[]>}
    */
   const runOf = new Map();
   for (const [layer, counts] of perLayer) {
@@ -699,7 +728,7 @@ export function countPanel(root) {
   // breaks only at a picture or a shape, or where the pieces' half-planes
   // change, since a draw's half-planes are its uniforms. A layer with no
   // plane is drawn whole, in a node of its own.
-  /** @type {Map<number, { layer: Element, piece: Polygon | null }[]>} */
+  /** @type {Map<number, { layer: PaintNode, piece: Polygon | null }[]>} */
   const byNode = new Map();
   for (const piece of pieces) {
     let members = byNode.get(piece.node);

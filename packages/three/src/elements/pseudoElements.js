@@ -159,8 +159,8 @@ const ruleCache = nodeCache();
  * @returns {number}
  */
 export function generatedRules(element) {
-  // No rule styles a pseudo-element of any element: the reader depends on
-  // the document's rules alone, and the element gets no signal of its own.
+  // Checked here, outside the element's signal, so the fast path creates
+  // none.
   const { before, after } = getGeneratedSelectors();
   if (before === null && after === null) {
     return 0;

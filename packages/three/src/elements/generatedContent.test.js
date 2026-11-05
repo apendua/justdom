@@ -1,7 +1,6 @@
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Derived } from "justdom-signal";
 import { clientRect } from "../test/clientRect.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
@@ -23,6 +22,7 @@ import { isBlocker } from "./blocker.js";
 import { getLayerOrder } from "./layerOrder.js";
 import { comparePaintOrder } from "./layerTree.js";
 import { fakeClock } from "../test/clock.js";
+import { countEvaluations } from "../test/evaluations.js";
 import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
 import { getPanel } from "./dragAndDrop.js";
 import { layerDepth, listPaintOrder } from "../test/paintOrderCount.js";
@@ -471,15 +471,9 @@ describe("an element's ::before and ::after in a panel", () => {
   });
 
   test("a box pays for pseudo-elements only once some rule of the page styles one", async () => {
-    // Every reactive evaluation while a panel mounts, counted at the one
-    // funnel they all go through, as `mirror.bench.js` counts them.
-    const node = Object.getPrototypeOf(Derived.prototype);
-    const track = node.track;
-    let evaluations = 0;
-    node.track = function counted(/** @type {unknown[]} */ ...args) {
-      evaluations += 1;
-      return track.apply(this, args);
-    };
+    // Every reactive evaluation while a panel mounts, as `mirror.bench.js`
+    // counts them.
+    const evaluations = countEvaluations();
     /** @param {number} rows */
     const mount = async (rows) => {
       const panel = generatedPanel(
@@ -487,9 +481,9 @@ describe("an element's ::before and ::after in a panel", () => {
           "",
         ),
       );
-      evaluations = 0;
+      evaluations.count = 0;
       await settle(panel.portal);
-      const counted = evaluations;
+      const counted = evaluations.count;
       panel.cleanup();
       return counted;
     };
@@ -501,7 +495,7 @@ describe("an element's ::before and ::after in a panel", () => {
       const some = await perRow();
       assert.ok(none < some, `${none} per row with no rule, ${some} with one`);
     } finally {
-      node.track = track;
+      evaluations.restore();
     }
   });
 

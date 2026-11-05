@@ -8,7 +8,7 @@ import { mountPhosphorMenu } from "./phosphorMenu.js";
 import { mountPowerButton } from "./power.js";
 import { mountScreen } from "./screen.js";
 import { xrSession } from "justdom-xr/session";
-import { presenting } from "./session.js";
+import { presenting, type Readable } from "./session.js";
 import { mountSwatches } from "./swatches.js";
 import { mountTabs } from "./tabs.js";
 import { Terminal } from "./terminal.js";
@@ -16,6 +16,8 @@ import { Terminal } from "./terminal.js";
 /** A look put up on the page: the elements a session mirrors, and the way to take it down. */
 export interface MountedDesk {
   look: Look;
+  /** The element the look is put up in. */
+  root: HTMLElement;
   /** The zones named by the look's placements, by id. */
   elements: ReadonlyMap<string, HTMLElement>;
   dispose: () => void;
@@ -30,12 +32,18 @@ export interface MountedDesk {
  *
  * `dispose` takes it all down again, timers and listeners included, and
  * empties the desk for the next look.
+ *
+ * `reveal` says when the monitor holds its whole listing and lets the
+ * mirror reveal it (`screen.ts`): while a session mirrors the desk, unless
+ * the caller says otherwise. A desk drawn into a texture is the page as it
+ * is, so there the listing is typed into the page in a session too.
  */
 export function mountDesk(
   desk: HTMLElement,
   style: HTMLStyleElement,
   look: Look,
   scale: () => number,
+  reveal: Readable<boolean> = presenting,
 ): MountedDesk {
   desk.dataset.look = look.id;
   style.textContent = look.style;
@@ -56,7 +64,7 @@ export function mountDesk(
 
   const disposers: (() => void)[] = [
     () => terminal.dispose(),
-    mountScreen(find("[data-screen]"), terminal, presenting),
+    mountScreen(find("[data-screen]"), terminal, reveal),
     mountPhosphorMenu(
       find("[data-phosphor-knob]"),
       find<HTMLTemplateElement>("#phosphor-menu"),
@@ -107,6 +115,7 @@ export function mountDesk(
 
   return {
     look,
+    root: desk,
     elements: new Map(look.placements.map(({ id }) => [id, find(`#${id}`)])),
     dispose: () => {
       disposers.forEach((dispose) => dispose());

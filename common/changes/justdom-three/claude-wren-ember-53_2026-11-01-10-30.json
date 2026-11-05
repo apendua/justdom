@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Export `HOVER_ATTRIBUTE` and `ACTIVE_ATTRIBUTE`, the names of `data-xr-hover` and `data-xr-active`, from the package and from `justdom-three/page`",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

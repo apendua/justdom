@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Shapes painted in a flat colour no longer set up the gradient and pattern machinery or carry its shader patch",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

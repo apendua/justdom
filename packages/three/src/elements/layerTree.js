@@ -123,12 +123,11 @@ function paintParent(node) {
  * @returns {boolean}
  */
 function paintsInside(ancestor, node) {
-  for (let up = paintParent(node); up; up = paintParent(up)) {
-    if (up === ancestor) {
-      return true;
-    }
+  if (isGenerated(ancestor)) {
+    return false;
   }
-  return false;
+  const inner = isGenerated(node) ? node.element : node;
+  return ancestor === inner ? isGenerated(node) : ancestor.contains(inner);
 }
 
 /**

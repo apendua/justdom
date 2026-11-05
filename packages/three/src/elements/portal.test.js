@@ -25,6 +25,7 @@ import { clientRect } from "../test/clientRect.js";
 import { getContentGroup } from "./contentGroup.js";
 import { fakeClock } from "../test/clock.js";
 import { syntheticEvent } from "../test/events.js";
+import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
 
 /**
  * `createPortal`, with the loading frame's delay and minimum time off. A
@@ -4091,23 +4092,6 @@ describe("a panel that is always busy", () => {
     element.dispatchEvent(syntheticEvent(type, { animationName: "spin" }));
 
   /**
-   * A timer at zero delay that flips the element's colour on every turn,
-   * faster than any frame reads it: a panel a timer keeps busy. Returns
-   * what stops it.
-   *
-   * @param {HTMLElement} element
-   * @returns {() => void}
-   */
-  const flicker = (element) => {
-    let tick = 0;
-    const timer = setInterval(() => {
-      tick += 1;
-      element.style.color = tick % 2 ? "red" : "blue";
-    }, 0);
-    return () => clearInterval(timer);
-  };
-
-  /**
    * Counts the panel channel's flushes run with no budget, the long frames
    * a time bound forces. Give `UpdateChannel.prototype.flush` back with
    * `restore`, in a `finally`.
@@ -4650,41 +4634,6 @@ describe("a panel that is always busy", () => {
   });
 
   /**
-   * The computed transform of `element`, as a frame of an animation would
-   * have the browser report it: jsdom has no transitions, and writing the
-   * style would be a mutation. Set `value` for the next frame's sample, and
-   * give `window.getComputedStyle` back with `restore`, in a `finally`.
-   *
-   * @param {HTMLElement} element
-   * @param {string} value The transform it starts at.
-   */
-  const reportTransform = (element, value) => {
-    const getComputedStyle = window.getComputedStyle;
-    const reported = {
-      value,
-      restore() {
-        window.getComputedStyle = getComputedStyle;
-      },
-    };
-    window.getComputedStyle = (target, pseudoElement) => {
-      const style = getComputedStyle.call(window, target, pseudoElement);
-      if (target !== element) {
-        return style;
-      }
-      return new Proxy(style, {
-        get(styles, key) {
-          if (key === "transform") {
-            return reported.value;
-          }
-          const read = Reflect.get(styles, key);
-          return typeof read === "function" ? read.bind(styles) : read;
-        },
-      });
-    };
-    return reported;
-  };
-
-  /**
    * The object a row of `busyPanel` is drawn by.
    *
    * @param {THREE.Object3D} containerObject
@@ -4699,16 +4648,6 @@ describe("a panel that is always busy", () => {
     );
     return rootObject.children[0].children[index];
   };
-
-  /**
-   * @param {HTMLElement} element
-   * @param {string} type
-   */
-  const transformTransition = (element, type) =>
-    element.dispatchEvent(syntheticEvent(type, { propertyName: "transform" }));
-
-  /** @param {number} x */
-  const shifted = (x) => `matrix(1, 0, 0, 1, ${x}, 0)`;
 
   test("a transform moving on its own is drawn every frame, while the panel waits", async () => {
     // The plan's first case (`docs/freedom-transform-motion-plan.md`). A

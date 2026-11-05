@@ -961,10 +961,9 @@ describe("an element's ::before and ::after in the paint order", () => {
 
   /**
    * Where a child 20 wide is drawn while it steps from 0 to `to`, near the
-   * card's `::after` at 150 to 200, as the panel's channel waits to
-   * commit: the
-   * motion step holds a step that changes what the child overlaps until
-   * the commit (`keepsOverlaps` in `div.js`).
+   * card's `::after` at 150 to 200, as the panel's channel waits to commit:
+   * the motion step holds a step that changes what the child overlaps
+   * until the commit (`keepsOverlaps` in `div.js`).
    *
    * @param {string} css The `::after`'s style.
    * @param {number} to

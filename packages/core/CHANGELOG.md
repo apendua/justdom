@@ -1,6 +1,13 @@
 # Change Log - justdom-core
 
-This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+
+## 0.5.0
+Thu, 05 Nov 2026 23:28:58 GMT
+
+### Minor changes
+
+- Reference justdom-signal/dom from the entry points, so an app gets the element's events for on() without declaring __EVENT_MAP__ itself
 
 ## 0.4.1
 Wed, 04 Nov 2026 20:25:47 GMT

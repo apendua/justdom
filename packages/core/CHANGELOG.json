@@ -2,6 +2,26 @@
   "name": "justdom-core",
   "entries": [
     {
+      "version": "0.5.0",
+      "tag": "justdom-core_v0.5.0",
+      "date": "Thu, 05 Nov 2026 23:28:58 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Reference justdom-signal/dom from the entry points, so an app gets the element's events for on() without declaring __EVENT_MAP__ itself"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.2.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.3`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.4.1",
       "tag": "justdom-core_v0.4.1",
       "date": "Wed, 04 Nov 2026 20:25:47 GMT",

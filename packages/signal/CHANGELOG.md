@@ -1,6 +1,13 @@
 # Change Log - justdom-signal
 
-This log was last generated on Wed, 04 Nov 2026 20:25:47 GMT and should not be manually modified.
+This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+
+## 1.2.0
+Thu, 05 Nov 2026 23:28:58 GMT
+
+### Minor changes
+
+- Ship the DOM's __EVENT_MAP__ declarations as the types-only entry justdom-signal/dom; type an unannotated callback's arguments to component() and effectsOnly() as any; a store, or an Op, given no event map takes any event
 
 ## 1.1.0
 Wed, 04 Nov 2026 20:25:47 GMT

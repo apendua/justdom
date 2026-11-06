@@ -309,6 +309,16 @@ describe("the clip patch", () => {
     assert.deepEqual(radii.value.toArray(), [1, 2, 3, 4]);
   });
 
+  test("an empty box keeps its negative half, so it draws nothing", () => {
+    // A box turned inside out by two clips that miss each other has a
+    // negative half. Clamped to zero, the box would shrink to its centre
+    // and leave a point there drawn, outside both boxes.
+    const material = new THREE.MeshBasicMaterial();
+    applyClip(material, { value: new THREE.Vector4(10, 0, 0, 10) });
+    const { fragmentShader } = compile(material);
+    assert.match(fragmentShader, /vec2 clipHalf = 0\.5 \* \(clipBox\.zw - clipBox\.xy\);/);
+  });
+
   test("left out, the corners are the shared square ones", () => {
     const material = new THREE.MeshBasicMaterial();
     applyClip(material, { value: new THREE.Vector4(0, 0, 10, 10) });

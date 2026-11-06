@@ -320,7 +320,9 @@ function patchClip(shader, uniform, matrix, radii, material) {
       "#include <alphatest_fragment>\n" +
         // The distance to a rounded box, whose corner radius is the one of
         // the quadrant the fragment is in, as `sdfRect.js` measures it.
-        "\tvec2 clipHalf = max(0.5 * (clipBox.zw - clipBox.xy), vec2(0.0));\n" +
+        // An empty box has a negative half, which makes the radius
+        // negative too, and the distance positive everywhere: nothing drawn.
+        "\tvec2 clipHalf = 0.5 * (clipBox.zw - clipBox.xy);\n" +
         "\tvec2 clipP = vClipPosition - 0.5 * (clipBox.xy + clipBox.zw);\n" +
         "\tfloat clipR = clipP.x < 0.0\n" +
         "\t\t? (clipP.y < 0.0 ? clipRadii.x : clipRadii.w)\n" +

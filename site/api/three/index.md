@@ -79,17 +79,20 @@ in flow, as a `content: url()` picture, positioned, lifted by `z-index` and rest
 paint order covers a positioned box over later flow, a transformed one over its siblings, a
 translucent card over a label and a nested overlay menu; text covers weights, spacing, shadows,
 animated colour and a paragraph revealed to a moving cursor; lists covers bullets and numbers that
-arrive as steps are added; images covers every `object-fit`; vectors is a card of inline SVG (a
-diagram with dashed and dotted arrows, marker heads, `<text>`, `<image>`, a `clip-path`, `<use>`, a
-`viewBox` at three sizes and three animations); motion covers CSS keyframes, a Web Animations API
-animation and a `useFrame(ctx, fn)` loop writing inline styles; pointer covers hover and press
-through `:hover` and `:active`. `?panel=<id>` opens it on one panel, and Prev and Next beside the XR
-button step through the deck without a session.
-[`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
-scene, and mirrors a page that already exists rather than building panels for the scene: a desk
-whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged
-from one panel onto another, with a layer menu, live SVG charts, draggable cards, a text field with
-the scene's keyboard and a memo that can be picked up and tipped to read.
+arrive as steps are added; images covers every `object-fit`; vectors is a card of inline SVG (an
+icon sprite of `<symbol>`s drawn by `<use>`, a pipeline diagram with marker heads, dashed and dotted
+edges and `<text>` labels, a chart clipped to its plot by a `clip-path`, icons recoloured on hover,
+`<image>` and four animations); SVG paint covers gradients and patterns (both units, a focus off
+centre, `gradientTransform`, `href` inheritance, the three spread methods, `patternTransform` and a
+box-sized pattern); motion covers CSS keyframes, a Web Animations API animation and a
+`useFrame(ctx, fn)` loop writing inline styles; pointer covers hover and press through `:hover` and
+`:active`. `?panel=<id>` opens it on one panel, and Prev and Next beside the XR button step through
+the deck without a session. [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk)
+is the same features in one scene, and mirrors a page that already exists rather than building
+panels for the scene: a desk whose monitor reveals its program, whose keys are pressed with the ray,
+whose floppies are dragged from one panel onto another, with a layer menu, live SVG charts,
+draggable cards, a text field with the scene's keyboard and a memo that can be picked up and tipped
+to read.
 
 Four of the apps carry a check script, `tests/xr-check.mjs`, that plays the app on an emulated
 headset in headless Chromium through `justdom-xr/driver`:

@@ -62,8 +62,8 @@ The app hands the suite `window.__showcase`, and the harness drives the deck thr
   both.
 
 Each check that is about one panel shows that panel first, so none of them depends on the order they
-run in: the clip-path and the attribute write on `svg`, the markers on `lists`, the translucent veil
-on `paint-order` and the style write on `boxes`.
+run in: the clip-path and the attribute write on `svg`, the spread method on `svg-paint`, the
+markers on `lists`, the translucent veil on `paint-order` and the style write on `boxes`.
 
 Two more photographs are of the pointer panel under a hand. `aimAt(page, "button")` aims the
 emulated right controller at the panel's first button through `locate`, and the scene is

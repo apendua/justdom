@@ -75,17 +75,18 @@ const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
 const UNDERLINE = /** @type {[number, number, number]} */ ([214, 48, 160]);
 
 /**
- * The teal the SVG panel's diagram nodes are filled with, and nothing on that
- * panel's photograph besides: SVG shapes are drawn through a plugin with a path
+ * The teal the SVG panel's pipeline nodes are filled with, and the cache's
+ * outline and port, and nothing on that panel's photograph besides: SVG shapes are drawn through a plugin with a path
  * of its own — parsed geometry, triangulated fills, stroked outlines — and
  * none of the unit suite can see whether any of it appears.
  */
 const NODE_COLOR = /** @type {[number, number, number]} */ ([0, 168, 150]);
 
 /**
- * The orange of the SVG panel's clipped bar, used nowhere else on that
- * panel. A `clip-path` shows the left half of the bar, so the scene holds
- * half as much of it as the bar with no clip would.
+ * The orange of the SVG panel's chart line, used nowhere else on that panel.
+ * The line spikes past the top of its plot twice, and the plot's `clip-path`
+ * cuts the spikes off, so the scene holds less of it than the line with no
+ * clip would.
  */
 const CLIPPED_COLOR = /** @type {[number, number, number]} */ ([255, 110, 0]);
 
@@ -244,8 +245,8 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
   });
 
   test("the SVG panel's shapes are drawn", async () => {
-    // The two node rectangles and the small node between them are filled
-    // with a colour the rest of the panel never uses, so finding it means the
+    // The pipeline's three hot nodes are filled with a colour the rest of
+    // the panel never uses, so finding it means the
     // SVG plugin parsed, triangulated and painted at least those; a diagram
     // that came out as the empty box the portal drew before the plugin
     // finds none of it.
@@ -295,18 +296,18 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
   });
 
   test("an SVG attribute written into the mirrored DOM reaches the scene", async () => {
-    // The same claim for an attribute rather than a style: the diamond on the
-    // SVG panel is a square turned by a `transform` attribute on its `<g>`.
-    // Unturning it by attribute has to show up in the headset, which it did
-    // not while the portal observed a fixed list of attribute names.
+    // The same claim for an attribute rather than a style: each node of the
+    // SVG panel's pipeline is placed by a `transform` attribute on its `<g>`.
+    // Taking the first one's away has to move it in the headset, which it
+    // did not while the portal observed a fixed list of attribute names.
     const before = await photograph("svg");
     // Writes the group's transform and hands back the one it replaced, so
-    // the panel stays the only place the diamond's angle is written down.
+    // the panel stays the only place the node's place is written down.
     const rewrite = (/** @type {string} */ transform) =>
       showcase.page.evaluate((transform) => {
         const group = document.querySelector('[data-panel="svg"] svg g[transform]');
         if (!group) {
-          throw new Error("no group to turn");
+          throw new Error("no group to move");
         }
         const previous = group.getAttribute("transform") ?? "";
         group.setAttribute("transform", transform);
@@ -318,7 +319,7 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     const after = await photographScene(showcase.page, { freeze: true });
     assert.ok(
       !comparePng(after, before, MOVEMENT).same,
-      "turning a group by its transform attribute changed nothing in the scene",
+      "moving a group by its transform attribute changed nothing in the scene",
     );
 
     await rewrite(original);
@@ -326,31 +327,35 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     const restored = await photographScene(showcase.page, { freeze: true });
     assert.ok(
       comparePng(restored, before, BASELINE).same,
-      "turning it back did not put the scene back",
+      "moving it back did not put the scene back",
     );
   });
 
-  test("a clip-path shows half of the bar, and all of it once it is taken off", async () => {
-    // The bar is 56 by 18 and its clip the left 28 by 18. Taking the
-    // clip-path off has to double the orange in the headset, and putting it
-    // back has to put the scene back. Counts rather than a baseline, so this
-    // means the same on any machine.
+  test("a clip-path cuts the chart's spikes off, and they show once it is taken off", async () => {
+    // The chart's line runs past the top of its plot twice, and the group
+    // holding it is clipped to the plot. Taking the clip-path off has to add
+    // orange above the plot in the headset, and putting it back has to put
+    // the scene back. Counts rather than a baseline, so this means the same
+    // on any machine.
     const before = await photograph("svg");
     const clipped = countNear(before, CLIPPED_COLOR);
-    assert.ok(clipped > 100, `expected the clipped bar in the frame, found ${clipped} pixels`);
+    assert.ok(clipped > 100, `expected the chart's line in the frame, found ${clipped} pixels`);
 
-    // Sets the bar's clip-path and hands back the one it replaced.
+    // Sets the group's clip-path and hands back the one it replaced.
     const reclip = (/** @type {string | null} */ value) =>
       showcase.page.evaluate((value) => {
-        const bar = document.querySelector('[data-panel="svg"] svg rect.clipped');
-        if (!bar) {
-          throw new Error("no clipped bar");
+        const group = document.querySelector('[data-panel="svg"] svg g[clip-path]');
+        const plot = group ?? document.querySelector("[data-test-unclipped]");
+        if (!plot) {
+          throw new Error("no clipped group");
         }
-        const previous = bar.getAttribute("clip-path");
+        const previous = plot.getAttribute("clip-path");
         if (value === null) {
-          bar.removeAttribute("clip-path");
+          plot.setAttribute("data-test-unclipped", "");
+          plot.removeAttribute("clip-path");
         } else {
-          bar.setAttribute("clip-path", value);
+          plot.removeAttribute("data-test-unclipped");
+          plot.setAttribute("clip-path", value);
         }
         return previous;
       }, value);
@@ -359,10 +364,11 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     await nextFrames(showcase.page, 10);
     const bare = await photographScene(showcase.page, { freeze: true });
     const whole = countNear(bare, CLIPPED_COLOR);
-    // Twice as much, give or take the antialiased edges.
+    // The two spikes are each about forty units of line above the plot,
+    // against some six hundred inside it.
     assert.ok(
-      whole > clipped * 1.7 && whole < clipped * 2.3,
-      `expected about twice ${clipped} orange pixels with the clip taken off, found ${whole}`,
+      whole > clipped * 1.05,
+      `expected more than ${clipped} orange pixels with the clip taken off, found ${whole}`,
     );
 
     await reclip(original);
@@ -371,10 +377,47 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     // A frozen scene photographed twice matches to the pixel, so the scene
     // with the clip back must too.
     const back = countNear(restored, CLIPPED_COLOR);
-    assert.equal(back, clipped, "putting the clip-path back did not hide the bar's right half");
+    assert.equal(back, clipped, "putting the clip-path back did not cut the spikes off");
     assert.ok(
       comparePng(restored, before, MOVEMENT).same,
       "putting the clip-path back did not put the scene back",
+    );
+  });
+
+  test("a gradient's spread method, taken through href, is drawn", async () => {
+    // The SVG paint panel's REFLECT box is filled with a gradient that has
+    // no stops or geometry of its own: it takes them from the PAD box's
+    // through `href` and adds `spreadMethod="reflect"`. Filling it with the
+    // PAD gradient instead has to change the scene, which it would not if
+    // the spread method were dropped on the way through `href`.
+    const before = await photograph("svg-paint");
+    const refill = (/** @type {string | null} */ fill) =>
+      showcase.page.evaluate((fill) => {
+        const [pad, reflect] = [0, 1].map((index) =>
+          document.querySelector(`[data-panel="svg-paint"] [data-spread="${index}"]`),
+        );
+        if (!pad || !reflect) {
+          throw new Error("no spread boxes");
+        }
+        const previous = reflect.getAttribute("fill");
+        reflect.setAttribute("fill", fill ?? pad.getAttribute("fill") ?? "");
+        return previous;
+      }, fill);
+
+    const original = await refill(null);
+    await nextFrames(showcase.page, 10);
+    const padded = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      !comparePng(padded, before, MOVEMENT).same,
+      "filling the reflect box with the pad gradient changed nothing: the spread method was lost",
+    );
+
+    await refill(original);
+    await nextFrames(showcase.page, 10);
+    const restored = await photographScene(showcase.page, { freeze: true });
+    assert.ok(
+      comparePng(restored, before, BASELINE).same,
+      "putting the reflect gradient back did not put the scene back",
     );
   });
 

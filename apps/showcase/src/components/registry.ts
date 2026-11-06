@@ -7,6 +7,7 @@ import TextPanel from "./TextPanel.js";
 import ListsPanel from "./ListsPanel.js";
 import ImagesPanel from "./ImagesPanel.js";
 import SvgPanel from "./SvgPanel.js";
+import SvgPaintPanel from "./SvgPaintPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import PointerPanel from "./PointerPanel.js";
 
@@ -60,6 +61,7 @@ export const PANELS = [
   { id: "lists", title: "Lists", component: ListsPanel },
   { id: "images", title: "Images", component: ImagesPanel },
   { id: "svg", title: "Vectors", component: SvgPanel, plugins: loadSvgPlugin },
+  { id: "svg-paint", title: "SVG paint", component: SvgPaintPanel, plugins: loadSvgPlugin },
   { id: "motion", title: "Motion", component: MotionPanel },
   { id: "pointer", title: "Pointer", component: PointerPanel, atomic: false },
 ] as const satisfies readonly PanelEntry[];

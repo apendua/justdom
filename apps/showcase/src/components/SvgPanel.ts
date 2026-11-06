@@ -1,39 +1,42 @@
-import { className, stylesheet, text, attr, $, $$, children, set, CLASS_NAME } from "justdom-core";
+import {
+  className,
+  stylesheet,
+  text,
+  $,
+  type $$,
+  attr,
+  children,
+  set,
+  CLASS_NAME,
+} from "justdom-core";
 import { component } from "justdom-signal";
 import { cardStyle, captionStyle, classes, headingStyle, rowStyle } from "./panels.js";
+import { svg, svgText } from "./svgTree.js";
 
 /**
- * Inline SVG, drawn through `justdom-three/svg`: every mechanism the
- * plugin supports, on one card, so that a photograph of it is a regression
- * test of all of them.
+ * Inline SVG, drawn through `justdom-three/svg`, the way a page draws it:
+ * an icon sprite of `<symbol>`s drawn by `<use>` everywhere below, a pipeline
+ * diagram of nodes, arrows with marker heads, dashed and dotted edges and
+ * labels, a chart whose line overshoots its plot and is cut back by a
+ * `clip-path`, and a row of icons that a hover recolours, at three sizes, as
+ * a rating and in motion, with two pictures drawn through `<image>`.
  *
- * The diagram at the top is the case the whole thing exists for — boxes
- * joined by arrows, the arrows dashed and dotted, their heads markers, the
- * nodes labelled through `<text>`, two pictures above them through
- * `<image>`, one turned by its group, and a bar between them that a
- * `clip-path` cuts in half — and
- * it is styled the way a diagram on a page is styled, through classes and
- * a stylesheet rather than presentation attributes, because computed style
- * is what the plugin reads. Below it: the same icon through the same
- * `viewBox` at three sizes, a star spun by a CSS animation on its `<g>`, one
- * symbol drawn three times by `<use>` in three fills, a rotated group, the
- * three line joins and caps, a `stroke-dashoffset`
- * animation (the marching ants every selection rectangle wears) and a stroke
- * colour animated by CSS keyframes. The three animations cost a matrix
- * write, a geometry rebuild and a uniform write respectively, which is worth
- * being able to see side by side.
- *
- * The teal of the diagram's nodes is used nowhere else in the showcase, so
- * the visual suite can count it and know the shapes were drawn. The orange
- * of the clipped bar is the same kind of marker: half of it is shown, so the
- * suite can count it with the clip and without.
+ * Everything is styled through classes and a stylesheet rather than
+ * presentation attributes, because computed style is what the plugin reads.
+ * The teal of the nodes and the orange of the chart's line are used nowhere
+ * else on the panel, so the visual suite can count them.
  */
 
+/** The nodes' fill: the colour the visual suite looks for. */
+const NODE_COLOR = "rgb(0, 168, 150)";
+
+/** The chart's line: the colour the clip-path check counts. */
+const LINE_COLOR = "rgb(255, 110, 0)";
+
 /**
- * Two pictures for the diagram's `<image>` elements, as data URLs so no
- * asset travels with the app. One is a bitmap, a 16px PNG of four squares,
- * and one is an SVG file, which is drawn as a bitmap of itself as it would
- * be in an `<img>`.
+ * Two pictures for `<image>` elements, as data URLs so no asset travels with
+ * the app. One is a bitmap, a 16px PNG of four squares, and one is an SVG
+ * file, which is drawn as a bitmap of itself as it would be in an `<img>`.
  */
 const RASTER_PICTURE =
   "data:image/png;base64," +
@@ -47,449 +50,549 @@ const VECTOR_PICTURE = `data:image/svg+xml,${encodeURIComponent(
     `</svg>`,
 )}`;
 
-/** The ids of the diagram's two arrowhead markers. */
-const DARK_HEAD = "vectors-dark-head";
-const PINK_HEAD = "vectors-pink-head";
+/** Ids in the document, prefixed so no other panel's can clash with them. */
+const ID = {
+  source: "vec-source",
+  parse: "vec-parse",
+  render: "vec-render",
+  cache: "vec-cache",
+  play: "vec-play",
+  pause: "vec-pause",
+  search: "vec-search",
+  gear: "vec-gear",
+  star: "vec-star",
+  head: "vec-head",
+  pinkHead: "vec-pink-head",
+  dot: "vec-dot",
+  plot: "vec-plot",
+};
 
-/** The id of the symbol the icon row draws three times. */
-const DOT = "vectors-dot";
+const ref = (id: string) => `url(#${id})`;
 
-/** The id of the clip that shows the left half of the orange bar. */
-const HALF = "vectors-half";
-
-/** The clipped bar's fill: a colour the visual suite looks for. */
-export const CLIPPED_COLOR = "rgb(255, 110, 0)";
-
-/** The nodes' fill: the colour the visual suite looks for. */
-export const NODE_COLOR = "rgb(0, 168, 150)";
-
-const diagramStyle = stylesheet`
-  .${CLASS_NAME} {
-    display: block;
-    width: 448px;
-    height: 198px;
-    background-color: rgb(244, 245, 250);
-    border: 1px solid rgb(214, 218, 230);
-    border-radius: 10px;
+const panelStyle = stylesheet`
+  @keyframes ${CLASS_NAME}-march {
+    to { stroke-dashoffset: -9px; }
   }
 
-  .${CLASS_NAME} .node {
-    fill: ${NODE_COLOR};
-    stroke: rgb(0, 118, 105);
-    stroke-width: 2;
-    cursor: pointer;
+  @keyframes ${CLASS_NAME}-pulse {
+    from { transform: scale(1); opacity: 0.9; }
+    to { transform: scale(1.6); opacity: 0; }
   }
 
-  /* The nodes are ray targets of their own and light up under the ray, as
-     a button does. A new fill is a colour write, and the node keeps its
-     place in the draw order. */
-  .${CLASS_NAME} .node[data-xr-hover] {
-    fill: rgb(64, 204, 186);
-  }
-
-  .${CLASS_NAME} .node[data-xr-active] {
-    fill: rgb(0, 118, 105);
-  }
-
-  /* The nodes' labels, laid out by the browser and drawn through <text>.
-     They let a press through to the node under them, as they would on a
-     page. */
-  .${CLASS_NAME} .label {
-    fill: rgb(255, 255, 255);
-    font-family: system-ui, sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    text-anchor: middle;
-    pointer-events: none;
-  }
-
-  .${CLASS_NAME} .port {
-    fill: rgb(250, 250, 253);
-    stroke: rgb(0, 118, 105);
-    stroke-width: 1.5;
-  }
-
-  .${CLASS_NAME} .dashed {
-    fill: none;
-    stroke: rgb(40, 44, 58);
-    stroke-width: 2;
-    stroke-dasharray: 6 4;
-    stroke-linecap: round;
-  }
-
-  .${CLASS_NAME} .dotted {
-    fill: none;
-    stroke: rgb(221, 64, 104);
-    stroke-width: 2.5;
-    stroke-dasharray: 0 6;
-    stroke-linecap: round;
-  }
-
-  .${CLASS_NAME} .head {
-    fill: rgb(40, 44, 58);
-  }
-
-  .${CLASS_NAME} .head.pink {
-    fill: rgb(221, 64, 104);
-  }
-
-  .${CLASS_NAME} .clipped {
-    fill: ${CLIPPED_COLOR};
-  }
-
-  .${CLASS_NAME} .grid {
-    fill: none;
-    stroke: rgb(214, 218, 230);
-    stroke-width: 1;
-    stroke-dasharray: 2 3;
-  }
-`;
-
-/**
- * One icon, three sizes: the `viewBox` scales it, and `fill: currentColor`
- * takes the colour from the element around it, as an icon on a page does.
- */
-const iconStyle = stylesheet`
   @keyframes ${CLASS_NAME}-spin {
     to { transform: rotate(360deg); }
   }
 
-  .${CLASS_NAME} {
-    display: block;
-    color: rgb(0, 123, 255);
+  @keyframes ${CLASS_NAME}-beat {
+    0%, 100% { fill: rgb(221, 64, 104); }
+    50% { fill: rgb(148, 96, 220); }
   }
 
-  .${CLASS_NAME} .ring {
-    fill: none;
-    stroke: currentColor;
+  .${CLASS_NAME} .sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+  }
+
+  .${CLASS_NAME} .board {
+    display: block;
+    border-radius: 12px;
+    background-color: rgb(238, 241, 247);
+  }
+
+  .${CLASS_NAME} .node rect {
+    fill: ${NODE_COLOR};
+    cursor: pointer;
+    transition: fill 0.15s ease;
+  }
+
+  .${CLASS_NAME} .node rect:hover {
+    fill: rgb(0, 128, 114);
+  }
+
+  .${CLASS_NAME} .node use {
+    color: rgb(255, 255, 255);
+  }
+
+  .${CLASS_NAME} .node text {
+    fill: rgb(255, 255, 255);
+    font-size: 13px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+
+  .${CLASS_NAME} .node.cold rect {
+    fill: rgb(250, 250, 253);
+    stroke: ${NODE_COLOR};
     stroke-width: 2;
   }
 
-  .${CLASS_NAME} .tick {
+  .${CLASS_NAME} .node.cold use {
+    color: ${NODE_COLOR};
+  }
+
+  .${CLASS_NAME} .node.cold text {
+    fill: rgb(0, 128, 114);
+  }
+
+  .${CLASS_NAME} .edge {
     fill: none;
-    stroke: currentColor;
-    stroke-width: 2.5;
+    stroke: rgb(40, 44, 58);
+    stroke-width: 2;
+  }
+
+  .${CLASS_NAME} .edge.dashed {
+    stroke-dasharray: 7 5;
+  }
+
+  .${CLASS_NAME} .edge.dotted {
+    stroke: rgb(221, 64, 104);
+    stroke-dasharray: 0 6;
     stroke-linecap: round;
-    stroke-linejoin: round;
+    stroke-width: 3;
   }
 
-  .${CLASS_NAME} .star {
-    fill: rgb(240, 180, 40);
-    stroke: rgb(178, 122, 24);
-    stroke-width: 1;
-    stroke-linejoin: round;
+  .${CLASS_NAME} .edge-label {
+    fill: rgb(110, 116, 136);
+    font-size: 10px;
+    letter-spacing: 0.04em;
   }
 
-  /* About the viewBox's centre: a group's transform moves its shapes
-     without touching their geometry, one matrix per frame. */
-  .${CLASS_NAME} .spin {
-    transform-origin: 12px 12px;
-    animation: ${CLASS_NAME}-spin 6s linear infinite;
-  }
-`;
-
-const iconSmall = className`
-  width: 24px;
-  height: 24px;
-`;
-
-const iconMedium = className`
-  width: 40px;
-  height: 40px;
-`;
-
-const iconLarge = className`
-  width: 64px;
-  height: 64px;
-  color: rgb(148, 96, 220);
-`;
-
-const strokesStyle = stylesheet`
-  @keyframes ${CLASS_NAME}-march {
-    to { stroke-dashoffset: -20px; }
+  .${CLASS_NAME} .edge-label.hit {
+    fill: rgb(221, 64, 104);
   }
 
-  @keyframes ${CLASS_NAME}-hue {
-    0%, 100% { stroke: rgb(0, 123, 255); }
-    50% { stroke: rgb(221, 64, 104); }
-  }
-
-  .${CLASS_NAME} {
-    display: block;
-    width: 448px;
-    height: 92px;
-  }
-
-  .${CLASS_NAME} .zig {
-    fill: none;
-    stroke: rgb(64, 148, 88);
-    stroke-width: 7;
-  }
-
-  .${CLASS_NAME} .miter {
-    stroke-linejoin: miter;
-    stroke-linecap: butt;
-  }
-
-  .${CLASS_NAME} .round {
-    stroke-linejoin: round;
-    stroke-linecap: round;
-  }
-
-  .${CLASS_NAME} .bevel {
-    stroke-linejoin: bevel;
-    stroke-linecap: square;
-  }
-
+  /* A selection round the node on show, marching. */
   .${CLASS_NAME} .ants {
-    fill: rgba(0, 123, 255, 0.12);
+    fill: none;
     stroke: rgb(0, 123, 255);
     stroke-width: 2;
-    stroke-dasharray: 6 4;
+    stroke-dasharray: 5 4;
     animation: ${CLASS_NAME}-march 0.8s linear infinite;
   }
 
-  .${CLASS_NAME} .hue {
+  /* A ring that grows out of the cache's port and fades. The origin is the
+     port's centre in the board's own units. */
+  .${CLASS_NAME} .pulse {
     fill: none;
-    stroke-width: 4;
-    stroke-linecap: round;
-    animation: ${CLASS_NAME}-hue 3s ease-in-out infinite;
+    stroke: ${NODE_COLOR};
+    stroke-width: 2;
+    transform-origin: 334px 114px;
+    animation: ${CLASS_NAME}-pulse 1.8s ease-out infinite;
   }
 
-  .${CLASS_NAME} .diamond {
-    fill: rgb(148, 96, 220);
-    stroke: rgb(84, 44, 140);
-    stroke-width: 2;
+  .${CLASS_NAME} .grid {
+    stroke: rgb(214, 218, 230);
+    stroke-width: 1;
+    stroke-dasharray: 3 4;
+  }
+
+  .${CLASS_NAME} .axis {
+    fill: none;
+    stroke: rgb(160, 166, 184);
+    stroke-width: 1.5;
+  }
+
+  .${CLASS_NAME} .tick {
+    fill: rgb(110, 116, 136);
+    font-size: 10px;
+  }
+
+  .${CLASS_NAME} .line {
+    fill: none;
+    stroke: ${LINE_COLOR};
+    stroke-width: 3;
     stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .${CLASS_NAME} .area {
+    fill: ${LINE_COLOR};
+    fill-opacity: 0.12;
+  }
+
+  .${CLASS_NAME} .point {
+    fill: rgb(255, 255, 255);
+    stroke: ${LINE_COLOR};
+    stroke-width: 2.5;
+  }
+
+  .${CLASS_NAME} .limit {
+    stroke: rgb(221, 64, 104);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+  }
+
+  .${CLASS_NAME} .limit-label {
+    fill: rgb(221, 64, 104);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .${CLASS_NAME} .tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 10px;
+    background-color: rgb(228, 231, 240);
+    color: rgb(40, 44, 58);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .${CLASS_NAME} .tool:hover {
+    background-color: rgb(0, 123, 255);
+    color: rgb(255, 255, 255);
+  }
+
+  .${CLASS_NAME} .tool svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .${CLASS_NAME} .star-on {
+    color: rgb(240, 170, 60);
+  }
+
+  .${CLASS_NAME} .star-off {
+    color: rgb(200, 206, 222);
+  }
+
+  .${CLASS_NAME} .spinner {
+    transform-origin: 17px 17px;
+    animation: ${CLASS_NAME}-spin 1.2s linear infinite;
+  }
+
+  .${CLASS_NAME} .spinner circle {
+    fill: none;
+    stroke: rgb(0, 123, 255);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 60 200;
+  }
+
+  .${CLASS_NAME} .heart {
+    animation: ${CLASS_NAME}-beat 2.4s ease-in-out infinite;
   }
 `;
 
-/** A ring with a tick in it, drawn in the element's own colour. */
-function icon(size: ReturnType<typeof className>) {
-  // `class` as an attribute, not `className`: on an SVG element that
-  // property is an `SVGAnimatedString`, not a string to assign.
-  return $$("svg", [
-    attr("class", classes(iconStyle, size)),
-    attr({ viewBox: "0 0 24 24" }),
+const toolRowStyle = className`
+  gap: 8px;
+`;
+
+/** A `<symbol>` in the sprite, drawn in whatever colour its `<use>` has. */
+const symbol = (id: string, ...kids: ReturnType<typeof $$>[]) =>
+  svg("symbol", { id, viewBox: "0 0 24 24" }, ...kids);
+
+const outline = (extra: Record<string, string | number> = {}) => ({
+  fill: "none",
+  stroke: "currentColor",
+  "stroke-width": 2,
+  ...extra,
+});
+
+/** The icons, one `<symbol>` each, in an `<svg>` that takes up no room. */
+const sprite = () =>
+  svg(
+    "svg",
+    { class: "sprite", "aria-hidden": "true" },
+    symbol(
+      ID.source,
+      svg(
+        "g",
+        outline(),
+        svg("ellipse", { cx: 12, cy: 5, rx: 8, ry: 3 }),
+        svg("path", { d: "M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" }),
+        svg("path", { d: "M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" }),
+      ),
+    ),
+    symbol(
+      ID.parse,
+      svg(
+        "g",
+        outline({ "stroke-linecap": "round", "stroke-linejoin": "round" }),
+        svg("path", { d: "M8 6l-6 6 6 6" }),
+        svg("path", { d: "M16 6l6 6-6 6" }),
+        svg("path", { d: "M14 4l-4 16" }),
+      ),
+    ),
+    symbol(
+      ID.render,
+      svg(
+        "g",
+        outline({ "stroke-linejoin": "round" }),
+        svg("path", { d: "M12 2l9 5v10l-9 5-9-5V7z" }),
+        svg("path", { d: "M3 7l9 5 9-5M12 12v10" }),
+      ),
+    ),
+    symbol(
+      ID.cache,
+      svg("path", { ...outline({ "stroke-linejoin": "round" }), d: "M13 2L4 14h7l-1 8 9-12h-7z" }),
+    ),
+    symbol(ID.play, svg("path", { d: "M7 4l13 8-13 8z", fill: "currentColor" })),
+    symbol(
+      ID.pause,
+      svg(
+        "g",
+        { fill: "currentColor" },
+        svg("rect", { x: 5, y: 4, width: 5, height: 16, rx: 1.5 }),
+        svg("rect", { x: 14, y: 4, width: 5, height: 16, rx: 1.5 }),
+      ),
+    ),
+    symbol(
+      ID.search,
+      svg(
+        "g",
+        outline({ "stroke-width": 2.5, "stroke-linecap": "round" }),
+        svg("circle", { cx: 10.5, cy: 10.5, r: 6.5 }),
+        svg("path", { d: "M15.5 15.5L21 21" }),
+      ),
+    ),
+    symbol(
+      ID.gear,
+      svg(
+        "g",
+        outline({ "stroke-linejoin": "round" }),
+        svg("circle", { cx: 12, cy: 12, r: 3.5 }),
+        svg("path", {
+          d: "M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1",
+        }),
+      ),
+    ),
+    symbol(
+      ID.star,
+      svg("path", {
+        d: "M12 2.5l2.9 6.2 6.8.8-5 4.6 1.4 6.7L12 17.4l-6.1 3.4 1.4-6.7-5-4.6 6.8-.8z",
+        fill: "currentColor",
+      }),
+    ),
+  );
+
+/** A node of the pipeline: a rounded box, its icon and its name. */
+const node = (x: number, y: number, icon: string, name: string, cold = false) =>
+  svg(
+    "g",
+    { class: cold ? "node cold" : "node", transform: `translate(${x} ${y})` },
+    svg("rect", { width: 120, height: 48, rx: 10 }),
+    svg("use", { href: `#${icon}`, x: 12, y: 12, width: 24, height: 24 }),
+    svgText({ x: 44, y: 29 }, name),
+  );
+
+const arrowHead = (id: string, fill: string, size: number) =>
+  svg(
+    "marker",
+    {
+      id,
+      viewBox: "0 0 10 10",
+      refX: 9,
+      refY: 5,
+      markerWidth: size,
+      markerHeight: size,
+      orient: "auto-start-reverse",
+    },
+    svg("path", { d: "M0 0L10 5L0 10z", fill }),
+  );
+
+/**
+ * Source feeds Parse, which feeds Render and Cache, and Cache feeds Render
+ * on a hit. The edges come first, so the nodes sit over their ends.
+ */
+const pipeline = () =>
+  svg(
+    "svg",
+    {
+      class: "board",
+      width: 544,
+      height: 175,
+      viewBox: "0 0 548 176",
+      role: "img",
+      "aria-label": "Source feeds Parse, which feeds Render and Cache; Cache feeds Render on a hit",
+    },
+    svg(
+      "defs",
+      {},
+      arrowHead(ID.head, "rgb(40, 44, 58)", 7),
+      arrowHead(ID.pinkHead, "rgb(221, 64, 104)", 6),
+      svg(
+        "marker",
+        { id: ID.dot, viewBox: "0 0 10 10", refX: 5, refY: 5, markerWidth: 5, markerHeight: 5 },
+        svg("circle", { cx: 5, cy: 5, r: 4, fill: "rgb(40, 44, 58)" }),
+      ),
+    ),
+    svg("path", {
+      class: "edge",
+      d: "M130 44H204",
+      "marker-start": ref(ID.dot),
+      "marker-end": ref(ID.head),
+    }),
+    svgText({ class: "edge-label", x: 167, y: 36, "text-anchor": "middle" }, "bytes"),
+    svg("path", { class: "edge dashed", d: "M334 44H408", "marker-end": ref(ID.head) }),
+    svgText({ class: "edge-label", x: 371, y: 36, "text-anchor": "middle" }, "tree"),
+    svg("path", { class: "edge dashed", d: "M274 70V112", "marker-end": ref(ID.head) }),
+    svgText({ class: "edge-label", x: 282, y: 96 }, "store"),
+    svg("path", {
+      class: "edge dotted",
+      d: "M336 138C400 138 468 120 474 76",
+      "marker-end": ref(ID.pinkHead),
+    }),
+    svgText({ class: "edge-label hit", x: 420, y: 150 }, "hit"),
+    node(10, 20, ID.source, "Source"),
+    node(214, 20, ID.parse, "Parse"),
+    node(418, 20, ID.render, "Render"),
+    svg("rect", { class: "ants", x: 412, y: 14, width: 132, height: 60, rx: 14 }),
+    node(214, 114, ID.cache, "Cache", true),
+    svg("circle", { class: "pulse", cx: 334, cy: 114, r: 6 }),
+    svg("circle", { cx: 334, cy: 114, r: 5, fill: NODE_COLOR }),
+  );
+
+/** Frame time by week, as a line and the area under it. */
+const WEEKS = "M40 92L89 80L139 86L188 -10L238 66L287 74L336 58L386 -24L435 70L485 62L534 54";
+
+/**
+ * A chart whose line spikes past the top of its plot twice. The plot's
+ * `clip-path` cuts the spikes off where the plot ends, so taking it away
+ * adds orange above the plot.
+ */
+const chart = () =>
+  svg(
+    "svg",
+    {
+      class: "board",
+      width: 544,
+      height: 149,
+      viewBox: "0 0 548 150",
+      role: "img",
+      "aria-label": "Frame time by week, with two spikes past the 16 ms budget",
+    },
+    svg(
+      "defs",
+      {},
+      svg("clipPath", { id: ID.plot }, svg("rect", { x: 40, y: 14, width: 494, height: 106 })),
+    ),
+    svg(
+      "g",
+      { class: "grid" },
+      svg("line", { x1: 40, y1: 14, x2: 534, y2: 14 }),
+      svg("line", { x1: 40, y1: 49, x2: 534, y2: 49 }),
+      svg("line", { x1: 40, y1: 84, x2: 534, y2: 84 }),
+    ),
+    svg("path", { class: "axis", d: "M40 10V120H534" }),
+    svgText({ class: "tick", x: 32, y: 18, "text-anchor": "end" }, "24"),
+    svgText({ class: "tick", x: 32, y: 53, "text-anchor": "end" }, "16"),
+    svgText({ class: "tick", x: 32, y: 88, "text-anchor": "end" }, "8"),
+    svgText({ class: "tick", x: 32, y: 124, "text-anchor": "end" }, "0"),
+    svgText({ class: "tick", x: 40, y: 138 }, "W1"),
+    svgText({ class: "tick", x: 287, y: 138, "text-anchor": "middle" }, "W6"),
+    svgText({ class: "tick", x: 534, y: 138, "text-anchor": "end" }, "W11"),
+    svg("line", { class: "limit", x1: 40, y1: 49, x2: 534, y2: 49 }),
+    svgText({ class: "limit-label", x: 530, y: 44, "text-anchor": "end" }, "16 ms budget"),
+    svg(
+      "g",
+      { "clip-path": ref(ID.plot) },
+      svg("path", { class: "area", d: `${WEEKS}V120H40z` }),
+      svg("path", { class: "line", d: WEEKS }),
+      ...[
+        [89, 80],
+        [238, 66],
+        [336, 58],
+        [485, 62],
+      ].map(([cx, cy]) => svg("circle", { class: "point", cx, cy, r: 4 })),
+    ),
+  );
+
+/** A button whose icon is drawn in the button's own colour. */
+const tool = (label: string, icon: string) =>
+  $("button", [
+    attr({ class: "tool", "aria-label": label }),
     children(
-      $$("circle", [attr({ class: "ring", cx: 12, cy: 12, r: 10 })]),
-      $$("polyline", [attr({ class: "tick", points: "7,12.5 10.5,16 17,8.5" })]),
+      svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, svg("use", { href: `#${icon}` })),
     ),
   ]);
-}
+
+/** The star at one size, in the colour of its `<svg>`. */
+const star = (size: number) =>
+  svg(
+    "svg",
+    { width: size, height: size, viewBox: "0 0 24 24", class: "star-on", "aria-hidden": "true" },
+    svg("use", { href: `#${ID.star}` }),
+  );
+
+/** Three stars of five, one `<symbol>` drawn five times in two colours. */
+const rating = () =>
+  svg(
+    "svg",
+    { width: 100, height: 20, viewBox: "0 0 100 20", role: "img", "aria-label": "Rated 3 of 5" },
+    ...[0, 1, 2, 3, 4].map((index) =>
+      svg("use", {
+        href: `#${ID.star}`,
+        x: index * 20,
+        width: 20,
+        height: 20,
+        class: index < 3 ? "star-on" : "star-off",
+      }),
+    ),
+  );
 
 const SvgPanel = component((_ctx: WeakKey) => {
   return $("div", [
-    set("className", cardStyle),
+    set("className", classes(cardStyle, panelStyle)),
     children(
+      sprite(),
       $("h1", [set("className", headingStyle), children(text`Vectors`)]),
-      $("p", [set("className", captionStyle), children(text`a diagram: dashed & dotted arrows`)]),
-      $$("svg", [
-        attr("class", diagramStyle),
-        attr({ viewBox: "0 0 272 120" }),
-        children(
-          // The arrowheads, drawn wherever a line names them. Sized in the
-          // diagram's own units rather than in stroke widths, so the dashed
-          // and the dotted arrows' heads keep the sizes they were drawn at.
-          // The pink one is twelve long by seven wide, since a head near
-          // equilateral reads as pointing whichever way its flattest edge
-          // faces away from.
-          $$("defs", [
-            children(
-              $$("marker", [
-                attr({
-                  id: DARK_HEAD,
-                  viewBox: "0 0 12 12",
-                  markerWidth: 12,
-                  markerHeight: 12,
-                  markerUnits: "userSpaceOnUse",
-                  refX: 0,
-                  refY: 6,
-                  orient: "auto",
-                }),
-                children($$("path", [attr({ class: "head", d: "M0 0 L12 6 L0 12 z" })])),
-              ]),
-              $$("marker", [
-                attr({
-                  id: PINK_HEAD,
-                  viewBox: "0 0 12 7",
-                  markerWidth: 12,
-                  markerHeight: 7,
-                  markerUnits: "userSpaceOnUse",
-                  refX: 12,
-                  refY: 3.5,
-                  orient: "auto",
-                }),
-                children($$("path", [attr({ class: "head pink", d: "M0 0 L12 3.5 L0 7 z" })])),
-              ]),
-              // The left half of the bar below, which is all of it a
-              // browser shows.
-              $$("clipPath", [
-                attr({ id: HALF }),
-                children($$("rect", [attr({ x: 108, y: 8, width: 28, height: 18 })])),
-              ]),
-            ),
-          ]),
-          // A faint dotted grid behind everything, the kind a canvas draws.
-          $$("g", [
-            attr({ class: "grid" }),
-            children(
-              $$("line", [attr({ x1: 0, y1: 40, x2: 272, y2: 40 })]),
-              $$("line", [attr({ x1: 0, y1: 80, x2: 272, y2: 80 })]),
-            ),
-          ]),
-          // Two pictures above the nodes, through `<image>`: the SVG file
-          // upright, the bitmap turned by its group, which an <img> in a box
-          // cannot be.
-          $$("image", [attr({ href: VECTOR_PICTURE, x: 40, y: 4, width: 26, height: 26 })]),
-          $$("g", [
-            attr({ transform: "rotate(-20 220 17)" }),
-            children(
-              $$("image", [attr({ href: RASTER_PICTURE, x: 207, y: 4, width: 26, height: 26 })]),
-            ),
-          ]),
-          // A bar between the pictures, cut in half by a `clip-path`.
-          $$("rect", [
-            attr({
-              class: "clipped",
-              x: 108,
-              y: 8,
-              width: 56,
-              height: 18,
-              "clip-path": `url(#${HALF})`,
-            }),
-          ]),
-          // Two nodes and a small third one.
-          $$("rect", [attr({ class: "node", x: 16, y: 34, width: 72, height: 44, rx: 8 })]),
-          $$("rect", [attr({ class: "node", x: 184, y: 34, width: 72, height: 44, rx: 8 })]),
-          $$("circle", [attr({ class: "node", cx: 136, cy: 100, r: 12 })]),
-          // Their labels, centred on them by `text-anchor`.
-          $$("text", [attr({ class: "label", x: 52, y: 60 }), children(text`input`)]),
-          $$("text", [attr({ class: "label", x: 220, y: 60 }), children(text`output`)]),
-          // Ports on the nodes' edges.
-          $$("circle", [attr({ class: "port", cx: 88, cy: 56, r: 4 })]),
-          $$("circle", [attr({ class: "port", cx: 184, cy: 56, r: 4 })]),
-          // A dashed arrow straight across, its head a marker set on after
-          // the end of the line.
-          $$("line", [
-            attr({
-              class: "dashed",
-              x1: 94,
-              y1: 56,
-              x2: 168,
-              y2: 56,
-              "marker-end": `url(#${DARK_HEAD})`,
-            }),
-          ]),
-          // A dotted arrow curving down to the small node and back up. The
-          // markers point along each curve's end with the tip on it, which
-          // is the direction the dots are read as travelling.
-          $$("path", [
-            attr({
-              class: "dotted",
-              d: "M52 80 C 52 112, 110 112, 122 104",
-              "marker-end": `url(#${PINK_HEAD})`,
-            }),
-          ]),
-          $$("path", [
-            attr({
-              class: "dotted",
-              d: "M150 96 C 170 84, 190 92, 220 80",
-              "marker-end": `url(#${PINK_HEAD})`,
-            }),
-          ]),
-        ),
+      $("p", [
+        set("className", captionStyle),
+        children(text`a pipeline: nodes from <use>, markers, dashes, labels, a live selection`),
       ]),
-      $("p", [set("className", captionStyle), children(text`one icon, three sizes, currentColor`)]),
+      pipeline(),
+      $("p", [
+        set("className", captionStyle),
+        children(text`a chart: a line that overshoots, clipped to its plot by a clip-path`),
+      ]),
+      chart(),
+      $("p", [
+        set("className", captionStyle),
+        children(text`one sprite: hover recolours, sizes, a rating, motion, images`),
+      ]),
       $("div", [
-        set("className", rowStyle),
+        set("className", classes(rowStyle, toolRowStyle)),
         children(
-          icon(iconSmall),
-          icon(iconMedium),
-          icon(iconLarge),
-          $$("svg", [
-            attr("class", classes(iconStyle, iconLarge)),
-            attr({ viewBox: "0 0 24 24" }),
-            children(
-              $$("g", [
-                attr({ class: "spin" }),
-                children(
-                  $$("polygon", [
-                    attr({
-                      class: "star",
-                      points:
-                        "12,2 14.9,8.6 22,9.3 16.6,14.1 18.2,21 12,17.4 5.8,21 7.4,14.1 2,9.3 9.1,8.6",
-                    }),
-                  ]),
-                ),
-              ]),
+          tool("Play", ID.play),
+          tool("Pause", ID.pause),
+          tool("Search", ID.search),
+          tool("Settings", ID.gear),
+          star(24),
+          star(36),
+          rating(),
+          svg(
+            "svg",
+            { width: 34, height: 34, viewBox: "0 0 34 34", "aria-hidden": "true" },
+            svg("g", { class: "spinner" }, svg("circle", { cx: 17, cy: 17, r: 12 })),
+          ),
+          // Two pictures through `<image>`: the SVG file upright, and the
+          // bitmap turned by its group, which an <img> in a box cannot be.
+          svg(
+            "svg",
+            { width: 60, height: 28, viewBox: "0 0 60 28", "aria-hidden": "true" },
+            svg("image", { href: VECTOR_PICTURE, x: 0, y: 1, width: 26, height: 26 }),
+            svg(
+              "g",
+              { transform: "rotate(-20 46 14)" },
+              svg("image", { href: RASTER_PICTURE, x: 33, y: 1, width: 26, height: 26 }),
             ),
-          ]),
-          // One symbol drawn three times by <use>. The dot sets no fill of
-          // its own, so each copy takes the fill of the <use> that draws it.
-          $$("svg", [
-            attr("class", classes(iconStyle, iconLarge)),
-            attr({ viewBox: "0 0 24 24" }),
-            children(
-              $$("defs", [
-                children(
-                  $$("symbol", [
-                    attr({ id: DOT, viewBox: "0 0 10 10" }),
-                    children($$("circle", [attr({ cx: 5, cy: 5, r: 4.5 })])),
-                  ]),
-                ),
-              ]),
-              $$("use", [
-                attr({
-                  href: `#${DOT}`,
-                  x: 1,
-                  y: 2,
-                  width: 11,
-                  height: 11,
-                  fill: "rgb(221, 64, 104)",
-                }),
-              ]),
-              $$("use", [
-                attr({
-                  href: `#${DOT}`,
-                  x: 12,
-                  y: 2,
-                  width: 11,
-                  height: 11,
-                  fill: "rgb(240, 170, 60)",
-                }),
-              ]),
-              $$("use", [
-                attr({
-                  href: `#${DOT}`,
-                  x: 6.5,
-                  y: 11.5,
-                  width: 11,
-                  height: 11,
-                  fill: "rgb(0, 123, 255)",
-                }),
-              ]),
-            ),
-          ]),
-        ),
-      ]),
-      $("p", [set("className", captionStyle), children(text`joins & caps, a rotated group, ants`)]),
-      $$("svg", [
-        attr("class", strokesStyle),
-        attr({ viewBox: "0 0 272 56" }),
-        children(
-          $$("polyline", [attr({ class: "zig miter", points: "8,44 22,12 36,44 50,12" })]),
-          $$("polyline", [attr({ class: "zig round", points: "66,44 80,12 94,44 108,12" })]),
-          $$("polyline", [attr({ class: "zig bevel", points: "124,44 138,12 152,44 166,12" })]),
-          // A square turned into a diamond by a transform on its group.
-          $$("g", [
-            attr({ transform: "rotate(45 196 28)" }),
-            children(
-              $$("rect", [attr({ class: "diamond", x: 182, y: 14, width: 28, height: 28 })]),
-            ),
-          ]),
-          $$("rect", [attr({ class: "ants", x: 224, y: 10, width: 40, height: 36, rx: 4 })]),
-          $$("path", [attr({ class: "hue", d: "M8 52 Q 136 40, 264 52" })]),
+          ),
+          svg(
+            "svg",
+            { width: 30, height: 30, viewBox: "0 0 24 24", "aria-hidden": "true" },
+            svg("path", {
+              class: "heart",
+              d: "M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z",
+            }),
+          ),
         ),
       ]),
     ),

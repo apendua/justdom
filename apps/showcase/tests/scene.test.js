@@ -15,6 +15,7 @@ import {
   photographScene,
   showPanel,
 } from "./harness.js";
+import { PNG } from "pngjs";
 import { BASELINE, MOVEMENT, comparePng, countNear, countWhere, inkRatio } from "./pixels.js";
 
 /**
@@ -849,5 +850,41 @@ describe("the frame rate readout in the deck", { timeout: 120_000 }, () => {
     assert.deepEqual(await state(), { shown: true, label: "Hide FPS" });
     await press();
     assert.deepEqual(await state(), { shown: false, label: "Show FPS" });
+  });
+});
+
+describe("the deck on a portrait phone, outside a session", { timeout: 120_000 }, () => {
+  // A phone held upright is narrower than it is tall, and a camera with a
+  // fixed vertical field of view sees less across it the narrower the page
+  // is. The page view widens the view until the card fits across, so the
+  // card stands clear of both sides of the page.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true });
+    await showcase.page.setViewportSize({ width: 412, height: 915 });
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  test("the card fits across the page, clear of both sides", async () => {
+    await nextFrames(showcase.page, 10);
+    const png = PNG.sync.read(await photographScene(showcase.page, { freeze: true }));
+    // The row through the middle of the card.
+    const y = Math.floor(png.height / 2);
+    /** @param {number} x */
+    const at = (x) => [0, 1, 2].map((c) => png.data[(y * png.width + x) * 4 + c]);
+    // The card is near white, and nothing beside it on the page is.
+    const card = [...Array(png.width).keys()].filter((x) => at(x).every((value) => value > 200));
+    assert.ok(card.length > 0, "no card in the middle row");
+    assert.ok(
+      card[0] > 0 && card[card.length - 1] < png.width - 1,
+      `the card runs from ${card[0]} to ${card[card.length - 1]} of ${png.width} px, ` +
+        "off the side of the page",
+    );
   });
 });

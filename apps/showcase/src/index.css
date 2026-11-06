@@ -31,12 +31,13 @@ body {
   opacity: 1;
 }
 
+/* `--xr-button-width` is the XR button's own, which `main.ts` writes. */
 .deck-step-prev {
-  left: calc(50% - 50px - 12px - 80px);
+  left: calc(50% - var(--xr-button-width, 100px) / 2 - 12px - 80px);
 }
 
 .deck-step-next {
-  left: calc(50% + 50px + 12px);
+  left: calc(50% + var(--xr-button-width, 100px) / 2 + 12px);
 }
 
 /* Why `?panels=texture` fell back to the mirror, in the top left corner. */

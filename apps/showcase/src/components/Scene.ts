@@ -4,6 +4,7 @@ import {
   cursors,
   $,
   dom,
+  getCamera,
   getScene,
   list,
   PortalPluginsContext,
@@ -111,6 +112,12 @@ const DECK_DISTANCE = 0.45;
 
 /** The gap between the card and the switcher's bar, in px. */
 const GAP = 16;
+
+/**
+ * How much room the page view leaves either side of the card, in px of the
+ * card, when a narrow window has it widen the field of view to fit.
+ */
+const PAGE_MARGIN = 24;
 
 /**
  * The grid `?panel=all` lays every panel out in: its columns, the gap
@@ -354,6 +361,34 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
     useEffects(getScene(ctx), [
+      // The page view, outside a session: a window narrower than the card at
+      // the camera's own field of view, a phone held upright, widens the
+      // field until the card fits across it. A session draws with the
+      // headset's own projection and never reads this.
+      effects(() => {
+        if (everything) {
+          return;
+        }
+        const camera = getCamera(ctx) as THREE.PerspectiveCamera;
+        // The field `render` gave the camera, kept wherever the window is
+        // wide enough for the card at that.
+        const own = camera.fov;
+        const halfWidth = (CARD_WIDTH / 2 + PAGE_MARGIN) * PANEL_SCALE * scale;
+        const fit = () => {
+          const needed =
+            2 * THREE.MathUtils.radToDeg(Math.atan(halfWidth / camera.aspect / DECK_DISTANCE));
+          camera.fov = Math.max(own, needed);
+          camera.updateProjectionMatrix();
+        };
+        fit();
+        // After `render`'s own listener, which writes the new aspect.
+        window.addEventListener("resize", fit);
+        onCleanup(() => {
+          window.removeEventListener("resize", fit);
+          camera.fov = own;
+          camera.updateProjectionMatrix();
+        });
+      }),
       effects(() => {
         useDiagnostics(ctx, diagnostics);
       }),

@@ -665,10 +665,11 @@ drawn; `<g>`, `<switch>` and an `<a>` outside a `<text>` group them. Followed:
   `stroke-dashoffset`; `opacity`, the group's included; `display`; `visibility`, on the shape's own
   meshes as on a box's quad, so a shape that says `visible` is drawn under a hidden `<g>`.
 - `transform` and `transform-origin` on every element in the chain, the `transform` _attribute_
-  included, since the browser computes it as the same property, and `transform-box: fill-box`.
-  Transforms are matrices: a shape's vertices stay in its own user space and each `<g>`, nested
-  `<svg>` and shape carries its own `transform` on its object, so a `transform` animated on a `<g>`
-  is a matrix write per frame.
+  included, and `transform-box: fill-box`. Chromium computes the attribute as the same property.
+  WebKit leaves it out of the computed value, so there the attribute is parsed itself, and a
+  stylesheet's `transform: none` over it is not seen. Transforms are matrices: a shape's vertices
+  stay in its own user space and each `<g>`, nested `<svg>` and shape carries its own `transform` on
+  its object, so a `transform` animated on a `<g>` is a matrix write per frame.
 - `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s content box; a nested
   `<svg>` as a viewport, clipping what spills out of it unless its `overflow` is `visible` or
   `auto`. A `<symbol>`, an `<svg>` drawn by a `<use>` and a `<marker>` clip their content to their

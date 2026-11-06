@@ -308,7 +308,7 @@ describe("svg shape", () => {
       fill: "red",
       // Written as the computed value Chromium reports for the attribute
       // `translate(20 5) scale(2)`: jsdom maps no presentation attribute
-      // into computed style, and the computed style is what is read.
+      // into computed style, and the computed style is read first.
       style: "transform: matrix(2, 0, 0, 2, 20, 5)",
     });
     assert.deepEqual(bounds(s.meshes[0]), { left: 0, top: 0, right: 10, bottom: 10 });
@@ -321,6 +321,26 @@ describe("svg shape", () => {
     assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 30, 5]);
     assert.equal(s.meshes[0].geometry, geometry, "a translation re-samples nothing");
     assert.deepEqual(rootBounds(s.meshes[0]), { left: 30, top: 5, right: 50, bottom: 25 });
+    s.teardown();
+  });
+
+  test("a transform attribute the computed style leaves out is read from the attribute", () => {
+    // WebKit's computed `transform` says `none` for an element whose only
+    // transform is the attribute, as jsdom's does, so there the attribute
+    // itself is what places the shape.
+    const s = setup("rect", {
+      x: "0",
+      y: "0",
+      width: "10",
+      height: "10",
+      fill: "red",
+      transform: "translate(20 5) scale(2)",
+    });
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 20, 5]);
+    assert.deepEqual(rootBounds(s.meshes[0]), { left: 20, top: 5, right: 40, bottom: 25 });
+
+    s.setAttribute("transform", "translate(30 5) scale(2)");
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 30, 5]);
     s.teardown();
   });
 

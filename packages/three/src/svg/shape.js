@@ -55,6 +55,7 @@ import {
   multiply,
   parseCssMatrix,
   parsePreserveAspectRatio,
+  parseTransformList,
   parseViewBox,
   rectEqual,
   samplingScale,
@@ -392,8 +393,59 @@ function asHtml(element) {
 }
 
 /**
- * The element's own CSS `transform`, about its `transform-origin`, in its
- * user space — or null for none.
+ * Whether the browser's computed `transform` carries an SVG element's
+ * `transform` attribute, as the attribute is a presentation attribute for
+ * the property. Chromium's does. WebKit's says `none` for an element whose
+ * only transform is the attribute, so there the attribute is read itself.
+ * Asked once, of a `<g>` with a known attribute, since it is the browser's
+ * answer and not the element's.
+ *
+ * @type {boolean | undefined}
+ */
+let computedTransformCarriesAttribute;
+
+/**
+ * @param {Document} document
+ * @returns {boolean}
+ */
+function readsTransformAttribute(document) {
+  if (computedTransformCarriesAttribute === undefined) {
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+    const probe = document.createElementNS(SVG_NAMESPACE, "g");
+    probe.setAttribute("transform", "translate(1 0)");
+    svg.append(probe);
+    svg.setAttribute("width", "0");
+    svg.setAttribute("height", "0");
+    (document.body ?? document.documentElement).append(svg);
+    const computed = parseCssMatrix(getComputedStyleCached(probe).transform);
+    svg.remove();
+    computedTransformCarriesAttribute = computed !== null;
+  }
+  return computedTransformCarriesAttribute;
+}
+
+/**
+ * The element's own transform as the browser computes it, or, where the
+ * computed `transform` leaves out the attribute (`readsTransformAttribute`),
+ * the `transform` attribute parsed. In such a browser a stylesheet's
+ * `transform: none` over an element that has the attribute is not seen, and
+ * the attribute is drawn.
+ *
+ * @param {Element} element
+ * @param {CSSStyleDeclaration} style
+ * @returns {Matrix2D | null}
+ */
+function transformMatrix(element, style) {
+  const computed = parseCssMatrix(style.transform);
+  if (computed || readsTransformAttribute(element.ownerDocument)) {
+    return computed;
+  }
+  return parseTransformList(element.getAttribute("transform"));
+}
+
+/**
+ * The element's own transform, about its `transform-origin`, in its user
+ * space — or null for none.
  *
  * The origin is the computed one, which the browser resolves to px in the
  * reference box `transform-box` names. For the default `view-box` those px
@@ -407,7 +459,7 @@ function asHtml(element) {
  * @returns {Matrix2D | null}
  */
 function ownTransform(element, style, viewBoxOrigin) {
-  const matrix = parseCssMatrix(style.transform);
+  const matrix = transformMatrix(element, style);
   if (!matrix) {
     return null;
   }

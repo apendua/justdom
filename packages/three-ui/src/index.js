@@ -7,7 +7,6 @@ export {
   createDiagnostics,
   createFrameMeter,
   diagnosticsButton,
-  HUD_WIDTH,
   READOUT_MS,
   SAMPLE_COUNT,
   SAMPLE_MS,
@@ -66,14 +65,6 @@ export {
 
 /**
  * @typedef {import('./diagnostics/diagnostics.js').DiagnosticsOptions} DiagnosticsOptions
- */
-
-/**
- * @typedef {import('./diagnostics/diagnostics.js').DiagnosticsPlacement} DiagnosticsPlacement
- */
-
-/**
- * @typedef {import('./diagnostics/diagnostics.js').UseDiagnosticsOptions} UseDiagnosticsOptions
  */
 
 /**

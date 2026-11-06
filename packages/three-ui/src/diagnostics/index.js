@@ -1,6 +1,5 @@
 export { createDiagnostics, useDiagnostics } from "./diagnostics.js";
 export { diagnosticsButton } from "./button.js";
-export { HUD_WIDTH } from "./styles.js";
 export {
   chartCeiling,
   createFrameMeter,
@@ -15,14 +14,6 @@ export {
 
 /**
  * @typedef {import('./diagnostics.js').DiagnosticsOptions} DiagnosticsOptions
- */
-
-/**
- * @typedef {import('./diagnostics.js').DiagnosticsPlacement} DiagnosticsPlacement
- */
-
-/**
- * @typedef {import('./diagnostics.js').UseDiagnosticsOptions} UseDiagnosticsOptions
  */
 
 /**

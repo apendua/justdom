@@ -131,14 +131,21 @@ export interface SwitcherProps {
   current: () => PanelId;
   /** Asked to put another panel on show. */
   show: (id: PanelId) => void;
+  /** The frame rate readout, which the last button shows and hides. */
+  readout: {
+    /** Whether it is shown, read reactively. */
+    shown: () => boolean;
+    toggle: () => void;
+  };
 }
 
 /**
  * The deck's controls, on a panel of their own under the one on show: a step
- * back, a menu of every panel by name, where in the deck this one is, and a
- * step on. The steps wrap around at either end.
+ * back, a menu of every panel by name, where in the deck this one is, a step
+ * on, and a switch for the frame rate readout. The steps wrap around at
+ * either end.
  */
-const Switcher = component(({ current, show }: SwitcherProps) => {
+const Switcher = component(({ current, show, readout }: SwitcherProps) => {
   const index = () => PANELS.findIndex(({ id }) => id === current());
   const step = (by: number) => () => show(stepFrom(current(), by));
 
@@ -167,6 +174,11 @@ const Switcher = component(({ current, show }: SwitcherProps) => {
             set("className", softButtonStyle),
             on("click", step(1)),
             children(text`Next ›`),
+          ]),
+          $("button", [
+            set("className", softButtonStyle),
+            on("click", readout.toggle),
+            children(text`${observable(() => (readout.shown() ? "Hide FPS" : "Show FPS"))}`),
           ]),
         ),
       ]),

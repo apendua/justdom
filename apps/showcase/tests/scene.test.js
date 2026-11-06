@@ -810,3 +810,44 @@ describe("every panel at once, under ?panel=all", { timeout: 240_000 }, () => {
     assert.deepEqual(state, { mounted: ids, steps: 0, panel: "all", located: true });
   });
 });
+
+describe("the frame rate readout in the deck", { timeout: 120_000 }, () => {
+  // Head-locked, the readout lands on the card wherever it is comfortable
+  // to read, so the deck starts with it hidden and a button on the
+  // switcher's bar shows it.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true });
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  test("starts hidden, and the switcher's button shows and hides it", async () => {
+    const { page } = showcase;
+    await page.waitForFunction(() => !!window.__diagnostics, undefined, { timeout: 30_000 });
+    const state = () =>
+      page.evaluate(() => {
+        const button = [...document.querySelectorAll("[data-xr-portal] button")].find((b) =>
+          /FPS/.test(b.textContent ?? ""),
+        );
+        return { shown: window.__diagnostics?.visible.get(), label: button?.textContent };
+      });
+    const press = () =>
+      page.evaluate(() => {
+        const button = [...document.querySelectorAll("[data-xr-portal] button")].find((b) =>
+          /FPS/.test(b.textContent ?? ""),
+        );
+        /** @type {HTMLElement | undefined} */ (button)?.click();
+      });
+    assert.deepEqual(await state(), { shown: false, label: "Show FPS" });
+    await press();
+    assert.deepEqual(await state(), { shown: true, label: "Hide FPS" });
+    await press();
+    assert.deepEqual(await state(), { shown: false, label: "Show FPS" });
+  });
+});

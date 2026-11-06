@@ -14,12 +14,7 @@ import {
 import { $ as $dom, attr, children as domChildren } from "justdom-core";
 import { Signal, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 
-import {
-  createDiagnostics,
-  HUD_WIDTH,
-  useDiagnostics,
-  type DiagnosticsControls,
-} from "justdom-three-ui";
+import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
 import { CARD_HEIGHT, CARD_WIDTH } from "./panels.js";
 import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
 import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
@@ -118,13 +113,6 @@ const DECK_DISTANCE = 0.45;
 const GAP = 16;
 
 /**
- * How wide the frame rate readout is drawn, in the card's px: narrow enough
- * to sit under the card's left edge, beside the switcher's bar. Its own card
- * is `HUD_WIDTH` px wide at a scale of 1.
- */
-const READOUT_WIDTH = 88;
-
-/**
  * The grid `?panel=all` lays every panel out in: its columns, the gap
  * between two cards in px, and how far in front of the player it hangs, in
  * metres. It is far enough for the emulator's view to take in the whole
@@ -192,16 +180,17 @@ function frameWhen(done: () => boolean): Promise<void> {
 const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: SceneOptions) =>
   effectsOnly((ctx: WeakKey) => {
     const scale = 0.1;
-    // The frame rate readout. There is no music card here to hang a switch
-    // off, so it is simply always on — and on a page whose whole subject is
-    // what a portal costs to draw, that is the point. It hangs in the room
-    // under the card's left edge, beside the switcher's bar: head-locked, up
-    // and to the left, it lands on the card, which fills the view on every
-    // side, and covered the house on the SVG paint panel.
-    const diagnostics = createDiagnostics();
+    const everything = initial === "all";
+    // The frame rate readout, head-locked and up to the left. The card
+    // fills the view on every side, so wherever a head-locked readout is
+    // comfortable to read it covers some of the card, as it covered the
+    // house on the SVG paint panel. So in the deck it starts hidden, and the
+    // last button on the switcher's bar shows it. The grid under `?panel=all`
+    // has no bar, and is what the benches measure a portal's cost on, so
+    // there it is simply always on.
+    const diagnostics = createDiagnostics({ visible: everything });
     window.__diagnostics = diagnostics;
 
-    const everything = initial === "all";
     const drawn = everything ? "mirror" : panels;
     /** The panels the browser has painted, under `?panels=texture`. */
     const painted = new Set<PanelId>();
@@ -364,37 +353,9 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
     // centred on the group's origin, and the gap and the bar hang below it.
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
-    // Where the readout hangs: under the card's left edge, beside the bar,
-    // in the deck's group, so that it goes wherever the deck does. An object
-    // of the deck's own, so that the readout coming and going adds to it and
-    // leaves the group's other children alone.
-    const readoutAnchor = new THREE.Group();
-    readoutAnchor.position.set(
-      -(CARD_WIDTH / 2 - READOUT_WIDTH / 2) * PANEL_SCALE,
-      -(CARD_HEIGHT / 2 + GAP + BAR_HEIGHT / 2) * PANEL_SCALE,
-      0,
-    );
-
     useEffects(getScene(ctx), [
       effects(() => {
-        useDiagnostics(
-          ctx,
-          diagnostics,
-          // The grid has no bar to sit beside, and fills the view further
-          // out, so there the readout stays on the camera.
-          everything
-            ? undefined
-            : {
-                carrier: readoutAnchor,
-                placement: {
-                  position: new THREE.Vector3(),
-                  rotation: new THREE.Euler(),
-                  // Both portals draw a px at PANEL_SCALE, in the group's
-                  // units.
-                  scale: READOUT_WIDTH / HUD_WIDTH,
-                },
-              },
-        );
+        useDiagnostics(ctx, diagnostics);
       }),
       children(
         $(new THREE.AmbientLight(0xffffff, 2)),
@@ -419,11 +380,14 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
             ...(everything
               ? []
               : [
-                  $(readoutAnchor),
                   dom(
                     ctx,
                     Switcher({
                       current: () => current.get(),
+                      readout: {
+                        shown: () => diagnostics.visible.get(),
+                        toggle: diagnostics.toggle,
+                      },
                       show: (id) => {
                         show(id).catch((err) => {
                           console.error(`Could not show the ${id} panel:`, err);

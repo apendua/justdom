@@ -216,13 +216,6 @@ const App = effectsOnly((ctx) => {
 itself to the camera, which is already in the scene. Call it from any effect, the way `useFrame` is
 called, and the surrounding computation owns the meter and the panel both.
 
-`useDiagnostics(ctx, controls, { carrier, placement })` hangs the panel somewhere else: on
-`carrier`, an object of the scene's, at `placement`'s `position`, `rotation` and `scale` in the
-carrier's units. The two come together: a carrier without a placement does not type-check. A scene
-whose content fills the view where the HUD would sit puts it in the room instead. The showcase hangs
-it beside its switcher, since head-locked it lands on the card. `HUD_WIDTH` (300) is the panel's
-width in its own px, so a `scale` of the width wanted over `HUD_WIDTH` draws it that wide.
-
 `createDiagnostics(options?)` returns the controls; `{ visible: false }` starts the panel hidden.
 
 | Control    | What it is                                                                                                                               |

@@ -344,6 +344,19 @@ describe("svg shape", () => {
     s.teardown();
   });
 
+  test("a transform attribute read from the attribute is applied about user space's origin", () => {
+    // As WebKit draws it: the attribute as it is, not about the viewBox's
+    // origin or a `transform-origin`, which only a CSS transform is
+    // applied about.
+    const s = setup(
+      "rect",
+      { x: "10", y: "10", width: "5", height: "5", fill: "red", transform: "scale(2)" },
+      { viewBox: "10 10 50 25" },
+    );
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 0, 0]);
+    s.teardown();
+  });
+
   test("a move reaches the matrix and the clip together, under a budget of one effect", () => {
     // A clip-path of the shape's own moves with it, so a move changes all
     // three: the object's matrix, the clip matrix and the clip box. A panel

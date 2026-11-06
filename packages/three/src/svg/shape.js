@@ -396,13 +396,17 @@ function asHtml(element) {
  * Whether the browser's computed `transform` carries an SVG element's
  * `transform` attribute, as the attribute is a presentation attribute for
  * the property. Chromium's does. WebKit's says `none` for an element whose
- * only transform is the attribute, so there the attribute is read itself.
- * Asked once, of a `<g>` with a known attribute, since it is the browser's
- * answer and not the element's.
+ * only transform is the attribute, and draws that attribute as it is, about
+ * user space's origin, whatever `transform-origin` says. Asked once, of a
+ * `<g>` with a known attribute, since it is the browser's answer and not the
+ * element's.
  *
  * @type {boolean | undefined}
  */
 let computedTransformCarriesAttribute;
+
+/** What the probe's `translate(1 0)` computes to where it is carried. */
+const PROBE_MATRIX = /** @type {Matrix2D} */ ([1, 0, 0, 1, 1, 0]);
 
 /**
  * @param {Document} document
@@ -417,41 +421,31 @@ function readsTransformAttribute(document) {
     svg.setAttribute("width", "0");
     svg.setAttribute("height", "0");
     (document.body ?? document.documentElement).append(svg);
-    const computed = parseCssMatrix(getComputedStyleCached(probe).transform);
+    // Asked of the browser directly and not through the mirror's cache: the
+    // probe is gone on the next line, and nothing should follow it.
+    const computed = parseCssMatrix(
+      document.defaultView?.getComputedStyle(probe).transform ?? "none",
+    );
     svg.remove();
-    computedTransformCarriesAttribute = computed !== null;
+    computedTransformCarriesAttribute = computed !== null && matrixEqual(computed, PROBE_MATRIX);
   }
   return computedTransformCarriesAttribute;
 }
 
 /**
- * The element's own transform as the browser computes it, or, where the
- * computed `transform` leaves out the attribute (`readsTransformAttribute`),
- * the `transform` attribute parsed. In such a browser a stylesheet's
- * `transform: none` over an element that has the attribute is not seen, and
- * the attribute is drawn.
+ * The element's own transform, in its user space — or null for none.
  *
- * @param {Element} element
- * @param {CSSStyleDeclaration} style
- * @returns {Matrix2D | null}
- */
-function transformMatrix(element, style) {
-  const computed = parseCssMatrix(style.transform);
-  if (computed || readsTransformAttribute(element.ownerDocument)) {
-    return computed;
-  }
-  return parseTransformList(element.getAttribute("transform"));
-}
-
-/**
- * The element's own transform, about its `transform-origin`, in its user
- * space — or null for none.
+ * A computed CSS `transform` is applied about the computed
+ * `transform-origin`, which the browser resolves to px in the reference box
+ * `transform-box` names. For the default `view-box` those px are measured
+ * from the nearest viewport's `viewBox` origin, so the `viewBox`'s own
+ * offset is added back; for `fill-box` they are measured from the shape's
+ * own bounds, which `getBBox` reports where it exists.
  *
- * The origin is the computed one, which the browser resolves to px in the
- * reference box `transform-box` names. For the default `view-box` those px
- * are measured from the nearest viewport's `viewBox` origin, so the
- * `viewBox`'s own offset is added back; for `fill-box` they are measured
- * from the shape's own bounds, which `getBBox` reports where it exists.
+ * Where the computed `transform` leaves out the attribute
+ * (`readsTransformAttribute`), an element whose computed `transform` is
+ * `none` is placed by its `transform` attribute, as it is, about user
+ * space's origin, which is how WebKit draws it.
  *
  * @param {Element} element
  * @param {CSSStyleDeclaration} style
@@ -459,9 +453,11 @@ function transformMatrix(element, style) {
  * @returns {Matrix2D | null}
  */
 function ownTransform(element, style, viewBoxOrigin) {
-  const matrix = transformMatrix(element, style);
+  const matrix = parseCssMatrix(style.transform);
   if (!matrix) {
-    return null;
+    return readsTransformAttribute(element.ownerDocument)
+      ? null
+      : parseTransformList(getAttributeCached(element, "transform"));
   }
   const origin = style.transformOrigin.split(/\s+/);
   let ox = px(origin[0] ?? "0");

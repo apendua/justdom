@@ -93,7 +93,8 @@ const GAP = 16;
  * Where the keyboard opens, in metres in the session's reference space: low
  * in front of the card and nearer than it, upright and square on, so that a
  * photograph shows it over the card's empty lower half, clear of the
- * switcher, and a ray reaches its keys before the card. `KEYBOARD_SCALE` is metres per px of the board.
+ * switcher, and a ray reaches its keys before the card. `KEYBOARD_SCALE` is
+ * metres per px of the board.
  */
 const KEYBOARD_TOP = -0.05;
 const KEYBOARD_DISTANCE = 0.36;
@@ -147,7 +148,10 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     /**
      * What the keyboard hangs from while it is up, for `locate`: its top
      * edge is the anchor's origin, and the group two below it has its origin
-     * in the board's middle, as a panel's object does.
+     * in the board's middle, as a panel's object does. It is only right for
+     * a board the scene placed: a board the player carried and put down
+     * comes back on a new anchor without `placement`, and `locate` then
+     * finds no key.
      */
     let keyboardAnchor: THREE.Object3D | undefined;
 

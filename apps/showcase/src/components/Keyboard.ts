@@ -11,7 +11,7 @@ import { fontFamily } from "./panels.js";
  */
 
 /** How wide the board is, in px. */
-export const KEYBOARD_WIDTH = 440;
+const KEYBOARD_WIDTH = 440;
 
 const surfaceStyle = stylesheet`
   .${CLASS_NAME} {
@@ -53,7 +53,10 @@ const keyStyle = stylesheet`
   }
 `;
 
-/** As specific as the hover rule and later, so a held shift stays lit under the ray. */
+/**
+ * As specific as the hover rule and later, so a held shift stays lit under
+ * the ray.
+ */
 const keyHeldStyle = stylesheet`
   .${CLASS_NAME}, .${CLASS_NAME}:hover {
     background-color: rgb(0, 123, 255);

@@ -617,6 +617,16 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
     await showcase?.close();
   });
 
+  /**
+   * Put a panel on show from its first state. Showing the panel already on
+   * show changes nothing, and switching away unmounts it, so another panel
+   * goes up first and each photograph is of its own test alone.
+   */
+  const showFresh = async (/** @type {string} */ id) => {
+    await showPanel(showcase.page, id === "forms" ? "widgets" : "forms");
+    await showPanel(showcase.page, id);
+  };
+
   /** Aim at an element and pull the trigger on it once. */
   const press = async (/** @type {string} */ selector) => {
     await aimAt(showcase.page, selector);
@@ -625,7 +635,7 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
   };
 
   test("a box ticked by the trigger lights its label, and matches its baseline", async (t) => {
-    await showPanel(showcase.page, "forms");
+    await showFresh("forms");
     const before = await photographScene(showcase.page, { freeze: true });
     await press("#forms-dog");
     const state = await showcase.page.evaluate(() => {
@@ -643,7 +653,7 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
   });
 
   test("the keyboard opens from a field and types into it, and matches its baseline", async (t) => {
-    await showPanel(showcase.page, "forms");
+    await showFresh("forms");
     await press('[data-field="email"]');
     await showcase.page.waitForFunction(
       () =>
@@ -651,18 +661,9 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
       undefined,
       { timeout: 30_000 },
     );
-    // Name each letter's key, so the aim can find it by selector. The keys
-    // are told apart by what is printed on them, as a player tells them.
-    await showcase.page.evaluate(() => {
-      for (const key of document.querySelectorAll("[data-keyboard] *")) {
-        const label = key.textContent ?? "";
-        if (key.children.length === 0 && /^[a-z]$/.test(label)) {
-          /** @type {HTMLElement} */ (key).dataset.testKey = label;
-        }
-      }
-    });
-    for (const letter of "abc") {
-      await press(`[data-test-key="${letter}"]`);
+    // The keyboard names each key by its `data-code`, as `KeyboardEvent.code`.
+    for (const letter of "ABC") {
+      await press(`[data-code="Key${letter}"]`);
     }
     const state = await showcase.page.evaluate(() => {
       const field = document.querySelector('[data-panel="forms"] [data-field="email"]');
@@ -678,7 +679,7 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
   });
 
   test("the dropdown opens under the trigger, and matches its baseline", async (t) => {
-    await showPanel(showcase.page, "widgets");
+    await showFresh("widgets");
     await press('[role="combobox"]');
     const open = await showcase.page.evaluate(
       () =>
@@ -705,7 +706,7 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
   });
 
   test("a list pulled by the trigger scrolls, and matches its baseline", async (t) => {
-    await showPanel(showcase.page, "widgets");
+    await showFresh("widgets");
     // Take hold of the list low down and pull it up to its top row.
     await aimAt(showcase.page, "[data-pulled] > :nth-child(4)");
     await holdTrigger(showcase.page, true);

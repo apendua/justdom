@@ -79,11 +79,13 @@ this is the photograph that says it was restyled. They run in a browser of their
 in none of the other photographs.
 
 Four more, in a browser of their own too, photograph the state a ray's presses leave a control in.
-Each asserts the DOM state before it trusts the photograph:
+Each shows another panel and then its own, so it starts from the panel's first state and not from
+what the test before it left, and each asserts the DOM state before it trusts the photograph:
 
 - `forms-ticked.png`: the trigger ticks the unticked to-do on `forms`, and its label lights up.
 - `forms-keyboard.png`: a press on the email field opens the keyboard, and presses on its `a`, `b`
-  and `c` keys type into the field, which wears `:focus` meanwhile.
+  and `c` keys type into the field, which wears `:focus` meanwhile. The field above the keys is the
+  board's preview of the one it types into, which a keyboard in the room shows by default.
 - `widgets-dropdown.png`: a press opens the dropdown on `widgets` over the panel. Picking an option
   then shuts it.
 - `widgets-scrolled.png`: the overflowing list on `widgets`, taken hold of low down and pulled up,

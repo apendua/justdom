@@ -35,7 +35,7 @@ export interface PanelEntry {
   readonly atomic?: boolean;
   /**
    * Whether the player can pick the panel up by the strips along its edges
-   * and carry it (see `PanelOptions.draggable`). Off unless a panel says so.
+   * and carry it (see `PortalOptions.draggable`). Off unless a panel says so.
    */
   readonly draggable?: boolean;
   /**

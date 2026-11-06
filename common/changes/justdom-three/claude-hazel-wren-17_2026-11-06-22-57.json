@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A repeated background picture no longer draws a line of its average colour along the seams between its tiles",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

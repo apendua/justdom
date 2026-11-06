@@ -105,6 +105,17 @@ describe("the picture layer", () => {
     assert.equal(material.uniforms.uImage.value, null);
   });
 
+  test("a repeated picture picks its mipmap from the unwrapped coordinate", () => {
+    // Where the wrapped coordinate jumps from 1 back to 0 at a seam between
+    // two tiles, a sampler measuring it reads the smallest mipmap: a line of
+    // the picture's average colour along every seam.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /vec2 dx = dFdx\(unwrapped\);/);
+    assert.match(fragmentShader, /vec2 dy = dFdy\(unwrapped\);/);
+    assert.match(fragmentShader, /textureGrad\(\s*uImage,/);
+    assert.doesNotMatch(fragmentShader, /texture2D\(uImage/);
+  });
+
   test("both rectangles land, and they are allowed to disagree", () => {
     const material = createRectMaterial();
     const texture = new THREE.Texture();

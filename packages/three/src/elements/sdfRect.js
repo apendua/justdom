@@ -315,12 +315,24 @@ vec4 withPicture(vec4 fill, vec2 q) {
     mix(uImageRect.xy, uImageClip.xy, uImageMode.xy),
     mix(uImageRect.zw, uImageClip.zw, uImageMode.xy)
   );
-  vec2 uv = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
-  uv = mix(uv, fract(uv), uImageMode.xy);
+  vec2 unwrapped = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
+  vec2 uv = mix(unwrapped, fract(unwrapped), uImageMode.xy);
+  // The level of detail is taken from the unwrapped coordinate. Where
+  // \`fract\` wraps, the wrapped one jumps by a whole tile between two
+  // neighbouring fragments, and a sampler that measured that jump would
+  // read the picture's smallest mipmap there: a line of its average colour
+  // along every seam between the tiles.
+  vec2 dx = dFdx(unwrapped);
+  vec2 dy = dFdy(unwrapped);
   // Textures are uploaded flipped, so v runs up while the portal's y runs
   // down; the clamp is what makes the wrap mode enough to keep a stray
   // fragment from sampling the far edge.
-  vec4 texel = texture2D(uImage, clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0));
+  vec4 texel = textureGrad(
+    uImage,
+    clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0),
+    vec2(dx.x, -dx.y),
+    vec2(dy.x, -dy.y)
+  );
   float over = texel.a * uImageOpacity * boxCoverage(q, bounds) * boxCoverage(q, uImageClip);
   float under = fill.a * (1.0 - over);
   float composited = over + under;

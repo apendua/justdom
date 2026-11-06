@@ -86,13 +86,16 @@ edges and `<text>` labels, a chart clipped to its plot by a `clip-path`, icons r
 centre, `gradientTransform`, `href` inheritance, the three spread methods, `patternTransform` and a
 box-sized pattern); motion covers CSS keyframes, a Web Animations API animation and a
 `useFrame(ctx, fn)` loop writing inline styles; pointer covers hover and press through `:hover` and
-`:active`. `?panel=<id>` opens it on one panel, and Prev and Next beside the XR button step through
-the deck without a session. [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk)
-is the same features in one scene, and mirrors a page that already exists rather than building
-panels for the scene: a desk whose monitor reveals its program, whose keys are pressed with the ray,
-whose floppies are dragged from one panel onto another, with a layer menu, live SVG charts,
-draggable cards, a text field with the scene's keyboard and a memo that can be picked up and tipped
-to read.
+`:active`; forms covers checkboxes styled by `:checked` and `data-xr-checked`, the next sibling
+included, and text fields that open the scene's keyboard and wear `:focus` while it types; widgets
+covers justdom-three-ui's dropdown and scrollable, a list pulled by hand, drag and drop between two
+lists, and a `draggable` panel's carry strips. `?panel=<id>` opens it on one panel, and Prev and
+Next beside the XR button step through the deck without a session.
+[`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
+scene, and mirrors a page that already exists rather than building panels for the scene: a desk
+whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged
+from one panel onto another, with a layer menu, live SVG charts, draggable cards, a text field with
+the scene's keyboard and a memo that can be picked up and tipped to read.
 
 Four of the apps carry a check script, `tests/xr-check.mjs`, that plays the app on an emulated
 headset in headless Chromium through `justdom-xr/driver`:

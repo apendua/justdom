@@ -59,7 +59,8 @@ The app hands the suite `window.__showcase`, and the harness drives the deck thr
 - `panels` lists the ids in the deck's order, which `panelIds(page)` reads.
 - `locate(selector)` says where in the room the middle of an element on show is drawn. The page
   knows where the element is in its panel and the scene knows where the panel is, and this asks
-  both.
+  both. A selector the panel on show does not match is looked for on the keyboard, while one is
+  open.
 
 Each check that is about one panel shows that panel first, so none of them depends on the order they
 run in: the clip-path and the attribute write on `svg`, the spread method on `svg-paint`, the
@@ -76,6 +77,17 @@ it. A third, `pseudo-hover.png`, rests the ray on the link on the `pseudo` panel
 underline a `:hover::after` rule widens to the whole word: a pseudo-element is not in the DOM, so
 this is the photograph that says it was restyled. They run in a browser of their own, so the hand is
 in none of the other photographs.
+
+Four more, in a browser of their own too, photograph the state a ray's presses leave a control in.
+Each asserts the DOM state before it trusts the photograph:
+
+- `forms-ticked.png`: the trigger ticks the unticked to-do on `forms`, and its label lights up.
+- `forms-keyboard.png`: a press on the email field opens the keyboard, and presses on its `a`, `b`
+  and `c` keys type into the field, which wears `:focus` meanwhile.
+- `widgets-dropdown.png`: a press opens the dropdown on `widgets` over the panel. Picking an option
+  then shuts it.
+- `widgets-scrolled.png`: the overflowing list on `widgets`, taken hold of low down and pulled up,
+  has scrolled.
 
 ## The two kinds of check, and which one can fail on your machine
 

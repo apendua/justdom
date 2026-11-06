@@ -224,7 +224,9 @@ jobs:
                   `\`gh run download ${context.runId} -n scene\`. It holds one photograph per ` +
                   `panel of the deck, named by its id, with \`pointer-hover.png\` and ` +
                   `\`pointer-press.png\` for a ray resting on a button and the trigger held ` +
-                  `on it, and \`pseudo-hover.png\` for one resting on a link; a ` +
+                  `on it, \`pseudo-hover.png\` for one resting on a link, and ` +
+                  `\`forms-ticked.png\`, \`forms-keyboard.png\`, \`widgets-dropdown.png\` ` +
+                  `and \`widgets-scrolled.png\` for the controls after a ray's presses; a ` +
                   `\`.diff.png\` beside any of them, ` +
                   `magenta wherever it disagrees with the ` +
                   `baseline; and \`report.txt\`, the log. It arrives as a zip, because an ` +

@@ -7,6 +7,8 @@ import {
   getScene,
   list,
   PortalPluginsContext,
+  withPanelOptions,
+  type PortalKeyboardOptions,
   type PortalPlugin,
 } from "justdom-three";
 import { $ as $dom, attr, children as domChildren } from "justdom-core";
@@ -16,6 +18,7 @@ import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "jus
 import { CARD_HEIGHT } from "./panels.js";
 import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
 import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
+import Keyboard from "./Keyboard.js";
 
 /**
  * What a script driving the deck can do: the visual suite, mostly, which
@@ -43,7 +46,8 @@ export interface ShowcaseControls {
   /**
    * Where in the room the middle of the first element on show that matches
    * `selector` is drawn, in the session's reference space, or null when no
-   * element matches. The page knows where an element is in its panel and the
+   * element matches. The panel on show is searched first, then the keyboard
+   * while it is up. The page knows where an element is in its panel and the
    * scene knows where the panel is, and this asks both.
    */
   locate(selector: string): [number, number, number] | null;
@@ -84,6 +88,16 @@ const PANEL_SCALE = 0.01;
 
 /** The gap between the card and the switcher's bar, in px. */
 const GAP = 16;
+
+/**
+ * Where the keyboard opens, in metres in the session's reference space: low
+ * in front of the card and nearer than it, upright and square on, so that a
+ * photograph shows it over the card's empty lower half, clear of the
+ * switcher, and a ray reaches its keys before the card. `KEYBOARD_SCALE` is metres per px of the board.
+ */
+const KEYBOARD_TOP = -0.05;
+const KEYBOARD_DISTANCE = 0.36;
+const KEYBOARD_SCALE = 0.0006;
 
 /**
  * Resolves on the first animation frame where `done` holds. Frames and not a
@@ -130,6 +144,24 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     let shown: THREE.Object3D | undefined;
     /** How many times `show` has been called, so a call can tell it was overtaken. */
     let requests = 0;
+    /**
+     * What the keyboard hangs from while it is up, for `locate`: its top
+     * edge is the anchor's origin, and the group two below it has its origin
+     * in the board's middle, as a panel's object does.
+     */
+    let keyboardAnchor: THREE.Object3D | undefined;
+
+    const keyboard: PortalKeyboardOptions = {
+      create: ({ onKey, field }) => Keyboard({ onKey, field }),
+      placement: ({ anchor }) => {
+        keyboardAnchor = anchor;
+        anchor.position.set(0, KEYBOARD_TOP, -KEYBOARD_DISTANCE);
+        anchor.rotation.set(0, 0, 0);
+      },
+      tilt: 0,
+      scale: KEYBOARD_SCALE,
+    };
+    const keyedCtx = withPanelOptions(ctx, { keyboard });
 
     const show = async (asked: string) => {
       const request = ++requests;
@@ -157,11 +189,26 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
       );
     };
 
-    const locate = (selector: string): [number, number, number] | null => {
+    /** The element `locate` asks for, and the object its portal is drawn on. */
+    const find = (selector: string): [Element, THREE.Object3D | undefined] | null => {
       const panel = document.querySelector(`[data-panel="${current.get()}"]`);
-      const root = panel?.closest("[data-xr-portal]");
-      const element = panel?.querySelector(selector);
-      if (!shown || !root || !element) {
+      const inPanel = panel?.querySelector(selector);
+      if (inPanel) {
+        return [inPanel, shown];
+      }
+      const inKeyboard = document.querySelector(`[data-keyboard] ${selector}`);
+      const board = keyboardAnchor?.parent ? keyboardAnchor.children[0]?.children[0] : undefined;
+      return inKeyboard ? [inKeyboard, board] : null;
+    };
+
+    const locate = (selector: string): [number, number, number] | null => {
+      const found = find(selector);
+      if (!found) {
+        return null;
+      }
+      const [element, object] = found;
+      const root = element.closest("[data-xr-portal]");
+      if (!object || !root) {
         return null;
       }
       const frame = root.getBoundingClientRect();
@@ -173,8 +220,8 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
         (frame.top + frame.height / 2 - box.top - box.height / 2) * PANEL_SCALE,
         0,
       );
-      shown.updateWorldMatrix(true, false);
-      return shown.localToWorld(point).toArray();
+      object.updateWorldMatrix(true, false);
+      return object.localToWorld(point).toArray();
     };
 
     window.__showcase = {
@@ -187,7 +234,7 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     /** One panel, mounted with its plugins and tagged with its id. */
     const panel = (entry: Panel) => {
       const given = plugins.get(entry.id) ?? [];
-      const panelCtx = given.length ? PortalPluginsContext.set(ctx, given) : ctx;
+      const panelCtx = given.length ? PortalPluginsContext.set(keyedCtx, given) : keyedCtx;
       return dom(
         panelCtx,
         $dom("div", [attr({ "data-panel": entry.id }), domChildren(entry.component(ctx))]),
@@ -201,7 +248,10 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
             });
           }),
         ],
-        { atomic: "atomic" in entry ? entry.atomic : true },
+        {
+          atomic: "atomic" in entry ? entry.atomic : true,
+          draggable: "draggable" in entry ? entry.draggable : false,
+        },
       );
     };
 

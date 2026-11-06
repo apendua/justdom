@@ -10,6 +10,8 @@ import SvgPanel from "./SvgPanel.js";
 import SvgPaintPanel from "./SvgPaintPanel.js";
 import MotionPanel from "./MotionPanel.js";
 import PointerPanel from "./PointerPanel.js";
+import FormsPanel from "./FormsPanel.js";
+import WidgetsPanel from "./WidgetsPanel.js";
 
 /**
  * One panel of the deck: what the switcher calls it, what builds it, and how
@@ -31,6 +33,11 @@ export interface PanelEntry {
    * something under the player's hand.
    */
   readonly atomic?: boolean;
+  /**
+   * Whether the player can pick the panel up by the strips along its edges
+   * and carry it (see `PanelOptions.draggable`). Off unless a panel says so.
+   */
+  readonly draggable?: boolean;
   /**
    * Portal plugins this panel needs, loaded the first time it is shown. The
    * panel is mounted once they have loaded, so a deck that never shows it
@@ -64,6 +71,8 @@ export const PANELS = [
   { id: "svg-paint", title: "SVG paint", component: SvgPaintPanel, plugins: loadSvgPlugin },
   { id: "motion", title: "Motion", component: MotionPanel },
   { id: "pointer", title: "Pointer", component: PointerPanel, atomic: false },
+  { id: "forms", title: "Forms", component: FormsPanel },
+  { id: "widgets", title: "Widgets", component: WidgetsPanel, draggable: true },
 ] as const satisfies readonly PanelEntry[];
 
 export type PanelId = (typeof PANELS)[number]["id"];

@@ -595,6 +595,133 @@ describe("panels under a hand", { timeout: 180_000 }, () => {
   });
 });
 
+describe("controls under a hand", { timeout: 240_000 }, () => {
+  // A browser of its own, as for the panels above: what these photograph is
+  // the state a ray's presses leave a control in, a box ticked, a field typed
+  // into through the keyboard, a menu open and a list pulled. Each asserts
+  // the DOM state first, so a photograph is trusted only once the press is
+  // known to have arrived.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+  /** @type {Record<string, string>} */
+  let stamp;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true });
+    await enterSession(showcase.page, { freeze: true });
+    stamp = await fingerprint(showcase.page, showcase.browser);
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  /** Aim at an element and pull the trigger on it once. */
+  const press = async (/** @type {string} */ selector) => {
+    await aimAt(showcase.page, selector);
+    await holdTrigger(showcase.page, true);
+    await holdTrigger(showcase.page, false);
+  };
+
+  test("a box ticked by the trigger lights its label, and matches its baseline", async (t) => {
+    await showPanel(showcase.page, "forms");
+    const before = await photographScene(showcase.page, { freeze: true });
+    await press("#forms-dog");
+    const state = await showcase.page.evaluate(() => {
+      const box = document.querySelector('[data-panel="forms"] #forms-dog');
+      return box instanceof HTMLInputElement
+        ? { checked: box.checked, flagged: box.hasAttribute("data-xr-checked") }
+        : null;
+    });
+    assert.deepEqual(state, { checked: true, flagged: true }, "the trigger ticked the box");
+    const ticked = await photographScene(showcase.page, { freeze: true });
+    // The box and the label after it both turn the accent blue.
+    const lit = countNear(ticked, ACCENT) - countNear(before, ACCENT);
+    assert.ok(lit > 200, `expected the box and its label lit, found ${lit} more accent pixels`);
+    assertMatchesBaseline(t, "forms-ticked", ticked, stamp);
+  });
+
+  test("the keyboard opens from a field and types into it, and matches its baseline", async (t) => {
+    await showPanel(showcase.page, "forms");
+    await press('[data-field="email"]');
+    await showcase.page.waitForFunction(
+      () =>
+        !!document.querySelector("[data-keyboard]") && !document.querySelector("[data-xr-loading]"),
+      undefined,
+      { timeout: 30_000 },
+    );
+    // Name each letter's key, so the aim can find it by selector. The keys
+    // are told apart by what is printed on them, as a player tells them.
+    await showcase.page.evaluate(() => {
+      for (const key of document.querySelectorAll("[data-keyboard] *")) {
+        const label = key.textContent ?? "";
+        if (key.children.length === 0 && /^[a-z]$/.test(label)) {
+          /** @type {HTMLElement} */ (key).dataset.testKey = label;
+        }
+      }
+    });
+    for (const letter of "abc") {
+      await press(`[data-test-key="${letter}"]`);
+    }
+    const state = await showcase.page.evaluate(() => {
+      const field = document.querySelector('[data-panel="forms"] [data-field="email"]');
+      return field instanceof HTMLInputElement
+        ? { value: field.value, focused: field.hasAttribute("data-xr-focus") }
+        : null;
+    });
+    assert.deepEqual(state, { value: "abc", focused: true }, "the keys typed into the field");
+    // Rest the ray off the keys, so no key is photographed lit.
+    await aimAt(showcase.page, "h1");
+    const typed = await photographScene(showcase.page, { freeze: true });
+    assertMatchesBaseline(t, "forms-keyboard", typed, stamp);
+  });
+
+  test("the dropdown opens under the trigger, and matches its baseline", async (t) => {
+    await showPanel(showcase.page, "widgets");
+    await press('[role="combobox"]');
+    const open = await showcase.page.evaluate(
+      () =>
+        document
+          .querySelector('[data-panel="widgets"] [role="combobox"]')
+          ?.getAttribute("aria-expanded") === "true" &&
+        !!document.querySelector('[data-panel="widgets"] [role="listbox"]'),
+    );
+    assert.ok(open, "the trigger opened the menu");
+    await aimAt(showcase.page, "h1");
+    const opened = await photographScene(showcase.page, { freeze: true });
+    assertMatchesBaseline(t, "widgets-dropdown", opened, stamp);
+    // Picking an option shuts the menu and shows the choice on the trigger,
+    // which also leaves the list below uncovered for the pull that follows.
+    await press('[role="option"]:last-child');
+    const picked = await showcase.page.evaluate(() => {
+      const trigger = document.querySelector('[data-panel="widgets"] [role="combobox"]');
+      return {
+        expanded: trigger?.getAttribute("aria-expanded"),
+        label: trigger?.textContent?.includes("Large") ?? false,
+      };
+    });
+    assert.deepEqual(picked, { expanded: "false", label: true }, "the option was picked");
+  });
+
+  test("a list pulled by the trigger scrolls, and matches its baseline", async (t) => {
+    await showPanel(showcase.page, "widgets");
+    // Take hold of the list low down and pull it up to its top row.
+    await aimAt(showcase.page, "[data-pulled] > :nth-child(4)");
+    await holdTrigger(showcase.page, true);
+    await aimAt(showcase.page, "[data-pulled] > :nth-child(1)");
+    await holdTrigger(showcase.page, false);
+    await nextFrames(showcase.page, 30);
+    const scrolled = await showcase.page.evaluate(
+      () => document.querySelector('[data-panel="widgets"] [data-pulled]')?.scrollTop ?? 0,
+    );
+    assert.ok(scrolled > 20, `expected the list scrolled by the pull, found scrollTop ${scrolled}`);
+    await aimAt(showcase.page, "h1");
+    const pulled = await photographScene(showcase.page, { freeze: true });
+    assertMatchesBaseline(t, "widgets-scrolled", pulled, stamp);
+  });
+});
+
 describe("the motion panel while it is animating", { timeout: 180_000 }, () => {
   /** @type {Awaited<ReturnType<typeof openShowcase>>} */
   let showcase;

@@ -563,6 +563,7 @@ describe("the motion panel while it is animating", { timeout: 180_000 }, () => {
   });
 
   test("animation plays: two frames apart, the scene has moved", async () => {
+    await showPanel(showcase.page, "motion");
     // Keyframes, a WAAPI animation and a frame loop all run in the motion
     // panel; the clock samples them and the scene follows. Nothing in jsdom
     // advances a timeline, so this is the only place that can tell whether

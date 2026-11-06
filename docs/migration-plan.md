@@ -147,8 +147,8 @@ Before the site can go live:
    pull request, as apendua.dev's does today. It never runs `rush publish` and holds no npm token.
    After the bump pull request is merged into `develop`, Tomasz publishes from his own machine with
    `common/scripts/publish.mjs`, since npm asks the account's second factor on every publish. The
-   README's _Releasing_ section has the commands. Start from the August branch's versions of these
-   files, minus its publish step and its `NPM_AUTH_TOKEN` secret.
+   _Releasing_ section of `CONTRIBUTING.md` has the commands. Start from the August branch's
+   versions of these files, minus its publish step and its `NPM_AUTH_TOKEN` secret.
 6. **Add the site** and its Pages workflow.
 7. **First release.** All public names go out in one sitting, so that nobody can take one in
    between. What follows is how the first release went: it was a local `rush publish`, and

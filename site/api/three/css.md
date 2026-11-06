@@ -672,7 +672,8 @@ drawn; `<g>`, `<switch>` and an `<a>` outside a `<text>` group them. Followed:
 - `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s content box; a nested
   `<svg>` as a viewport, clipping what spills out of it unless its `overflow` is `visible` or
   `auto`. A `<symbol>`, an `<svg>` drawn by a `<use>` and a `<marker>` clip their content to their
-  viewports the same way.
+  viewports the same way. A `border-radius` on an `<svg>` root that hides its overflow rounds the
+  corners of that clip, as it rounds a box's.
 - Geometry from the computed style where the browser exposes it as CSS (`cx`, `r`, `x`, `width`,
   `d`) and from the attribute otherwise, so a shape whose `d`, `points` or `fill` attribute is bound
   to data is redrawn when the data changes. A percentage in a shape's geometry is a share of the

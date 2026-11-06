@@ -4,6 +4,7 @@ import * as THREE from "three";
 import {
   applyClip,
   applyReveal,
+  clipRadiiUniform,
   clipBoxEqual,
   clipBoxShows,
   clipRaycast,
@@ -11,7 +12,9 @@ import {
   isEmptyClipBox,
   toLocalClipBox,
   IDENTITY_CLIP_MATRIX,
+  SQUARE_CLIP_CORNERS,
   UNCLIPPED,
+  writeClip,
 } from "./clip.js";
 
 /**
@@ -282,6 +285,36 @@ describe("the clip patch", () => {
     matrix.value.set(0, -1, 0, 1, 0, 0, 0, 0, 1);
     assert.equal(inside(uniforms, 50, 0), true, "(50, 0) lands at (0, 50)");
     assert.equal(inside(uniforms, 0, 50), false, "(0, 50) lands at (-50, 0)");
+  });
+
+  test("the corners are the caller's radii, written with the box", () => {
+    const material = new THREE.MeshBasicMaterial();
+    const box = { value: new THREE.Vector4() };
+    const radii = clipRadiiUniform();
+    applyClip(material, box, IDENTITY_CLIP_MATRIX, radii);
+    const shader = compile(material);
+    assert.equal(shader.uniforms.clipRadii, radii, "the caller's uniform, not a copy");
+    assert.match(shader.fragmentShader, /uniform vec4 clipRadii;/);
+    writeClip(box, radii, {
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 50,
+      topLeft: 1,
+      topRight: 2,
+      bottomRight: 3,
+      bottomLeft: 4,
+    });
+    assert.deepEqual(box.value.toArray(), [0, 0, 100, 50]);
+    assert.deepEqual(radii.value.toArray(), [1, 2, 3, 4]);
+  });
+
+  test("left out, the corners are the shared square ones", () => {
+    const material = new THREE.MeshBasicMaterial();
+    applyClip(material, { value: new THREE.Vector4(0, 0, 10, 10) });
+    const { uniforms } = compile(material);
+    assert.equal(uniforms.clipRadii, SQUARE_CLIP_CORNERS);
+    assert.deepEqual(SQUARE_CLIP_CORNERS.value.toArray(), [0, 0, 0, 0]);
   });
 
   test("the reveal patch is the clip patch at the identity, plus its cut", () => {

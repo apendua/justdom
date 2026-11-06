@@ -191,6 +191,39 @@ export function clipBoxEqual(a, b) {
 export const IDENTITY_CLIP_MATRIX = Object.freeze({ value: new THREE.Matrix3() });
 
 /**
+ * The corner radii for a mesh whose clip has square corners, shared by all
+ * of them and never written: a mesh whose clip can round its corners brings
+ * a uniform of its own (`clipRadiiUniform`).
+ *
+ * @type {{ readonly value: THREE.Vector4 }}
+ */
+export const SQUARE_CLIP_CORNERS = Object.freeze({ value: new THREE.Vector4(0, 0, 0, 0) });
+
+/**
+ * A corner radii uniform for `applyClip`, square until written.
+ *
+ * @returns {{ value: THREE.Vector4 }}
+ */
+export function clipRadiiUniform() {
+  return { value: new THREE.Vector4(0, 0, 0, 0) };
+}
+
+/**
+ * Write a clip box into the two uniforms the clip patch reads it from: its
+ * edges, and its corners as `topLeft, topRight, bottomRight, bottomLeft`,
+ * the order a box's own `uClipRadii` takes.
+ *
+ * @param {{ value: THREE.Vector4 }} uniform
+ * @param {{ value: THREE.Vector4 }} radii
+ * @param {ClipBox} box
+ * @returns {void}
+ */
+export function writeClip(uniform, radii, box) {
+  uniform.value.set(box.left, box.top, box.right, box.bottom);
+  radii.value.set(box.topLeft, box.topRight, box.bottomRight, box.bottomLeft);
+}
+
+/**
  * Teach an ordinary three material to stop drawing outside a box.
  *
  * The boxes an element draws have a shader of their own and take the clip as
@@ -209,14 +242,26 @@ export const IDENTITY_CLIP_MATRIX = Object.freeze({ value: new THREE.Matrix3() }
  * stays axis-aligned in the box's frame whatever the matrix does — which is
  * what CSS does to content under a transform, too.
  *
+ * The corners are rounded by `radii`, in the box's frame, as the padding box
+ * of an element that hides its overflow rounds them: the `<svg>` root under
+ * a `border-radius` cuts its picture's corners off. A mesh that leaves them
+ * out is cut square.
+ *
  * @param {THREE.Material} material
  * @param {{ value: THREE.Vector4 }} uniform Shared with the caller, which
  *   writes the current box into it as the layout changes.
  * @param {{ value: THREE.Matrix3 }} [matrix] Mesh-local to clip frame, also
  *   written by the caller; the identity when left out.
+ * @param {{ value: THREE.Vector4 }} [radii] The box's corner radii, written
+ *   with it (`writeClip`); square corners when left out.
  * @returns {void}
  */
-export function applyClip(material, uniform, matrix = IDENTITY_CLIP_MATRIX) {
+export function applyClip(
+  material,
+  uniform,
+  matrix = IDENTITY_CLIP_MATRIX,
+  radii = SQUARE_CLIP_CORNERS,
+) {
   carryHalfPlanes(material);
   // A function and not an arrow: three calls it on the material it compiles
   // for, and that material's half-planes are the ones to hand the shader.
@@ -225,7 +270,7 @@ export function applyClip(material, uniform, matrix = IDENTITY_CLIP_MATRIX) {
    * @param {import('three').WebGLProgramParametersWithUniforms} shader
    */
   material.onBeforeCompile = function (shader) {
-    patchClip(shader, uniform, matrix, this);
+    patchClip(shader, uniform, matrix, radii, this);
   };
   // Programs are cached by material type and defines, neither of which the
   // patch above changes. Without a distinct key a clipped material can be
@@ -240,13 +285,15 @@ export function applyClip(material, uniform, matrix = IDENTITY_CLIP_MATRIX) {
  * @param {import('three').WebGLProgramParametersWithUniforms} shader
  * @param {{ value: THREE.Vector4 }} uniform
  * @param {{ value: THREE.Matrix3 }} matrix
+ * @param {{ value: THREE.Vector4 }} radii
  * @param {THREE.Material} material The material compiled for, whose
  *   half-planes (`carryHalfPlanes`) the shader tests.
  * @returns {void}
  */
-function patchClip(shader, uniform, matrix, material) {
+function patchClip(shader, uniform, matrix, radii, material) {
   shader.uniforms.clipBox = uniform;
   shader.uniforms.clipMatrix = matrix;
+  shader.uniforms.clipRadii = radii;
   Object.assign(shader.uniforms, carryHalfPlanes(material));
   shader.vertexShader = shader.vertexShader
     .replace(
@@ -265,15 +312,22 @@ function patchClip(shader, uniform, matrix, material) {
   shader.fragmentShader = shader.fragmentShader
     .replace(
       "void main() {",
-      `${HALF_PLANES_FRAGMENT_GLSL}\nuniform vec4 clipBox;\nvarying vec2 vClipPosition;\n` +
-        "void main() {\n\tclipHalfPlanes();",
+      `${HALF_PLANES_FRAGMENT_GLSL}\nuniform vec4 clipBox;\nuniform vec4 clipRadii;\n` +
+        "varying vec2 vClipPosition;\nvoid main() {\n\tclipHalfPlanes();",
     )
     .replace(
       "#include <alphatest_fragment>",
       "#include <alphatest_fragment>\n" +
-        "\tvec2 clipHalf = 0.5 * (clipBox.zw - clipBox.xy);\n" +
-        "\tvec2 clipD = abs(vClipPosition - 0.5 * (clipBox.xy + clipBox.zw)) - clipHalf;\n" +
-        "\tfloat clipDist = max(clipD.x, clipD.y);\n" +
+        // The distance to a rounded box, whose corner radius is the one of
+        // the quadrant the fragment is in, as `sdfRect.js` measures it.
+        "\tvec2 clipHalf = max(0.5 * (clipBox.zw - clipBox.xy), vec2(0.0));\n" +
+        "\tvec2 clipP = vClipPosition - 0.5 * (clipBox.xy + clipBox.zw);\n" +
+        "\tfloat clipR = clipP.x < 0.0\n" +
+        "\t\t? (clipP.y < 0.0 ? clipRadii.x : clipRadii.w)\n" +
+        "\t\t: (clipP.y < 0.0 ? clipRadii.y : clipRadii.z);\n" +
+        "\tclipR = min(clipR, min(clipHalf.x, clipHalf.y));\n" +
+        "\tvec2 clipD = abs(clipP) - clipHalf + clipR;\n" +
+        "\tfloat clipDist = length(max(clipD, 0.0)) + min(max(clipD.x, clipD.y), 0.0) - clipR;\n" +
         "\tdiffuseColor.a *= 1.0 - smoothstep(-fwidth(clipDist), fwidth(clipDist), clipDist);\n" +
         "\tif (diffuseColor.a < 0.001) discard;",
     );
@@ -311,7 +365,7 @@ export function applyReveal(material, clip, cut) {
    * @param {import('three').WebGLProgramParametersWithUniforms} shader
    */
   material.onBeforeCompile = function (shader) {
-    patchClip(shader, clip, IDENTITY_CLIP_MATRIX, this);
+    patchClip(shader, clip, IDENTITY_CLIP_MATRIX, SQUARE_CLIP_CORNERS, this);
     shader.uniforms.revealCut = cut;
     shader.fragmentShader = shader.fragmentShader
       .replace("void main() {", "uniform vec4 revealCut;\nvoid main() {")

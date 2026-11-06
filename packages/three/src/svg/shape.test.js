@@ -1699,6 +1699,23 @@ describe("svg shape as a ray target", () => {
     s.teardown();
   });
 
+  test("a border-radius on a root that hides its overflow rounds the clip's corners", () => {
+    // The browser cuts an `<svg>` root's picture to its rounded padding box,
+    // as it cuts any box that hides its overflow.
+    const s = setup("rect", SQUARE, { width: 100, height: 50 });
+    s.root.style.overflow = "hidden";
+    // Corner by corner, as the browser computes the shorthand: jsdom does
+    // not expand it.
+    for (const corner of ["top-left", "top-right", "bottom-right", "bottom-left"]) {
+      s.root.style.setProperty(`border-${corner}-radius`, "12px");
+    }
+    s.flush();
+    const [fill] = s.meshes;
+    const radii = /** @type {THREE.Vector4} */ (clipUniformsOf(fill).clipRadii.value);
+    assert.deepEqual(radii.toArray(), [12, 12, 12, 12]);
+    s.teardown();
+  });
+
   test("a ray is trimmed where a clip-path trims the drawing", () => {
     const s = setup("rect", SQUARE);
     // The left half of the square.

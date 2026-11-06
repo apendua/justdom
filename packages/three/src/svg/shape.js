@@ -11,7 +11,14 @@ import {
 } from "justdom-signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { $, children, Nothing } from "../operators.js";
-import { applyClip, clipRaycast, intersectClipBoxes, UNCLIPPED } from "../elements/clip.js";
+import {
+  applyClip,
+  clipRadiiUniform,
+  clipRaycast,
+  intersectClipBoxes,
+  UNCLIPPED,
+  writeClip,
+} from "../elements/clip.js";
 import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { place } from "../elements/place.js";
@@ -1527,7 +1534,7 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * @returns {Source<Component>}
  */
 function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slot, uniforms) {
-  const { clip, clipMatrix, clipBox } = uniforms;
+  const { clip, clipMatrix, clipRadii, clipBox } = uniforms;
   const mesh = new THREE.Mesh();
   registerDrawOrder(mesh);
   // Trimmed once, for the life of the mesh, to the part the clip patch
@@ -1549,7 +1556,7 @@ function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slo
       // (`MARK_MATERIAL_SETTINGS`): no depth write, so the draw order and
       // not the depth buffer decides what covers what on one plane.
       const material = new THREE.MeshBasicMaterial(MARK_MATERIAL_SETTINGS);
-      applyClip(material, clip, clipMatrix);
+      applyClip(material, clip, clipMatrix, clipRadii);
       patch?.(material);
       onCleanup(() => {
         material.dispose();
@@ -1583,15 +1590,17 @@ function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slo
 }
 
 /**
- * The clip patch's two uniforms for what one element draws, and the write
- * that keeps them current. Both are shared by every mesh the element has.
+ * The clip patch's three uniforms for what one element draws, and the write
+ * that keeps them current. All are shared by every mesh the element has.
  *
  * `clip` is what the root's overflow, the scrollers above it and the
- * viewports in the chain leave, in the root's frame. `clipMatrix` goes from
- * the element's user space, where its vertices are, to that frame: the
- * composition of every matrix above the meshes, the element's own included.
+ * viewports in the chain leave, in the root's frame, and `clipRadii` its
+ * corners, which a `border-radius` on the root rounds as it rounds a box's
+ * overflow. `clipMatrix` goes from the element's user space, where its
+ * vertices are, to that frame: the composition of every matrix above the
+ * meshes, the element's own included.
  *
- * `follow` writes both, and is called from the effect that writes the
+ * `follow` writes all three, and is called from the effect that writes the
  * element's own matrix (see `svgNode`), not from effects of its own. The
  * three describe one picture: a transform on the element moves its object,
  * its `clipMatrix` and, when the `clip-path` is its own, its clip, and a
@@ -1610,6 +1619,7 @@ function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slo
 function clipUniforms(chain, root) {
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
   const clipMatrix = { value: new THREE.Matrix3() };
+  const clipRadii = clipRadiiUniform();
   const viewports = new Derived(() => chain().clip, { isEqual: rectEqual });
   const interior = new Derived(() => {
     const at = root.get();
@@ -1631,10 +1641,11 @@ function clipUniforms(chain, root) {
   return {
     clip,
     clipMatrix,
+    clipRadii,
     clipBox: () => current,
     follow() {
       const box = interior.get();
-      clip.value.set(box.left, box.top, box.right, box.bottom);
+      writeClip(clip, clipRadii, box);
       current = box;
       toMatrix3(chain().ctm, clipMatrix.value);
     },

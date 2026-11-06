@@ -11,7 +11,8 @@ and how to use it is in the [README](README.md) and on [justdom.dev](https://jus
   two private `@apendua/euclid-*` packages behind the Euclid demo.
 - [`apps/`](apps) holds the demos, one folder each.
 - [`site/`](site) is justdom.dev (see [The site](#the-site) below).
-- [`bench/`](bench) holds benchmarks, such as the bundle-size one.
+- [`bench/`](bench) holds the bundle-size benchmark behind
+  [justdom.dev/bundle-size](https://justdom.dev/bundle-size).
 - [`docs/`](docs) holds the migration plan mentioned below.
 
 All of this grew inside [apendua.dev](https://apendua.dev), the author's personal monorepo, as

@@ -1,7 +1,23 @@
 # Contributing to justdom
 
-This file covers working in the repository and releasing its packages. What justdom is and how to
-use it is in the [README](README.md) and on [justdom.dev](https://justdom.dev).
+This file covers the repository's layout, working in it and releasing its packages. What justdom is
+and how to use it is in the [README](README.md) and on [justdom.dev](https://justdom.dev).
+
+## What is in the repository
+
+- [`packages/`](packages) holds the packages. Besides the six `justdom-*` packages in the README, it
+  holds [`@apendua/sound`](packages/sound), [`@apendua/geometry`](packages/geometry) and
+  [`@apendua/jsdom-env`](packages/jsdom-env), smaller packages the demos and the tests use, and the
+  two private `@apendua/euclid-*` packages behind the Euclid demo.
+- [`apps/`](apps) holds the demos, one folder each.
+- [`site/`](site) is justdom.dev (see [The site](#the-site) below).
+- [`bench/`](bench) holds benchmarks, such as the bundle-size one.
+- [`docs/`](docs) holds the migration plan mentioned below.
+
+All of this grew inside [apendua.dev](https://apendua.dev), the author's personal monorepo, as
+`@apendua/signal`, `@apendua/justdom` and `@apendua/freedom` among others. In October 2026 the
+packages and demos moved to this repository with their git history, under the names they are
+published with. [`docs/migration-plan.md`](docs/migration-plan.md) records that move.
 
 ## Setting up and building
 

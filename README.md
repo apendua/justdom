@@ -7,10 +7,23 @@ function, an element is created once, and every reactive value in it is wired to
 it needs. The same operators build a Three.js scene, and in a WebXR headset the scene can show the
 page's own DOM in a panel, so an app's interface is written once for both.
 
-- [Getting started](https://justdom.dev/guide/getting-started): which packages to install for what
-  you render, and a first app.
-- [Packages](https://justdom.dev/packages/): a reference page for each package.
-- [Demos](https://justdom.dev/demos/): full apps built on these packages, each linked to its source.
+## Install
+
+Pick the packages for what you render:
+
+| To render                                 | Install                                              |
+| ----------------------------------------- | ---------------------------------------------------- |
+| Reactive state only                       | `justdom-signal`                                     |
+| The DOM, on a page or on a server         | `justdom-core` and `justdom-signal`                  |
+| A Three.js scene                          | `justdom-three`, `justdom-signal` and `three`        |
+| DOM panels in a scene, such as a keyboard | `justdom-three-ui` and the packages of the row above |
+| A WebXR session                           | `justdom-xr` with `justdom-three`                    |
+
+`justdom-three`, `justdom-three-ui` and `justdom-xr` need `three` 0.180 or newer. For a Vite app,
+`npm install --save-dev justdom-vite-hmr` adds hot reloads that keep the app's live state.
+
+The packages are JavaScript with JSDoc types and ship their `.d.ts` files, so TypeScript and editors
+see every signature.
 
 ## A first example
 
@@ -41,24 +54,27 @@ the app, and `app.unsubscribe()` removes it and runs every cleanup its parts reg
 
 ## Packages
 
-| Package                                 | What it is for                                                                       |
-| --------------------------------------- | ------------------------------------------------------------------------------------ |
-| [`justdom-signal`](packages/signal)     | Reactive state: `Signal`, `Derived` and `Effect`, with a pull-based core.            |
-| [`justdom-core`](packages/core)         | The DOM, in a browser or on a server, with hydration of server-rendered markup.      |
-| [`justdom-three`](packages/three)       | A Three.js scene with the same operators, and DOM mirrored into the scene as panels. |
-| [`justdom-three-ui`](packages/three-ui) | Widgets for those panels: a dropdown, a keyboard, a scrolling window.                |
-| [`justdom-xr`](packages/xr)             | What a headset app repeats, including an emulated headset for a desktop browser.     |
-| [`justdom-vite-hmr`](packages/vite-hmr) | A Vite plugin that keeps live reactive state across hot module reloads.              |
+| Package                                                     | What it is for                                                                       |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [`justdom-signal`](https://justdom.dev/packages/signal)     | Reactive state: `Signal`, `Derived` and `Effect`, with a pull-based core.            |
+| [`justdom-core`](https://justdom.dev/packages/core)         | The DOM, in a browser or on a server, with hydration of server-rendered markup.      |
+| [`justdom-three`](https://justdom.dev/packages/three)       | A Three.js scene with the same operators, and DOM mirrored into the scene as panels. |
+| [`justdom-three-ui`](https://justdom.dev/packages/three-ui) | Widgets for those panels: a dropdown, a keyboard, a scrolling window.                |
+| [`justdom-xr`](https://justdom.dev/packages/xr)             | What a headset app repeats, including an emulated headset for a desktop browser.     |
+| [`justdom-vite-hmr`](https://justdom.dev/packages/vite-hmr) | A Vite plugin that keeps live reactive state across hot module reloads.              |
 
-The repository also holds [`@apendua/sound`](packages/sound),
-[`@apendua/geometry`](packages/geometry) and [`@apendua/jsdom-env`](packages/jsdom-env), smaller
-packages the demos and the tests use, and the two private `@apendua/euclid-*` packages behind the
-Euclid demo.
+## Documentation
+
+- [Getting started](https://justdom.dev/guide/getting-started): a first app, and the three ideas the
+  rest of the guide builds on.
+- [Guide](https://justdom.dev/guide/): reactivity, rendering the DOM and a scene, server rendering,
+  DOM panels and headset sessions.
+- [API reference](https://justdom.dev/api/): every export, with its options and defaults.
 
 ## Demos
 
-Each demo is a full app, and its source is in its folder under [`apps/`](apps). The ones that run in
-a headset also open in a desktop browser, with an emulated headset.
+Each demo is a full app, and its page on justdom.dev links to its source. The ones that run in a
+headset also open in a desktop browser, with an emulated headset.
 
 - [Todo](https://justdom.dev/demos/todo/): everyone's first app, written once. In a headset the
   page's own DOM is mirrored into a panel, keyboard and all.
@@ -101,15 +117,10 @@ The rest of the stack grew with it:
 - In the summer of 2026 the DOM side gained server rendering and hydration: the same components
   render to markup on a server, and the browser claims that markup instead of building it again.
 
-All of this grew inside [apendua.dev](https://apendua.dev), the author's personal monorepo, as
-`@apendua/signal`, `@apendua/justdom` and `@apendua/freedom` among others. In October 2026 the
-packages and demos moved to this repository with their git history, under the names they are
-published with. [`docs/migration-plan.md`](docs/migration-plan.md) records that move.
-
 ## Contributing
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) covers building the repository, change files, the site and how
-a release is published.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) says how the repository is laid out, how to build and test it,
+and how a release is published.
 
 ## License
 

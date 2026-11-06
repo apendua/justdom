@@ -68,11 +68,11 @@ const UPDATE = process.env.UPDATE_BASELINES === "1";
  */
 const STRICT = process.env.VISUAL_STRICT === "1";
 
-/**
- * The pointer panel's buttons are filled with it, several labels are drawn in
- * it, and so is the underline under the pseudo panel's link.
- */
+/** The pointer panel's buttons are filled with it, and several labels are drawn in it. */
 const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
+
+/** The underline under the pseudo panel's link, and nothing else on that panel. */
+const UNDERLINE = /** @type {[number, number, number]} */ ([214, 48, 160]);
 
 /**
  * The teal the SVG panel's diagram nodes are filled with, and nothing on that
@@ -536,13 +536,13 @@ describe("panels under a hand", { timeout: 180_000 }, () => {
       "the ray is on the link",
     );
     const resting = await photographScene(showcase.page, { freeze: true });
-    // The underline triples in width, and the only other accent on the panel
-    // is the arrow after "Continue", so the accent at least doubles.
-    const idle = countNear(away, ACCENT);
-    const hovered = countNear(resting, ACCENT);
+    // The underline triples in width, and nothing else on the panel is its
+    // colour, so its pixels at least double.
+    const idle = countNear(away, UNDERLINE);
+    const hovered = countNear(resting, UNDERLINE);
     assert.ok(
       hovered > idle * 2,
-      `resting the ray on the link did not widen its underline: ${idle} accent pixels, then ${hovered}`,
+      `resting the ray on the link did not widen its underline: ${idle} underline pixels, then ${hovered}`,
     );
     assertMatchesBaseline(t, "pseudo-hover", resting, stamp);
   });

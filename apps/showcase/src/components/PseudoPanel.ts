@@ -129,7 +129,8 @@ const tileRowStyle = className`
 
 /**
  * An underline a third as wide as the word, which runs the whole width under
- * a hand. `cursor: pointer` is what makes the word a target.
+ * a hand. `cursor: pointer` is what makes the word a target. Its magenta is
+ * drawn nowhere else on the panel, so the visual suite can measure it alone.
  */
 const linkStyle = stylesheet`
   .${CLASS_NAME} {
@@ -148,7 +149,7 @@ const linkStyle = stylesheet`
     width: 30%;
     height: 3px;
     border-radius: 2px;
-    background-color: rgb(0, 123, 255);
+    background-color: rgb(214, 48, 160);
   }
 
   .${CLASS_NAME}:hover::after {

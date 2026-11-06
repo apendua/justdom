@@ -307,7 +307,10 @@ uniform vec2 uGradientRamp;
 ${HALF_PLANES_FRAGMENT_GLSL}
 ${SDF_GLSL}
 ${GRADIENT_GLSL}
-vec4 withPicture(vec4 fill, vec2 q) {
+// \`qdx\` and \`qdy\` are the footprint of \`q\`, taken in \`main\`, outside the
+// branches this is called from, since a derivative taken in a branch is
+// undefined.
+vec4 withPicture(vec4 fill, vec2 q, vec2 qdx, vec2 qdy) {
   // An axis that repeats tiles the clip box with copies of the picture, so it
   // is bounded by the clip box alone and samples the picture's own wrapped
   // coordinate; one that does not is bounded by where the picture lands.
@@ -315,15 +318,16 @@ vec4 withPicture(vec4 fill, vec2 q) {
     mix(uImageRect.xy, uImageClip.xy, uImageMode.xy),
     mix(uImageRect.zw, uImageClip.zw, uImageMode.xy)
   );
-  vec2 unwrapped = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
+  vec2 imageSize = max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
+  vec2 unwrapped = (q - uImageRect.xy) / imageSize;
   vec2 uv = mix(unwrapped, fract(unwrapped), uImageMode.xy);
   // The level of detail is taken from the unwrapped coordinate. Where
   // \`fract\` wraps, the wrapped one jumps by a whole tile between two
   // neighbouring fragments, and a sampler that measured that jump would
   // read the picture's smallest mipmap there: a line of its average colour
   // along every seam between the tiles.
-  vec2 dx = dFdx(unwrapped);
-  vec2 dy = dFdy(unwrapped);
+  vec2 dx = qdx / imageSize;
+  vec2 dy = qdy / imageSize;
   // Textures are uploaded flipped, so v runs up while the portal's y runs
   // down; the clamp is what makes the wrap mode enough to keep a stray
   // fragment from sampling the far edge.
@@ -347,15 +351,17 @@ void main() {
   float fillCoverage = coverages.x;
   float borderCoverage = coverages.y;
   vec2 q = vUnit * uSize;
+  vec2 qdx = dFdx(q);
+  vec2 qdy = dFdy(q);
   // A background lists its picture under its gradient (uImageMode.z) or
   // over it; an <img>'s picture is always over both.
   bool pictureUnder = uImageOpacity > 0.0 && uImageMode.z > 0.5;
-  vec4 fill = pictureUnder ? withPicture(uFillColor, q) : uFillColor;
+  vec4 fill = pictureUnder ? withPicture(uFillColor, q, qdx, qdy) : uFillColor;
   fill = withGradient(
     fill, q, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
   );
   if (uImageOpacity > 0.0 && !pictureUnder) {
-    fill = withPicture(fill, q);
+    fill = withPicture(fill, q, qdx, qdy);
   }
   float alpha = fill.a * fillCoverage + uBorderColor.a * borderCoverage;
   if (alpha < 0.001) {

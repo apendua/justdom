@@ -110,8 +110,9 @@ describe("the picture layer", () => {
     // two tiles, a sampler measuring it reads the smallest mipmap: a line of
     // the picture's average colour along every seam.
     const { fragmentShader } = createRectMaterial();
-    assert.match(fragmentShader, /vec2 dx = dFdx\(unwrapped\);/);
-    assert.match(fragmentShader, /vec2 dy = dFdy\(unwrapped\);/);
+    assert.match(fragmentShader, /vec2 qdx = dFdx\(q\);/);
+    assert.match(fragmentShader, /vec2 dx = qdx \/ imageSize;/);
+    assert.match(fragmentShader, /vec2 dy = qdy \/ imageSize;/);
     assert.match(fragmentShader, /textureGrad\(\s*uImage,/);
     assert.doesNotMatch(fragmentShader, /texture2D\(uImage/);
   });

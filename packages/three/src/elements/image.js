@@ -303,8 +303,9 @@ function entryFor(url) {
       // decoded — three picks an sRGB internal format, so the sampler hands
       // the shader linear values and the picture is not washed out.
       texture.colorSpace = THREE.SRGBColorSpace;
-      // The quad samples a rectangle of its own choosing and never wraps;
-      // clamping is what lets the shader clamp UVs instead of branching.
+      // The shader wraps a repeated picture's coordinate itself and clamps
+      // every coordinate it samples at, so the texture's own wrap is never
+      // reached, and clamping keeps a stray fragment off the far edge.
       texture.wrapS = THREE.ClampToEdgeWrapping;
       texture.wrapT = THREE.ClampToEdgeWrapping;
       // Three types the loader's texture as holding an `<img>`; from here

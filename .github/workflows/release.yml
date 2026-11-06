@@ -2,8 +2,8 @@
 # accumulated under common/changes/ with `rush version --bump` and opens the
 # version bump pull request. It never publishes and holds no npm token: npm
 # asks the account's second factor on every publish, so the publish runs from
-# the maintainer's machine once the bump pull request is merged. The README's
-# "Releasing" section has the commands.
+# the maintainer's machine once the bump pull request is merged. The
+# "Releasing" section of CONTRIBUTING.md has the commands.
 name: Release
 on:
   workflow_dispatch:
@@ -105,7 +105,7 @@ jobs:
             cat "$RUNNER_TEMP/versions.md"
             echo
             echo "Nothing is published by merging. Publish from your own machine afterwards,"
-            echo "as the README's \"Releasing\" section says."
+            echo "as the \"Releasing\" section of CONTRIBUTING.md says."
           } > "$RUNNER_TEMP/pr-body.md"
 
           git checkout -B "$RELEASE_BRANCH"

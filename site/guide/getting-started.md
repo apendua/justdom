@@ -57,11 +57,4 @@ The packages are JavaScript with JSDoc types, checked by `tsc` and shipped as so
 sees every signature, and the `.d.ts` files a consumer gets are generated from the same comments.
 The [API reference](/api/) lists every export with its options and defaults.
 
-::: warning Not on npm yet
-
-The packages are moving here from another repository. Until their first release under these names,
-these install commands find nothing.
-
-:::
-
 To see what the packages can do, open the [demos](/demos/). Each one links to its source.

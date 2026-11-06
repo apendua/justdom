@@ -7,10 +7,23 @@ function, an element is created once, and every reactive value in it is wired to
 it needs. The same operators build a Three.js scene, and in a WebXR headset the scene can show the
 page's own DOM in a panel, so an app's interface is written once for both.
 
-- [Getting started](https://justdom.dev/guide/getting-started): which packages to install for what
-  you render, and a first app.
-- [Packages](https://justdom.dev/packages/): a reference page for each package.
-- [Demos](https://justdom.dev/demos/): full apps built on these packages, each linked to its source.
+## Install
+
+Pick the packages for what you render:
+
+| To render                                 | Install                                              |
+| ----------------------------------------- | ---------------------------------------------------- |
+| Reactive state only                       | `justdom-signal`                                     |
+| The DOM, on a page or on a server         | `justdom-core` and `justdom-signal`                  |
+| A Three.js scene                          | `justdom-three`, `justdom-signal` and `three`        |
+| DOM panels in a scene, such as a keyboard | `justdom-three-ui` and the packages of the row above |
+| A WebXR session                           | `justdom-xr` with `justdom-three`                    |
+
+`justdom-three`, `justdom-three-ui` and `justdom-xr` need `three` 0.180 or newer. For a Vite app,
+`npm install --save-dev justdom-vite-hmr` adds hot reloads that keep the app's live state.
+
+The packages are JavaScript with JSDoc types and ship their `.d.ts` files, so TypeScript and editors
+see every signature.
 
 ## A first example
 
@@ -41,27 +54,27 @@ the app, and `app.unsubscribe()` removes it and runs every cleanup its parts reg
 
 ## Packages
 
-| Package                                 | What it is for                                                                       |
-| --------------------------------------- | ------------------------------------------------------------------------------------ |
-| [`justdom-signal`](packages/signal)     | Reactive state: `Signal`, `Derived` and `Effect`, with a pull-based core.            |
-| [`justdom-core`](packages/core)         | The DOM, in a browser or on a server, with hydration of server-rendered markup.      |
-| [`justdom-three`](packages/three)       | A Three.js scene with the same operators, and DOM mirrored into the scene as panels. |
-| [`justdom-three-ui`](packages/three-ui) | Widgets for those panels: a dropdown, a keyboard, a scrolling window.                |
-| [`justdom-xr`](packages/xr)             | What a headset app repeats, including an emulated headset for a desktop browser.     |
-| [`justdom-vite-hmr`](packages/vite-hmr) | A Vite plugin that keeps live reactive state across hot module reloads.              |
+| Package                                                     | What it is for                                                                       |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [`justdom-signal`](https://justdom.dev/packages/signal)     | Reactive state: `Signal`, `Derived` and `Effect`, with a pull-based core.            |
+| [`justdom-core`](https://justdom.dev/packages/core)         | The DOM, in a browser or on a server, with hydration of server-rendered markup.      |
+| [`justdom-three`](https://justdom.dev/packages/three)       | A Three.js scene with the same operators, and DOM mirrored into the scene as panels. |
+| [`justdom-three-ui`](https://justdom.dev/packages/three-ui) | Widgets for those panels: a dropdown, a keyboard, a scrolling window.                |
+| [`justdom-xr`](https://justdom.dev/packages/xr)             | What a headset app repeats, including an emulated headset for a desktop browser.     |
+| [`justdom-vite-hmr`](https://justdom.dev/packages/vite-hmr) | A Vite plugin that keeps live reactive state across hot module reloads.              |
 
-The repository also holds [`@apendua/sound`](packages/sound),
-[`@apendua/geometry`](packages/geometry) and [`@apendua/jsdom-env`](packages/jsdom-env), smaller
-packages the demos and the tests use, and the two private `@apendua/euclid-*` packages behind the
-Euclid demo.
+## Documentation
 
-The packages are not on npm under these names yet. They are moving here from another repository, and
-the install commands above work from their first release under these names.
+- [Getting started](https://justdom.dev/guide/getting-started): a first app, and the three ideas the
+  rest of the guide builds on.
+- [Guide](https://justdom.dev/guide/): reactivity, rendering the DOM and a scene, server rendering,
+  DOM panels and headset sessions.
+- [API reference](https://justdom.dev/api/): every export, with its options and defaults.
 
 ## Demos
 
-Each demo is a full app, and its source is in its folder under [`apps/`](apps). The ones that run in
-a headset also open in a desktop browser, with an emulated headset.
+Each demo is a full app, and its page on justdom.dev links to its source. The ones that run in a
+headset also open in a desktop browser, with an emulated headset.
 
 - [Todo](https://justdom.dev/demos/todo/): everyone's first app, written once. In a headset the
   page's own DOM is mirrored into a panel, keyboard and all.
@@ -104,84 +117,10 @@ The rest of the stack grew with it:
 - In the summer of 2026 the DOM side gained server rendering and hydration: the same components
   render to markup on a server, and the browser claims that markup instead of building it again.
 
-All of this grew inside [apendua.dev](https://apendua.dev), the author's personal monorepo, as
-`@apendua/signal`, `@apendua/justdom` and `@apendua/freedom` among others. In October 2026 the
-packages and demos moved to this repository with their git history, under the names they are
-published with. [`docs/migration-plan.md`](docs/migration-plan.md) records that move.
+## Contributing
 
-## Working on justdom
-
-[Rush](https://rushjs.io) drives the build, and it installs itself, so nothing needs to be installed
-globally:
-
-```
-node common/scripts/install-run-rush.js install
-node common/scripts/install-run-rush.js build
-```
-
-`install` also installs the pre-commit hook, which formats staged files with Prettier. `build`
-type-checks and tests every package and demo, and type-checks the code blocks in the docs against
-the packages ([`site/README.md`](site/README.md#checking-the-code-blocks) says how). A change to a
-published package needs a change file, which CI checks with `rush change --verify`:
-
-```
-node common/scripts/install-run-rush.js change
-```
-
-A script that calls another script spells it `npm run --loglevel=warn <name>`. npm 12 prints the
-banner of every `npm run` as an `npm notice` line on stderr, and Rush counts any stderr output as a
-warning, which fails `rush build` and so the release script. The flag hides those notices and keeps
-npm's warnings.
-
-[`site/`](site) is justdom.dev, built with VitePress and deployed to GitHub Pages on every push to
-`develop`. [`site/README.md`](site/README.md) says how to work on it.
-
-## Releasing
-
-Publishing runs by hand, from the maintainer's machine, because npm asks the account's second factor
-on every publish. GitHub Actions only prepares it:
-
-1. Every push to `develop` that adds change files runs `.github/workflows/release.yml`. It applies
-   them with `rush version --bump` and opens or updates the `release/version-bump` pull request.
-2. Merge that pull request. CI does not build it (`ci.yml` skips the `release/version-bump` branch),
-   since it only rewrites versions and changelogs.
-3. Then publish from an up-to-date `develop`:
-
-```
-node common/scripts/install-run-rush.js install
-npm login --registry https://registry.npmjs.org/
-node common/scripts/publish.mjs --dry-run
-node common/scripts/publish.mjs
-```
-
-[`common/scripts/publish.mjs`](common/scripts/publish.mjs) checks that npm is logged in to
-registry.npmjs.org and that the checkout is a clean, up-to-date `develop`, then builds the
-`publishable` policy, and asks npm about each package's exact version. It publishes the ones npm
-does not have yet with `pnpm publish`, which turns `workspace:*` into the versions it points at,
-tags each as `<package>_v<version>` and pushes those tags. It uses your own `npm login`, which has
-to name the registry, since a plain `npm login` logs in to the registry your `~/.npmrc` sets. A
-login session also expires, and npm keeps sending the expired token: the registry then hides the
-package from it, and the upload fails with a 404 that reads as a missing package. The script runs
-`npm whoami` against npmjs.org before the build, which answers an expired token with 401 and a
-missing one with `ENEEDAUTH`, and stops with the command to log in again. A login session does not
-bypass the second factor, so npm asks for it once for each package it uploads. `--dry-run` only
-lists what is on npm and what would be published. A publish that stops partway can be run again: it
-skips what is already on npm. A version that npm put into staged publishing is not on npm until you
-approve it on npmjs.com, so approve what is staged before you run the script again, or it tries to
-publish that version a second time. If a `pnpm publish` fails after npm took the upload, the rerun
-skips that version without tagging it; tag it by hand as `<package>_v<version>`.
-
-The script replaces `rush publish`, which the first release used. Rush ran npm with a home directory
-of its own, so the login had to be copied into an environment variable, and it read
-`npm view <name> time --json` as an object. npm 11 prints an array there, so Rush saw no published
-versions and tried to publish over them.
-
-Do not switch to a granular access token with **Bypass two-factor authentication**. From January
-2027 npm stops such tokens from publishing directly: they can only stage a version, which a
-maintainer then approves with the second factor.
-
-The Release workflow opens a pull request with `GITHUB_TOKEN`, which works only once **Allow GitHub
-Actions to create and approve pull requests** is ticked under Settings → Actions → General.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) says how the repository is laid out, how to build and test it,
+and how a release is published.
 
 ## License
 

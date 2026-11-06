@@ -38,3 +38,16 @@ body {
 .deck-step-next {
   left: calc(50% + 50px + 12px);
 }
+
+/* Why `?panels=texture` fell back to the mirror, in the top left corner. */
+.deck-notice {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 999;
+  max-width: 360px;
+  margin: 0;
+  color: #fff;
+  font: normal 13px sans-serif;
+  opacity: 0.8;
+}

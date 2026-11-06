@@ -92,6 +92,8 @@ covers justdom-three-ui's dropdown and scrollable, a list pulled by hand, drag a
 lists, and a `draggable` panel's carry strips. `?panel=<id>` opens it on one panel, and Prev and
 Next beside the XR button step through the deck without a session. `?panel=all` puts every panel in
 the scene at once, in a grid, which is what the paint-order benches in `packages/three` count.
+`?panels=texture` has the browser draw the panel on show with HTML-in-Canvas instead, as the
+reference the mirror is compared against.
 [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
 scene, and mirrors a page that already exists rather than building panels for the scene: a desk
 whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged

@@ -10,18 +10,3 @@ export type Panels = "mirror" | "texture";
 export function panelsFromSearch(search: string): Panels {
   return new URLSearchParams(search).get("panels") === "texture" ? "texture" : "mirror";
 }
-
-/**
- * Whether the browser can draw an element into a WebGL texture: Chromium
- * with `chrome://flags/#canvas-draw-element` turned on, or started with
- * `--enable-blink-features=CanvasDrawElement`. It is what three's
- * `HTMLTexture` uploads with, and the canvas's `paint` event is what tells
- * it when to.
- */
-export function canDrawHtmlInCanvas(): boolean {
-  return (
-    typeof WebGL2RenderingContext !== "undefined" &&
-    "texElementImage2D" in WebGL2RenderingContext.prototype &&
-    "requestPaint" in HTMLCanvasElement.prototype
-  );
-}

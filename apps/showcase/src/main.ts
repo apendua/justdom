@@ -1,4 +1,4 @@
-import { render, createXRButton, type PortalPlugin } from "justdom-three";
+import { render, createXRButton, canDrawHtmlInCanvas, type PortalPlugin } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import createScene from "./components/Scene";
 import { PANELS, findPanel, loadPlugins, stepFrom, type PanelId } from "./components/registry";
@@ -21,6 +21,15 @@ followOutlinesQuery(query);
  * `packages/three`; the address stays as it is.
  */
 const asked = query.get("panel");
+
+/**
+ * `?panels=texture` has the browser draw the card, with HTML-in-Canvas, as
+ * the reference the mirror is compared against. A browser that cannot falls
+ * back to the mirror, and the page says so beside the XR button.
+ */
+const textureAsked = query.get("panels") === "texture";
+const panels = textureAsked && canDrawHtmlInCanvas() ? "texture" : "mirror";
+
 const initial: PanelId | "all" = asked === "all" ? "all" : (findPanel(asked) ?? PANELS[0]).id;
 
 const onShow = (id: PanelId) => {
@@ -45,6 +54,16 @@ const stepButton = (label: string, side: "prev" | "next", by: number) => {
     });
   });
   return button;
+};
+
+/** What the page says when `?panels=texture` was asked for and cannot be. */
+const textureNotice = () => {
+  const notice = document.createElement("p");
+  notice.className = "deck-notice";
+  notice.textContent =
+    "This browser cannot draw HTML in a canvas, so the panels are mirrored. " +
+    "Turn on chrome://flags/#canvas-draw-element in Chromium for the reference.";
+  return notice;
 };
 
 // The plugins of the panels on show first, if they need any, fetched beside
@@ -89,6 +108,7 @@ Promise.resolve(
       initial: id,
       initialPlugins: plugins,
       onShow: id === "all" ? undefined : onShow,
+      panels,
     });
     render(scene).subscribe({
       next: (renderer) => {
@@ -99,6 +119,7 @@ Promise.resolve(
           // With every panel on show there is nothing to step through.
           root.replaceChildren(
             renderer.domElement,
+            ...(textureAsked && panels === "mirror" ? [textureNotice()] : []),
             ...(id === "all"
               ? [button]
               : [stepButton("‹ PREV", "prev", -1), button, stepButton("NEXT ›", "next", 1)]),

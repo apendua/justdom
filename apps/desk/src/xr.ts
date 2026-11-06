@@ -1,4 +1,4 @@
-import { render, createXRButton } from "justdom-three";
+import { render, createXRButton, canDrawHtmlInCanvas } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import { canPresent } from "justdom-xr/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
@@ -6,7 +6,7 @@ import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
 import type { MountedDesk } from "./desk.js";
 import type { Readable } from "./session.js";
-import { canDrawHtmlInCanvas, type Panels } from "./texture/panels.js";
+import type { Panels } from "./texture/panels.js";
 
 /**
  * Offer the page a headset: a scene that mirrors the objects of whichever

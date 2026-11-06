@@ -4,7 +4,8 @@ import { lookFromSearch, type Look } from "./looks.js";
 import { mountLookPicker } from "./lookPicker.js";
 import { presenting } from "./session.js";
 import { mountStage } from "./stage.js";
-import { canDrawHtmlInCanvas, panelsFromSearch } from "./texture/panels.js";
+import { canDrawHtmlInCanvas } from "justdom-three";
+import { panelsFromSearch } from "./texture/panels.js";
 import { offerXR } from "./xr.js";
 import "./index.css";
 

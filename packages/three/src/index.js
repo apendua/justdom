@@ -67,6 +67,7 @@ export { createXRButton, requestFrameRate, suppressSessionOffers } from "./xr.js
 export { createSessionButton, createUnsupportedButton } from "./button.js";
 export { anchorToViewer } from "./anchor.js";
 export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
+export { canDrawHtmlInCanvas, htmlTextureMaterial } from "./htmlTexture.js";
 
 /**
  * @template {object} T

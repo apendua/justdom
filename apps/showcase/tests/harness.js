@@ -366,37 +366,58 @@ const CONTROLLER = { x: 0.05, y: 1.4, z: -0.05 };
  * @returns {Promise<void>}
  */
 export async function aimAt(page, selector) {
-  const found = await page.evaluate((selector) => {
-    const target = window.__showcase?.locate(selector);
-    const head = /** @type {any} */ (window).xrDevice.position;
-    return target ? { target, head: [head.x, head.y, head.z] } : null;
-  }, selector);
-  if (!found) {
-    throw new Error(`nothing on show matches ${selector}`);
+  // A panel that has just gone on show is drawn before the scene answers a
+  // ray on it, and how many frames that takes depends on the machine. So the
+  // aim is taken again, from where the element is drawn now, until the
+  // element takes the hover or the attempts run out; the caller's own check
+  // of the hover is what fails then.
+  for (let attempt = 0; attempt < AIM_ATTEMPTS; attempt++) {
+    const found = await page.evaluate((selector) => {
+      const target = window.__showcase?.locate(selector);
+      const head = /** @type {any} */ (window).xrDevice.position;
+      return target ? { target, head: [head.x, head.y, head.z] } : null;
+    }, selector);
+    if (!found) {
+      throw new Error(`nothing on show matches ${selector}`);
+    }
+    const { target, head } = found;
+    const dx = target[0] + head[0] - CONTROLLER.x;
+    const dy = target[1] + head[1] - CONTROLLER.y;
+    const dz = target[2] + head[2] - CONTROLLER.z;
+    // Straight ahead is down -z; yaw turns to the left, pitch tips upwards.
+    const yaw = Math.atan2(-dx, -dz);
+    const pitch = Math.atan2(dy, Math.hypot(dx, dz));
+    await page.evaluate(([controller, y, p]) => {
+      const right = /** @type {any} */ (window).xrDevice.controllers.right;
+      right.position.x = controller.x;
+      right.position.y = controller.y;
+      right.position.z = controller.z;
+      const cy = Math.cos(y / 2);
+      const sy = Math.sin(y / 2);
+      const cx = Math.cos(p / 2);
+      const sx = Math.sin(p / 2);
+      right.quaternion.x = cy * sx;
+      right.quaternion.y = sy * cx;
+      right.quaternion.z = -sy * sx;
+      right.quaternion.w = cy * cx;
+    }, /** @type {const} */ ([CONTROLLER, yaw, pitch]));
+    await nextFrames(page, 10);
+    const hovered = await page.evaluate(
+      (selector) =>
+        !!document
+          .querySelector(`[data-panel="${window.__showcase?.current()}"]`)
+          ?.querySelector(selector)
+          ?.hasAttribute("data-xr-hover"),
+      selector,
+    );
+    if (hovered) {
+      return;
+    }
   }
-  const { target, head } = found;
-  const dx = target[0] + head[0] - CONTROLLER.x;
-  const dy = target[1] + head[1] - CONTROLLER.y;
-  const dz = target[2] + head[2] - CONTROLLER.z;
-  // Straight ahead is down -z; yaw turns to the left, pitch tips upwards.
-  const yaw = Math.atan2(-dx, -dz);
-  const pitch = Math.atan2(dy, Math.hypot(dx, dz));
-  await page.evaluate(([controller, y, p]) => {
-    const right = /** @type {any} */ (window).xrDevice.controllers.right;
-    right.position.x = controller.x;
-    right.position.y = controller.y;
-    right.position.z = controller.z;
-    const cy = Math.cos(y / 2);
-    const sy = Math.sin(y / 2);
-    const cx = Math.cos(p / 2);
-    const sx = Math.sin(p / 2);
-    right.quaternion.x = cy * sx;
-    right.quaternion.y = sy * cx;
-    right.quaternion.z = -sy * sx;
-    right.quaternion.w = cy * cx;
-  }, /** @type {const} */ ([CONTROLLER, yaw, pitch]));
-  await nextFrames(page, 10);
 }
+
+/** How many times `aimAt` aims before it leaves the hover to the caller's check. */
+const AIM_ATTEMPTS = 30;
 
 /**
  * Put a panel on show, and wait until it is in the scene whole. Resolves

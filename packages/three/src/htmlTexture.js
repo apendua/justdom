@@ -30,13 +30,40 @@ export function canDrawHtmlInCanvas() {
  * texture as RGBA8, which the GPU does not decode from sRGB as it does an
  * SRGB8_ALPHA8 one, so a plain material shows every colour the page drew
  * lighter than it was. The map's shader decodes it inline when
- * `DECODE_VIDEO_TEXTURE` is defined, as it does for a video.
+ * `DECODE_VIDEO_TEXTURE` is defined, as it does for a video. The map is set
+ * once the browser has painted the element, since a texture made before that
+ * has nothing to upload.
  *
- * @param {THREE.Texture | null} [map]
  * @returns {THREE.MeshBasicMaterial}
  */
-export function htmlTextureMaterial(map = null) {
-  const material = new THREE.MeshBasicMaterial({ map, transparent: true });
+export function htmlTextureMaterial() {
+  const material = new THREE.MeshBasicMaterial({ transparent: true });
   material.defines = { DECODE_VIDEO_TEXTURE: "" };
   return material;
+}
+
+/**
+ * Ask the browser to paint what `canvas` holds once more, and fire `paint`
+ * when it has. A browser without HTML-in-Canvas does nothing.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @returns {void}
+ */
+export function requestPaint(canvas) {
+  /** @type {HTMLCanvasElement & { requestPaint?: () => void }} */ (canvas).requestPaint?.();
+}
+
+/**
+ * Whether a canvas's `paint` event painted `element`, so that a texture of
+ * it has something to upload. An event that does not list what it painted
+ * counts as having painted everything the canvas holds.
+ *
+ * @param {Event} event
+ * @param {Element} element
+ * @returns {boolean}
+ */
+export function paintedElement(event, element) {
+  const changed = /** @type {Event & { changedElements?: readonly Element[] }} */ (event)
+    .changedElements;
+  return !changed || changed.includes(element);
 }

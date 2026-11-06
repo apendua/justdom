@@ -10,6 +10,7 @@ import {
   htmlTextureMaterial,
   interactions,
   RendererContext,
+  requestPaint,
   type XREventMap,
 } from "justdom-three";
 import { component, effects, effectsOnly, on, onCleanup, useEffects } from "justdom-signal";
@@ -110,7 +111,7 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           const home = root.parentElement;
           canvas.setAttribute("layoutsubtree", "");
           canvas.append(root);
-          canvas.requestPaint?.();
+          requestPaint(canvas);
           // The looks write `:hover` and `:active` alone, which a panel's
           // portal rewrites to answer the flags the forwarder sets. Nothing
           // here mirrors the desk, so the session asks for the rewrite.

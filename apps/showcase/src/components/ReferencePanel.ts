@@ -1,5 +1,11 @@
 import * as THREE from "three";
-import { $, RendererContext, htmlTextureMaterial } from "justdom-three";
+import {
+  $,
+  RendererContext,
+  htmlTextureMaterial,
+  paintedElement,
+  requestPaint,
+} from "justdom-three";
 import { children as domChildren, type Mountable } from "justdom-core";
 import { effects, onCleanup, useEffects, type EntityEffect, type Source } from "justdom-signal";
 
@@ -56,8 +62,7 @@ export function referencePanel(
       useEffects(host, [domChildren(content)]);
       canvas.setAttribute("layoutsubtree", "");
       canvas.append(host);
-      // HTML-in-Canvas's own call, which no lib.dom has yet.
-      (canvas as { requestPaint?: () => void }).requestPaint?.();
+      requestPaint(canvas);
 
       // The texture is made on the first paint, and not before: made
       // earlier, three uploads on every frame and throws until the paint
@@ -66,8 +71,7 @@ export function referencePanel(
       let texture: THREE.HTMLTexture | null = null;
       const onPaint = (event: Event) => {
         // A paint that did not paint the panel leaves nothing to upload yet.
-        const changed = (event as Event & { changedElements?: readonly Element[] }).changedElements;
-        if (texture || (changed && !changed.includes(host))) {
+        if (texture || !paintedElement(event, host)) {
           return;
         }
         texture = new THREE.HTMLTexture(host);

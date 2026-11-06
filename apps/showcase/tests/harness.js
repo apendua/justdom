@@ -423,8 +423,9 @@ export async function aimAt(page, selector) {
 
 /**
  * Put a panel on show, and wait until it is in the scene whole. Resolves
- * once its portal has mounted it and taken down the loading frame, which is
- * what `window.__showcase.show` waits for. Throws when the page has no deck
+ * once its portal has mounted it and taken down the loading frame, or under
+ * `?panels=texture` once the browser has painted it, which is what
+ * `window.__showcase.show` waits for. Throws when the page has no deck
  * to drive, rather than going on with whatever panel is up.
  *
  * @param {Page} page

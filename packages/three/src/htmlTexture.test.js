@@ -1,6 +1,11 @@
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { canDrawHtmlInCanvas, htmlTextureMaterial } from "./htmlTexture.js";
+import {
+  canDrawHtmlInCanvas,
+  htmlTextureMaterial,
+  paintedElement,
+  requestPaint,
+} from "./htmlTexture.js";
 
 /** @type {(() => void)[]} */
 const restores = [];
@@ -58,4 +63,21 @@ test("the material decodes the texture's sRGB in its shader", () => {
   assert.deepEqual(material.defines, { DECODE_VIDEO_TEXTURE: "" });
   assert.equal(material.transparent, true);
   assert.equal(material.map, null);
+});
+
+test("a paint request reaches a canvas that can paint, and passes one that cannot", () => {
+  let asked = 0;
+  requestPaint(/** @type {never} */ ({ requestPaint: () => asked++ }));
+  assert.equal(asked, 1);
+  requestPaint(/** @type {never} */ ({}));
+});
+
+test("a paint painted an element when it lists it, or lists nothing", () => {
+  const panel = /** @type {Element} */ ({});
+  const other = /** @type {Element} */ ({});
+  const paint = (/** @type {Element[] | undefined} */ changedElements) =>
+    /** @type {Event} */ (/** @type {unknown} */ ({ changedElements }));
+  assert.equal(paintedElement(paint([panel]), panel), true);
+  assert.equal(paintedElement(paint([other]), panel), false);
+  assert.equal(paintedElement(paint(undefined), panel), true);
 });

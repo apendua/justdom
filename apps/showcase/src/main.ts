@@ -69,12 +69,13 @@ const textureNotice = () => {
 // The plugins of the panels on show first, if they need any, fetched beside
 // the emulator rather than after it. A panel shown later fetches its own
 // when it is shown. A plugin that fails to load opens the deck on the first
-// panel instead, which needs none, and says so.
+// panel instead, which needs none, and says so. The browser draws a reference
+// panel's SVG and pictures itself, so `?panels=texture` fetches none.
 const opening: Promise<{
   id: PanelId | "all";
   plugins: ReadonlyMap<PanelId, readonly PortalPlugin[]>;
 }> = Promise.all(
-  (initial === "all" ? PANELS : [findPanel(initial)]).map(
+  (initial === "all" ? PANELS : panels === "texture" ? [] : [findPanel(initial)]).map(
     async (panel) => [panel.id, await loadPlugins(panel)] as const,
   ),
 ).then(

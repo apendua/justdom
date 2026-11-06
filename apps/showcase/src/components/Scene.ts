@@ -35,7 +35,8 @@ export interface ShowcaseControls {
   current(): PanelId;
   /**
    * Put a panel on show, loading the plugins it needs first. Resolves once
-   * its portal has mounted it and taken down the loading frame. A panel that
+   * its portal has mounted it and taken down the loading frame, or, under
+   * `?panels=texture`, once the browser has painted it. A panel that
    * is not atomic may still be bringing that mount into the scene a budget's
    * worth per frame, with its container marked `data-xr-busy`, so a script
    * that aims at a control waits for that mark to go as well.
@@ -222,7 +223,8 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
         throw new Error(`The deck has no panel called "${asked}".`);
       }
       const { id } = entry;
-      if (!plugins.has(id)) {
+      // The browser draws a reference panel's SVG and pictures itself.
+      if (drawn === "mirror" && !plugins.has(id)) {
         const loaded = await loadPlugins(entry);
         plugins.set(id, loaded);
         // A later call has been made while these loaded: it decides what is

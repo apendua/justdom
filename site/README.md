@@ -51,18 +51,18 @@ the still, which is the clip's last frame. The guide shows the two pictures in
 
 `npm run screenshots` makes them again from the last build: it serves `dist` and records each demo
 in headless Chromium doing what it is for, on a page and then in the emulated headset (Euclid
-writing out a pentagon, a todo added and ticked off, and the desk and the showcase running on their
-own). Castle has the headset clip alone, of the castle knocked about with the slingshot, since its
-page is the same scene with nothing to do in it. Minesweeper and Knights, a few moves in, have the
-page clip alone, since the headset does not draw their boards right yet; `setups` in
-`scripts/screenshots.mjs` says what it gets wrong. In the headset the script presses an app's
-controls through their DOM, which the panels mirror, so no controller ray shows in a clip. The head
-sways slowly from side to side while it records, except in Castle, where it aims the slingshot, and
-eases back to where it started before the clip ends, so that the loop does not jump. While it sways,
-a wait for the panels to redraw is cut short in the clip. It also takes the todo app on a page and
-in an emulated headset for the guide. Run it by hand when a demo changes how it looks or behaves,
-after `rush build --to justdom-site`. With app folder names after `--` it records only those, and
-`guide` names the guide's two.
+writing out a pentagon, a todo added and ticked off, the showcase stepped through five of its
+panels, and the desk running on its own). Castle has the headset clip alone, of the castle knocked
+about with the slingshot, since its page is the same scene with nothing to do in it. Minesweeper and
+Knights, a few moves in, have the page clip alone, since the headset does not draw their boards
+right yet; `setups` in `scripts/screenshots.mjs` says what it gets wrong. In the headset the script
+presses an app's controls through their DOM, which the panels mirror, so no controller ray shows in
+a clip. The head sways slowly from side to side while it records, except in Castle, where it aims
+the slingshot, and eases back to where it started before the clip ends, so that the loop does not
+jump. While it sways, a wait for the panels to redraw is cut short in the clip. It also takes the
+todo app on a page and in an emulated headset for the guide. Run it by hand when a demo changes how
+it looks or behaves, after `rush build --to justdom-site`. With app folder names after `--` it
+records only those, and `guide` names the guide's two.
 
 The clips are H.264 MP4, 960 pixels wide, encoded by `ffmpeg`, which has to be on the `PATH` and
 built with libx264 (the Debian and Ubuntu packages are). Each plays muted and loops in a `<video>`

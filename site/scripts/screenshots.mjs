@@ -63,7 +63,9 @@ const SWAY = { SIDE: 0.12, TURN: 0.06, PERIOD: 10, SETTLE: 1 };
 
 /**
  * Hides what is page furniture rather than the demo: the button that starts a
- * headset session, and the frame rate readout the headset apps wear, which
+ * headset session, the showcase's Prev and Next beside it, which its clips
+ * step through for themselves, and the frame rate readout the headset apps
+ * wear, which
  * says how fast SwiftShader drew the scene rather than anything about the app.
  * The showcase hands its readout out on `window.__diagnostics`, and the others
  * hide it with the button on their own panel.
@@ -71,7 +73,9 @@ const SWAY = { SIDE: 0.12, TURN: 0.06, PERIOD: 10, SETTLE: 1 };
  * @param {import("playwright-core").Page} page
  */
 async function tidy(page) {
-  await page.addStyleTag({ content: "#ARButton, #VRButton { display: none !important; }" });
+  await page.addStyleTag({
+    content: "#ARButton, #VRButton, .deck-step { display: none !important; }",
+  });
   await page.evaluate(() => {
     /** @type {any} */ (window).__diagnostics?.visible.set(false);
     for (const element of document.querySelectorAll("div, button")) {
@@ -554,6 +558,19 @@ const setups = {
     // see-through reach of a stack not at all.
     headset: false,
   },
+  // The deck stepped through a few of its panels, the way its Prev and Next
+  // and its switcher step it, ending on the SVG paint panel, which is the
+  // still.
+  showcase: {
+    page: {
+      start: (page) => deck(page, SHOWCASE_TOUR[0]),
+      act: (page) => tour(page),
+    },
+    headset: {
+      start: (page) => deck(page, SHOWCASE_TOUR[0]),
+      act: (page) => tour(page),
+    },
+  },
   // A todo added and ticked off.
   todo: {
     page: {
@@ -595,6 +612,47 @@ const setups = {
     },
   },
 };
+
+/** The showcase panels its clips show, in order, by their ids. */
+const SHOWCASE_TOUR = ["backgrounds", "svg", "forms", "widgets", "svg-paint"];
+/** How long the showcase clips hold each panel, in ms. */
+const SHOWCASE_HOLD = 1500;
+
+/**
+ * Puts a showcase panel on show through `window.__showcase`, which is what
+ * the deck's own Prev, Next and switcher call, and waits until its portal
+ * has mounted it and taken its loading frame down, and then for a few
+ * frames, which a session under SwiftShader takes to draw the mount. A
+ * panel is mounted when it is shown, and the clip cuts that wait short
+ * (`STALL`), as it does `drawn`'s. `drawn` itself would wait forever here: a panel with an
+ * animation on it is never done drawing.
+ *
+ * @param {Page} page
+ * @param {string} id
+ */
+async function deck(page, id) {
+  redrawing++;
+  try {
+    await page.evaluate((id) => /** @type {any} */ (window).__showcase.show(id), id);
+    // The scene draws the mount a few frames after the page has it.
+    await frames(page, 15);
+  } finally {
+    redrawing--;
+  }
+}
+
+/**
+ * Steps the showcase from the first panel of its tour to the last.
+ *
+ * @param {Page} page
+ */
+async function tour(page) {
+  for (const id of SHOWCASE_TOUR.slice(1)) {
+    await page.waitForTimeout(SHOWCASE_HOLD);
+    await deck(page, id);
+  }
+  await page.waitForTimeout(SHOWCASE_HOLD);
+}
 
 /** The todo the todo clips add. */
 const TODO = "Record the demos";

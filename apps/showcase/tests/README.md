@@ -91,6 +91,12 @@ what the test before it left, and each asserts the DOM state before it trusts th
 - `widgets-scrolled.png`: the overflowing list on `widgets`, taken hold of low down and pulled up,
   has scrolled.
 
+The last check opens the page under `?panel=all`, which puts every panel in the scene at once, in a
+grid with no switcher, for the paint-order benches in `packages/three`. It asserts that every panel
+is mounted, that there is no Prev or Next to step with, and that `locate` finds an element on the
+last panel. It photographs nothing: the deck's photographs already cover how each panel is drawn.
+`openShowcase({ query })` adds to the address it opens.
+
 ## The two kinds of check, and which one can fail on your machine
 
 **Baseline comparison** is exact, and is only meaningful on a machine that draws the way the

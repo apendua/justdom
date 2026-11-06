@@ -16,9 +16,12 @@ followOutlinesQuery(query);
 /**
  * `?panel=<id>` opens the deck on that panel, and the address follows the
  * switcher, so a reload or a shared link comes back to the panel on show. An
- * id the deck does not have opens it on the first.
+ * id the deck does not have opens it on the first. `?panel=all` puts every
+ * panel on show at once, in a grid, for the paint-order benches in
+ * `packages/three`; the address stays as it is.
  */
-const initial = (findPanel(query.get("panel")) ?? PANELS[0]).id;
+const asked = query.get("panel");
+const initial: PanelId | "all" = asked === "all" ? "all" : (findPanel(asked) ?? PANELS[0]).id;
 
 const onShow = (id: PanelId) => {
   const url = new URL(location.href);
@@ -44,17 +47,22 @@ const stepButton = (label: string, side: "prev" | "next", by: number) => {
   return button;
 };
 
-// The first panel's plugins, if it needs any, fetched beside the emulator
-// rather than after it. A panel shown later fetches its own when it is shown.
-// A plugin that fails to load opens the deck on the first panel instead,
-// which needs none, and says so.
-const opening: Promise<{ id: PanelId; plugins: readonly PortalPlugin[] }> = loadPlugins(
-  findPanel(initial),
+// The plugins of the panels on show first, if they need any, fetched beside
+// the emulator rather than after it. A panel shown later fetches its own
+// when it is shown. A plugin that fails to load opens the deck on the first
+// panel instead, which needs none, and says so.
+const opening: Promise<{
+  id: PanelId | "all";
+  plugins: ReadonlyMap<PanelId, readonly PortalPlugin[]>;
+}> = Promise.all(
+  (initial === "all" ? PANELS : [findPanel(initial)]).map(
+    async (panel) => [panel.id, await loadPlugins(panel)] as const,
+  ),
 ).then(
-  (plugins) => ({ id: initial, plugins }),
+  (loaded) => ({ id: initial, plugins: new Map(loaded) }),
   (err) => {
-    console.error(`Could not load the ${initial} panel's plugins; opening on the first:`, err);
-    return { id: PANELS[0].id, plugins: [] };
+    console.error(`Could not load the plugins for ${initial}; opening on the first panel:`, err);
+    return { id: PANELS[0].id, plugins: new Map() };
   },
 );
 
@@ -77,18 +85,23 @@ Promise.resolve(
   })
   .then(() => opening)
   .then(({ id, plugins }) => {
-    const scene = createScene({ initial: id, initialPlugins: plugins, onShow });
+    const scene = createScene({
+      initial: id,
+      initialPlugins: plugins,
+      onShow: id === "all" ? undefined : onShow,
+    });
     render(scene).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },
           vr: { optionalFeatures: ["hand-tracking"] },
         }).then((button) => {
+          // With every panel on show there is nothing to step through.
           root.replaceChildren(
             renderer.domElement,
-            stepButton("‹ PREV", "prev", -1),
-            button,
-            stepButton("NEXT ›", "next", 1),
+            ...(id === "all"
+              ? [button]
+              : [stepButton("‹ PREV", "prev", -1), button, stepButton("NEXT ›", "next", 1)]),
           );
         });
       },

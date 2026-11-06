@@ -15,7 +15,7 @@ import { $ as $dom, attr, children as domChildren } from "justdom-core";
 import { Signal, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
-import { CARD_HEIGHT } from "./panels.js";
+import { CARD_HEIGHT, CARD_WIDTH } from "./panels.js";
 import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
 import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
 import Keyboard from "./Keyboard.js";
@@ -27,7 +27,10 @@ import Keyboard from "./Keyboard.js";
 export interface ShowcaseControls {
   /** Every panel's id, in the deck's order. */
   readonly panels: readonly PanelId[];
-  /** The panel on show. */
+  /**
+   * The panel on show. Under `?panel=all`, where every panel is, the one
+   * `show` was last asked for, or the first.
+   */
   current(): PanelId;
   /**
    * Put a panel on show, loading the plugins it needs first. Resolves once
@@ -41,13 +44,16 @@ export interface ShowcaseControls {
    * panel was put on show and then replaced before it was whole. Rejects for
    * an id the deck does not have, and for a panel whose plugins failed to
    * load, which leaves the panel on show where it is.
+   *
+   * Under `?panel=all` every panel is on show already, so this only waits
+   * for the one asked for to be whole.
    */
   show(id: string): Promise<void>;
   /**
    * Where in the room the middle of the first element on show that matches
    * `selector` is drawn, in the session's reference space, or null when no
-   * element matches. The panel on show is searched first, then the keyboard
-   * while it is up. The page knows where an element is in its panel and the
+   * element matches. The panels on show are searched first, in the deck's
+   * order, then the keyboard while it is up. The page knows where an element is in its panel and the
    * scene knows where the panel is, and this asks both.
    */
   locate(selector: string): [number, number, number] | null;
@@ -69,13 +75,17 @@ declare global {
 }
 
 export interface SceneOptions {
-  /** The panel on show first. */
-  initial: PanelId;
   /**
-   * The plugins the first panel needs, already loaded: the caller fetches
-   * them beside the emulator rather than after it.
+   * The panel on show first, or `"all"` for every panel at once, in a grid
+   * and with no switcher: what `?panel=all` asks for, so that the
+   * paint-order benches in `packages/three` count every panel in one frame.
    */
-  initialPlugins: readonly PortalPlugin[];
+  initial: PanelId | "all";
+  /**
+   * The plugins the panels on show first need, by id, already loaded: the
+   * caller fetches them beside the emulator rather than after it.
+   */
+  initialPlugins: ReadonlyMap<PanelId, readonly PortalPlugin[]>;
   /** Told whenever another panel goes on show. */
   onShow?: (id: PanelId) => void;
 }
@@ -88,6 +98,27 @@ const PANEL_SCALE = 0.01;
 
 /** The gap between the card and the switcher's bar, in px. */
 const GAP = 16;
+
+/**
+ * The grid `?panel=all` lays every panel out in: its columns, the gap
+ * between two cards in px, and how far in front of the player it hangs, in
+ * metres. It is far enough for the emulator's view to take in the whole
+ * grid, so that no panel is culled from what the benches count.
+ */
+const GRID_COLUMNS = 5;
+const GRID_GAP = 40;
+const GRID_DISTANCE = 1.3;
+
+/** Where the grid puts the panel at `index`, in the units its group is in. */
+function gridPosition(index: number): [number, number] {
+  const rows = Math.ceil(PANELS.length / GRID_COLUMNS);
+  const column = index % GRID_COLUMNS;
+  const row = Math.floor(index / GRID_COLUMNS);
+  return [
+    (column - (GRID_COLUMNS - 1) / 2) * (CARD_WIDTH + GRID_GAP) * PANEL_SCALE,
+    ((rows - 1) / 2 - row) * (CARD_HEIGHT + GRID_GAP) * PANEL_SCALE,
+  ];
+}
 
 /**
  * Where the keyboard opens, in metres in the session's reference space: low
@@ -138,11 +169,12 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     const diagnostics = createDiagnostics();
     window.__diagnostics = diagnostics;
 
-    const current = Signal.of<PanelId>(initial);
+    const everything = initial === "all";
+    const current = Signal.of<PanelId>(everything ? PANELS[0].id : initial);
     /** Plugins each panel was given, by id: loaded once, kept for a return visit. */
-    const plugins = new Map<PanelId, readonly PortalPlugin[]>([[initial, initialPlugins]]);
-    /** The object the panel on show is mounted on, for `locate`. */
-    let shown: THREE.Object3D | undefined;
+    const plugins = new Map(initialPlugins);
+    /** The objects the panels on show are mounted on, by id, for `locate`. */
+    const mounted = new Map<PanelId, THREE.Object3D>();
     /** How many times `show` has been called, so a call can tell it was overtaken. */
     let requests = 0;
     /**
@@ -195,10 +227,13 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
 
     /** The element `locate` asks for, and the object its portal is drawn on. */
     const find = (selector: string): [Element, THREE.Object3D | undefined] | null => {
-      const panel = document.querySelector(`[data-panel="${current.get()}"]`);
-      const inPanel = panel?.querySelector(selector);
-      if (inPanel) {
-        return [inPanel, shown];
+      for (const { id } of PANELS) {
+        const object = mounted.get(id);
+        const inPanel =
+          object && document.querySelector(`[data-panel="${id}"]`)?.querySelector(selector);
+        if (inPanel) {
+          return [inPanel, object];
+        }
       }
       const inKeyboard = document.querySelector(`[data-keyboard] ${selector}`);
       const board = keyboardAnchor?.parent ? keyboardAnchor.children[0]?.children[0] : undefined;
@@ -235,7 +270,10 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
       locate,
     };
 
-    /** One panel, mounted with its plugins and tagged with its id. */
+    /**
+     * One panel, mounted with its plugins and tagged with its id, and put in
+     * its place in the grid under `?panel=all`.
+     */
     const panel = (entry: Panel) => {
       const given = plugins.get(entry.id) ?? [];
       const panelCtx = given.length ? PortalPluginsContext.set(keyedCtx, given) : keyedCtx;
@@ -244,10 +282,14 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
         $dom("div", [attr({ "data-panel": entry.id }), domChildren(entry.component(ctx))]),
         [
           effects((obj) => {
-            shown = obj;
+            if (everything) {
+              const [x, y] = gridPosition(PANELS.indexOf(entry));
+              obj.position.set(x, y, 0);
+            }
+            mounted.set(entry.id, obj);
             onCleanup(() => {
-              if (shown === obj) {
-                shown = undefined;
+              if (mounted.get(entry.id) === obj) {
+                mounted.delete(entry.id);
               }
             });
           }),
@@ -283,29 +325,34 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
             o.scale.set(scale, scale, scale);
             // The XR button asks for a `local` reference space: the head sits at
             // the origin, so straight ahead is y = 0.
-            o.position.set(0, lift, -0.45);
+            // The grid is centred on the eye line on its own.
+            o.position.set(0, everything ? 0 : lift, everything ? -GRID_DISTANCE : -0.45);
           }),
           children(
             list(
-              () => [current.get()],
+              () => (everything ? PANELS.map(({ id }) => id) : [current.get()]),
               (id) => panel(findPanel(id)),
             ),
-            dom(
-              ctx,
-              Switcher({
-                current: () => current.get(),
-                show: (id) => {
-                  show(id).catch((err) => {
-                    console.error(`Could not show the ${id} panel:`, err);
-                  });
-                },
-              }),
-              [
-                effects((obj) => {
-                  obj.position.set(0, switcherY, 0);
-                }),
-              ],
-            ),
+            ...(everything
+              ? []
+              : [
+                  dom(
+                    ctx,
+                    Switcher({
+                      current: () => current.get(),
+                      show: (id) => {
+                        show(id).catch((err) => {
+                          console.error(`Could not show the ${id} panel:`, err);
+                        });
+                      },
+                    }),
+                    [
+                      effects((obj) => {
+                        obj.position.set(0, switcherY, 0);
+                      }),
+                    ],
+                  ),
+                ]),
           ),
         ]),
         cursors(ctx, { color: "#ff0000" }),

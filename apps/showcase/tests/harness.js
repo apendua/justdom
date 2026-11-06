@@ -93,9 +93,11 @@ async function serve() {
  *   on a browser prototype has to be in place before three takes hold of the
  *   thing it patches. It is serialized and re-parsed over there, so it closes
  *   over nothing from here.
+ * @param {string} [options.query] More of the address's query, after
+ *   `emulator=bare`, such as `panel=all`.
  * @returns {Promise<{ page: Page, browser: Browser, close: () => Promise<void> }>}
  */
-export async function openShowcase({ freeze = true, init } = {}) {
+export async function openShowcase({ freeze = true, init, query } = {}) {
   const server = await serve();
   const browser = await chromium.launch({
     executablePath: findChromium(),
@@ -149,7 +151,8 @@ export async function openShowcase({ freeze = true, init } = {}) {
     await page.addInitScript(init);
   }
 
-  await page.goto(`${server.url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });
+  const address = `${server.url}?emulator=bare${query ? `&${query}` : ""}`;
+  await page.goto(address, { waitUntil: "load", timeout: 60_000 });
   await page.waitForSelector("#ARButton", { timeout: 30_000 });
 
   return {

@@ -90,7 +90,8 @@ box-sized pattern); motion covers CSS keyframes, a Web Animations API animation 
 included, and text fields that open the scene's keyboard and wear `:focus` while it types; widgets
 covers justdom-three-ui's dropdown and scrollable, a list pulled by hand, drag and drop between two
 lists, and a `draggable` panel's carry strips. `?panel=<id>` opens it on one panel, and Prev and
-Next beside the XR button step through the deck without a session.
+Next beside the XR button step through the deck without a session. `?panel=all` puts every panel in
+the scene at once, in a grid, which is what the paint-order benches in `packages/three` count.
 [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
 scene, and mirrors a page that already exists rather than building panels for the scene: a desk
 whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged

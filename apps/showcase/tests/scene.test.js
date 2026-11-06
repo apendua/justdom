@@ -770,3 +770,43 @@ describe("the motion panel while it is animating", { timeout: 180_000 }, () => {
     assert.ok(!moved.same, "the scene held perfectly still while three animations were running");
   });
 });
+
+describe("every panel at once, under ?panel=all", { timeout: 240_000 }, () => {
+  // What the paint-order benches in packages/three open: every panel in one
+  // scene, so that one frame's count covers all of them. Nothing here is
+  // photographed against a baseline; the deck's own photographs cover how
+  // each panel is drawn.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true, query: "panel=all" });
+    await enterSession(showcase.page, { freeze: true });
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  test("every panel is mounted, with nothing to step through", async () => {
+    const ids = await panelIds(showcase.page);
+    await showcase.page.waitForFunction(
+      (count) =>
+        document.querySelectorAll("[data-xr-portal] [data-panel]").length === count &&
+        !document.querySelector("[data-xr-loading]"),
+      ids.length,
+      { timeout: 120_000 },
+    );
+    const state = await showcase.page.evaluate(() => ({
+      mounted: [...document.querySelectorAll("[data-xr-portal] [data-panel]")].map((panel) =>
+        panel.getAttribute("data-panel"),
+      ),
+      steps: document.querySelectorAll(".deck-step").length,
+      panel: new URL(location.href).searchParams.get("panel"),
+      // The last panel's heading, which the deck would only find on show.
+      located: !!window.__showcase?.locate('[data-panel="widgets"] h1'),
+    }));
+    assert.deepEqual(state, { mounted: ids, steps: 0, panel: "all", located: true });
+  });
+});

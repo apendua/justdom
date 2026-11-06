@@ -129,6 +129,14 @@ describe("the picture layer", () => {
     );
   });
 
+  test("a gradient that does not repeat is whole up to its tile's edge, as a picture is", () => {
+    const { fragmentShader } = createRectMaterial();
+    assert.match(
+      fragmentShader,
+      /return 1\.0 - smoothstep\(0\.0, 2\.0 \* w, abs\(q - start - 0\.5 \* size\) - 0\.5 \* size\);/,
+    );
+  });
+
   test("both rectangles land, and they are allowed to disagree", () => {
     const material = createRectMaterial();
     const texture = new THREE.Texture();

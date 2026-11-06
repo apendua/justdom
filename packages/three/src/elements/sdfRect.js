@@ -126,9 +126,11 @@ rectGeometry.setAttribute(
 //
 // Lanes: `gradient` is (kind, repeating, repeat-x, repeat-y), kind 0 being
 // no gradient at all; `ramp` is (row, opacity). A non-repeating axis is
-// trimmed to the tile with an edge antialiased the way every other edge here
-// is — against the pixel footprint of `q`, taken once, outside any branch,
-// because a derivative asked for inside one is undefined. The ramp is read
+// trimmed to the tile, whole up to its edge and faded outside it, as a
+// picture is (`pictureCoverage`): the tile's edge is often the padding box's,
+// which the fill's coverage already fades. The fade is measured against the
+// pixel footprint of `q`, taken once, outside any branch, because a
+// derivative asked for inside one is undefined. The ramp is read
 // with an explicit level for the same reason: a box's kind differs from its
 // neighbour's along the seam between them, and it has no mipmaps to choose
 // between anyway.
@@ -174,7 +176,7 @@ vec3 gradientDecode(vec3 srgb) {
 }
 float tileEdge(float q, float start, float size, float footprint) {
   float w = max(footprint, 1e-4);
-  return 1.0 - smoothstep(-w, w, abs(q - start - 0.5 * size) - 0.5 * size);
+  return 1.0 - smoothstep(0.0, 2.0 * w, abs(q - start - 0.5 * size) - 0.5 * size);
 }
 vec4 withGradient(vec4 fill, vec2 q, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
   vec2 footprint = fwidth(q);

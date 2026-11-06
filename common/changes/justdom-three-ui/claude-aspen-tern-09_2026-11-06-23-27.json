@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "useDiagnostics takes a carrier and a placement, so a scene can hang the frame rate readout in the room instead of on the camera",
+      "type": "minor",
+      "packageName": "justdom-three-ui"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

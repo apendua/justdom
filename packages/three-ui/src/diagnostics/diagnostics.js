@@ -10,7 +10,7 @@
 import { Signal, useEffect, useEffects } from "justdom-signal";
 import { children, getCamera, useFrame } from "justdom-three";
 import { chartCeiling, createFrameMeter } from "./frameMeter.js";
-import { Panel } from "./panel.js";
+import { HEAD_LOCKED, Panel } from "./panel.js";
 
 /**
  * How the panel is switched and what it is reading, held apart from the
@@ -34,6 +34,26 @@ import { Panel } from "./panel.js";
 /**
  * @typedef {object} DiagnosticsOptions
  * @property {boolean} [visible] Whether the panel starts out shown. It does.
+ */
+
+/**
+ * Where the panel is drawn, on whatever carries it.
+ *
+ * @typedef {object} DiagnosticsPlacement
+ * @property {import("three").Vector3} position In the carrier's units.
+ * @property {import("three").Euler} rotation
+ * @property {number} scale The panel object's scale, in the carrier's units
+ *   per unit of the portal it is drawn through.
+ */
+
+/**
+ * @typedef {object} UseDiagnosticsOptions
+ * @property {import("three").Object3D} [carrier] What the panel hangs from:
+ *   the camera, which makes it a HUD, unless a scene has a better place for
+ *   it in the room, such as beside a card the HUD would cover.
+ * @property {DiagnosticsPlacement} [placement] Where on the carrier. Up and to
+ *   the left, a metre out, when it is left out, which is right for the camera
+ *   and for nothing else.
  */
 
 /**
@@ -79,6 +99,9 @@ export function createDiagnostics({ visible: initial = true } = {}) {
  * });
  * ```
  *
+ * A scene whose content fills the view where the HUD would sit can hang the
+ * panel in the room instead, with a `carrier` and a `placement`.
+ *
  * The meter runs for as long as that computation does, whether or not the
  * panel is being drawn. Counting frames is a `+= 1` in a callback the renderer
  * was making anyway; it is drawing the panel that costs anything, and that is
@@ -86,9 +109,10 @@ export function createDiagnostics({ visible: initial = true } = {}) {
  *
  * @param {WeakKey} ctx
  * @param {DiagnosticsControls} controls
+ * @param {UseDiagnosticsOptions} [options]
  * @returns {void}
  */
-export function useDiagnostics(ctx, controls) {
+export function useDiagnostics(ctx, controls, { carrier, placement = HEAD_LOCKED } = {}) {
   const meter = createFrameMeter({
     onReadout: (fps) => {
       controls.fps.set(fps);
@@ -114,7 +138,7 @@ export function useDiagnostics(ctx, controls) {
       if (!controls.visible.get()) {
         return;
       }
-      useEffects(getCamera(ctx), [children(Panel(ctx, controls))]);
+      useEffects(carrier ?? getCamera(ctx), [children(Panel(ctx, controls, placement))]);
     },
     { name: "diagnostics" },
   );

@@ -106,8 +106,19 @@ export interface SceneOptions {
  */
 const PANEL_SCALE = 0.01;
 
+/** How far in front of the player the card hangs, in metres. */
+const DECK_DISTANCE = 0.45;
+
 /** The gap between the card and the switcher's bar, in px. */
 const GAP = 16;
+
+/**
+ * How wide the frame rate readout is drawn, in the card's px: narrow enough
+ * to sit under the card's left edge, beside the switcher's bar. Its own card
+ * is `HUD_WIDTH` px wide at a scale of 1.
+ */
+const READOUT_WIDTH = 88;
+const HUD_WIDTH = 300;
 
 /**
  * The grid `?panel=all` lays every panel out in: its columns, the gap
@@ -177,9 +188,12 @@ function frameWhen(done: () => boolean): Promise<void> {
 const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: SceneOptions) =>
   effectsOnly((ctx: WeakKey) => {
     const scale = 0.1;
-    // The frame rate readout, head-locked and up to the left. There is no music
-    // card here to hang a switch off, so it is simply always on — and on a page
-    // whose whole subject is what a portal costs to draw, that is the point.
+    // The frame rate readout. There is no music card here to hang a switch
+    // off, so it is simply always on — and on a page whose whole subject is
+    // what a portal costs to draw, that is the point. It hangs in the room
+    // under the card's left edge, beside the switcher's bar: head-locked, up
+    // and to the left, it lands on the card, which fills the view on every
+    // side, and covered the house on the SVG paint panel.
     const diagnostics = createDiagnostics();
     window.__diagnostics = diagnostics;
 
@@ -346,11 +360,41 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
     // centred on the group's origin, and the gap and the bar hang below it.
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
+    // Where the readout hangs, in the room: under the card's left edge, a
+    // millimetre in front of it. An object of the scene's own, so that the
+    // readout coming and going adds to it and leaves the scene's children,
+    // the deck among them, alone.
+    const readoutAnchor = new THREE.Group();
+    readoutAnchor.position.set(
+      -(CARD_WIDTH / 2 - READOUT_WIDTH / 2) * PANEL_SCALE * scale,
+      lift - (CARD_HEIGHT / 2 + GAP + BAR_HEIGHT / 2) * PANEL_SCALE * scale,
+      -DECK_DISTANCE + 0.001,
+    );
+
     useEffects(getScene(ctx), [
       effects(() => {
-        useDiagnostics(ctx, diagnostics);
+        useDiagnostics(
+          ctx,
+          diagnostics,
+          // The grid has no bar to sit beside, and fills the view further
+          // out, so there the readout stays on the camera.
+          everything
+            ? undefined
+            : {
+                carrier: readoutAnchor,
+                placement: {
+                  position: new THREE.Vector3(),
+                  rotation: new THREE.Euler(),
+                  // Both portals draw a px at PANEL_SCALE: the readout's in
+                  // the room's units, the card's in the group's, which are
+                  // `scale` of them.
+                  scale: (READOUT_WIDTH / HUD_WIDTH) * scale,
+                },
+              },
+        );
       }),
       children(
+        $(readoutAnchor),
         $(new THREE.AmbientLight(0xffffff, 2)),
         $(new THREE.PointLight(0xffffff, 60, 8), [
           effects((o) => {
@@ -363,7 +407,7 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
             // The XR button asks for a `local` reference space: the head sits at
             // the origin, so straight ahead is y = 0.
             // The grid is centred on the eye line on its own.
-            o.position.set(0, everything ? 0 : lift, everything ? -GRID_DISTANCE : -0.45);
+            o.position.set(0, everything ? 0 : lift, everything ? -GRID_DISTANCE : -DECK_DISTANCE);
           }),
           children(
             list(

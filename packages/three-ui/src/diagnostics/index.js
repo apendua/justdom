@@ -17,6 +17,14 @@ export {
  */
 
 /**
+ * @typedef {import('./diagnostics.js').DiagnosticsPlacement} DiagnosticsPlacement
+ */
+
+/**
+ * @typedef {import('./diagnostics.js').UseDiagnosticsOptions} UseDiagnosticsOptions
+ */
+
+/**
  * @typedef {import('./frameMeter.js').FrameMeter} FrameMeter
  */
 

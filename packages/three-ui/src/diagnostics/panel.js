@@ -12,7 +12,7 @@ import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } fro
 /**
  * @import {Mountable} from 'justdom-core';
  * @import {Component} from 'justdom-three';
- * @import {DiagnosticsControls} from './diagnostics.js';
+ * @import {DiagnosticsControls, DiagnosticsPlacement} from './diagnostics.js';
  */
 
 /**
@@ -34,6 +34,30 @@ const PLACEMENT = new THREE.Vector3(-0.24, 0.17, -0.95);
  * this angle would show the player more of the panel's edge than of its face.
  */
 const FACING = new THREE.Euler(0.17, 0.25, 0);
+
+/**
+ * Put the panel's object where `placement` says, on whatever carries it.
+ *
+ * @param {THREE.Object3D} obj
+ * @param {DiagnosticsPlacement} placement
+ * @returns {void}
+ */
+export function placePanel(obj, placement) {
+  obj.position.copy(placement.position);
+  obj.rotation.copy(placement.rotation);
+  obj.scale.setScalar(placement.scale);
+}
+
+/**
+ * The panel as a HUD: on the camera, up and to the left, turned to the eye.
+ *
+ * @type {DiagnosticsPlacement}
+ */
+export const HEAD_LOCKED = Object.freeze({
+  position: PLACEMENT,
+  rotation: FACING,
+  scale: UI_SCALE,
+});
 
 /**
  * Where the panel is drawn in the frame's order: after everything a scene is
@@ -160,22 +184,27 @@ function chartBar(controls, index) {
 }
 
 /**
- * The panel, as a component to be added to whatever should carry it — which is
- * the camera; see `useDiagnostics`.
+ * The panel, as a component to be added to whatever should carry it, placed
+ * on it as `placement` says: the camera, by default; see `useDiagnostics`.
  *
  * It is projected through a portal that lets rays through. Nothing on it can be
  * pressed, and it sits between the player and the whole scene: a panel that
  * stopped rays here would be a pane of glass the player's own pointer kept
  * landing on, a foot in front of the game.
  *
- * @type {(ctx: WeakKey, controls: DiagnosticsControls) => import("justdom-signal").Source<Component>}
+ * @type {(
+ *   ctx: WeakKey,
+ *   controls: DiagnosticsControls,
+ *   placement: DiagnosticsPlacement,
+ * ) => import("justdom-signal").Source<Component>}
  */
 export const Panel = component(
   /**
    * @param {WeakKey} ctx
    * @param {DiagnosticsControls} controls
+   * @param {DiagnosticsPlacement} placement
    */
-  (ctx, controls) => {
+  (ctx, controls, placement) => {
     return dom(
       ctx,
       $("div", [
@@ -216,9 +245,7 @@ export const Panel = component(
       ]),
       [
         effects((obj) => {
-          obj.position.copy(PLACEMENT);
-          obj.rotation.copy(FACING);
-          obj.scale.setScalar(UI_SCALE);
+          placePanel(obj, placement);
         }),
         effects((obj) => {
           useFrame(ctx, drawOnTop(obj));

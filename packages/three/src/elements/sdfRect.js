@@ -252,10 +252,19 @@ float coverageOf(float dist) {
   float w = max(fwidth(dist), 1e-4);
   return 1.0 - smoothstep(-w, w, dist);
 }
-float boxCoverage(vec2 q, vec4 box) {
+// How much of a fragment a picture covers, by the box it is cut to: whole up
+// to the box's edge and faded outside it, rather than faded across it as an
+// edge of the box itself is. The picture is cut to the content box, whose
+// edge is often the inner edge of the border, and that edge is already faded
+// once, by the fill's own coverage. Faded twice, the two half coverages there
+// leave a quarter of the fragment to the page behind: a light line between a
+// picture and its border.
+float pictureCoverage(vec2 q, vec4 box) {
   vec2 halfBox = 0.5 * (box.zw - box.xy);
   vec2 d = abs(q - 0.5 * (box.xy + box.zw)) - halfBox;
-  return coverageOf(max(d.x, d.y));
+  float dist = max(d.x, d.y);
+  float w = max(fwidth(dist), 1e-4);
+  return 1.0 - smoothstep(0.0, 2.0 * w, dist);
 }
 vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
   vec2 halfSize = 0.5 * size;
@@ -337,7 +346,7 @@ vec4 withPicture(vec4 fill, vec2 q, vec2 qdx, vec2 qdy) {
     vec2(dx.x, -dx.y),
     vec2(dy.x, -dy.y)
   );
-  float over = texel.a * uImageOpacity * boxCoverage(q, bounds) * boxCoverage(q, uImageClip);
+  float over = texel.a * uImageOpacity * pictureCoverage(q, bounds) * pictureCoverage(q, uImageClip);
   float under = fill.a * (1.0 - over);
   float composited = over + under;
   return vec4(

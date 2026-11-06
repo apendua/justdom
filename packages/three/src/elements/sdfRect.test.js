@@ -117,6 +117,18 @@ describe("the picture layer", () => {
     assert.doesNotMatch(fragmentShader, /texture2D\(uImage/);
   });
 
+  test("a picture is whole up to the edge it is cut to, so its border leaves no seam", () => {
+    // The content box's edge is the border's inner edge, which the fill's
+    // coverage already fades. A picture faded across it as well leaves a
+    // quarter of the fragment there to the page behind.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /return 1\.0 - smoothstep\(0\.0, 2\.0 \* w, dist\);/);
+    assert.match(
+      fragmentShader,
+      /pictureCoverage\(q, bounds\) \* pictureCoverage\(q, uImageClip\)/,
+    );
+  });
+
   test("both rectangles land, and they are allowed to disagree", () => {
     const material = createRectMaterial();
     const texture = new THREE.Texture();

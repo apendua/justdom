@@ -231,9 +231,9 @@ dom(
 - **A revealed run draws itself**, one extra draw per revealed node, since a run carrying a cut of
   its own cannot be batched.
 - Clipping composes with it — a revealed run inside a scroller is clipped and cut in one shader pass
-  — and so does a transform: the footnote on the _Interactions_ card in
+  — and so does a transform on the card around it. The footnote on the _Text_ panel in
   [`apps/showcase`](https://github.com/apendua/justdom/tree/develop/apps/showcase) types itself out
-  on a card that can be tilted while it runs.
+  this way.
 
 Not followed:
 

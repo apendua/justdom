@@ -39,8 +39,8 @@ const SPECIMEN = `data:image/svg+xml,${encodeURIComponent(
  * relative to its height, as the picture is.
  */
 const FRAME = `
-  width: 5.75rem;
-  height: 2.9rem;
+  width: 120px;
+  height: 60px;
   background-color: rgb(228, 231, 240);
   border: 2px solid rgb(122, 128, 148);
 `;
@@ -74,16 +74,16 @@ const coverRightStyle = className`
 
 /** The corners come from the same distance field that rounds a box. */
 const avatarStyle = className`
-  width: 4rem;
-  height: 4rem;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   border: 3px solid rgb(221, 64, 104);
   object-fit: cover;
 `;
 
 const roundedStyle = className`
-  width: 9.5rem;
-  height: 3rem;
+  width: 200px;
+  height: 60px;
   border-radius: 14px;
   object-fit: cover;
 `;
@@ -94,15 +94,16 @@ const roundedStyle = className`
  * already subject to.
  */
 const windowStyle = className`
-  width: 8.5rem;
-  height: 3rem;
+  width: 180px;
+  height: 60px;
   overflow: hidden;
   border-radius: 10px;
 `;
 
 const tallStyle = className`
-  width: 8.5rem;
-  height: 6rem;
+  display: block;
+  width: 180px;
+  height: 120px;
   object-fit: cover;
 `;
 

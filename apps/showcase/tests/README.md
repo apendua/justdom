@@ -8,7 +8,8 @@ hairline border around boxes that had none — passed the whole unit suite and w
 looking at the scene.
 
 This is that person, automated: the showcase, in an emulated headset, in a real browser,
-photographed.
+photographed. The showcase is a deck of panels, one on show at a time, and the suite photographs
+every one of them.
 
 ```
 npm run test:visual           # check
@@ -42,18 +43,36 @@ The frame rate readout every headset app here wears is the one thing in the scen
 photographed, and it is switched off through `window.__diagnostics` before anything is measured. It
 says a live number over a minute of live numbers, so it is a rectangle that never matches the one
 before — and the freeze does not reach it, because the timestamps it counts come from the emulated
-session rather than from the page's animation frames. What these baselines are for is the six
-panels.
+session rather than from the page's animation frames. What these baselines are for is the panels.
 
-Two more photographs are of the same scene under a hand. The emulated right controller is aimed at
-the Interactions panel's first button, and the scene is photographed with the ray resting on it
-(`hover.png`) and with the trigger held on it (`press.png`). They are the part of the pointer path
-that the event goldens in `packages/three` cannot see: those say that `data-xr-hover` and
-`data-xr-active` were set, and these say that the styles hung on them were drawn. The button is
-found by angle, since the page cannot say where in the room a panel is drawn, and the test asserts
-that the button took the hover before it trusts the photograph. A layout change that moves the
-button fails there, by name, and the angle in `scene.test.js` is what to update. They run in a
-browser of their own, so the hand is in none of the other photographs.
+## One session, one photograph per panel
+
+The suite enters the session once and walks the deck. The panels are listed in
+`src/components/registry.ts`, and each one's photograph is named by its id: `boxes.png`, `text.png`
+and so on. A panel added to the registry is photographed with no change here, and its first run on a
+machine records its baseline.
+
+The app hands the suite `window.__showcase`, and the harness drives the deck through it:
+
+- `show(id)` puts a panel on show and resolves once it is in the scene whole, its portal mounted and
+  its loading frame gone. `showPanel(page, id)` in `harness.js` calls it.
+- `panels` lists the ids in the deck's order, which `panelIds(page)` reads.
+- `locate(selector)` says where in the room the middle of an element on show is drawn. The page
+  knows where the element is in its panel and the scene knows where the panel is, and this asks
+  both.
+
+Each check that is about one panel shows that panel first, so none of them depends on the order they
+run in: the clip-path and the attribute write on `svg`, the markers on `lists`, the translucent card
+and the style write on `boxes`.
+
+Two more photographs are of the pointer panel under a hand. `aimAt(page, "button")` aims the
+emulated right controller at the panel's first button through `locate`, and the scene is
+photographed with the ray resting on it (`pointer-hover.png`) and with the trigger held on it
+(`pointer-press.png`). They are the part of the pointer path that the event goldens in
+`packages/three` cannot see: those say that `data-xr-hover` and `data-xr-active` were set, and these
+say that the styles hung on them were drawn. The test asserts that the button took the hover before
+it trusts the photograph. Since the aim follows the layout, a button that moves takes the aim with
+it. They run in a browser of their own, so the hand is in none of the other photographs.
 
 ## The two kinds of check, and which one can fail on your machine
 
@@ -84,9 +103,9 @@ CI's.
 
 **Everything else** asks a question with one answer anywhere: that the panels are drawn at all, that
 they wear the colours their stylesheets asked for, that a style or an SVG attribute written into the
-mirrored DOM reaches the scene, that a `clip-path` shows half of the vector panel's orange bar and
-all of it once it is taken off, and that animation plays. These run and mean something on any
-machine.
+mirrored DOM reaches the scene, that a `clip-path` shows half of the SVG panel's orange bar and all
+of it once it is taken off, and that the motion panel's animations play. These run and mean
+something on any machine.
 
 ## Crashing on purpose
 
@@ -118,9 +137,9 @@ assertion that the window heard nothing goes on passing.
 ## When it fails
 
 `tests/output/` holds what this run photographed, and a `.diff.png` beside a photograph, such as
-`scene.diff.png`, marks in magenta what moved. Read it before re-recording: the tint regression
-above shows up there as every line of text lighting up at once, which is unmistakable, and a
-re-record would have quietly blessed it.
+`text.diff.png`, marks in magenta what moved. Read it before re-recording: the tint regression above
+shows up there as every line of text lighting up at once, which is unmistakable, and a re-record
+would have quietly blessed it.
 
 ## In CI
 

@@ -5,19 +5,22 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  aimController,
+  aimAt,
   enterSession,
   fingerprint,
   holdTrigger,
   nextFrames,
   openShowcase,
+  panelIds,
   photographScene,
+  showPanel,
 } from "./harness.js";
 import { BASELINE, MOVEMENT, comparePng, countNear, countWhere, inkRatio } from "./pixels.js";
 
 /**
  * What the showcase looks like once it is a scene, checked by photographing
- * it inside an emulated headset.
+ * it inside an emulated headset: every panel of the deck, one photograph
+ * each, in one session that switches from panel to panel.
  *
  * These are the checks jsdom structurally cannot make. It computes styles but
  * lays nothing out and draws nothing, so the unit suites can assert that an
@@ -31,9 +34,9 @@ import { BASELINE, MOVEMENT, comparePng, countNear, countWhere, inkRatio } from 
  *  - The baseline comparison is exact, and is only meaningful against the
  *    machine that drew the baseline, so baselines are filed under a
  *    fingerprint of the renderer and the fonts. Somewhere with no baseline of
- *    its own, it records one and says so; under `--strict`, which is how CI
- *    runs it, it fails instead — a check that quietly declines to check is
- *    worse than none.
+ *    its own, it records one and says so; under `VISUAL_STRICT=1`, which is
+ *    how CI runs it, it fails instead — a check that quietly declines to
+ *    check is worse than none.
  *  - Everything else asks a question about the frame that has one answer
  *    anywhere: that the panels are there, that they are wearing the colours
  *    their stylesheets asked for, that animation moves and that a style or
@@ -65,20 +68,20 @@ const UPDATE = process.env.UPDATE_BASELINES === "1";
  */
 const STRICT = process.env.VISUAL_STRICT === "1";
 
-/** The stylesheet's own accent, which several labels and borders are drawn in. */
+/** The pointer panel's buttons are filled with it, and several labels are drawn in it. */
 const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
 
 /**
- * The teal the vector panel's diagram nodes are filled with, and nothing
- * else in the showcase is: SVG shapes are drawn through a plugin with a path
+ * The teal the SVG panel's diagram nodes are filled with, and nothing on that
+ * panel's photograph besides: SVG shapes are drawn through a plugin with a path
  * of its own — parsed geometry, triangulated fills, stroked outlines — and
  * none of the unit suite can see whether any of it appears.
  */
 const NODE_COLOR = /** @type {[number, number, number]} */ ([0, 168, 150]);
 
 /**
- * The orange of the vector panel's clipped bar, used nowhere else in the
- * showcase. A `clip-path` shows the left half of the bar, so the scene holds
+ * The orange of the SVG panel's clipped bar, used nowhere else on that
+ * panel. A `clip-path` shows the left half of the bar, so the scene holds
  * half as much of it as the bar with no clip would.
  */
 const CLIPPED_COLOR = /** @type {[number, number, number]} */ ([255, 110, 0]);
@@ -134,68 +137,112 @@ function compareToBaseline(name, png, stamp) {
   return { result };
 }
 
-describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
+/**
+ * Holds a photograph against its baseline, or records one and says so.
+ *
+ * @param {import("node:test").TestContext} t
+ * @param {string} name
+ * @param {Buffer} png
+ * @param {Record<string, string>} stamp
+ */
+function assertMatchesBaseline(t, name, png, stamp) {
+  const { recorded, missing, result } = compareToBaseline(name, png, stamp);
+  assert.ok(!missing, missing);
+  if (recorded) {
+    t.diagnostic(recorded);
+    return;
+  }
+  assert.ok(
+    result?.same,
+    `the ${name} photograph differs from its baseline: ${result?.changed} pixels ` +
+      `(${((result?.ratio ?? 0) * 100).toFixed(3)}%)${result?.reason ? `, ${result.reason}` : ""}. ` +
+      `Look at tests/output/${name}.diff.png; if the change is meant, ` +
+      `re-record with npm run test:visual:update.`,
+  );
+}
+
+describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
   /** @type {Awaited<ReturnType<typeof openShowcase>>} */
   let showcase;
-  /** @type {Buffer} */
-  let scene;
   /** @type {Record<string, string>} */
   let stamp;
+  /**
+   * Each panel's photograph, taken as the panel is first shown. The checks
+   * below ask the panel they are about, and each puts it on show first, so
+   * none of them depends on the order they run in.
+   *
+   * @type {Map<string, Buffer>}
+   */
+  const photographs = new Map();
+
+  /**
+   * Put a panel on show and photograph it, held still.
+   *
+   * @param {string} id
+   * @returns {Promise<Buffer>}
+   */
+  const photograph = async (id) => {
+    await showPanel(showcase.page, id);
+    return photographScene(showcase.page, { freeze: true });
+  };
+
+  /**
+   * A panel's photograph as it was first shown.
+   *
+   * @param {string} id
+   * @returns {Promise<Buffer>}
+   */
+  const first = async (id) => {
+    const taken = photographs.get(id) ?? (await photograph(id));
+    photographs.set(id, taken);
+    return taken;
+  };
 
   before(async () => {
     showcase = await openShowcase({ freeze: true });
     await enterSession(showcase.page, { freeze: true });
     stamp = await fingerprint(showcase.page, showcase.browser);
-    scene = await photographScene(showcase.page, { freeze: true });
   });
 
   after(async () => {
     await showcase?.close();
   });
 
-  test("the panels are drawn", () => {
-    // Six panels of white cards against a dark room: if the session came up
-    // empty, or the portal drew nothing, this is what notices.
-    const ink = inkRatio(scene);
-    assert.ok(ink > 0.15, `expected the scene to be covered in panels, got ${ink.toFixed(3)}`);
-    assert.ok(ink < 0.95, `expected a room around the panels, got ${ink.toFixed(3)}`);
+  test("every panel is drawn, and matches its baseline", async (t) => {
+    // One photograph per panel, named by its id. A panel that came up empty,
+    // or a session with nothing in it, fails the ink check before the
+    // comparison has anything to say.
+    for (const id of await panelIds(showcase.page)) {
+      await t.test(id, async (t) => {
+        const scene = await first(id);
+        const ink = inkRatio(scene);
+        assert.ok(ink > 0.15, `expected the ${id} panel in the frame, got ${ink.toFixed(3)}`);
+        assert.ok(ink < 0.95, `expected a room around the ${id} panel, got ${ink.toFixed(3)}`);
+        assertMatchesBaseline(t, id, scene, stamp);
+      });
+    }
   });
 
-  test("text and borders wear the colour their stylesheet asked for", () => {
+  test("text and borders wear the colour their stylesheet asked for", async () => {
     // The regression this stands guard over: text is drawn as a white mask and
     // tinted by its material, so a break in the tint path leaves every label
     // white — the panels stay exactly as full of pixels as before, and only
-    // the colour tells you.
-    const accented = countNear(scene, ACCENT);
+    // the colour tells you. The pointer panel's buttons and its counter's
+    // label are the accent.
+    const accented = countNear(await first("pointer"), ACCENT);
     assert.ok(accented > 500, `expected the accent colour in the frame, found ${accented} pixels`);
   });
 
-  test("the vector panel's shapes are drawn", () => {
+  test("the SVG panel's shapes are drawn", async () => {
     // The two node rectangles and the small node between them are filled
-    // with a colour the rest of the scene never uses, so finding it means the
+    // with a colour the rest of the panel never uses, so finding it means the
     // SVG plugin parsed, triangulated and painted at least those; a diagram
     // that came out as the empty box the portal drew before the plugin
     // finds none of it.
-    const filled = countNear(scene, NODE_COLOR);
+    const filled = countNear(await first("svg"), NODE_COLOR);
     assert.ok(
       filled > 400,
       `expected the diagram's teal nodes in the frame, found ${filled} pixels`,
-    );
-  });
-
-  test("the scene matches its baseline", (t) => {
-    const { recorded, missing, result } = compareToBaseline("scene", scene, stamp);
-    assert.ok(!missing, missing);
-    if (recorded) {
-      t.skip(recorded);
-      return;
-    }
-    assert.ok(
-      result?.same,
-      `the scene differs from its baseline: ${result?.changed} pixels ` +
-        `(${((result?.ratio ?? 0) * 100).toFixed(3)}%)${result?.reason ? `, ${result.reason}` : ""}. ` +
-        `Look at tests/output/scene.diff.png; if the change is meant, ` +
-        `re-record with npm run test:visual:update.`,
     );
   });
 
@@ -204,10 +251,9 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     // there shows up in the headset. A transform is the sharpest way to ask,
     // because it moves a whole panel's worth of pixels and touches the
     // transform path the CSS mapping added.
-    const before = await photographScene(showcase.page, { freeze: true });
+    const before = await photograph("boxes");
     await showcase.page.evaluate(() => {
-      const portal = document.querySelector("[data-xr-portal]");
-      const card = portal?.querySelector("div");
+      const card = document.querySelector('[data-panel="boxes"] > div');
       if (!(card instanceof HTMLElement)) {
         throw new Error("no card to rotate");
       }
@@ -240,15 +286,15 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
 
   test("an SVG attribute written into the mirrored DOM reaches the scene", async () => {
     // The same claim for an attribute rather than a style: the diamond on the
-    // vector panel is a square turned by a `transform` attribute on its
-    // `<g>`. Unturning it by attribute has to show up in the headset, which
-    // it did not while the portal observed a fixed list of attribute names.
-    const before = await photographScene(showcase.page, { freeze: true });
+    // SVG panel is a square turned by a `transform` attribute on its `<g>`.
+    // Unturning it by attribute has to show up in the headset, which it did
+    // not while the portal observed a fixed list of attribute names.
+    const before = await photograph("svg");
     // Writes the group's transform and hands back the one it replaced, so
     // the panel stays the only place the diamond's angle is written down.
     const rewrite = (/** @type {string} */ transform) =>
       showcase.page.evaluate((transform) => {
-        const group = document.querySelector("[data-xr-portal] svg g[transform]");
+        const group = document.querySelector('[data-panel="svg"] svg g[transform]');
         if (!group) {
           throw new Error("no group to turn");
         }
@@ -279,14 +325,14 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     // clip-path off has to double the orange in the headset, and putting it
     // back has to put the scene back. Counts rather than a baseline, so this
     // means the same on any machine.
-    const before = await photographScene(showcase.page, { freeze: true });
+    const before = await photograph("svg");
     const clipped = countNear(before, CLIPPED_COLOR);
     assert.ok(clipped > 100, `expected the clipped bar in the frame, found ${clipped} pixels`);
 
     // Sets the bar's clip-path and hands back the one it replaced.
     const reclip = (/** @type {string | null} */ value) =>
       showcase.page.evaluate((value) => {
-        const bar = document.querySelector("[data-xr-portal] svg rect.clipped");
+        const bar = document.querySelector('[data-panel="svg"] svg rect.clipped');
         if (!bar) {
           throw new Error("no clipped bar");
         }
@@ -312,9 +358,8 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     await reclip(original);
     await nextFrames(showcase.page, 10);
     const restored = await photographScene(showcase.page, { freeze: true });
-    // The half the clip hides is about 125 pixels, under `BASELINE`'s
-    // allowance, so the scene must match to the pixel, as a frozen scene
-    // photographed twice does.
+    // A frozen scene photographed twice matches to the pixel, so the scene
+    // with the clip back must too.
     const back = countNear(restored, CLIPPED_COLOR);
     assert.equal(back, clipped, "putting the clip-path back did not hide the bar's right half");
     assert.ok(
@@ -330,10 +375,10 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     // marker takes no room, so the only pixels that can change are the
     // markers' own: a scene that stays the same never drew them. An inside
     // marker is left alone, because taking it away moves its line's text.
-    const before = await photographScene(showcase.page, { freeze: true });
+    const before = await photograph("lists");
     const toggle = (/** @type {boolean} */ off) =>
       showcase.page.evaluate((off) => {
-        const items = [...document.querySelectorAll("[data-xr-portal] li")].filter(
+        const items = [...document.querySelectorAll('[data-panel="lists"] li')].filter(
           (item) =>
             item instanceof HTMLElement && getComputedStyle(item).listStylePosition === "outside",
         );
@@ -370,24 +415,23 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
     // out of the depth test, so nothing blue showed at all.
     const pale = (/** @type {number} */ r, /** @type {number} */ g, /** @type {number} */ b) =>
       b - r > 40 && b - g > 40 && Math.abs(r - g) < 30;
-    const before = await photographScene(showcase.page, { freeze: true });
+    const before = await photograph("boxes");
     const toggle = (/** @type {boolean} */ on) =>
       showcase.page.evaluate((on) => {
         if (!on) {
           document.querySelector("[data-test-translucent]")?.remove();
           return;
         }
-        const heading = [...document.querySelectorAll("[data-xr-portal] h1")].find(
-          (h1) => h1.textContent === "Boxes",
-        );
-        const card = heading?.parentElement;
+        const card = document.querySelector('[data-panel="boxes"] > div');
         if (!card) {
           throw new Error("no boxes card to lay the cards on");
         }
         const board = document.createElement("div");
         board.dataset.testTranslucent = "";
+        // Over the empty room at the bottom of the card, clear of the
+        // swatches, whose blue would count as pale blue too.
         board.style.cssText =
-          "position: absolute; left: 16px; top: 16px; width: 160px; height: 90px";
+          "position: absolute; left: 16px; bottom: 16px; width: 160px; height: 90px";
         board.innerHTML =
           '<div style="position: absolute; left: 0; top: 0; width: 120px; height: 80px; ' +
           'background: white"><div style="margin: 20px; height: 40px; ' +
@@ -416,20 +460,13 @@ describe("the showcase in an emulated headset", { timeout: 180_000 }, () => {
   });
 });
 
-/**
- * Where the right controller has to point for its ray to rest on the middle
- * of the Interactions panel's first button, "One", as yaw to the left and
- * pitch upwards in degrees. Found by sweeping the ray across the panel; the
- * button spans about 49.5 to 53.5 of yaw and 36 to 38.5 of pitch.
- */
-const ON_FIRST_BUTTON = /** @type {const} */ ([51.5, 37.5]);
-
-describe("the showcase under a hand", { timeout: 180_000 }, () => {
+describe("the pointer panel under a hand", { timeout: 180_000 }, () => {
   // A browser of its own, so that the hand is in none of the photographs above.
   // What these two are for is what a panel draws for a ray resting on a control
   // and for a trigger held on it: the hover and press styles a stylesheet hangs
-  // on `data-xr-hover` and `data-xr-active`, which the event goldens in
-  // justdom-three can say were set and only a photograph can say were drawn.
+  // on `:hover` and `:active`, which the portal answers with `data-xr-hover`
+  // and `data-xr-active`. The event goldens in justdom-three can say the flags
+  // were set; only a photograph can say the styles were drawn.
 
   /** @type {Awaited<ReturnType<typeof openShowcase>>} */
   let showcase;
@@ -440,6 +477,7 @@ describe("the showcase under a hand", { timeout: 180_000 }, () => {
     showcase = await openShowcase({ freeze: true });
     await enterSession(showcase.page, { freeze: true });
     stamp = await fingerprint(showcase.page, showcase.browser);
+    await showPanel(showcase.page, "pointer");
   });
 
   after(async () => {
@@ -447,7 +485,7 @@ describe("the showcase under a hand", { timeout: 180_000 }, () => {
   });
 
   /**
-   * Which of the panels' buttons carry a flag, by their text.
+   * Which of the panel's buttons carry a flag, by their text.
    *
    * @param {string} flag
    * @returns {Promise<string[]>}
@@ -455,14 +493,14 @@ describe("the showcase under a hand", { timeout: 180_000 }, () => {
   const flagged = (flag) =>
     showcase.page.evaluate(
       (flag) =>
-        [...document.querySelectorAll(`[data-xr-portal] button[${flag}]`)].map(
+        [...document.querySelectorAll(`[data-panel="pointer"] button[${flag}]`)].map(
           (button) => button.textContent ?? "",
         ),
       flag,
     );
 
   test("a ray resting on a button, and the trigger held on it, match their baselines", async (t) => {
-    await aimController(showcase.page, ...ON_FIRST_BUTTON);
+    await aimAt(showcase.page, "button");
     assert.deepEqual(await flagged("data-xr-hover"), ["One"], "the ray is on the first button");
     const resting = await photographScene(showcase.page, { freeze: true });
 
@@ -479,34 +517,19 @@ describe("the showcase under a hand", { timeout: 180_000 }, () => {
       "holding the trigger changed nothing in the scene: the press style was not drawn",
     );
 
-    for (const [name, png] of /** @type {const} */ ([
-      ["hover", resting],
-      ["press", held],
-    ])) {
-      const { recorded, missing, result } = compareToBaseline(name, png, stamp);
-      assert.ok(!missing, missing);
-      if (recorded) {
-        t.diagnostic(recorded);
-        continue;
-      }
-      assert.ok(
-        result?.same,
-        `the ${name} photograph differs from its baseline: ${result?.changed} pixels ` +
-          `(${((result?.ratio ?? 0) * 100).toFixed(3)}%)${result?.reason ? `, ${result.reason}` : ""}. ` +
-          `Look at tests/output/${name}.diff.png; if the change is meant, ` +
-          `re-record with npm run test:visual:update.`,
-      );
-    }
+    assertMatchesBaseline(t, "pointer-hover", resting, stamp);
+    assertMatchesBaseline(t, "pointer-press", held, stamp);
   });
 });
 
-describe("the showcase while it is animating", { timeout: 180_000 }, () => {
+describe("the motion panel while it is animating", { timeout: 180_000 }, () => {
   /** @type {Awaited<ReturnType<typeof openShowcase>>} */
   let showcase;
 
   before(async () => {
     showcase = await openShowcase({ freeze: false });
     await enterSession(showcase.page, { freeze: false });
+    await showPanel(showcase.page, "motion");
   });
 
   after(async () => {
@@ -514,10 +537,10 @@ describe("the showcase while it is animating", { timeout: 180_000 }, () => {
   });
 
   test("animation plays: two frames apart, the scene has moved", async () => {
-    // Keyframes, a WAAPI animation and a rAF loop all run in the motion panel;
-    // the clock samples them and the scene follows. Nothing in jsdom advances
-    // a timeline, so this is the only place that can tell whether any of it
-    // actually plays.
+    // Keyframes, a WAAPI animation and a frame loop all run in the motion
+    // panel; the clock samples them and the scene follows. Nothing in jsdom
+    // advances a timeline, so this is the only place that can tell whether
+    // any of it actually plays.
     const first = await photographScene(showcase.page);
     await nextFrames(showcase.page, 24);
     const second = await photographScene(showcase.page);

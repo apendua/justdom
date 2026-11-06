@@ -70,15 +70,15 @@ This package drives every demo in this repository —
 [`apps/todo`](https://github.com/apendua/justdom/tree/develop/apps/todo) and the rest — worth
 reading for realistic scenes combining lighting, keyed lists (`list`/`keyedList`), controller/hand
 input, and DOM panels projected into 3D space.
-[`apps/showcase`](https://github.com/apendua/justdom/tree/develop/apps/showcase) is the sampler: six
-panels in a grid demonstrating hover/press transitions, CSS keyframes, a Web Animations API
-animation, a `useFrame(ctx, fn)` loop writing inline styles, animated text colour, a paragraph
-revealed to a moving cursor, static transforms, a layout-tier width transition, every `object-fit`
-an image can be drawn with, a card of inline SVG (a diagram of boxes joined by dashed and dotted
-arrows with marker heads, nodes labelled through `<text>`, two pictures through `<image>`, a bar cut
-in half by a `clip-path`, an icon through a `viewBox` at three sizes, a star spun by a CSS animation
-on its `<g>`, a symbol drawn three times by `<use>`, marching ants and a stroke colour animated by
-keyframes), and a card of bulleted and numbered lists whose steps are numbered as they arrive.
+[`apps/showcase`](https://github.com/apendua/justdom/tree/develop/apps/showcase) is the sampler: a
+deck of panels, one on show at a time, each on one area of what a panel draws. Boxes covers radii,
+borders, opacity, an `overflow: hidden` corner and a layout-tier width transition; text covers
+weights, spacing, shadows, animated colour and a paragraph revealed to a moving cursor; lists covers
+bullets and numbers that arrive as steps are added; images covers every `object-fit`; vectors is a
+card of inline SVG (a diagram with dashed and dotted arrows, marker heads, `<text>`, `<image>`, a
+`clip-path`, `<use>`, a `viewBox` at three sizes and three animations); motion covers CSS keyframes,
+a Web Animations API animation and a `useFrame(ctx, fn)` loop writing inline styles; pointer covers
+hover and press through `:hover` and `:active`. `?panel=<id>` opens it on one panel.
 [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
 scene, and mirrors a page that already exists rather than building panels for the scene: a desk
 whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged

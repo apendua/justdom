@@ -66,8 +66,8 @@ export const NODE_COLOR = "rgb(0, 168, 150)";
 const diagramStyle = stylesheet`
   .${CLASS_NAME} {
     display: block;
-    width: 17rem;
-    height: 7.5rem;
+    width: 448px;
+    height: 198px;
     background-color: rgb(244, 245, 250);
     border: 1px solid rgb(214, 218, 230);
     border-radius: 10px;
@@ -189,18 +189,18 @@ const iconStyle = stylesheet`
 `;
 
 const iconSmall = className`
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 24px;
+  height: 24px;
 `;
 
 const iconMedium = className`
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 40px;
+  height: 40px;
 `;
 
 const iconLarge = className`
-  width: 4rem;
-  height: 4rem;
+  width: 64px;
+  height: 64px;
   color: rgb(148, 96, 220);
 `;
 
@@ -216,8 +216,8 @@ const strokesStyle = stylesheet`
 
   .${CLASS_NAME} {
     display: block;
-    width: 17rem;
-    height: 3.5rem;
+    width: 448px;
+    height: 92px;
   }
 
   .${CLASS_NAME} .zig {
@@ -278,7 +278,7 @@ function icon(size: ReturnType<typeof className>) {
   ]);
 }
 
-const VectorsPanel = component((_ctx: WeakKey) => {
+const SvgPanel = component((_ctx: WeakKey) => {
   return $("div", [
     set("className", cardStyle),
     children(
@@ -496,4 +496,4 @@ const VectorsPanel = component((_ctx: WeakKey) => {
   ]);
 });
 
-export default VectorsPanel;
+export default SvgPanel;

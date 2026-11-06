@@ -208,7 +208,7 @@ export async function enterSession(page, { freeze = true } = {}) {
   // matches the one before — and the freeze does not stop it, because the
   // timestamps it counts come from the emulated session rather than from the
   // page's own animation frames. Put it down before anything is measured or
-  // photographed; what these baselines are for is the six panels.
+  // photographed; what these baselines are for is the panels.
   await page.waitForFunction(() => !!window.__diagnostics, undefined, { timeout: 30_000 });
   await page.evaluate(() => {
     window.__diagnostics?.visible.set(false);
@@ -344,39 +344,81 @@ export async function fingerprint(page, browser) {
 }
 
 /**
- * Put the emulated right controller a little below the head and aim it, by
- * yaw to the left and pitch upwards, in degrees, then let the scene catch up.
+ * Where the emulated right controller is held, in the emulator's own space:
+ * a little below the head and to its right.
+ */
+const CONTROLLER = { x: 0.05, y: 1.4, z: -0.05 };
+
+/**
+ * Aim the emulated right controller at the middle of the first element on
+ * show that matches `selector`, and let the scene catch up.
  *
- * Aimed by angle rather than at an element, because the page cannot say
- * where in the room a panel's button is drawn: that is the scene's to know.
- * A test that aims at a control asserts that the control took the hover
- * before it trusts the photograph, so that a layout which moved the control
- * fails by name instead of photographing the ray on nothing.
+ * The page knows where an element is in its panel and the scene knows where
+ * the panel is, and `window.__showcase.locate` asks both, so a layout that
+ * moves a control moves the aim with it. The session's `local` space starts
+ * where the head was when it began, which is where the emulator's head
+ * still is, so the head's position is what turns one space into the other.
+ * A test that aims at a control should still assert that the control took
+ * the hover before it trusts the photograph.
  *
  * @param {Page} page
- * @param {number} yaw
- * @param {number} pitch
+ * @param {string} selector
  * @returns {Promise<void>}
  */
-export async function aimController(page, yaw, pitch) {
-  await page.evaluate(
-    ([y, p]) => {
-      const controller = /** @type {any} */ (window).xrDevice.controllers.right;
-      controller.position.x = 0.05;
-      controller.position.y = 1.4;
-      controller.position.z = -0.05;
-      const cy = Math.cos(y / 2);
-      const sy = Math.sin(y / 2);
-      const cx = Math.cos(p / 2);
-      const sx = Math.sin(p / 2);
-      controller.quaternion.x = cy * sx;
-      controller.quaternion.y = sy * cx;
-      controller.quaternion.z = -sy * sx;
-      controller.quaternion.w = cy * cx;
-    },
-    [(yaw * Math.PI) / 180, (pitch * Math.PI) / 180],
-  );
+export async function aimAt(page, selector) {
+  const found = await page.evaluate((selector) => {
+    const target = window.__showcase?.locate(selector);
+    const head = /** @type {any} */ (window).xrDevice.position;
+    return target ? { target, head: [head.x, head.y, head.z] } : null;
+  }, selector);
+  if (!found) {
+    throw new Error(`nothing on show matches ${selector}`);
+  }
+  const { target, head } = found;
+  const dx = target[0] + head[0] - CONTROLLER.x;
+  const dy = target[1] + head[1] - CONTROLLER.y;
+  const dz = target[2] + head[2] - CONTROLLER.z;
+  // Straight ahead is down -z; yaw turns to the left, pitch tips upwards.
+  const yaw = Math.atan2(-dx, -dz);
+  const pitch = Math.atan2(dy, Math.hypot(dx, dz));
+  await page.evaluate(([controller, y, p]) => {
+    const right = /** @type {any} */ (window).xrDevice.controllers.right;
+    right.position.x = controller.x;
+    right.position.y = controller.y;
+    right.position.z = controller.z;
+    const cy = Math.cos(y / 2);
+    const sy = Math.sin(y / 2);
+    const cx = Math.cos(p / 2);
+    const sx = Math.sin(p / 2);
+    right.quaternion.x = cy * sx;
+    right.quaternion.y = sy * cx;
+    right.quaternion.z = -sy * sx;
+    right.quaternion.w = cy * cx;
+  }, /** @type {const} */ ([CONTROLLER, yaw, pitch]));
   await nextFrames(page, 10);
+}
+
+/**
+ * Put a panel on show, and wait until it is in the scene whole. Resolves
+ * once its portal has mounted it and taken down the loading frame, which is
+ * what `window.__showcase.show` waits for.
+ *
+ * @param {Page} page
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export async function showPanel(page, id) {
+  await page.evaluate((id) => window.__showcase?.show(id), id);
+}
+
+/**
+ * The deck's panels, by id, in its order.
+ *
+ * @param {Page} page
+ * @returns {Promise<string[]>}
+ */
+export async function panelIds(page) {
+  return page.evaluate(() => [...(window.__showcase?.panels ?? [])]);
 }
 
 /**

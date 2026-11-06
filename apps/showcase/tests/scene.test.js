@@ -853,38 +853,68 @@ describe("the frame rate readout in the deck", { timeout: 120_000 }, () => {
   });
 });
 
-describe("the deck on a portrait phone, outside a session", { timeout: 120_000 }, () => {
-  // A phone held upright is narrower than it is tall, and a camera with a
-  // fixed vertical field of view sees less across it the narrower the page
-  // is. The page view widens the view until the card fits across, so the
-  // card stands clear of both sides of the page.
+describe("the deck on a phone, outside a session", { timeout: 120_000 }, () => {
+  // A camera with a fixed vertical field of view sees less across a page
+  // held upright, and a page held sideways is short, with the Prev, XR and
+  // Next buttons along its bottom. The page view widens the view until the
+  // deck fits, the card clear of both sides and the deck clear of the top
+  // and of the buttons.
 
   /** @type {Awaited<ReturnType<typeof openShowcase>>} */
   let showcase;
 
   before(async () => {
     showcase = await openShowcase({ freeze: true });
-    await showcase.page.setViewportSize({ width: 412, height: 915 });
   });
 
   after(async () => {
     await showcase?.close();
   });
 
-  test("the card fits across the page, clear of both sides", async () => {
+  /**
+   * The page photographed at a size, and which px of a row or a column of
+   * it are near white, as the card and the switcher's bar are and nothing
+   * else on the page is.
+   *
+   * @param {{ width: number, height: number }} size
+   */
+  async function photographAt(size) {
+    await showcase.page.setViewportSize(size);
     await nextFrames(showcase.page, 10);
     const png = PNG.sync.read(await photographScene(showcase.page, { freeze: true }));
-    // The row through the middle of the card.
-    const y = Math.floor(png.height / 2);
-    /** @param {number} x */
-    const at = (x) => [0, 1, 2].map((c) => png.data[(y * png.width + x) * 4 + c]);
-    // The card is near white, and nothing beside it on the page is.
-    const card = [...Array(png.width).keys()].filter((x) => at(x).every((value) => value > 200));
+    /** @param {number} x @param {number} y */
+    const white = (x, y) => [0, 1, 2].every((c) => png.data[(y * png.width + x) * 4 + c] > 200);
+    return {
+      png,
+      /** @param {number} y */
+      row: (y) => [...Array(png.width).keys()].filter((x) => white(x, y)),
+      /** @param {number} x */
+      column: (x) => [...Array(png.height).keys()].filter((y) => white(x, y)),
+    };
+  }
+
+  test("held upright, the card fits across the page, clear of both sides", async () => {
+    const { png, row } = await photographAt({ width: 412, height: 915 });
+    const card = row(Math.floor(png.height / 2));
     assert.ok(card.length > 0, "no card in the middle row");
     assert.ok(
       card[0] > 0 && card[card.length - 1] < png.width - 1,
       `the card runs from ${card[0]} to ${card[card.length - 1]} of ${png.width} px, ` +
         "off the side of the page",
+    );
+  });
+
+  test("held sideways, the deck fits down the page, clear of the buttons", async () => {
+    const { png, column } = await photographAt({ width: 844, height: 390 });
+    // The column through the middle of the card and of the switcher's bar.
+    const deck = column(Math.floor(png.width / 2));
+    assert.ok(deck.length > 0, "no deck in the middle column");
+    // The buttons stand 20px up and are about 44px tall.
+    const buttonsTop = png.height - 64;
+    assert.ok(
+      deck[0] > 0 && deck[deck.length - 1] < buttonsTop,
+      `the deck runs from ${deck[0]} to ${deck[deck.length - 1]} of ${png.height} px, ` +
+        `off the top of the page or under the buttons, which start at ${buttonsTop}`,
     );
   });
 });

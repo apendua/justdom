@@ -1,5 +1,8 @@
 import type { PortalPlugin } from "justdom-three";
 import BoxesPanel from "./BoxesPanel.js";
+import BackgroundsPanel from "./BackgroundsPanel.js";
+import PseudoPanel from "./PseudoPanel.js";
+import PaintOrderPanel from "./PaintOrderPanel.js";
 import TextPanel from "./TextPanel.js";
 import ListsPanel from "./ListsPanel.js";
 import ImagesPanel from "./ImagesPanel.js";
@@ -50,6 +53,9 @@ const loadSvgPlugin = () =>
  */
 export const PANELS = [
   { id: "boxes", title: "Boxes", component: BoxesPanel, atomic: false },
+  { id: "backgrounds", title: "Backgrounds", component: BackgroundsPanel },
+  { id: "pseudo", title: "Before & after", component: PseudoPanel },
+  { id: "paint-order", title: "Paint order", component: PaintOrderPanel },
   { id: "text", title: "Text", component: TextPanel },
   { id: "lists", title: "Lists", component: ListsPanel },
   { id: "images", title: "Images", component: ImagesPanel },
@@ -67,6 +73,15 @@ export function findPanel(id: PanelId): Panel;
 export function findPanel(id: string | null): Panel | undefined;
 export function findPanel(id: string | null): Panel | undefined {
   return PANELS.find((panel) => panel.id === id);
+}
+
+/**
+ * The panel `by` places after `id` in the deck, or before it for a negative
+ * `by`, wrapping around at either end: what Prev and Next step to.
+ */
+export function stepFrom(id: PanelId, by: number): PanelId {
+  const index = PANELS.findIndex((panel) => panel.id === id);
+  return PANELS[(index + by + PANELS.length) % PANELS.length].id;
 }
 
 /** The portal plugins a panel needs, loaded; none for a panel that needs none. */

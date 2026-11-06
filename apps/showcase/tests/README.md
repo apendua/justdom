@@ -62,8 +62,8 @@ The app hands the suite `window.__showcase`, and the harness drives the deck thr
   both.
 
 Each check that is about one panel shows that panel first, so none of them depends on the order they
-run in: the clip-path and the attribute write on `svg`, the markers on `lists`, the translucent card
-and the style write on `boxes`.
+run in: the clip-path and the attribute write on `svg`, the markers on `lists`, the translucent veil
+on `paint-order` and the style write on `boxes`.
 
 Two more photographs are of the pointer panel under a hand. `aimAt(page, "button")` aims the
 emulated right controller at the panel's first button through `locate`, and the scene is
@@ -72,7 +72,10 @@ photographed with the ray resting on it (`pointer-hover.png`) and with the trigg
 `packages/three` cannot see: those say that `data-xr-hover` and `data-xr-active` were set, and these
 say that the styles hung on them were drawn. The test asserts that the button took the hover before
 it trusts the photograph. Since the aim follows the layout, a button that moves takes the aim with
-it. They run in a browser of their own, so the hand is in none of the other photographs.
+it. A third, `pseudo-hover.png`, rests the ray on the link on the `pseudo` panel, whose `::after`
+underline a `:hover::after` rule widens to the whole word: a pseudo-element is not in the DOM, so
+this is the photograph that says it was restyled. They run in a browser of their own, so the hand is
+in none of the other photographs.
 
 ## The two kinds of check, and which one can fail on your machine
 

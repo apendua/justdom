@@ -68,7 +68,10 @@ const UPDATE = process.env.UPDATE_BASELINES === "1";
  */
 const STRICT = process.env.VISUAL_STRICT === "1";
 
-/** The pointer panel's buttons are filled with it, and several labels are drawn in it. */
+/**
+ * The pointer panel's buttons are filled with it, several labels are drawn in
+ * it, and so is the underline under the pseudo panel's link.
+ */
 const ACCENT = /** @type {[number, number, number]} */ ([0, 123, 255]);
 
 /**
@@ -415,61 +418,47 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
   });
 
   test("a label under a translucent card is tinted, not hidden", async () => {
-    // Two positioned cards on the boxes panel: a white one with a blue label,
-    // and a half-transparent white one over the whole label. A page shows the
-    // label pale blue through the second card. The second card is stepped in
-    // front of the first in depth, and drawn before the label it would keep
-    // out of the depth test, so nothing blue showed at all.
+    // The paint order panel has two positioned cards: a white one with a pure
+    // blue label, and a half-transparent white veil over the whole label. A
+    // page shows the label pale blue through the veil. The veil was stepped in
+    // front of the first card in depth, and drawn before the label it would
+    // keep out of the depth test, so nothing blue showed there at all. Hiding
+    // the veil shows the label pure blue, which is not pale, so the pale blue
+    // is the veil's doing and nothing else's.
     const pale = (/** @type {number} */ r, /** @type {number} */ g, /** @type {number} */ b) =>
-      b - r > 40 && b - g > 40 && Math.abs(r - g) < 30;
-    const before = await photograph("boxes");
-    const toggle = (/** @type {boolean} */ on) =>
+      r > 60 && b - r > 40 && b - g > 40 && Math.abs(r - g) < 30;
+    const before = await photograph("paint-order");
+    const veil = (/** @type {boolean} */ on) =>
       showcase.page.evaluate((on) => {
-        if (!on) {
-          document.querySelector("[data-test-translucent]")?.remove();
-          return;
+        const element = document.querySelector('[data-panel="paint-order"] [data-veil]');
+        if (!(element instanceof HTMLElement)) {
+          throw new Error("no veil on the paint order panel");
         }
-        const card = document.querySelector('[data-panel="boxes"] > div');
-        if (!card) {
-          throw new Error("no boxes card to lay the cards on");
-        }
-        const board = document.createElement("div");
-        board.dataset.testTranslucent = "";
-        // Over the empty room at the bottom of the card, clear of the
-        // swatches, whose blue would count as pale blue too.
-        board.style.cssText =
-          "position: absolute; left: 16px; bottom: 16px; width: 160px; height: 90px";
-        board.innerHTML =
-          '<div style="position: absolute; left: 0; top: 0; width: 120px; height: 80px; ' +
-          'background: white"><div style="margin: 20px; height: 40px; ' +
-          'background: rgb(0, 0, 255)"></div></div>' +
-          '<div style="position: absolute; left: 10px; top: 10px; width: 140px; ' +
-          'height: 80px; background: rgba(255, 255, 255, 0.5)"></div>';
-        card.appendChild(board);
+        element.style.visibility = on ? "" : "hidden";
       }, on);
 
-    await toggle(true);
+    await veil(false);
     await nextFrames(showcase.page, 10);
-    const covered = await photographScene(showcase.page, { freeze: true });
-    const tinted = countWhere(covered, pale) - countWhere(before, pale);
+    const bare = await photographScene(showcase.page, { freeze: true });
+    const tinted = countWhere(before, pale) - countWhere(bare, pale);
     assert.ok(
       tinted > 200,
-      `expected the label pale blue through the card, found ${tinted} more pale blue pixels`,
+      `expected the label pale blue through the veil, found ${tinted} more pale blue pixels`,
     );
 
-    await toggle(false);
+    await veil(true);
     await nextFrames(showcase.page, 10);
     const restored = await photographScene(showcase.page, { freeze: true });
     assert.ok(
       comparePng(restored, before, BASELINE).same,
-      "taking the cards away did not put the scene back",
+      "putting the veil back did not put the scene back",
     );
   });
 });
 
-describe("the pointer panel under a hand", { timeout: 180_000 }, () => {
+describe("panels under a hand", { timeout: 180_000 }, () => {
   // A browser of its own, so that the hand is in none of the photographs above.
-  // What these two are for is what a panel draws for a ray resting on a control
+  // What these are for is what a panel draws for a ray resting on a control
   // and for a trigger held on it: the hover and press styles a stylesheet hangs
   // on `:hover` and `:active`, which the portal answers with `data-xr-hover`
   // and `data-xr-active`. The event goldens in justdom-three can say the flags
@@ -484,7 +473,6 @@ describe("the pointer panel under a hand", { timeout: 180_000 }, () => {
     showcase = await openShowcase({ freeze: true });
     await enterSession(showcase.page, { freeze: true });
     stamp = await fingerprint(showcase.page, showcase.browser);
-    await showPanel(showcase.page, "pointer");
   });
 
   after(async () => {
@@ -492,27 +480,33 @@ describe("the pointer panel under a hand", { timeout: 180_000 }, () => {
   });
 
   /**
-   * Which of the panel's buttons carry a flag, by their text.
+   * Which elements on show that match `selector` carry a flag, by their text.
    *
+   * @param {string} selector
    * @param {string} flag
    * @returns {Promise<string[]>}
    */
-  const flagged = (flag) =>
+  const flagged = (selector, flag) =>
     showcase.page.evaluate(
-      (flag) =>
-        [...document.querySelectorAll(`[data-panel="pointer"] button[${flag}]`)].map(
-          (button) => button.textContent ?? "",
+      ([selector, flag]) =>
+        [...document.querySelectorAll(`[data-panel] ${selector}[${flag}]`)].map(
+          (element) => element.textContent ?? "",
         ),
-      flag,
+      [selector, flag],
     );
 
   test("a ray resting on a button, and the trigger held on it, match their baselines", async (t) => {
+    await showPanel(showcase.page, "pointer");
     await aimAt(showcase.page, "button");
-    assert.deepEqual(await flagged("data-xr-hover"), ["One"], "the ray is on the first button");
+    assert.deepEqual(
+      await flagged("button", "data-xr-hover"),
+      ["One"],
+      "the ray is on the first button",
+    );
     const resting = await photographScene(showcase.page, { freeze: true });
 
     await holdTrigger(showcase.page, true);
-    assert.deepEqual(await flagged("data-xr-active"), ["One"], "the trigger holds it");
+    assert.deepEqual(await flagged("button", "data-xr-active"), ["One"], "the trigger holds it");
     const held = await photographScene(showcase.page, { freeze: true });
     await holdTrigger(showcase.page, false);
 
@@ -526,6 +520,31 @@ describe("the pointer panel under a hand", { timeout: 180_000 }, () => {
 
     assertMatchesBaseline(t, "pointer-hover", resting, stamp);
     assertMatchesBaseline(t, "pointer-press", held, stamp);
+  });
+
+  test("a ray resting on a link restyles its ::after, and matches its baseline", async (t) => {
+    // The link's underline is an `::after` a third of its width, which a
+    // `:hover::after` rule widens to the whole word. A pseudo-element is not
+    // in the DOM, so it is restyled only if the portal reads it again when
+    // the flag lands on the element it hangs off.
+    await showPanel(showcase.page, "pseudo");
+    const away = await photographScene(showcase.page, { freeze: true });
+    await aimAt(showcase.page, "[data-link]");
+    assert.deepEqual(
+      await flagged("[data-link]", "data-xr-hover"),
+      ["Hover me"],
+      "the ray is on the link",
+    );
+    const resting = await photographScene(showcase.page, { freeze: true });
+    // The underline triples in width, and the only other accent on the panel
+    // is the arrow after "Continue", so the accent at least doubles.
+    const idle = countNear(away, ACCENT);
+    const hovered = countNear(resting, ACCENT);
+    assert.ok(
+      hovered > idle * 2,
+      `resting the ray on the link did not widen its underline: ${idle} accent pixels, then ${hovered}`,
+    );
+    assertMatchesBaseline(t, "pseudo-hover", resting, stamp);
   });
 });
 

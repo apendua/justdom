@@ -72,13 +72,19 @@ reading for realistic scenes combining lighting, keyed lists (`list`/`keyedList`
 input, and DOM panels projected into 3D space.
 [`apps/showcase`](https://github.com/apendua/justdom/tree/develop/apps/showcase) is the sampler: a
 deck of panels, one on show at a time, each on one area of what a panel draws. Boxes covers radii,
-borders, opacity, an `overflow: hidden` corner and a layout-tier width transition; text covers
-weights, spacing, shadows, animated colour and a paragraph revealed to a moving cursor; lists covers
-bullets and numbers that arrive as steps are added; images covers every `object-fit`; vectors is a
-card of inline SVG (a diagram with dashed and dotted arrows, marker heads, `<text>`, `<image>`, a
-`clip-path`, `<use>`, a `viewBox` at three sizes and three animations); motion covers CSS keyframes,
-a Web Animations API animation and a `useFrame(ctx, fn)` loop writing inline styles; pointer covers
-hover and press through `:hover` and `:active`. `?panel=<id>` opens it on one panel.
+borders, opacity, an `overflow: hidden` corner and a layout-tier width transition; backgrounds
+covers linear, radial, conic and repeating gradients, `url()` pictures sized, placed and tiled, and
+the two stacks a panel draws differently from a page; before & after covers `::before` and `::after`
+in flow, as a `content: url()` picture, positioned, lifted by `z-index` and restyled on `:hover`;
+paint order covers a positioned box over later flow, a transformed one over its siblings, a
+translucent card over a label and a nested overlay menu; text covers weights, spacing, shadows,
+animated colour and a paragraph revealed to a moving cursor; lists covers bullets and numbers that
+arrive as steps are added; images covers every `object-fit`; vectors is a card of inline SVG (a
+diagram with dashed and dotted arrows, marker heads, `<text>`, `<image>`, a `clip-path`, `<use>`, a
+`viewBox` at three sizes and three animations); motion covers CSS keyframes, a Web Animations API
+animation and a `useFrame(ctx, fn)` loop writing inline styles; pointer covers hover and press
+through `:hover` and `:active`. `?panel=<id>` opens it on one panel, and Prev and Next beside the XR
+button step through the deck without a session.
 [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
 scene, and mirrors a page that already exists rather than building panels for the scene: a desk
 whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged

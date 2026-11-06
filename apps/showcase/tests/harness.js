@@ -230,8 +230,8 @@ export async function enterSession(page, { freeze = true } = {}) {
     await nextFrames(page, 5);
   }
 
-  // Page furniture, not scene: the button that started the session sits over
-  // the canvas while it runs.
+  // Page furniture, not scene: the button that started the session, and the
+  // page's Prev and Next beside it, sit over the canvas while it runs.
   //
   // The emulator's own exit control cannot be dealt with the same way — it is
   // drawn into the session canvas rather than laid over it, so it is in every
@@ -239,7 +239,7 @@ export async function enterSession(page, { freeze = true } = {}) {
   // of them, which is what matters here: a mark that never changes can
   // neither raise a difference nor hide one.
   await page.addStyleTag({
-    content: "#ARButton, #VRButton { display: none !important; }",
+    content: "#ARButton, #VRButton, .deck-step { display: none !important; }",
   });
 }
 

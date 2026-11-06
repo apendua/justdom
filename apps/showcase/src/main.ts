@@ -1,7 +1,7 @@
 import { render, createXRButton, type PortalPlugin } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import createScene from "./components/Scene";
-import { PANELS, findPanel, loadPlugins, type PanelId } from "./components/registry";
+import { PANELS, findPanel, loadPlugins, stepFrom, type PanelId } from "./components/registry";
 import "./index.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -24,6 +24,24 @@ const onShow = (id: PanelId) => {
   const url = new URL(location.href);
   url.searchParams.set("panel", id);
   history.replaceState(history.state, "", url);
+};
+
+/**
+ * Prev and Next on the page, either side of the XR button, so the deck can be
+ * stepped through without a session and without a hand to point with. They
+ * drive the same `show` the switcher in the scene does.
+ */
+const stepButton = (label: string, side: "prev" | "next", by: number) => {
+  const button = document.createElement("button");
+  button.className = `deck-step deck-step-${side}`;
+  button.textContent = label;
+  button.addEventListener("click", () => {
+    const deck = window.__showcase;
+    deck?.show(stepFrom(deck.current(), by)).catch((err) => {
+      console.error("Could not step through the deck:", err);
+    });
+  });
+  return button;
 };
 
 // The first panel's plugins, if it needs any, fetched beside the emulator
@@ -66,7 +84,12 @@ Promise.resolve(
           ar: { optionalFeatures: ["hand-tracking"] },
           vr: { optionalFeatures: ["hand-tracking"] },
         }).then((button) => {
-          root.replaceChildren(renderer.domElement, button);
+          root.replaceChildren(
+            renderer.domElement,
+            stepButton("‹ PREV", "prev", -1),
+            button,
+            stepButton("NEXT ›", "next", 1),
+          );
         });
       },
     });

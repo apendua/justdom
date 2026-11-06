@@ -2,7 +2,7 @@ import { className, stylesheet, text, $, children, set, on, CLASS_NAME } from "j
 import { component, observable } from "justdom-signal";
 import { dropdown, type DropdownClasses } from "justdom-three-ui";
 import { CARD_WIDTH, fontFamily, softButtonStyle } from "./panels.js";
-import { PANELS, type PanelId } from "./registry.js";
+import { PANELS, stepFrom, type PanelId } from "./registry.js";
 
 /** How tall one row of the switcher's menu is, in px. */
 const OPTION_HEIGHT = 30;
@@ -140,8 +140,7 @@ export interface SwitcherProps {
  */
 const Switcher = component(({ current, show }: SwitcherProps) => {
   const index = () => PANELS.findIndex(({ id }) => id === current());
-  const step = (by: number) => () =>
-    show(PANELS[(index() + by + PANELS.length) % PANELS.length].id);
+  const step = (by: number) => () => show(stepFrom(current(), by));
 
   return $("div", [
     set("className", rootStyle),

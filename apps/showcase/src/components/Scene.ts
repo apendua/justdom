@@ -53,8 +53,9 @@ export interface ShowcaseControls {
    * Where in the room the middle of the first element on show that matches
    * `selector` is drawn, in the session's reference space, or null when no
    * element matches. The panels on show are searched first, in the deck's
-   * order, then the keyboard while it is up. The page knows where an element is in its panel and the
-   * scene knows where the panel is, and this asks both.
+   * order, then the keyboard while it is up. The page knows where an element
+   * is in its panel and the scene knows where the panel is, and this asks
+   * both.
    */
   locate(selector: string): [number, number, number] | null;
 }
@@ -159,6 +160,10 @@ function frameWhen(done: () => boolean): Promise<void> {
  * switcher's bar sits the same gap under every card. The switcher's panel is
  * taller than its bar, to have room for its menu below it, and its centre is
  * placed to put the bar's top edge where it belongs.
+ *
+ * Under `?panel=all` (`SceneOptions.initial`) the same scene is a grid
+ * instead: every panel is mounted at once, further away, nothing is
+ * switched and there is no switcher.
  */
 const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
   effectsOnly((ctx: WeakKey) => {

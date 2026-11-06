@@ -796,7 +796,7 @@ describe("every panel at once, under ?panel=all", { timeout: 240_000 }, () => {
         document.querySelectorAll("[data-xr-portal] [data-panel]").length === count &&
         !document.querySelector("[data-xr-loading]"),
       ids.length,
-      { timeout: 120_000 },
+      { timeout: 30_000 },
     );
     const state = await showcase.page.evaluate(() => ({
       mounted: [...document.querySelectorAll("[data-xr-portal] [data-panel]")].map((panel) =>

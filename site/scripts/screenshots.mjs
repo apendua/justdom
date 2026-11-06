@@ -65,10 +65,9 @@ const SWAY = { SIDE: 0.12, TURN: 0.06, PERIOD: 10, SETTLE: 1 };
  * Hides what is page furniture rather than the demo: the button that starts a
  * headset session, the showcase's Prev and Next beside it, which its clips
  * step through for themselves, and the frame rate readout the headset apps
- * wear, which
- * says how fast SwiftShader drew the scene rather than anything about the app.
- * The showcase hands its readout out on `window.__diagnostics`, and the others
- * hide it with the button on their own panel.
+ * wear, which says how fast SwiftShader drew the scene rather than anything
+ * about the app. The showcase hands its readout out on `window.__diagnostics`,
+ * and the others hide it with the button on their own panel.
  *
  * @param {import("playwright-core").Page} page
  */
@@ -624,8 +623,8 @@ const SHOWCASE_HOLD = 1500;
  * has mounted it and taken its loading frame down, and then for a few
  * frames, which a session under SwiftShader takes to draw the mount. A
  * panel is mounted when it is shown, and the clip cuts that wait short
- * (`STALL`), as it does `drawn`'s. `drawn` itself would wait forever here: a panel with an
- * animation on it is never done drawing.
+ * (`STALL`), as it does `drawn`'s. `drawn` itself would wait forever here: a
+ * panel with an animation on it is never done drawing.
  *
  * @param {Page} page
  * @param {string} id

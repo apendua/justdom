@@ -215,6 +215,13 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     for (const id of await panelIds(showcase.page)) {
       await t.test(id, async (t) => {
         const scene = await first(id);
+        // Switching takes the panel before down, so a teardown that leaked
+        // one into this photograph fails here by name rather than as a
+        // difference from the baseline.
+        const mounted = await showcase.page.evaluate(
+          () => document.querySelectorAll("[data-xr-portal] [data-panel]").length,
+        );
+        assert.equal(mounted, 1, `expected the ${id} panel alone in the scene`);
         const ink = inkRatio(scene);
         assert.ok(ink > 0.15, `expected the ${id} panel in the frame, got ${ink.toFixed(3)}`);
         assert.ok(ink < 0.95, `expected a room around the ${id} panel, got ${ink.toFixed(3)}`);
@@ -529,11 +536,30 @@ describe("the motion panel while it is animating", { timeout: 180_000 }, () => {
   before(async () => {
     showcase = await openShowcase({ freeze: false });
     await enterSession(showcase.page, { freeze: false });
-    await showPanel(showcase.page, "motion");
   });
 
   after(async () => {
     await showcase?.close();
+  });
+
+  test("the last panel asked for is the one on show", async () => {
+    // The SVG panel's plugin is fetched the first time it is shown, which
+    // nothing in this browser has done yet. Asking for it and then, before
+    // the plugin has arrived, for the motion panel has to end on motion,
+    // not on the panel whose plugin landed last.
+    await showcase.page.evaluate(async () => {
+      const deck = window.__showcase;
+      if (!deck) {
+        throw new Error("the showcase hands no window.__showcase to drive the deck by");
+      }
+      await Promise.all([deck.show("svg"), deck.show("motion")]);
+    });
+    await nextFrames(showcase.page, 10);
+    const shown = await showcase.page.evaluate(() => ({
+      current: window.__showcase?.current(),
+      address: new URLSearchParams(location.search).get("panel"),
+    }));
+    assert.deepEqual(shown, { current: "motion", address: "motion" });
   });
 
   test("animation plays: two frames apart, the scene has moved", async () => {

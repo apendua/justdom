@@ -124,7 +124,7 @@ const pickerClasses: DropdownClasses = {
   optionSelected: pickerOptionSelected,
 };
 
-const OPTIONS = PANELS.map(({ id, title }) => ({ value: id as PanelId, label: title }));
+const OPTIONS = PANELS.map(({ id, title }) => ({ value: id, label: title }));
 
 export interface SwitcherProps {
   /** The panel on show, read reactively. */

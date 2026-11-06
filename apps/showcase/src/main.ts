@@ -1,7 +1,7 @@
 import { render, createXRButton, type PortalPlugin } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import createScene from "./components/Scene";
-import { PANELS, findPanel, type PanelId } from "./components/registry";
+import { PANELS, findPanel, loadPlugins, type PanelId } from "./components/registry";
 import "./index.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -18,7 +18,7 @@ followOutlinesQuery(query);
  * switcher, so a reload or a shared link comes back to the panel on show. An
  * id the deck does not have opens it on the first.
  */
-const initial = (findPanel(query.get("panel")) ?? PANELS[0]).id as PanelId;
+const initial = (findPanel(query.get("panel")) ?? PANELS[0]).id;
 
 const onShow = (id: PanelId) => {
   const url = new URL(location.href);
@@ -30,8 +30,8 @@ const onShow = (id: PanelId) => {
 // rather than after it. A panel shown later fetches its own when it is shown.
 // A plugin that fails to load opens the deck on the first panel instead,
 // which needs none, and says so.
-const opening: Promise<{ id: PanelId; plugins: readonly PortalPlugin[] }> = Promise.resolve(
-  findPanel(initial)?.plugins?.() ?? [],
+const opening: Promise<{ id: PanelId; plugins: readonly PortalPlugin[] }> = loadPlugins(
+  findPanel(initial),
 ).then(
   (plugins) => ({ id: initial, plugins }),
   (err) => {

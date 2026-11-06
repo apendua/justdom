@@ -60,7 +60,16 @@ export const PANELS = [
 
 export type PanelId = (typeof PANELS)[number]["id"];
 
+export type Panel = (typeof PANELS)[number];
+
 /** The panel an id names, or undefined for one the deck does not have. */
-export function findPanel(id: string | null): PanelEntry | undefined {
+export function findPanel(id: PanelId): Panel;
+export function findPanel(id: string | null): Panel | undefined;
+export function findPanel(id: string | null): Panel | undefined {
   return PANELS.find((panel) => panel.id === id);
+}
+
+/** The portal plugins a panel needs, loaded; none for a panel that needs none. */
+export async function loadPlugins(panel: Panel): Promise<readonly PortalPlugin[]> {
+  return "plugins" in panel ? panel.plugins() : [];
 }

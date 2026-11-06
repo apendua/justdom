@@ -358,78 +358,72 @@ const CONTROLLER = { x: 0.05, y: 1.4, z: -0.05 };
  * moves a control moves the aim with it. The session's `local` space starts
  * where the head was when it began, which is where the emulator's head
  * still is, so the head's position is what turns one space into the other.
- * A test that aims at a control should still assert that the control took
- * the hover before it trusts the photograph.
+ *
+ * A panel that is not atomic is still being brought into the scene, a
+ * budget's worth per frame, after `show` has resolved, and its controls are
+ * not where the ray points until it is done. Its container is marked
+ * `data-xr-busy` until then, as `photographScene` also waits for, so the aim
+ * is taken once that mark has gone. A test that aims at a control should
+ * still assert that the control took the hover before it trusts the
+ * photograph.
  *
  * @param {Page} page
  * @param {string} selector
  * @returns {Promise<void>}
  */
 export async function aimAt(page, selector) {
-  // A panel that has just gone on show is drawn before the scene answers a
-  // ray on it, and how many frames that takes depends on the machine. So the
-  // aim is taken again, from where the element is drawn now, until the
-  // element takes the hover or the attempts run out; the caller's own check
-  // of the hover is what fails then.
-  for (let attempt = 0; attempt < AIM_ATTEMPTS; attempt++) {
-    const found = await page.evaluate((selector) => {
-      const target = window.__showcase?.locate(selector);
-      const head = /** @type {any} */ (window).xrDevice.position;
-      return target ? { target, head: [head.x, head.y, head.z] } : null;
-    }, selector);
-    if (!found) {
-      throw new Error(`nothing on show matches ${selector}`);
-    }
-    const { target, head } = found;
-    const dx = target[0] + head[0] - CONTROLLER.x;
-    const dy = target[1] + head[1] - CONTROLLER.y;
-    const dz = target[2] + head[2] - CONTROLLER.z;
-    // Straight ahead is down -z; yaw turns to the left, pitch tips upwards.
-    const yaw = Math.atan2(-dx, -dz);
-    const pitch = Math.atan2(dy, Math.hypot(dx, dz));
-    await page.evaluate(([controller, y, p]) => {
-      const right = /** @type {any} */ (window).xrDevice.controllers.right;
-      right.position.x = controller.x;
-      right.position.y = controller.y;
-      right.position.z = controller.z;
-      const cy = Math.cos(y / 2);
-      const sy = Math.sin(y / 2);
-      const cx = Math.cos(p / 2);
-      const sx = Math.sin(p / 2);
-      right.quaternion.x = cy * sx;
-      right.quaternion.y = sy * cx;
-      right.quaternion.z = -sy * sx;
-      right.quaternion.w = cy * cx;
-    }, /** @type {const} */ ([CONTROLLER, yaw, pitch]));
-    await nextFrames(page, 10);
-    const hovered = await page.evaluate(
-      (selector) =>
-        !!document
-          .querySelector(`[data-panel="${window.__showcase?.current()}"]`)
-          ?.querySelector(selector)
-          ?.hasAttribute("data-xr-hover"),
-      selector,
-    );
-    if (hovered) {
-      return;
-    }
+  await page.waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
+    timeout: 30_000,
+  });
+  const found = await page.evaluate((selector) => {
+    const target = window.__showcase?.locate(selector);
+    const head = /** @type {any} */ (window).xrDevice.position;
+    return target ? { target, head: [head.x, head.y, head.z] } : null;
+  }, selector);
+  if (!found) {
+    throw new Error(`nothing on show matches ${selector}`);
   }
+  const { target, head } = found;
+  const dx = target[0] + head[0] - CONTROLLER.x;
+  const dy = target[1] + head[1] - CONTROLLER.y;
+  const dz = target[2] + head[2] - CONTROLLER.z;
+  // Straight ahead is down -z; yaw turns to the left, pitch tips upwards.
+  const yaw = Math.atan2(-dx, -dz);
+  const pitch = Math.atan2(dy, Math.hypot(dx, dz));
+  await page.evaluate(([controller, y, p]) => {
+    const right = /** @type {any} */ (window).xrDevice.controllers.right;
+    right.position.x = controller.x;
+    right.position.y = controller.y;
+    right.position.z = controller.z;
+    const cy = Math.cos(y / 2);
+    const sy = Math.sin(y / 2);
+    const cx = Math.cos(p / 2);
+    const sx = Math.sin(p / 2);
+    right.quaternion.x = cy * sx;
+    right.quaternion.y = sy * cx;
+    right.quaternion.z = -sy * sx;
+    right.quaternion.w = cy * cx;
+  }, /** @type {const} */ ([CONTROLLER, yaw, pitch]));
+  await nextFrames(page, 10);
 }
-
-/** How many times `aimAt` aims before it leaves the hover to the caller's check. */
-const AIM_ATTEMPTS = 30;
 
 /**
  * Put a panel on show, and wait until it is in the scene whole. Resolves
  * once its portal has mounted it and taken down the loading frame, which is
- * what `window.__showcase.show` waits for.
+ * what `window.__showcase.show` waits for. Throws when the page has no deck
+ * to drive, rather than going on with whatever panel is up.
  *
  * @param {Page} page
  * @param {string} id
  * @returns {Promise<void>}
  */
 export async function showPanel(page, id) {
-  await page.evaluate((id) => window.__showcase?.show(id), id);
+  await page.evaluate((id) => {
+    if (!window.__showcase) {
+      throw new Error("the showcase hands no window.__showcase to drive the deck by");
+    }
+    return window.__showcase.show(id);
+  }, id);
 }
 
 /**

@@ -14,8 +14,8 @@ import { Signal, effects, effectsOnly, onCleanup, useEffects } from "justdom-sig
 
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
 import { CARD_HEIGHT } from "./panels.js";
-import { PANELS, findPanel, type PanelEntry, type PanelId } from "./registry.js";
-import Switcher, { SWITCHER_HEIGHT } from "./Switcher.js";
+import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
+import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
 
 /**
  * What a script driving the deck can do: the visual suite, mostly, which
@@ -27,12 +27,19 @@ export interface ShowcaseControls {
   /** The panel on show. */
   current(): PanelId;
   /**
-   * Put a panel on show, loading the plugins it needs first. Resolves once it
-   * is in the scene whole: its portal has mounted it and taken down the
-   * loading frame. Rejects for a panel whose plugins failed to load, and
-   * leaves the panel that was on show where it is.
+   * Put a panel on show, loading the plugins it needs first. Resolves once
+   * its portal has mounted it and taken down the loading frame. A panel that
+   * is not atomic may still be bringing that mount into the scene a budget's
+   * worth per frame, with its container marked `data-xr-busy`, so a script
+   * that aims at a control waits for that mark to go as well.
+   *
+   * The last call wins. A call that a later one overtakes while it loads
+   * plugins never puts its panel on show, and it resolves, as does one whose
+   * panel was put on show and then replaced before it was whole. Rejects for
+   * an id the deck does not have, and for a panel whose plugins failed to
+   * load, which leaves the panel on show where it is.
    */
-  show(id: PanelId): Promise<void>;
+  show(id: string): Promise<void>;
   /**
    * Where in the room the middle of the first element on show that matches
    * `selector` is drawn, in the session's reference space, or null when no
@@ -69,7 +76,10 @@ export interface SceneOptions {
   onShow?: (id: PanelId) => void;
 }
 
-/** The portal's own scale, CSS px to the units of the object it is mounted on. */
+/**
+ * The portal's own scale, CSS px to the units of the object it is mounted on,
+ * for placing the switcher under the card and for `locate`.
+ */
 const PANEL_SCALE = 0.01;
 
 /** The gap between the card and the switcher's bar, in px. */
@@ -118,14 +128,24 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     const plugins = new Map<PanelId, readonly PortalPlugin[]>([[initial, initialPlugins]]);
     /** The object the panel on show is mounted on, for `locate`. */
     let shown: THREE.Object3D | undefined;
+    /** How many times `show` has been called, so a call can tell it was overtaken. */
+    let requests = 0;
 
-    const show = async (id: PanelId) => {
-      const entry = findPanel(id);
+    const show = async (asked: string) => {
+      const request = ++requests;
+      const entry = findPanel(asked);
       if (!entry) {
-        throw new Error(`The deck has no panel called "${id}".`);
+        throw new Error(`The deck has no panel called "${asked}".`);
       }
+      const { id } = entry;
       if (!plugins.has(id)) {
-        plugins.set(id, (await entry.plugins?.()) ?? []);
+        const loaded = await loadPlugins(entry);
+        plugins.set(id, loaded);
+        // A later call has been made while these loaded: it decides what is
+        // on show, and this one is done.
+        if (request !== requests) {
+          return;
+        }
       }
       current.set(id);
       onShow?.(id);
@@ -165,8 +185,8 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     };
 
     /** One panel, mounted with its plugins and tagged with its id. */
-    const panel = (entry: PanelEntry) => {
-      const given = plugins.get(entry.id as PanelId) ?? [];
+    const panel = (entry: Panel) => {
+      const given = plugins.get(entry.id) ?? [];
       const panelCtx = given.length ? PortalPluginsContext.set(ctx, given) : ctx;
       return dom(
         panelCtx,
@@ -181,13 +201,17 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
             });
           }),
         ],
-        { atomic: entry.atomic ?? true },
+        { atomic: "atomic" in entry ? entry.atomic : true },
       );
     };
 
     // The switcher's centre, in the units its group is in: the card's
     // bottom edge, the gap, then half the switcher's own height.
     const switcherY = -(CARD_HEIGHT / 2 + GAP + SWITCHER_HEIGHT / 2) * PANEL_SCALE;
+    // How far up the group goes, in metres, so that the card and the bar
+    // under it are centred on the eye line together: the card alone is
+    // centred on the group's origin, and the gap and the bar hang below it.
+    const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
     useEffects(getScene(ctx), [
       effects(() => {
@@ -205,12 +229,12 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
             o.scale.set(scale, scale, scale);
             // The XR button asks for a `local` reference space: the head sits at
             // the origin, so straight ahead is y = 0.
-            o.position.set(0, 0.034, -0.45);
+            o.position.set(0, lift, -0.45);
           }),
           children(
             list(
               () => [current.get()],
-              (id) => panel(findPanel(id) ?? PANELS[0]),
+              (id) => panel(findPanel(id)),
             ),
             dom(
               ctx,

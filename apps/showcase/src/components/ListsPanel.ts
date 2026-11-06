@@ -30,7 +30,7 @@ const MORE_STEPS = ["See it numbered", "Press once more"];
 
 const listStyle = className`
   margin: 0;
-  padding-left: 1.8rem;
+  padding-left: 29px;
   font-size: 15px;
   line-height: 1.5;
 `;

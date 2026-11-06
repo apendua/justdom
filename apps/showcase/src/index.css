@@ -8,7 +8,10 @@ body {
 /*
  * Prev and Next, either side of the XR button and drawn the way it is: the
  * same height, border, tint and type, so the three read as one row. The XR
- * button is 100px wide and centred, and these keep 12px clear of it.
+ * button is centred, and these keep 12px clear of it. Its width depends on
+ * what it says, 100px for a session to start and more for "AR NOT
+ * SUPPORTED" and the like, and `main.ts` writes it into
+ * `--xr-button-width`.
  */
 .deck-step {
   position: absolute;
@@ -31,7 +34,6 @@ body {
   opacity: 1;
 }
 
-/* `--xr-button-width` is the XR button's own, which `main.ts` writes. */
 .deck-step-prev {
   left: calc(50% - var(--xr-button-width, 100px) / 2 - 12px - 80px);
 }

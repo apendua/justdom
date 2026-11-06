@@ -7,12 +7,13 @@ import { createServer } from "vite";
 /**
  * Driving the showcase the way a headset would, from a script.
  *
- * The scene only exists inside an immersive session — outside one there is no
- * frame loop, no views and nothing on the canvas — so a test that wants to
- * look at it has to enter one. IWER is what makes that possible without a
- * headset: it installs a `navigator.xr` that answers like a Quest 3 and draws
- * the session's views into the ordinary page canvas, which is a thing a
- * browser can be asked to photograph.
+ * Outside a session the page draws the scene through its own camera, which
+ * is what a phone or a desktop browser shows. What a headset shows, with
+ * its own projection, controllers to point with and the baselines taken
+ * through it, needs an immersive session. IWER is what makes that possible
+ * without a headset: it installs a `navigator.xr` that answers like a Quest
+ * 3 and draws the session's views into the ordinary page canvas, which is a
+ * thing a browser can be asked to photograph.
  *
  * @import {Browser, Page} from 'playwright-core';
  */

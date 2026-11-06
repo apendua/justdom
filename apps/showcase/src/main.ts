@@ -118,9 +118,8 @@ Promise.resolve(
           vr: { optionalFeatures: ["hand-tracking"] },
         }).then((button) => {
           // The steps stand either side of the XR button, whose width
-          // depends on what it says: 100px for a session to start, more for
-          // "AR NOT SUPPORTED" and the like.
-          root.style.setProperty("--xr-button-width", button.style.width || "100px");
+          // depends on what it says (see `.deck-step` in `index.css`).
+          root.style.setProperty("--xr-button-width", button.style.width);
           // With every panel on show there is nothing to step through.
           root.replaceChildren(
             renderer.domElement,

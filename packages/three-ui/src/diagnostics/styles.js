@@ -17,7 +17,7 @@ import { stylesheet, CLASS_NAME } from "justdom-core";
  * is rasterized at the pixel size the stylesheet asks for, so the larger
  * source is what keeps a 9 mm-tall reading from being a blur. See `UI_SCALE`.
  */
-export const CARD_WIDTH = 300;
+export const HUD_WIDTH = 300;
 
 /**
  * Panel px to metres, on top of the hundredth the portal already applies. The
@@ -38,7 +38,7 @@ const FONT_STACK = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 export const hudCard = stylesheet`
   .${CLASS_NAME} {
     font-family: ${FONT_STACK};
-    width: ${CARD_WIDTH}px;
+    width: ${HUD_WIDTH}px;
     box-sizing: border-box;
     padding: 14px 16px 12px;
     border: 2px solid rgba(255, 255, 255, 0.22);

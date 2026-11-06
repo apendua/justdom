@@ -1,5 +1,6 @@
 /**
- * The frame rate readout, tied to the head rather than to the room.
+ * The frame rate readout, in the session rather than on the page: tied to the
+ * head, or hung in the room where a scene has a better place for it.
  *
  * Every app here already had a `stats.js` panel pinned to the corner of the
  * page, which is exactly the wrong place for it: the moment the headset takes
@@ -47,13 +48,14 @@ import { HEAD_LOCKED, Panel } from "./panel.js";
  */
 
 /**
+ * Somewhere other than the camera to hang the panel. Left out, the panel is a
+ * HUD, up and to the left, a metre out, which is right for the camera and for
+ * nothing else, so a carrier always comes with a placement.
+ *
  * @typedef {object} UseDiagnosticsOptions
- * @property {import("three").Object3D} [carrier] What the panel hangs from:
- *   the camera, which makes it a HUD, unless a scene has a better place for
- *   it in the room, such as beside a card the HUD would cover.
- * @property {DiagnosticsPlacement} [placement] Where on the carrier. Up and to
- *   the left, a metre out, when it is left out, which is right for the camera
- *   and for nothing else.
+ * @property {import("three").Object3D} carrier What the panel hangs from,
+ *   such as a group beside a card the HUD would cover.
+ * @property {DiagnosticsPlacement} placement Where on the carrier.
  */
 
 /**
@@ -112,7 +114,7 @@ export function createDiagnostics({ visible: initial = true } = {}) {
  * @param {UseDiagnosticsOptions} [options]
  * @returns {void}
  */
-export function useDiagnostics(ctx, controls, { carrier, placement = HEAD_LOCKED } = {}) {
+export function useDiagnostics(ctx, controls, options) {
   const meter = createFrameMeter({
     onReadout: (fps) => {
       controls.fps.set(fps);
@@ -138,7 +140,9 @@ export function useDiagnostics(ctx, controls, { carrier, placement = HEAD_LOCKED
       if (!controls.visible.get()) {
         return;
       }
-      useEffects(carrier ?? getCamera(ctx), [children(Panel(ctx, controls, placement))]);
+      useEffects(options?.carrier ?? getCamera(ctx), [
+        children(Panel(ctx, controls, options?.placement ?? HEAD_LOCKED)),
+      ]);
     },
     { name: "diagnostics" },
   );

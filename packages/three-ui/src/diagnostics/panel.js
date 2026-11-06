@@ -188,9 +188,9 @@ function chartBar(controls, index) {
  * on it as `placement` says: the camera, by default; see `useDiagnostics`.
  *
  * It is projected through a portal that lets rays through. Nothing on it can be
- * pressed, and it sits between the player and the whole scene: a panel that
- * stopped rays here would be a pane of glass the player's own pointer kept
- * landing on, a foot in front of the game.
+ * pressed, and as a HUD it sits between the player and the whole scene: a
+ * panel that stopped rays there would be a pane of glass the player's own
+ * pointer kept landing on, a foot in front of the game.
  *
  * @type {(
  *   ctx: WeakKey,

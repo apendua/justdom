@@ -14,7 +14,12 @@ import {
 import { $ as $dom, attr, children as domChildren } from "justdom-core";
 import { Signal, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 
-import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
+import {
+  createDiagnostics,
+  HUD_WIDTH,
+  useDiagnostics,
+  type DiagnosticsControls,
+} from "justdom-three-ui";
 import { CARD_HEIGHT, CARD_WIDTH } from "./panels.js";
 import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
 import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
@@ -118,7 +123,6 @@ const GAP = 16;
  * is `HUD_WIDTH` px wide at a scale of 1.
  */
 const READOUT_WIDTH = 88;
-const HUD_WIDTH = 300;
 
 /**
  * The grid `?panel=all` lays every panel out in: its columns, the gap
@@ -360,15 +364,15 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
     // centred on the group's origin, and the gap and the bar hang below it.
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
-    // Where the readout hangs, in the room: under the card's left edge, a
-    // millimetre in front of it. An object of the scene's own, so that the
-    // readout coming and going adds to it and leaves the scene's children,
-    // the deck among them, alone.
+    // Where the readout hangs: under the card's left edge, beside the bar,
+    // in the deck's group, so that it goes wherever the deck does. An object
+    // of the deck's own, so that the readout coming and going adds to it and
+    // leaves the group's other children alone.
     const readoutAnchor = new THREE.Group();
     readoutAnchor.position.set(
-      -(CARD_WIDTH / 2 - READOUT_WIDTH / 2) * PANEL_SCALE * scale,
-      lift - (CARD_HEIGHT / 2 + GAP + BAR_HEIGHT / 2) * PANEL_SCALE * scale,
-      -DECK_DISTANCE + 0.001,
+      -(CARD_WIDTH / 2 - READOUT_WIDTH / 2) * PANEL_SCALE,
+      -(CARD_HEIGHT / 2 + GAP + BAR_HEIGHT / 2) * PANEL_SCALE,
+      0,
     );
 
     useEffects(getScene(ctx), [
@@ -385,16 +389,14 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
                 placement: {
                   position: new THREE.Vector3(),
                   rotation: new THREE.Euler(),
-                  // Both portals draw a px at PANEL_SCALE: the readout's in
-                  // the room's units, the card's in the group's, which are
-                  // `scale` of them.
-                  scale: (READOUT_WIDTH / HUD_WIDTH) * scale,
+                  // Both portals draw a px at PANEL_SCALE, in the group's
+                  // units.
+                  scale: READOUT_WIDTH / HUD_WIDTH,
                 },
               },
         );
       }),
       children(
-        $(readoutAnchor),
         $(new THREE.AmbientLight(0xffffff, 2)),
         $(new THREE.PointLight(0xffffff, 60, 8), [
           effects((o) => {
@@ -417,6 +419,7 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
             ...(everything
               ? []
               : [
+                  $(readoutAnchor),
                   dom(
                     ctx,
                     Switcher({

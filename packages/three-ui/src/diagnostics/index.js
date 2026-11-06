@@ -1,5 +1,6 @@
 export { createDiagnostics, useDiagnostics } from "./diagnostics.js";
 export { diagnosticsButton } from "./button.js";
+export { HUD_WIDTH } from "./styles.js";
 export {
   chartCeiling,
   createFrameMeter,

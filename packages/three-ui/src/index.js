@@ -7,6 +7,7 @@ export {
   createDiagnostics,
   createFrameMeter,
   diagnosticsButton,
+  HUD_WIDTH,
   READOUT_MS,
   SAMPLE_COUNT,
   SAMPLE_MS,

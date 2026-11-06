@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { drawOnTop, HEAD_LOCKED, placePanel } from "./panel.js";
+import { createDiagnostics, useDiagnostics } from "./diagnostics.js";
 
 describe("the diagnostics panel's draw on top", () => {
   test("stops depth testing what draws colour and leaves what writes only depth", () => {
@@ -34,6 +35,16 @@ describe("where the diagnostics panel hangs", () => {
     });
     assert.deepEqual(obj.position.toArray(), [-0.25, -0.3, -0.45]);
     assert.deepEqual(obj.scale.toArray(), [0.03, 0.03, 0.03]);
+  });
+
+  test("a carrier comes with a placement, by type", () => {
+    // Never run: what is checked is that `tsc` refuses the call. A carrier
+    // without a placement would put the panel at the HUD's place on it.
+    const refused = () => {
+      // @ts-expect-error a carrier needs a placement
+      useDiagnostics({}, createDiagnostics(), { carrier: new THREE.Object3D() });
+    };
+    assert.equal(typeof refused, "function");
   });
 
   test("the default is the HUD: up and to the left of the eye, a metre out", () => {

@@ -218,8 +218,9 @@ called, and the surrounding computation owns the meter and the panel both.
 
 `useDiagnostics(ctx, controls, { carrier, placement })` hangs the panel somewhere else: on
 `carrier`, an object of the scene's, at `placement`'s `position`, `rotation` and `scale` in the
-carrier's units. A scene whose content fills the view where the HUD would sit puts it in the room
-instead. The showcase hangs it beside its switcher, since head-locked it lands on the card.
+carrier's units. The two come together: a carrier without a placement does not type-check. A scene
+whose content fills the view where the HUD would sit puts it in the room instead. The showcase hangs
+it beside its switcher, since head-locked it lands on the card.
 
 `createDiagnostics(options?)` returns the controls; `{ visible: false }` starts the panel hidden.
 

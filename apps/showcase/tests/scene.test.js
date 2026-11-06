@@ -76,9 +76,10 @@ const UNDERLINE = /** @type {[number, number, number]} */ ([214, 48, 160]);
 
 /**
  * The teal the SVG panel's pipeline nodes are filled with, and the cache's
- * outline and port, and nothing on that panel's photograph besides: SVG shapes are drawn through a plugin with a path
- * of its own — parsed geometry, triangulated fills, stroked outlines — and
- * none of the unit suite can see whether any of it appears.
+ * outline, port and pulse, and nothing on that panel's photograph besides:
+ * SVG shapes are drawn through a plugin with a path of its own — parsed
+ * geometry, triangulated fills, stroked outlines — and none of the unit
+ * suite can see whether any of it appears.
  */
 const NODE_COLOR = /** @type {[number, number, number]} */ ([0, 168, 150]);
 
@@ -364,8 +365,11 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     await nextFrames(showcase.page, 10);
     const bare = await photographScene(showcase.page, { freeze: true });
     const whole = countNear(bare, CLIPPED_COLOR);
-    // The two spikes are each about forty units of line above the plot,
-    // against some six hundred inside it.
+    // The plot's clip cuts about 230 units of line off the two spikes,
+    // against some 470 inside it, but the board's own overflow still clips
+    // at its top edge whether or not the plot does. Taking the clip-path off
+    // brings back only the stretch between the plot's top and the board's,
+    // about 65 units, or some 9% more orange: that is the margin here.
     assert.ok(
       whole > clipped * 1.05,
       `expected more than ${clipped} orange pixels with the clip taken off, found ${whole}`,

@@ -23,8 +23,9 @@ import { svg, svgText } from "./svgTree.js";
  *
  * Everything is styled through classes and a stylesheet rather than
  * presentation attributes, because computed style is what the plugin reads.
- * The teal of the nodes and the orange of the chart's line are used nowhere
- * else on the panel, so the visual suite can count them.
+ * The teal is the pipeline's, on its nodes, the cache's outline and icon,
+ * its port and its pulse, and the orange is the chart line's; nothing else
+ * on the panel wears either, so the visual suite can count them.
  */
 
 /** The nodes' fill: the colour the visual suite looks for. */

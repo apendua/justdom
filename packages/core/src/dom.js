@@ -1,4 +1,4 @@
-import { each, just, map, observable, Stream, use } from "justdom-signal";
+import { each, just, observable, onCleanup, Stream, use, withComputation } from "justdom-signal";
 import ListRenderer from "./ListRenderer.js";
 import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
@@ -31,7 +31,7 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
  * @returns {Source<Mountable>}
  */
 export function $(tag, effects = []) {
-  return map(toMountable)(
+  return asMountable(
     just(
       () =>
         /** @type {HTMLElementTagNameMap[Tag]} */ (
@@ -49,7 +49,7 @@ export function $(tag, effects = []) {
  * @returns {Source<Mountable>}
  */
 export function $$(tag, effects = []) {
-  return map(toMountable)(
+  return asMountable(
     just(
       () =>
         /** @type {SVGElementTagNameMap[Tag]} */ (
@@ -163,26 +163,31 @@ const renderer = new ListRenderer({
  * @returns {EntityEffect<T>}
  */
 export function children(...children) {
-  // Held, not chosen. The renderer emits a new mountable whenever the list
-  // changes, and it is `onEachValue` inside that stream — not this holder —
-  // that drops the previous segment before the next one claims it. So the
-  // holder has no ordering to contribute: one dependency edge is the whole of
-  // it.
-  return (node) => {
+  // Held, not chosen: the fragment emits its mountable once, when it has
+  // built it, and its children replace their own segments from then on. So
+  // the holder has no ordering to contribute, and a plain subscription is the
+  // whole of it. Not `use`, whose edge would put three more streams around
+  // it for every element with children. Its failure goes where `use` would
+  // have sent it, the mounting's own channel.
+  return (node, { fail }) => {
     if (isHydrating()) {
       use(hydrateFragment(node, children));
       return;
     }
-    use(
-      each(renderer.renderFragment(children), (mountable) => {
-        if (!node.firstChild || !node.lastChild) {
-          const placeholder = node.appendChild(document.createComment(""));
-          mountable.replace([placeholder, placeholder]);
-        } else {
-          mountable.replace([node.firstChild, node.lastChild]);
-        }
+    const subscription = withComputation(null, () =>
+      renderer.renderFragment(children).subscribe({
+        next: (mountable) => {
+          if (!node.firstChild || !node.lastChild) {
+            const placeholder = node.appendChild(document.createComment(""));
+            mountable.replace([placeholder, placeholder]);
+          } else {
+            mountable.replace([node.firstChild, node.lastChild]);
+          }
+        },
+        error: fail,
       }),
     );
+    onCleanup(() => subscription.unsubscribe());
   };
 }
 
@@ -281,6 +286,26 @@ export function keyedList(items, renderItem) {
     items,
     (item) => item[0],
     (item, index) => renderItem(item[1], item[0], index),
+  );
+}
+
+/**
+ * An element's stream, emitting the element as something to mount.
+ *
+ * A plain relay rather than `map(toMountable)`: `map` runs its function in an
+ * `observable` so that what it reads is tracked, which costs a `Derived` and
+ * an `Effect` per element, and `toMountable` reads nothing.
+ *
+ * @param {Subscribable<Node>} source
+ * @returns {Source<Mountable>}
+ */
+function asMountable(source) {
+  return new Stream((subscriber) =>
+    source.subscribe({
+      next: (node) => subscriber.next(toMountable(node)),
+      error: (err) => subscriber.error(err),
+      complete: () => subscriber.complete(),
+    }),
   );
 }
 

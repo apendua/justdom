@@ -1,4 +1,7 @@
-import { Derived, each, effects, set, on, use, useEffect } from "justdom-signal";
+import { each, effects, set, on, use, useEffect } from "justdom-signal";
+
+/** What a getter `write` has applied before its first run: nothing it can return. */
+const UNAPPLIED = Symbol("unapplied");
 
 /**
  * @import { EntityEffect, Subscribable } from 'justdom-signal';
@@ -15,15 +18,15 @@ export { set, on };
  * `set` in the core already does and what the operators below used to paper
  * over by turning every getter into an observable first.
  *
- * A **getter** is a derivation, and wants nothing else: a `Derived` in front
- * of the write for its equality cutoff — a recomputation landing on the value
- * already written writes nothing — and an `Effect` to do the writing. No
- * stream anywhere. What it replaced was `observable(fn)` held through an
+ * A **getter** wants one `Effect` that reads it and does the writing, and
+ * keeps the last value written for an equality cutoff: a recomputation
+ * landing on the value already written writes nothing. No stream anywhere,
+ * and no `Derived`, which would cost a node and an edge per mounting for that
+ * one comparison. What it replaced was `observable(fn)` held through an
  * operator that re-chose it every run: a `Derived`, an `Effect` to push its
  * values, a `Stream` to run the write, another `Derived` to choose that
  * stream and another `Effect` to hold it — five pieces to assign an
- * attribute, and the `Derived` at the bottom of the stack was doing the only
- * work.
+ * attribute.
  *
  * An **observable** is a foreign source. It has to be subscribed rather than
  * read, and it can fail — but nothing is *chosen* here, so `use` says it: one
@@ -40,16 +43,26 @@ function write(value, apply) {
   if (typeof value === "function") {
     const getValue = value;
     return (entity, { fail }) => {
-      const source = new Derived(() => getValue());
+      // The last value applied, for an equality cutoff: a recomputation that
+      // lands on the value already applied applies nothing. Held here rather
+      // than in a `Derived`, which would cost a node and an edge per mounting
+      // for the same comparison.
+      /** @type {unknown} */
+      let applied = UNAPPLIED;
       // `onError` because a getter can start throwing on a later run, and an
       // effect with nowhere to put that throws it from the scheduler's flush
       // instead — where nobody is waiting for it. `fail` is the mounting's own
       // channel, which is where the observable branch below already lands.
+      // Standalone, because `fail` is already where its failures go.
       useEffect(
         () => {
-          apply(entity, source.get());
+          const next = getValue();
+          if (!Object.is(next, applied)) {
+            applied = next;
+            apply(entity, next);
+          }
         },
-        { name: "write", onError: fail },
+        { name: "write", onError: fail, standalone: true },
       );
     };
   }

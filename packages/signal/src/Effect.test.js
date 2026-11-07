@@ -1286,4 +1286,46 @@ describe("Effect", () => {
       );
     });
   });
+
+  describe("isInert()", () => {
+    it("is inert once it has run, read nothing and registered nothing", () => {
+      const effect = new Effect(() => {});
+      assert.strictEqual(effect.isInert(), true);
+    });
+
+    it("is not inert while it reads something that could run it again", () => {
+      const source = Signal.of(0);
+      const effect = new Effect(() => {
+        source.get();
+      });
+      assert.strictEqual(effect.isInert(), false);
+      effect.dispose();
+    });
+
+    it("is not inert while it owes a teardown", () => {
+      const returned = new Effect(() => () => {});
+      assert.strictEqual(returned.isInert(), false, "a returned teardown");
+      const registered = new Effect(() => {
+        onCleanup(() => {});
+      });
+      assert.strictEqual(registered.isInert(), false, "a registered one");
+      const nested = new Effect(() => {
+        useEffect(() => {});
+      });
+      assert.strictEqual(nested.isInert(), false, "an effect it built");
+      returned.dispose();
+      registered.dispose();
+      nested.dispose();
+    });
+
+    it("is not inert before its first run", () => {
+      // Inside a batch, so the deferred run waits for the batch to end.
+      const effect = batch(() => {
+        const deferred = new Effect(() => {}, { deferred: true });
+        assert.strictEqual(deferred.isInert(), false);
+        return deferred;
+      });
+      assert.strictEqual(effect.isInert(), true, "and is once it has run");
+    });
+  });
 });

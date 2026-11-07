@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium } from "playwright-core";
+import { chromium, errors } from "playwright-core";
 import { serve } from "vitepress";
 import { castle } from "../../apps/castle/tests/castle.mjs";
 import { clickButton, frames, hideFurniture, pose } from "../../apps/castle/tests/emulator.mjs";
@@ -337,12 +337,14 @@ async function save(page, png, file) {
  * clip rests on where the demo ends up before it loops. Chromium sends a frame
  * each time the page composites, changed or not, stamped with when it was
  * drawn; `encode` shows a frame until the next one that differs from it, and
- * the last until the end.
+ * the last until the end. The stretches `deck` put in `cuts` while `act` ran
+ * are taken out: their frames are dropped, and every frame after one is
+ * stamped earlier by its length.
  *
  * @param {import("playwright-core").Page} page
  * @param {() => Promise<void>} act
  * @returns {Promise<{ data: Buffer, time: number }[]>} JPEG frames, with
- *   their times in seconds
+ *   their times in seconds, less the cuts before them
  */
 async function record(page, act) {
   const cdp = await page.context().newCDPSession(page);
@@ -656,7 +658,11 @@ async function deck(page, id) {
       .waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
         timeout: DECK_BUILD,
       })
-      .catch(() => {});
+      .catch((error) => {
+        // Past the cap the panel is drawn and only animating; anything
+        // else is a failure of its own.
+        if (!(error instanceof errors.TimeoutError)) throw error;
+      });
     // The scene draws the mount a few frames after the page has it.
     await frames(page, 15);
   } finally {

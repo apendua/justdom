@@ -31,3 +31,12 @@ test("each stretch moves the frames after it back by its own length", () => {
 test("with no stretches the frames come back as they were", () => {
   assert.deepEqual(cut(at(0, 1, 2), []), at(0, 1, 2));
 });
+
+test("a frame at a stretch's start is kept, and one at its end lands on its start", () => {
+  assert.deepEqual(cut(at(0, 1, 3, 4), [[1, 3]]), [
+    { time: 0, data: 0 },
+    { time: 1, data: 1 },
+    { time: 1, data: 3 },
+    { time: 2, data: 4 },
+  ]);
+});

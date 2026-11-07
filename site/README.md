@@ -59,10 +59,12 @@ right yet; `setups` in `scripts/screenshots.mjs` says what it gets wrong. In the
 presses an app's controls through their DOM, which the panels mirror, so no controller ray shows in
 a clip. The head sways slowly from side to side while it records, except in Castle, where it aims
 the slingshot, and eases back to where it started before the clip ends, so that the loop does not
-jump. While it sways, a wait for the panels to redraw is cut short in the clip. It also takes the
-todo app on a page and in an emulated headset for the guide. Run it by hand when a demo changes how
-it looks or behaves, after `rush build --to justdom-site`. With app folder names after `--` it
-records only those, and `guide` names the guide's two.
+jump. While it sways, a wait for the panels to redraw is cut short in the clip. In both showcase
+clips, the wait for each panel to load and build up is cut out altogether, so the clip goes from one
+whole panel to the next. It also takes the todo app on a page and in an emulated headset for the
+guide. Run it by hand when a demo changes how it looks or behaves, after
+`rush build --to justdom-site`. With app folder names after `--` it records only those, and `guide`
+names the guide's two.
 
 The clips are H.264 MP4, 960 pixels wide, encoded by `ffmpeg`, which has to be on the `PATH` and
 built with libx264 (the Debian and Ubuntu packages are). Each plays muted and loops in a `<video>`

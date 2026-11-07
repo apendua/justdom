@@ -7,8 +7,8 @@ name: Benchmarks
 # of runner time, and a stack of pull requests takes many pushes. Adding the
 # `bench` label to a pull request starts one run, and the run takes the label
 # off again when it ends, so adding it again is how to run it again. Only
-# someone with triage or write access can add a label, which is what keeps a pull
-# request from a fork from starting one.
+# someone with triage or write access can add a label, which is what keeps a
+# pull request from a fork from starting one.
 #
 # Always against develop, never against the pull request's own base: in a
 # stack, the base is the pull request below, and the question worth an hour

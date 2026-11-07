@@ -1,6 +1,21 @@
 # Change Log - justdom-three
 
-This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+This log was last generated on Sat, 07 Nov 2026 07:40:17 GMT and should not be manually modified.
+
+## 0.33.0
+Sat, 07 Nov 2026 07:40:17 GMT
+
+### Minor changes
+
+- Add canDrawHtmlInCanvas and htmlTextureMaterial, for a scene that shows an element the browser draws with HTML-in-Canvas
+
+### Patches
+
+- A picture with a border no longer shows a light line between the two
+- A repeated background picture no longer draws a line of its average colour along the seams between its tiles
+- Read an SVG element's transform attribute where the computed style leaves it out, as WebKit's does
+- Lay out the XR button's no-WebXR link border-box, so it is as wide as its width says
+- A border-radius on an <svg> root that hides its overflow now rounds the corners its shapes are clipped to, as the browser does
 
 ## 0.32.0
 Thu, 05 Nov 2026 23:28:58 GMT

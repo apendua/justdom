@@ -7,7 +7,7 @@ name: Benchmarks
 # of runner time, and a stack of pull requests takes many pushes. Adding the
 # `bench` label to a pull request starts one run, and the run takes the label
 # off again when it ends, so adding it again is how to run it again. Only
-# someone with write access can add a label, which is what keeps a pull
+# someone with triage or write access can add a label, which is what keeps a pull
 # request from a fork from starting one.
 #
 # Always against develop, never against the pull request's own base: in a
@@ -27,14 +27,16 @@ on:
         type: number
         default: 3
 
-# Adding the label again while a run is going restarts it on the newest head.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
-
 jobs:
   bench:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'bench'
+    # Adding the label again while a run is going restarts it on the newest
+    # head. On the job and not the workflow: every label starts a run, and a
+    # workflow-level group would let a run for any other label, whose job is
+    # skipped, cancel a bench in flight. A skipped job never joins this one.
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -81,11 +83,11 @@ jobs:
         run: git checkout --detach ${{ steps.sides.outputs.base }}
       - name: Rush install (develop)
         run: node common/scripts/install-run-rush.js install
-      - name: Install Chromium
+      - name: Install Chromium (develop)
         run: node packages/xr/node_modules/playwright-core/cli.js install --with-deps chromium
       # The draw bench launches through justdom-xr's driver, which takes the
       # browser from CHROMIUM, as in driven.yml.
-      - name: Point the draw bench at it
+      - name: Point the draw bench at it (develop)
         run: |
           echo "CHROMIUM=$(node --input-type=module -e "
             const { chromium } = await import('./packages/xr/node_modules/playwright-core/index.mjs');
@@ -102,6 +104,16 @@ jobs:
         run: git checkout --detach ${{ steps.sides.outputs.head }}
       - name: Rush install (pull request)
         run: node common/scripts/install-run-rush.js install
+      # Again, since the pull request may pin another playwright-core and so
+      # another browser build. Nothing to do when it pins the same one.
+      - name: Install Chromium (pull request)
+        run: node packages/xr/node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Point both benches at it (pull request)
+        run: |
+          echo "CHROMIUM=$(node --input-type=module -e "
+            const { chromium } = await import('./packages/xr/node_modules/playwright-core/index.mjs');
+            console.log(chromium.executablePath());
+          ")" >> "$GITHUB_ENV"
       - name: Count draw calls (pull request)
         id: draws-head
         continue-on-error: true
@@ -117,6 +129,9 @@ jobs:
         continue-on-error: true
         working-directory: apps/showcase
         env:
+          # One browser for both benches and both sides, named rather than
+          # left to whichever playwright-core run.js resolves.
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE: ${{ env.CHROMIUM }}
           SCENARIOS: ${{ inputs.scenarios }}
           REPEAT: ${{ inputs.repeat || 3 }}
         run: |
@@ -127,9 +142,12 @@ jobs:
           fi
           node bench/run.js "${args[@]}" | tee "$OUT/mirror.txt"
 
+      # From the pull request's checkout whichever step the job stopped at,
+      # since report.js is the pull request's own.
       - name: Write the report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.sides.outcome == 'success' }}
         run: |
+          git checkout --detach ${{ steps.sides.outputs.head }}
           node apps/showcase/bench/report.js \
             --mirror "$OUT/mirror.json" \
             --draws-base "$OUT/draws-develop.md" \

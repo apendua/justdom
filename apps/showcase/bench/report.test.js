@@ -1,19 +1,26 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareCounts, compareTimes, drawsSection, mirrorSection, parseTables } from "./report.js";
+import {
+  compareCounts,
+  compareTimes,
+  countsCell,
+  drawsSection,
+  mirrorSection,
+  parseTables,
+} from "./report.js";
 
 test("a count that every round agrees on and that did not move is not flagged", () => {
   assert.deepEqual(compareCounts([829, 829, 829], [829, 829, 829]), {
     base: "829",
     head: "829",
     verdict: "",
-    changed: false,
+    kind: "same",
   });
 });
 
 test("a count that moved is flagged with its delta", () => {
   const compared = compareCounts([829, 829, 829], [1658, 1658, 1658]);
-  assert.equal(compared.changed, true);
+  assert.equal(compared.kind, "changed");
   assert.equal(compared.verdict, "**+829**");
   assert.equal(compareCounts([10, 10, 10], [7.5, 7.5, 7.5]).verdict, "**-2.5**");
 });
@@ -22,6 +29,20 @@ test("a count that differs between rounds is shown as unsteady, not as a median"
   const compared = compareCounts([829, 829, 829], [829, 830, 829]);
   assert.equal(compared.head, "varies 829–830");
   assert.equal(compared.verdict, "**unsteady**");
+  assert.equal(compared.kind, "unsteady");
+});
+
+test("a count unsteady on both sides is unsteady, even when the spreads match", () => {
+  assert.equal(compareCounts([4.2, 6.4, 5], [4.2, 6.4, 5]).kind, "unsteady");
+});
+
+test("the summary keeps unsteady counts apart from changed ones", () => {
+  const steady = compareCounts([829, 829, 829], [829, 829, 829]);
+  const moved = compareCounts([829, 829, 829], [1658, 1658, 1658]);
+  const unsteady = compareCounts([829, 829, 829], [829, 830, 829]);
+  assert.equal(countsCell([steady, steady]), "same");
+  assert.equal(countsCell([steady, unsteady]), "1 unsteady");
+  assert.equal(countsCell([moved, unsteady, unsteady]), "**1 changed**, 2 unsteady");
 });
 
 test("times whose ranges overlap are no result", () => {
@@ -126,4 +147,14 @@ test("the mirror section reads the first side as this pull request, net of idle"
 
 test("two sides that mirrored different workloads are warned about", () => {
   assert.match(mirrorSection(mirror(830)), /825 elements on develop and 830 on this pull request/);
+});
+
+test("a scenario whose only moving count is unsteady is not called changed", () => {
+  const data = mirror(825);
+  // One head round reads one fewer rect: a count that varied, not a change.
+  data.sides[0].runs = [829, 828, 829].map((reads, i) => round(825, reads, 40 + i));
+  data.sides[1].runs = [60, 62, 64].map((gap) => round(825, 829, gap));
+  const section = mirrorSection(data);
+  assert.match(section, /\| `scroll` \| 1 unsteady \|/);
+  assert.doesNotMatch(section, /changed/);
 });

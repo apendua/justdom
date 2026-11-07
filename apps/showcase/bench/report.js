@@ -61,26 +61,44 @@ function countCell(values) {
 }
 
 /**
- * Two counts, and whether they moved: the line a reviewer reads first.
+ * Two counts, and what became of them: `same` and `changed` when every round
+ * of both sides agreed, and `unsteady` when any round disagreed with another,
+ * which says the count cannot tell a change from noise on this runner.
  *
  * @param {number[]} base
  * @param {number[]} head
- * @returns {{ base: string, head: string, verdict: string, changed: boolean }}
+ * @returns {{ base: string, head: string, verdict: string, kind: "same" | "changed" | "unsteady" }}
  */
 export function compareCounts(base, head) {
   const before = countCell(base);
   const after = countCell(head);
-  if (before === after) {
-    return { base: before, head: after, verdict: "", changed: false };
+  if (before.startsWith("varies") || after.startsWith("varies")) {
+    return { base: before, head: after, verdict: "**unsteady**", kind: "unsteady" };
   }
-  const steady = !before.startsWith("varies") && !after.startsWith("varies");
+  if (before === after) {
+    return { base: before, head: after, verdict: "", kind: "same" };
+  }
   const delta = median(head) - median(base);
   return {
     base: before,
     head: after,
-    verdict: steady ? `**${delta > 0 ? "+" : ""}${fixed(delta)}**` : "**unsteady**",
-    changed: true,
+    verdict: `**${delta > 0 ? "+" : ""}${fixed(delta)}**`,
+    kind: "changed",
   };
+}
+
+/**
+ * A scenario's counts in one cell of the summary, which says what the rows
+ * below it say: changed and unsteady counts apart, and `same` only when
+ * every count was steady and did not move.
+ *
+ * @param {{ kind: "same" | "changed" | "unsteady" }[]} compared
+ */
+export function countsCell(compared) {
+  const changed = compared.filter((c) => c.kind === "changed").length;
+  const unsteady = compared.filter((c) => c.kind === "unsteady").length;
+  const parts = [changed ? `**${changed} changed**` : "", unsteady ? `${unsteady} unsteady` : ""];
+  return parts.filter(Boolean).join(", ") || "same";
 }
 
 /**
@@ -176,7 +194,8 @@ export function mirrorSection(mirror) {
     }
 
     const lines = [];
-    let changed = 0;
+    /** @type {ReturnType<typeof compareCounts>[]} */
+    const counted = [];
     for (const key of COUNTERS) {
       const b = before.map((run) => run.counts[key] ?? 0);
       const h = after.map((run) => run.counts[key] ?? 0);
@@ -185,7 +204,7 @@ export function mirrorSection(mirror) {
         continue;
       }
       const compared = compareCounts(b, h);
-      changed += compared.changed ? 1 : 0;
+      counted.push(compared);
       lines.push(`| \`${key}\` | ${compared.base} | ${compared.head} | ${compared.verdict} |`);
     }
 
@@ -208,7 +227,7 @@ export function mirrorSection(mirror) {
 
     const per = scenario.bursts ? `per burst (${scenario.bursts})` : "per frame";
     summary.push(
-      `| \`${scenario.name}\` | ${changed ? `**${changed} changed**` : "same"} | ` +
+      `| \`${scenario.name}\` | ${countsCell(counted)} | ` +
         `${headline}: ${times[headline].base} → ${times[headline].head} | ` +
         `${times[headline].verdict} |`,
     );

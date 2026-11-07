@@ -84,3 +84,16 @@ with `CRASH_PANEL_ID`, `createUnsupportedButton(mode)` for a platform with no se
 `local`, which IWER leaves tilted when a session is entered with the head tipped.
 `suppressSessionOffers()` is for a page that mounts three's own buttons; `xr.js` says what hazard it
 closes.
+
+### Elements the browser draws
+
+Four helpers are for a scene that shows an element the browser draws itself, with
+[HTML-in-Canvas](/guide/html-in-canvas), beside or instead of a mirror. `canDrawHtmlInCanvas()` says
+whether the browser can: it needs both `texElementImage2D` on WebGL2 and `requestPaint` on the
+canvas, which Chromium has behind `chrome://flags/#canvas-draw-element`. `htmlTextureMaterial()` is
+the unlit, see-through material for three's `HTMLTexture`. three uploads that texture as RGBA8,
+which the GPU does not decode from sRGB, so a plain material shows every colour lighter than the
+page drew it; this one decodes it in the shader. `requestPaint(canvas)` asks the browser to paint
+what the canvas holds and fire `paint`, and `paintedElement(event, element)` says whether a `paint`
+event painted that element, so that a texture made from it has something to upload. The desk's
+texture mode and the showcase's `?panels=texture` both use them.

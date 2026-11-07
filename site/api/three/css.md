@@ -665,14 +665,18 @@ drawn; `<g>`, `<switch>` and an `<a>` outside a `<text>` group them. Followed:
   `stroke-dashoffset`; `opacity`, the group's included; `display`; `visibility`, on the shape's own
   meshes as on a box's quad, so a shape that says `visible` is drawn under a hidden `<g>`.
 - `transform` and `transform-origin` on every element in the chain, the `transform` _attribute_
-  included, since the browser computes it as the same property, and `transform-box: fill-box`.
-  Transforms are matrices: a shape's vertices stay in its own user space and each `<g>`, nested
-  `<svg>` and shape carries its own `transform` on its object, so a `transform` animated on a `<g>`
-  is a matrix write per frame.
+  included, and `transform-box: fill-box`. Chromium computes the attribute as the same property.
+  WebKit leaves it out of the computed value and draws an element with only the attribute by the
+  attribute as it is, about user space's origin, whatever `transform-origin` says, so there the
+  attribute is parsed and applied the same way. Transforms are matrices: a shape's vertices stay in
+  its own user space and each `<g>`, nested `<svg>` and shape carries its own `transform` on its
+  object, so a `transform` animated on a `<g>` is a matrix write per frame.
 - `viewBox` and `preserveAspectRatio`, with the viewport at the `<svg>`'s content box; a nested
   `<svg>` as a viewport, clipping what spills out of it unless its `overflow` is `visible` or
   `auto`. A `<symbol>`, an `<svg>` drawn by a `<use>` and a `<marker>` clip their content to their
-  viewports the same way.
+  viewports the same way. A `border-radius` on an `<svg>` root that hides its overflow rounds the
+  corners of that clip, as it rounds a box's. Its shapes and pictures are cut round; its text is
+  still cut square.
 - Geometry from the computed style where the browser exposes it as CSS (`cx`, `r`, `x`, `width`,
   `d`) and from the attribute otherwise, so a shape whose `d`, `points` or `fill` attribute is bound
   to data is redrawn when the data changes. A percentage in a shape's geometry is a share of the

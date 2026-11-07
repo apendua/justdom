@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Add canDrawHtmlInCanvas and htmlTextureMaterial, for a scene that shows an element the browser draws with HTML-in-Canvas",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

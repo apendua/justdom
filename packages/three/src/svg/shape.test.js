@@ -308,7 +308,7 @@ describe("svg shape", () => {
       fill: "red",
       // Written as the computed value Chromium reports for the attribute
       // `translate(20 5) scale(2)`: jsdom maps no presentation attribute
-      // into computed style, and the computed style is what is read.
+      // into computed style, and the computed style is read first.
       style: "transform: matrix(2, 0, 0, 2, 20, 5)",
     });
     assert.deepEqual(bounds(s.meshes[0]), { left: 0, top: 0, right: 10, bottom: 10 });
@@ -321,6 +321,39 @@ describe("svg shape", () => {
     assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 30, 5]);
     assert.equal(s.meshes[0].geometry, geometry, "a translation re-samples nothing");
     assert.deepEqual(rootBounds(s.meshes[0]), { left: 30, top: 5, right: 50, bottom: 25 });
+    s.teardown();
+  });
+
+  test("a transform attribute the computed style leaves out is read from the attribute", () => {
+    // WebKit's computed `transform` says `none` for an element whose only
+    // transform is the attribute, as jsdom's does, so there the attribute
+    // itself is what places the shape.
+    const s = setup("rect", {
+      x: "0",
+      y: "0",
+      width: "10",
+      height: "10",
+      fill: "red",
+      transform: "translate(20 5) scale(2)",
+    });
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 20, 5]);
+    assert.deepEqual(rootBounds(s.meshes[0]), { left: 20, top: 5, right: 40, bottom: 25 });
+
+    s.setAttribute("transform", "translate(30 5) scale(2)");
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 30, 5]);
+    s.teardown();
+  });
+
+  test("a transform attribute read from the attribute is applied about user space's origin", () => {
+    // As WebKit draws it: the attribute as it is, not about the viewBox's
+    // origin or a `transform-origin`, which only a CSS transform is
+    // applied about.
+    const s = setup(
+      "rect",
+      { x: "10", y: "10", width: "5", height: "5", fill: "red", transform: "scale(2)" },
+      { viewBox: "10 10 50 25" },
+    );
+    assert.deepEqual(matrix2d(s.object), [2, 0, 0, 2, 0, 0]);
     s.teardown();
   });
 
@@ -1696,6 +1729,23 @@ describe("svg shape as a ray target", () => {
 
     assert.deepEqual(hitsAt(content, 40, 30), [fill]);
     assert.deepEqual(hitsAt(content, 40, 55), [], "below the root's bottom edge");
+    s.teardown();
+  });
+
+  test("a border-radius on a root that hides its overflow rounds the clip's corners", () => {
+    // The browser cuts an `<svg>` root's picture to its rounded padding box,
+    // as it cuts any box that hides its overflow.
+    const s = setup("rect", SQUARE, { width: 100, height: 50 });
+    s.root.style.overflow = "hidden";
+    // Corner by corner, as the browser computes the shorthand: jsdom does
+    // not expand it.
+    for (const corner of ["top-left", "top-right", "bottom-right", "bottom-left"]) {
+      s.root.style.setProperty(`border-${corner}-radius`, "12px");
+    }
+    s.flush();
+    const [fill] = s.meshes;
+    const radii = /** @type {THREE.Vector4} */ (clipUniformsOf(fill).clipRadii.value);
+    assert.deepEqual(radii.toArray(), [12, 12, 12, 12]);
     s.teardown();
   });
 

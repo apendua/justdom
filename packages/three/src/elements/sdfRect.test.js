@@ -105,6 +105,38 @@ describe("the picture layer", () => {
     assert.equal(material.uniforms.uImage.value, null);
   });
 
+  test("a repeated picture picks its mipmap from the unwrapped coordinate", () => {
+    // Where the wrapped coordinate jumps from 1 back to 0 at a seam between
+    // two tiles, a sampler measuring it reads the smallest mipmap: a line of
+    // the picture's average colour along every seam.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /vec2 qdx = dFdx\(q\);/);
+    assert.match(fragmentShader, /vec2 dx = qdx \/ imageSize;/);
+    assert.match(fragmentShader, /vec2 dy = qdy \/ imageSize;/);
+    assert.match(fragmentShader, /textureGrad\(\s*uImage,/);
+    assert.doesNotMatch(fragmentShader, /texture2D\(uImage/);
+  });
+
+  test("a picture is whole up to the edge it is cut to, so its border leaves no seam", () => {
+    // The content box's edge is the border's inner edge, which the fill's
+    // coverage already fades. A picture faded across it as well leaves a
+    // quarter of the fragment there to the page behind.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /return 1\.0 - smoothstep\(0\.0, 2\.0 \* w, dist\);/);
+    assert.match(
+      fragmentShader,
+      /pictureCoverage\(q, bounds\) \* pictureCoverage\(q, uImageClip\)/,
+    );
+  });
+
+  test("a gradient that does not repeat is whole up to its tile's edge, as a picture is", () => {
+    const { fragmentShader } = createRectMaterial();
+    assert.match(
+      fragmentShader,
+      /return 1\.0 - smoothstep\(0\.0, 2\.0 \* w, abs\(q - start - 0\.5 \* size\) - 0\.5 \* size\);/,
+    );
+  });
+
   test("both rectangles land, and they are allowed to disagree", () => {
     const material = createRectMaterial();
     const texture = new THREE.Texture();

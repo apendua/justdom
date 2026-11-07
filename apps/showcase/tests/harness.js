@@ -7,12 +7,13 @@ import { createServer } from "vite";
 /**
  * Driving the showcase the way a headset would, from a script.
  *
- * The scene only exists inside an immersive session — outside one there is no
- * frame loop, no views and nothing on the canvas — so a test that wants to
- * look at it has to enter one. IWER is what makes that possible without a
- * headset: it installs a `navigator.xr` that answers like a Quest 3 and draws
- * the session's views into the ordinary page canvas, which is a thing a
- * browser can be asked to photograph.
+ * Outside a session the page draws the scene through its own camera, which
+ * is what a phone or a desktop browser shows. What a headset shows, with
+ * its own projection, controllers to point with and the baselines taken
+ * through it, needs an immersive session. IWER is what makes that possible
+ * without a headset: it installs a `navigator.xr` that answers like a Quest
+ * 3 and draws the session's views into the ordinary page canvas, which is a
+ * thing a browser can be asked to photograph.
  *
  * @import {Browser, Page} from 'playwright-core';
  */
@@ -95,9 +96,19 @@ async function serve() {
  *   over nothing from here.
  * @param {string} [options.query] More of the address's query, after
  *   `emulator=bare`, such as `panel=all`.
+ * @param {string[]} [options.args] More switches for Chromium, such as the
+ *   one that turns HTML-in-Canvas on for `?panels=texture`.
+ * @param {number} [options.deviceScaleFactor] Device px per CSS px. The
+ *   baselines are photographed at 1.
  * @returns {Promise<{ page: Page, browser: Browser, close: () => Promise<void> }>}
  */
-export async function openShowcase({ freeze = true, init, query } = {}) {
+export async function openShowcase({
+  freeze = true,
+  init,
+  query,
+  args = [],
+  deviceScaleFactor = 1,
+} = {}) {
   const server = await serve();
   const browser = await chromium.launch({
     executablePath: findChromium(),
@@ -111,13 +122,14 @@ export async function openShowcase({ freeze = true, init, query } = {}) {
       "--force-color-profile=srgb",
       "--disable-lcd-text",
       "--font-render-hinting=none",
+      ...args,
     ],
   });
   const page = await browser.newPage({
     // The dev server signs its own certificate.
     ignoreHTTPSErrors: true,
     viewport: VIEWPORT,
-    deviceScaleFactor: 1,
+    deviceScaleFactor,
   });
   if (process.env.DEBUG_PAGE === "1") {
     page.on("console", (message) => console.log("[page]", message.text().slice(0, 160)));
@@ -412,8 +424,9 @@ export async function aimAt(page, selector) {
 
 /**
  * Put a panel on show, and wait until it is in the scene whole. Resolves
- * once its portal has mounted it and taken down the loading frame, which is
- * what `window.__showcase.show` waits for. Throws when the page has no deck
+ * once its portal has mounted it and taken down the loading frame, or under
+ * `?panels=texture` once the browser has painted it, which is what
+ * `window.__showcase.show` waits for. Throws when the page has no deck
  * to drive, rather than going on with whatever panel is up.
  *
  * @param {Page} page

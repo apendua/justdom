@@ -7,8 +7,10 @@ import {
   followUserActions,
   getScene,
   getXRSession,
+  htmlTextureMaterial,
   interactions,
   RendererContext,
+  requestPaint,
   type XREventMap,
 } from "justdom-three";
 import { component, effects, effectsOnly, on, onCleanup, useEffects } from "justdom-signal";
@@ -26,13 +28,7 @@ type PanelMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREven
  * hit reads straight off as a point of the desk.
  */
 function panelMesh(): PanelMesh {
-  const material = new THREE.MeshBasicMaterial({ transparent: true });
-  // three uploads an `HTMLTexture` as RGBA8, which the GPU does not decode
-  // from sRGB as it does an SRGB8_ALPHA8 one, so without this every colour
-  // the page drew came out lighter. The map's shader decodes it inline when
-  // this is defined, as it does for a video.
-  material.defines = { DECODE_VIDEO_TEXTURE: "" };
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material) as PanelMesh;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), htmlTextureMaterial()) as PanelMesh;
   // Until the desk has been painted once there is nothing to show.
   mesh.visible = false;
   return mesh;
@@ -115,7 +111,7 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           const home = root.parentElement;
           canvas.setAttribute("layoutsubtree", "");
           canvas.append(root);
-          canvas.requestPaint?.();
+          requestPaint(canvas);
           // The looks write `:hover` and `:active` alone, which a panel's
           // portal rewrites to answer the flags the forwarder sets. Nothing
           // here mirrors the desk, so the session asks for the rewrite.

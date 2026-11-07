@@ -15,6 +15,7 @@ import {
   photographScene,
   showPanel,
 } from "./harness.js";
+import { PNG } from "pngjs";
 import { BASELINE, MOVEMENT, comparePng, countNear, countWhere, inkRatio } from "./pixels.js";
 
 /**
@@ -464,6 +465,39 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     );
   });
 
+  test("the scroll arrows sit in the middle of their buttons", async () => {
+    // An arrow is a box with a glyph in it, and nothing in the box puts the
+    // glyph anywhere but its top left corner unless the stylesheet centres
+    // it. The scene draws the glyph where the page laid it out, so the
+    // layout is what this measures: the glyph's box against its button's.
+    await showPanel(showcase.page, "widgets");
+    const offsets = await showcase.page.evaluate(() =>
+      [...document.querySelectorAll('[data-panel="widgets"] div')]
+        // The dropdown's caret is a ▼ too, but it is not an arrow.
+        .filter((element) => !element.closest('[role="combobox"]'))
+        .filter((element) => element.childElementCount === 0)
+        .filter((element) => ["\u25b2", "\u25bc"].includes(element.textContent ?? ""))
+        .map((element) => {
+          const box = element.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const glyph = range.getBoundingClientRect();
+          return {
+            mark: element.textContent,
+            x: glyph.x + glyph.width / 2 - (box.x + box.width / 2),
+            y: glyph.y + glyph.height / 2 - (box.y + box.height / 2),
+          };
+        }),
+    );
+    assert.equal(offsets.length, 2, "expected the two arrows of the scrolling window");
+    for (const { mark, x, y } of offsets) {
+      assert.ok(
+        Math.abs(x) <= 1.5 && Math.abs(y) <= 1.5,
+        `expected ${mark} centred in its button, found it ${x.toFixed(1)}, ${y.toFixed(1)} px off`,
+      );
+    }
+  });
+
   test("a label under a translucent card is tinted, not hidden", async () => {
     // The paint order panel has two positioned cards: a white one with a pure
     // blue label, and a half-transparent white veil over the whole label. A
@@ -808,5 +842,112 @@ describe("every panel at once, under ?panel=all", { timeout: 240_000 }, () => {
       located: !!window.__showcase?.locate('[data-panel="widgets"] h1'),
     }));
     assert.deepEqual(state, { mounted: ids, steps: 0, panel: "all", located: true });
+  });
+});
+
+describe("the frame rate readout in the deck", { timeout: 120_000 }, () => {
+  // Head-locked, the readout lands on the card wherever it is comfortable
+  // to read, so the deck starts with it hidden and a button on the
+  // switcher's bar shows it.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true });
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  test("starts hidden, and the switcher's button shows and hides it", async () => {
+    const { page } = showcase;
+    await page.waitForFunction(() => !!window.__diagnostics, undefined, { timeout: 30_000 });
+    const state = () =>
+      page.evaluate(() => {
+        const button = [...document.querySelectorAll("[data-xr-portal] button")].find((b) =>
+          /FPS/.test(b.textContent ?? ""),
+        );
+        return { shown: window.__diagnostics?.visible.get(), label: button?.textContent };
+      });
+    const press = () =>
+      page.evaluate(() => {
+        const button = [...document.querySelectorAll("[data-xr-portal] button")].find((b) =>
+          /FPS/.test(b.textContent ?? ""),
+        );
+        /** @type {HTMLElement | undefined} */ (button)?.click();
+      });
+    assert.deepEqual(await state(), { shown: false, label: "Show FPS" });
+    await press();
+    assert.deepEqual(await state(), { shown: true, label: "Hide FPS" });
+    await press();
+    assert.deepEqual(await state(), { shown: false, label: "Show FPS" });
+  });
+});
+
+describe("the deck on a phone, outside a session", { timeout: 120_000 }, () => {
+  // A camera with a fixed vertical field of view sees less across a page
+  // held upright, and a page held sideways is short, with the Prev, XR and
+  // Next buttons along its bottom. The page view widens the view until the
+  // deck fits, the card clear of both sides and the deck clear of the top
+  // and of the buttons.
+
+  /** @type {Awaited<ReturnType<typeof openShowcase>>} */
+  let showcase;
+
+  before(async () => {
+    showcase = await openShowcase({ freeze: true });
+  });
+
+  after(async () => {
+    await showcase?.close();
+  });
+
+  /**
+   * The page photographed at a size, and which px of a row or a column of
+   * it are near white, as the card and the switcher's bar are and nothing
+   * else on the page is.
+   *
+   * @param {{ width: number, height: number }} size
+   */
+  async function photographAt(size) {
+    await showcase.page.setViewportSize(size);
+    await nextFrames(showcase.page, 10);
+    const png = PNG.sync.read(await photographScene(showcase.page, { freeze: true }));
+    /** @param {number} x @param {number} y */
+    const white = (x, y) => [0, 1, 2].every((c) => png.data[(y * png.width + x) * 4 + c] > 200);
+    return {
+      png,
+      /** @param {number} y */
+      row: (y) => [...Array(png.width).keys()].filter((x) => white(x, y)),
+      /** @param {number} x */
+      column: (x) => [...Array(png.height).keys()].filter((y) => white(x, y)),
+    };
+  }
+
+  test("held upright, the card fits across the page, clear of both sides", async () => {
+    const { png, row } = await photographAt({ width: 412, height: 915 });
+    const card = row(Math.floor(png.height / 2));
+    assert.ok(card.length > 0, "no card in the middle row");
+    assert.ok(
+      card[0] > 0 && card[card.length - 1] < png.width - 1,
+      `the card runs from ${card[0]} to ${card[card.length - 1]} of ${png.width} px, ` +
+        "off the side of the page",
+    );
+  });
+
+  test("held sideways, the deck fits down the page, clear of the buttons", async () => {
+    const { png, column } = await photographAt({ width: 844, height: 390 });
+    // The column through the middle of the card and of the switcher's bar.
+    const deck = column(Math.floor(png.width / 2));
+    assert.ok(deck.length > 0, "no deck in the middle column");
+    // The buttons stand 20px up and are about 44px tall.
+    const buttonsTop = png.height - 64;
+    assert.ok(
+      deck[0] > 0 && deck[deck.length - 1] < buttonsTop,
+      `the deck runs from ${deck[0]} to ${deck[deck.length - 1]} of ${png.height} px, ` +
+        `off the top of the page or under the buttons, which start at ${buttonsTop}`,
+    );
   });
 });

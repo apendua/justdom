@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Lay out the XR button's no-WebXR link border-box, so it is as wide as its width says",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

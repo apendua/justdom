@@ -126,9 +126,11 @@ rectGeometry.setAttribute(
 //
 // Lanes: `gradient` is (kind, repeating, repeat-x, repeat-y), kind 0 being
 // no gradient at all; `ramp` is (row, opacity). A non-repeating axis is
-// trimmed to the tile with an edge antialiased the way every other edge here
-// is — against the pixel footprint of `q`, taken once, outside any branch,
-// because a derivative asked for inside one is undefined. The ramp is read
+// trimmed to the tile, whole up to its edge and faded outside it, as a
+// picture is (`pictureCoverage`): the tile's edge is often the padding box's,
+// which the fill's coverage already fades. The fade is measured against the
+// pixel footprint of `q`, taken once, outside any branch, because a
+// derivative asked for inside one is undefined. The ramp is read
 // with an explicit level for the same reason: a box's kind differs from its
 // neighbour's along the seam between them, and it has no mipmaps to choose
 // between anyway.
@@ -174,7 +176,7 @@ vec3 gradientDecode(vec3 srgb) {
 }
 float tileEdge(float q, float start, float size, float footprint) {
   float w = max(footprint, 1e-4);
-  return 1.0 - smoothstep(-w, w, abs(q - start - 0.5 * size) - 0.5 * size);
+  return 1.0 - smoothstep(0.0, 2.0 * w, abs(q - start - 0.5 * size) - 0.5 * size);
 }
 vec4 withGradient(vec4 fill, vec2 q, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
   vec2 footprint = fwidth(q);
@@ -252,10 +254,19 @@ float coverageOf(float dist) {
   float w = max(fwidth(dist), 1e-4);
   return 1.0 - smoothstep(-w, w, dist);
 }
-float boxCoverage(vec2 q, vec4 box) {
+// How much of a fragment a picture covers, by the box it is cut to: whole up
+// to the box's edge and faded outside it, rather than faded across it as an
+// edge of the box itself is. The picture is cut to the content box, whose
+// edge is often the inner edge of the border, and that edge is already faded
+// once, by the fill's own coverage. Faded twice, the two half coverages there
+// leave a quarter of the fragment to the page behind: a light line between a
+// picture and its border.
+float pictureCoverage(vec2 q, vec4 box) {
   vec2 halfBox = 0.5 * (box.zw - box.xy);
   vec2 d = abs(q - 0.5 * (box.xy + box.zw)) - halfBox;
-  return coverageOf(max(d.x, d.y));
+  float dist = max(d.x, d.y);
+  float w = max(fwidth(dist), 1e-4);
+  return 1.0 - smoothstep(0.0, 2.0 * w, dist);
 }
 vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
   vec2 halfSize = 0.5 * size;
@@ -307,7 +318,10 @@ uniform vec2 uGradientRamp;
 ${HALF_PLANES_FRAGMENT_GLSL}
 ${SDF_GLSL}
 ${GRADIENT_GLSL}
-vec4 withPicture(vec4 fill, vec2 q) {
+// \`qdx\` and \`qdy\` are the footprint of \`q\`, taken in \`main\`, outside the
+// branches this is called from, since a derivative taken in a branch is
+// undefined.
+vec4 withPicture(vec4 fill, vec2 q, vec2 qdx, vec2 qdy) {
   // An axis that repeats tiles the clip box with copies of the picture, so it
   // is bounded by the clip box alone and samples the picture's own wrapped
   // coordinate; one that does not is bounded by where the picture lands.
@@ -315,13 +329,26 @@ vec4 withPicture(vec4 fill, vec2 q) {
     mix(uImageRect.xy, uImageClip.xy, uImageMode.xy),
     mix(uImageRect.zw, uImageClip.zw, uImageMode.xy)
   );
-  vec2 uv = (q - uImageRect.xy) / max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
-  uv = mix(uv, fract(uv), uImageMode.xy);
+  vec2 imageSize = max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
+  vec2 unwrapped = (q - uImageRect.xy) / imageSize;
+  vec2 uv = mix(unwrapped, fract(unwrapped), uImageMode.xy);
+  // The level of detail is taken from the unwrapped coordinate. Where
+  // \`fract\` wraps, the wrapped one jumps by a whole tile between two
+  // neighbouring fragments, and a sampler that measured that jump would
+  // read the picture's smallest mipmap there: a line of its average colour
+  // along every seam between the tiles.
+  vec2 dx = qdx / imageSize;
+  vec2 dy = qdy / imageSize;
   // Textures are uploaded flipped, so v runs up while the portal's y runs
   // down; the clamp is what makes the wrap mode enough to keep a stray
   // fragment from sampling the far edge.
-  vec4 texel = texture2D(uImage, clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0));
-  float over = texel.a * uImageOpacity * boxCoverage(q, bounds) * boxCoverage(q, uImageClip);
+  vec4 texel = textureGrad(
+    uImage,
+    clamp(vec2(uv.x, 1.0 - uv.y), 0.0, 1.0),
+    vec2(dx.x, -dx.y),
+    vec2(dy.x, -dy.y)
+  );
+  float over = texel.a * uImageOpacity * pictureCoverage(q, bounds) * pictureCoverage(q, uImageClip);
   float under = fill.a * (1.0 - over);
   float composited = over + under;
   return vec4(
@@ -335,15 +362,17 @@ void main() {
   float fillCoverage = coverages.x;
   float borderCoverage = coverages.y;
   vec2 q = vUnit * uSize;
+  vec2 qdx = dFdx(q);
+  vec2 qdy = dFdy(q);
   // A background lists its picture under its gradient (uImageMode.z) or
   // over it; an <img>'s picture is always over both.
   bool pictureUnder = uImageOpacity > 0.0 && uImageMode.z > 0.5;
-  vec4 fill = pictureUnder ? withPicture(uFillColor, q) : uFillColor;
+  vec4 fill = pictureUnder ? withPicture(uFillColor, q, qdx, qdy) : uFillColor;
   fill = withGradient(
     fill, q, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
   );
   if (uImageOpacity > 0.0 && !pictureUnder) {
-    fill = withPicture(fill, q);
+    fill = withPicture(fill, q, qdx, qdy);
   }
   float alpha = fill.a * fillCoverage + uBorderColor.a * borderCoverage;
   if (alpha < 0.001) {

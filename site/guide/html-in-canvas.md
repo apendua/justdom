@@ -85,4 +85,5 @@ panels are part of the scene.
 
 Texture mode is useful on a desktop as a reference. It shows exactly what the browser would paint,
 so putting it beside the mirror shows where the mirror is off. Try the two Desk links above side by
-side.
+side, or open the showcase with `?panels=texture`, which draws each panel of the deck that way. Its
+`tests/reference-check.mjs` photographs every panel both ways and marks where the two disagree.

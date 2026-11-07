@@ -4,6 +4,7 @@ import {
   cursors,
   $,
   dom,
+  getCamera,
   getScene,
   list,
   PortalPluginsContext,
@@ -19,6 +20,7 @@ import { CARD_HEIGHT, CARD_WIDTH } from "./panels.js";
 import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
 import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
 import Keyboard from "./Keyboard.js";
+import { referencePanel } from "./ReferencePanel.js";
 
 /**
  * What a script driving the deck can do: the visual suite, mostly, which
@@ -34,7 +36,8 @@ export interface ShowcaseControls {
   current(): PanelId;
   /**
    * Put a panel on show, loading the plugins it needs first. Resolves once
-   * its portal has mounted it and taken down the loading frame. A panel that
+   * its portal has mounted it and taken down the loading frame, or, under
+   * `?panels=texture`, once the browser has painted it. A panel that
    * is not atomic may still be bringing that mount into the scene a budget's
    * worth per frame, with its container marked `data-xr-busy`, so a script
    * that aims at a control waits for that mark to go as well.
@@ -89,6 +92,13 @@ export interface SceneOptions {
   initialPlugins: ReadonlyMap<PanelId, readonly PortalPlugin[]>;
   /** Told whenever another panel goes on show. */
   onShow?: (id: PanelId) => void;
+  /**
+   * Who draws the deck's card: `mirror`, justdom-three's portal, or
+   * `texture`, the browser, with HTML-in-Canvas, as the reference the mirror
+   * is compared against (`?panels=texture`, `ReferencePanel.ts`). The grid
+   * under `?panel=all` is always mirrored.
+   */
+  panels?: "mirror" | "texture";
 }
 
 /**
@@ -97,8 +107,25 @@ export interface SceneOptions {
  */
 const PANEL_SCALE = 0.01;
 
+/** How far in front of the player the card hangs, in metres. */
+const DECK_DISTANCE = 0.45;
+
 /** The gap between the card and the switcher's bar, in px. */
 const GAP = 16;
+
+/**
+ * How much room the page view leaves round the deck, in px of the card,
+ * when a small window has it widen the field of view to fit.
+ */
+const PAGE_MARGIN = 24;
+
+/**
+ * How much of the page's height, in CSS px, the Prev, XR and Next buttons
+ * take at the bottom: `index.css` stands them 20px up, they are about 44px
+ * tall, and 8px more keeps the deck off them. The page view keeps the deck
+ * clear of as much at the top and the bottom.
+ */
+const PAGE_BUTTONS = 72;
 
 /**
  * The grid `?panel=all` lays every panel out in: its columns, the gap
@@ -165,16 +192,23 @@ function frameWhen(done: () => boolean): Promise<void> {
  * instead: every panel is mounted at once, further away, nothing is
  * switched and there is no switcher.
  */
-const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
+const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: SceneOptions) =>
   effectsOnly((ctx: WeakKey) => {
     const scale = 0.1;
-    // The frame rate readout, head-locked and up to the left. There is no music
-    // card here to hang a switch off, so it is simply always on — and on a page
-    // whose whole subject is what a portal costs to draw, that is the point.
-    const diagnostics = createDiagnostics();
+    const everything = initial === "all";
+    // The frame rate readout, head-locked and up to the left. The card
+    // fills the view on every side, so wherever a head-locked readout is
+    // comfortable to read it covers some of the card, as it covered the
+    // house on the SVG paint panel. So in the deck it starts hidden, and the
+    // last button on the switcher's bar shows it. The grid under `?panel=all`
+    // has no bar, and is what the benches measure a portal's cost on, so
+    // there it is simply always on.
+    const diagnostics = createDiagnostics({ visible: everything });
     window.__diagnostics = diagnostics;
 
-    const everything = initial === "all";
+    const drawn = everything ? "mirror" : panels;
+    /** The panels the browser has painted, under `?panels=texture`. */
+    const painted = new Set<PanelId>();
     const current = Signal.of<PanelId>(everything ? PANELS[0].id : initial);
     /** Plugins each panel was given, by id: loaded once, kept for a return visit. */
     const plugins = new Map(initialPlugins);
@@ -211,7 +245,8 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
         throw new Error(`The deck has no panel called "${asked}".`);
       }
       const { id } = entry;
-      if (!plugins.has(id)) {
+      // The browser draws a reference panel's SVG and pictures itself.
+      if (drawn === "mirror" && !plugins.has(id)) {
         const loaded = await loadPlugins(entry);
         plugins.set(id, loaded);
         // A later call has been made while these loaded: it decides what is
@@ -225,8 +260,10 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
       await frameWhen(
         () =>
           current.get() !== id ||
-          (!!document.querySelector(`[data-xr-portal] [data-panel="${id}"]`) &&
-            !document.querySelector("[data-xr-loading]")),
+          (drawn === "texture"
+            ? painted.has(id)
+            : !!document.querySelector(`[data-xr-portal] [data-panel="${id}"]`) &&
+              !document.querySelector("[data-xr-loading]")),
       );
     };
 
@@ -251,7 +288,7 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
         return null;
       }
       const [element, object] = found;
-      const root = element.closest("[data-xr-portal]");
+      const root = element.closest("[data-xr-portal], [data-reference]");
       if (!object || !root) {
         return null;
       }
@@ -277,33 +314,50 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
 
     /**
      * One panel, mounted with its plugins and tagged with its id, and put in
-     * its place in the grid under `?panel=all`.
+     * its place in the grid under `?panel=all`; or, under `?panels=texture`,
+     * drawn by the browser in the mirror's place.
      */
     const panel = (entry: Panel) => {
+      const content = $dom("div", [
+        attr({ "data-panel": entry.id }),
+        domChildren(entry.component(ctx)),
+      ]);
+      const placed = effects((obj: THREE.Object3D) => {
+        if (everything) {
+          const [x, y] = gridPosition(PANELS.indexOf(entry));
+          obj.position.set(x, y, 0);
+        }
+        mounted.set(entry.id, obj);
+        onCleanup(() => {
+          if (mounted.get(entry.id) === obj) {
+            mounted.delete(entry.id);
+          }
+        });
+      });
+      if (drawn === "texture") {
+        return referencePanel(
+          ctx,
+          content,
+          {
+            width: CARD_WIDTH,
+            height: CARD_HEIGHT,
+            scale: PANEL_SCALE,
+            onPainted: () => painted.add(entry.id),
+          },
+          [
+            placed,
+            effects(() => {
+              onCleanup(() => painted.delete(entry.id));
+            }),
+          ],
+        );
+      }
       const given = plugins.get(entry.id) ?? [];
       const panelCtx = given.length ? PortalPluginsContext.set(keyedCtx, given) : keyedCtx;
-      return dom(
-        panelCtx,
-        $dom("div", [attr({ "data-panel": entry.id }), domChildren(entry.component(ctx))]),
-        [
-          effects((obj) => {
-            if (everything) {
-              const [x, y] = gridPosition(PANELS.indexOf(entry));
-              obj.position.set(x, y, 0);
-            }
-            mounted.set(entry.id, obj);
-            onCleanup(() => {
-              if (mounted.get(entry.id) === obj) {
-                mounted.delete(entry.id);
-              }
-            });
-          }),
-        ],
-        {
-          atomic: "atomic" in entry ? entry.atomic : true,
-          draggable: "draggable" in entry ? entry.draggable : false,
-        },
-      );
+      return dom(panelCtx, content, [placed], {
+        atomic: "atomic" in entry ? entry.atomic : true,
+        draggable: "draggable" in entry ? entry.draggable : false,
+      });
     };
 
     // The switcher's centre, in the units its group is in: the card's
@@ -315,6 +369,44 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
     useEffects(getScene(ctx), [
+      // The page view, outside a session: the field of view is set so that
+      // the deck fits the window. Across, for a phone held upright, the card
+      // and `PAGE_MARGIN` either side of it. Down, for a phone held sideways
+      // and for every other window, since the deck does not fit down even a
+      // desktop at the 70 degrees `render` gives, the card and the
+      // switcher's bar and `PAGE_MARGIN` above and below, clear of the
+      // page's buttons at the bottom (and as much at the top, since the deck
+      // is centred). A session draws with the headset's own projection and
+      // never reads this.
+      effects(() => {
+        if (everything) {
+          return;
+        }
+        const camera = getCamera(ctx) as THREE.PerspectiveCamera;
+        // The field `render` gave the camera, put back when the deck goes.
+        const own = camera.fov;
+        const metres = PANEL_SCALE * scale;
+        const halfWidth = (CARD_WIDTH / 2 + PAGE_MARGIN) * metres;
+        const halfHeight = ((CARD_HEIGHT + GAP + BAR_HEIGHT) / 2 + PAGE_MARGIN) * metres;
+        const fieldFor = (half: number) =>
+          2 * THREE.MathUtils.radToDeg(Math.atan(half / DECK_DISTANCE));
+        const fit = () => {
+          const height = window.innerHeight;
+          // The share of the page's height the deck may take. A page too
+          // short for the buttons and a deck at all gives the deck half.
+          const usable = Math.max(height - 2 * PAGE_BUTTONS, height / 2) / height;
+          camera.fov = Math.max(fieldFor(halfWidth / camera.aspect), fieldFor(halfHeight / usable));
+          camera.updateProjectionMatrix();
+        };
+        fit();
+        // After `render`'s own listener, which writes the new aspect.
+        window.addEventListener("resize", fit);
+        onCleanup(() => {
+          window.removeEventListener("resize", fit);
+          camera.fov = own;
+          camera.updateProjectionMatrix();
+        });
+      }),
       effects(() => {
         useDiagnostics(ctx, diagnostics);
       }),
@@ -331,7 +423,7 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
             // The XR button asks for a `local` reference space: the head sits at
             // the origin, so straight ahead is y = 0.
             // The grid is centred on the eye line on its own.
-            o.position.set(0, everything ? 0 : lift, everything ? -GRID_DISTANCE : -0.45);
+            o.position.set(0, everything ? 0 : lift, everything ? -GRID_DISTANCE : -DECK_DISTANCE);
           }),
           children(
             list(
@@ -345,6 +437,10 @@ const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
                     ctx,
                     Switcher({
                       current: () => current.get(),
+                      readout: {
+                        shown: () => diagnostics.visible.get(),
+                        toggle: diagnostics.toggle,
+                      },
                       show: (id) => {
                         show(id).catch((err) => {
                           console.error(`Could not show the ${id} panel:`, err);

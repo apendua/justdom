@@ -11,7 +11,14 @@ import {
 } from "justdom-signal";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
 import { $, children, Nothing } from "../operators.js";
-import { applyClip, clipRaycast, intersectClipBoxes, UNCLIPPED } from "../elements/clip.js";
+import {
+  applyClip,
+  clipRadiiUniform,
+  clipRaycast,
+  intersectClipBoxes,
+  UNCLIPPED,
+  writeClip,
+} from "../elements/clip.js";
 import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { place } from "../elements/place.js";
@@ -48,6 +55,7 @@ import {
   multiply,
   parseCssMatrix,
   parsePreserveAspectRatio,
+  parseTransformList,
   parseViewBox,
   rectEqual,
   samplingScale,
@@ -385,14 +393,59 @@ function asHtml(element) {
 }
 
 /**
- * The element's own CSS `transform`, about its `transform-origin`, in its
- * user space — or null for none.
+ * Whether the browser's computed `transform` carries an SVG element's
+ * `transform` attribute, as the attribute is a presentation attribute for
+ * the property. Chromium's does. WebKit's says `none` for an element whose
+ * only transform is the attribute, and draws that attribute as it is, about
+ * user space's origin, whatever `transform-origin` says. Asked once, of a
+ * `<g>` with a known attribute, since it is the browser's answer and not the
+ * element's.
  *
- * The origin is the computed one, which the browser resolves to px in the
- * reference box `transform-box` names. For the default `view-box` those px
- * are measured from the nearest viewport's `viewBox` origin, so the
- * `viewBox`'s own offset is added back; for `fill-box` they are measured
- * from the shape's own bounds, which `getBBox` reports where it exists.
+ * @type {boolean | undefined}
+ */
+let computedTransformCarriesAttribute;
+
+/** What the probe's `translate(1 0)` computes to where it is carried. */
+const PROBE_MATRIX = /** @type {Matrix2D} */ ([1, 0, 0, 1, 1, 0]);
+
+/**
+ * @param {Document} document
+ * @returns {boolean}
+ */
+function readsTransformAttribute(document) {
+  if (computedTransformCarriesAttribute === undefined) {
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+    const probe = document.createElementNS(SVG_NAMESPACE, "g");
+    probe.setAttribute("transform", "translate(1 0)");
+    svg.append(probe);
+    svg.setAttribute("width", "0");
+    svg.setAttribute("height", "0");
+    (document.body ?? document.documentElement).append(svg);
+    // Asked of the browser directly and not through the mirror's cache: the
+    // probe is gone on the next line, and nothing should follow it.
+    const computed = parseCssMatrix(
+      document.defaultView?.getComputedStyle(probe).transform ?? "none",
+    );
+    svg.remove();
+    computedTransformCarriesAttribute = computed !== null && matrixEqual(computed, PROBE_MATRIX);
+  }
+  return computedTransformCarriesAttribute;
+}
+
+/**
+ * The element's own transform, in its user space — or null for none.
+ *
+ * A computed CSS `transform` is applied about the computed
+ * `transform-origin`, which the browser resolves to px in the reference box
+ * `transform-box` names. For the default `view-box` those px are measured
+ * from the nearest viewport's `viewBox` origin, so the `viewBox`'s own
+ * offset is added back; for `fill-box` they are measured from the shape's
+ * own bounds, which `getBBox` reports where it exists.
+ *
+ * Where the computed `transform` leaves out the attribute
+ * (`readsTransformAttribute`), an element whose computed `transform` is
+ * `none` is placed by its `transform` attribute, as it is, about user
+ * space's origin, which is how WebKit draws it.
  *
  * @param {Element} element
  * @param {CSSStyleDeclaration} style
@@ -402,7 +455,9 @@ function asHtml(element) {
 function ownTransform(element, style, viewBoxOrigin) {
   const matrix = parseCssMatrix(style.transform);
   if (!matrix) {
-    return null;
+    return readsTransformAttribute(element.ownerDocument)
+      ? null
+      : parseTransformList(getAttributeCached(element, "transform"));
   }
   const origin = style.transformOrigin.split(/\s+/);
   let ox = px(origin[0] ?? "0");
@@ -1527,7 +1582,7 @@ emptyGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Arra
  * @returns {Source<Component>}
  */
 function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slot, uniforms) {
-  const { clip, clipMatrix, clipBox } = uniforms;
+  const { clip, clipMatrix, clipRadii, clipBox } = uniforms;
   const mesh = new THREE.Mesh();
   registerDrawOrder(mesh);
   // Trimmed once, for the life of the mesh, to the part the clip patch
@@ -1549,7 +1604,7 @@ function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slo
       // (`MARK_MATERIAL_SETTINGS`): no depth write, so the draw order and
       // not the depth buffer decides what covers what on one plane.
       const material = new THREE.MeshBasicMaterial(MARK_MATERIAL_SETTINGS);
-      applyClip(material, clip, clipMatrix);
+      applyClip(material, clip, clipMatrix, clipRadii);
       patch?.(material);
       onCleanup(() => {
         material.dispose();
@@ -1583,15 +1638,17 @@ function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slo
 }
 
 /**
- * The clip patch's two uniforms for what one element draws, and the write
- * that keeps them current. Both are shared by every mesh the element has.
+ * The clip patch's three uniforms for what one element draws, and the write
+ * that keeps them current. All are shared by every mesh the element has.
  *
  * `clip` is what the root's overflow, the scrollers above it and the
- * viewports in the chain leave, in the root's frame. `clipMatrix` goes from
- * the element's user space, where its vertices are, to that frame: the
- * composition of every matrix above the meshes, the element's own included.
+ * viewports in the chain leave, in the root's frame, and `clipRadii` its
+ * corners, which a `border-radius` on the root rounds as it rounds a box's
+ * overflow. `clipMatrix` goes from the element's user space, where its
+ * vertices are, to that frame: the composition of every matrix above the
+ * meshes, the element's own included.
  *
- * `follow` writes both, and is called from the effect that writes the
+ * `follow` writes all three, and is called from the effect that writes the
  * element's own matrix (see `svgNode`), not from effects of its own. The
  * three describe one picture: a transform on the element moves its object,
  * its `clipMatrix` and, when the `clip-path` is its own, its clip, and a
@@ -1610,6 +1667,7 @@ function paintedMesh({ geometry, paints, paint, patch, hidden, hit, layer }, slo
 function clipUniforms(chain, root) {
   const clip = { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) };
   const clipMatrix = { value: new THREE.Matrix3() };
+  const clipRadii = clipRadiiUniform();
   const viewports = new Derived(() => chain().clip, { isEqual: rectEqual });
   const interior = new Derived(() => {
     const at = root.get();
@@ -1631,10 +1689,11 @@ function clipUniforms(chain, root) {
   return {
     clip,
     clipMatrix,
+    clipRadii,
     clipBox: () => current,
     follow() {
       const box = interior.get();
-      clip.value.set(box.left, box.top, box.right, box.bottom);
+      writeClip(clip, clipRadii, box);
       current = box;
       toMatrix3(chain().ctm, clipMatrix.value);
     },

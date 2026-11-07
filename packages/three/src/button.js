@@ -78,15 +78,21 @@ function wordsFor(mode, fallback) {
 }
 
 /**
- * three's own button styling, kept as it was. It is the only styling these
- * buttons have — no stylesheet in the repository mentions either id — so
- * anything less here would change how every app looks on the way in.
+ * three's own button styling, kept as it was but for `box-sizing`, which
+ * the comment below explains. It is the only styling these buttons have —
+ * no stylesheet in the repository mentions either id — so anything less
+ * here would change how every app looks on the way in.
  *
  * @param {HTMLElement} element
  * @returns {void}
  */
 function stylize(element) {
   element.style.position = "absolute";
+  // The width each caller sets is the whole box's, padding and border
+  // included, as its `left` centres it by. A `<button>` is laid out that
+  // way already; the `<a>` a browser without WebXR gets is not, and came
+  // out 14px wider than it said, off centre and into what stands beside it.
+  element.style.boxSizing = "border-box";
   element.style.bottom = "20px";
   element.style.padding = "12px 6px";
   element.style.border = "1px solid #fff";

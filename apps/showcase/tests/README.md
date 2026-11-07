@@ -208,6 +208,34 @@ complaint behind.
 Locally the harness takes `PLAYWRIGHT_CHROMIUM_EXECUTABLE`, and otherwise looks under
 `PLAYWRIGHT_BROWSERS_PATH` before letting Playwright resolve its own download.
 
+## Against the browser's own drawing
+
+The baselines say that the scene has not moved since it was recorded. They cannot say that it was
+right when it was recorded. For that the showcase has a second way of drawing a panel:
+`?panels=texture` mounts the same markup inside the renderer's canvas and lets the browser paint it
+there with HTML-in-Canvas, and the scene shows that picture where the mirror's panel would stand.
+What the browser paints is what the page means, so where the mirror differs from it, the mirror is
+wrong.
+
+```
+node tests/reference-check.mjs                 # every panel
+node tests/reference-check.mjs svg-paint text  # these panels
+```
+
+It photographs each panel twice in a frozen session, once mirrored and once painted by the browser,
+and writes `tests/output/reference/<id>.png`: the mirror, the browser's picture, and where they
+disagree in magenta. It prints the panels with the most different first. Text never matches to the
+pixel, so the two are compared in 4 px blocks, and a block counts only when its average colour is
+far off.
+
+It is a tool, not a test, and nothing runs it on a pull request. The browser needs
+`--enable-blink-features=CanvasDrawElement`, which the script passes, and a later Chromium may
+rename the API; the script stops with an error if the page fell back to the mirror. Two differences
+are the reference's and not the mirror's: the browser's picture is cut to the card, so anything that
+hangs off the card is missing from it, and an animation in it may stand at another point of its
+timeline than the mirror's does, so a panel that moves (motion, the typed paragraph on text) differs
+there whatever the mirror draws.
+
 ## One thing that will bite whoever changes the harness
 
 Playwright's `animations: "disabled"` — the obvious thing to reach for when photographing something

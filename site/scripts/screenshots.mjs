@@ -20,6 +20,7 @@ import { chromium } from "playwright-core";
 import { serve } from "vitepress";
 import { castle } from "../../apps/castle/tests/castle.mjs";
 import { clickButton, frames, hideFurniture, pose } from "../../apps/castle/tests/emulator.mjs";
+import { cut } from "./clip.mjs";
 import { demos, demoViewport as viewport, screenshots, site } from "./projects.mjs";
 
 /** How long a clip rests on where its demo ends up, in ms. */
@@ -160,6 +161,18 @@ async function press(page, label) {
  * cuts the wait down to `STALL`.
  */
 let redrawing = 0;
+
+/**
+ * The stretches of the clip being recorded that its video leaves out, as
+ * `[from, to]` in seconds since the epoch, the screencast's clock. A panel
+ * the showcase is asked for is drawn as a grey loading frame and then built
+ * up a budget's worth a frame, which under SwiftShader takes seconds; the
+ * clip cuts from the panel before to the panel whole. `record` empties it
+ * before the act and takes the stretches out of what it recorded.
+ *
+ * @type {[from: number, to: number][]}
+ */
+const cuts = [];
 
 /**
  * Waits until every panel has drawn what its DOM holds: a panel's portal
@@ -348,6 +361,7 @@ async function record(page, act) {
     maxWidth: viewport.width,
     maxHeight: viewport.height,
   });
+  cuts.length = 0;
   await act();
   await page.waitForTimeout(HOLD);
   await cdp.send("Page.stopScreencast");
@@ -355,7 +369,7 @@ async function record(page, act) {
   await cdp.detach();
   if (frames.length === 0) throw new Error("the page drew nothing while it was recorded");
   frames.push({ data: frames[frames.length - 1].data, time: end });
-  return frames;
+  return cut(frames, cuts);
 }
 
 /**
@@ -616,26 +630,37 @@ const setups = {
 const SHOWCASE_TOUR = ["backgrounds", "svg", "forms", "widgets", "svg-paint"];
 /** How long the showcase clips hold each panel, in ms. */
 const SHOWCASE_HOLD = 1500;
+/** The longest `deck` waits for the scene to build a panel up, in ms. */
+const DECK_BUILD = 15_000;
 
 /**
  * Puts a showcase panel on show through `window.__showcase`, which is what
  * the deck's own Prev, Next and switcher call, and waits until its portal
- * has mounted it and taken its loading frame down, and then for a few
- * frames, which a session under SwiftShader takes to draw the mount. A
- * panel is mounted when it is shown, and the clip cuts that wait short
- * (`STALL`), as it does `drawn`'s. `drawn` itself would wait forever here: a
- * panel with an animation on it is never done drawing.
+ * has mounted it and taken its loading frame down, then until the scene has
+ * built the mount up (`data-xr-busy` gone), and then for a few frames, which
+ * a session under SwiftShader takes to draw it. The whole wait is one of the
+ * clip's `cuts`, so the clip goes from the panel before to this one whole.
+ * The wait for the build is capped rather than `drawn`'s, which would wait
+ * forever on a panel with an animation on it: such a panel is never done
+ * drawing.
  *
  * @param {Page} page
  * @param {string} id
  */
 async function deck(page, id) {
   redrawing++;
+  const from = Date.now() / 1000;
   try {
     await page.evaluate((id) => /** @type {any} */ (window).__showcase.show(id), id);
+    await page
+      .waitForFunction(() => !document.querySelector("[data-xr-busy]"), undefined, {
+        timeout: DECK_BUILD,
+      })
+      .catch(() => {});
     // The scene draws the mount a few frames after the page has it.
     await frames(page, 15);
   } finally {
+    cuts.push([from, Date.now() / 1000]);
     redrawing--;
   }
 }

@@ -78,9 +78,10 @@ function wordsFor(mode, fallback) {
 }
 
 /**
- * three's own button styling, kept as it was. It is the only styling these
- * buttons have — no stylesheet in the repository mentions either id — so
- * anything less here would change how every app looks on the way in.
+ * three's own button styling, kept as it was but for `box-sizing`, which
+ * the comment below explains. It is the only styling these buttons have —
+ * no stylesheet in the repository mentions either id — so anything less
+ * here would change how every app looks on the way in.
  *
  * @param {HTMLElement} element
  * @returns {void}

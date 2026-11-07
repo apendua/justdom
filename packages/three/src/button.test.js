@@ -559,4 +559,14 @@ describe("createUnsupportedButton", () => {
     assert.equal(message.tagName, "A");
     assert.match(message.textContent ?? "", /^WEBXR (NOT AVAILABLE|NEEDS HTTPS)$/);
   });
+
+  test("is as wide as its width says, padding and border included", () => {
+    // Its `left` centres it by half its `width`, and a page that stands
+    // controls beside it reads the same `width`. A link is laid out
+    // content-box unless told otherwise, and was 14px wider than that.
+    delete navigator.xr;
+    assert.equal(createUnsupportedButton().style.boxSizing, "border-box");
+    installXR(fakeXR([]));
+    assert.equal(createUnsupportedButton("immersive-ar").style.boxSizing, "border-box");
+  });
 });

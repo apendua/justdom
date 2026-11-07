@@ -87,6 +87,11 @@ function wordsFor(mode, fallback) {
  */
 function stylize(element) {
   element.style.position = "absolute";
+  // The width each caller sets is the whole box's, padding and border
+  // included, as its `left` centres it by. A `<button>` is laid out that
+  // way already; the `<a>` a browser without WebXR gets is not, and came
+  // out 14px wider than it said, off centre and into what stands beside it.
+  element.style.boxSizing = "border-box";
   element.style.bottom = "20px";
   element.style.padding = "12px 6px";
   element.style.border = "1px solid #fff";

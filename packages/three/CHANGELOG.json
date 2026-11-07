@@ -2,6 +2,40 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.33.0",
+      "tag": "justdom-three_v0.33.0",
+      "date": "Sat, 07 Nov 2026 07:40:17 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "A picture with a border no longer shows a light line between the two"
+          },
+          {
+            "comment": "A repeated background picture no longer draws a line of its average colour along the seams between its tiles"
+          },
+          {
+            "comment": "Read an SVG element's transform attribute where the computed style leaves it out, as WebKit's does"
+          },
+          {
+            "comment": "Lay out the XR button's no-WebXR link border-box, so it is as wide as its width says"
+          },
+          {
+            "comment": "A border-radius on an <svg> root that hides its overflow now rounds the corners its shapes are clipped to, as the browser does"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "Add canDrawHtmlInCanvas and htmlTextureMaterial, for a scene that shows an element the browser draws with HTML-in-Canvas"
+          }
+        ],
+        "none": [
+          {
+            "comment": "The paint-order benches open the showcase under ?panel=all, so they count every panel of its deck again."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.32.0",
       "tag": "justdom-three_v0.32.0",
       "date": "Thu, 05 Nov 2026 23:28:58 GMT",

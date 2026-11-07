@@ -197,41 +197,35 @@ export default class ListRenderer {
       };
 
       let adopting = hydrating;
-      /**
-       * The key that ended the previous emission. The move branches below
-       * put an item back in position by re-inserting its nodes, and the DOM
-       * treats re-inserting a node that is already in place as a removal
-       * and an insertion all the same — mutation observers hear both. An
-       * item with no successor has nothing to compare its position against,
-       * so without this it was re-appended on *every* emission: one phantom
-       * childList mutation per emission for every list's last item, which a
-       * portal answers with a portal-wide re-measure.
-       *
-       * @type {K | undefined}
-       */
-      let previousLastKey;
       const subscription = each(
         items,
         /** @param {Iterable<U>} newItems */
         (newItems) => {
-          const newItemsSet = new Set();
           const newItemsArray = Array.from(newItems);
-          const lastKey = newItemsArray.length
-            ? getKey(newItemsArray[newItemsArray.length - 1])
-            : undefined;
           if (adopting) {
             adopting = false;
             adopt(newItemsArray);
-            previousLastKey = lastKey;
             return;
           }
+          const newItemsSet = new Set(newItemsArray.map(getKey));
+          // The items that left come out of the document before anything
+          // moves. Left in place, each one sat between its neighbours during
+          // the walk below, so every item in front of it found a next sibling
+          // it did not expect and was re-inserted: removing the n-th item
+          // moved the n - 1 items before it.
+          for (const [key, childSegment] of childSegments.entries()) {
+            if (!newItemsSet.has(key)) {
+              removeSegment(childSegment);
+              childSegments.delete(key);
+            }
+          }
+          const staying = longestRunInOrder(newItemsArray, getKey, childIndexes);
           for (let index = newItemsArray.length - 1; index >= 0; index -= 1) {
             const item = newItemsArray[index];
             const key = getKey(item);
             if (!childIndexes.has(key)) {
               childIndexes.set(key, index);
             }
-            newItemsSet.add(key);
             let nextSegment;
             let i = index + 1;
             while (!nextSegment && i < newItemsArray.length) {
@@ -279,7 +273,11 @@ export default class ListRenderer {
                   },
                 }),
               );
-            } else {
+            } else if (!staying.has(key)) {
+              // Only an item outside the longest run of items that kept
+              // their order moves; the run stays where it is and the others
+              // are placed around it. The walk goes from the end, so the
+              // successor an item is placed in front of is already final.
               const childSegment = childSegments.get(key);
               if (childSegment) {
                 if (nextSegment) {
@@ -301,11 +299,9 @@ export default class ListRenderer {
                       node = previousSibling;
                     }
                   }
-                } else if (key !== previousLastKey) {
+                } else {
                   // No successor to sit in front of, so the item belongs at
-                  // the end — where it already is, if it also ended the
-                  // previous emission, in which case moving it would be a
-                  // pair of mutation records saying nothing.
+                  // the end of the container.
                   /** @type {T | null} */
                   let node = childSegment[1];
                   while (node) {
@@ -338,19 +334,12 @@ export default class ListRenderer {
               }
             }
           });
-          for (const [key, childSegment] of childSegments.entries()) {
-            if (!newItemsSet.has(key)) {
-              removeSegment(childSegment);
-              childSegments.delete(key);
-            }
-          }
           for (const [key, childSubscription] of childSubscriptions.entries()) {
             if (!newItemsSet.has(key)) {
               childSubscription.unsubscribe();
               childSubscriptions.delete(key);
             }
           }
-          previousLastKey = lastKey;
         },
       ).subscribe({
         error: (error) => {
@@ -367,4 +356,56 @@ export default class ListRenderer {
       };
     });
   }
+}
+
+/**
+ * The keys of the longest run of items that were already in the list and kept
+ * their order: the longest strictly increasing subsequence of their previous
+ * indexes, read in the new order. An item new to the list, or whose key
+ * appears a second time, is not part of any run. O(n log n).
+ *
+ * @template U
+ * @template K
+ * @param {U[]} items
+ * @param {(item: U) => K} getKey
+ * @param {Map<K, number>} previousIndexes
+ * @returns {Set<K>}
+ */
+export function longestRunInOrder(items, getKey, previousIndexes) {
+  /** @type {K[]} */
+  const keys = [];
+  /** @type {number[]} */
+  const indexes = [];
+  const seen = new Set();
+  for (const item of items) {
+    const key = getKey(item);
+    const index = previousIndexes.get(key);
+    if (index !== undefined && !seen.has(key)) {
+      seen.add(key);
+      keys.push(key);
+      indexes.push(index);
+    }
+  }
+  // `tails[length - 1]` is the position, in `indexes`, of the smallest last
+  // element of an increasing run of that length found so far.
+  /** @type {number[]} */
+  const tails = [];
+  /** @type {number[]} */
+  const previous = new Array(indexes.length);
+  for (let i = 0; i < indexes.length; i++) {
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (indexes[tails[middle]] < indexes[i]) low = middle + 1;
+      else high = middle;
+    }
+    previous[i] = low > 0 ? tails[low - 1] : -1;
+    tails[low] = i;
+  }
+  const run = new Set();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = previous[i]) {
+    run.add(keys[i]);
+  }
+  return run;
 }

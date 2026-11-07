@@ -20,16 +20,28 @@ export function classes(...names: Subscribable<string>[]): Source<string> {
   return observable(() => nodes.map((node) => node.get()).join(" "));
 }
 
+/** The size of every card in the deck, in px. */
+export const CARD_WIDTH = 600;
+export const CARD_HEIGHT = 560;
+
 /**
  * The shared look of every panel. Rounded corners and a real border, so each
  * card is itself a demonstration of the SDF box path.
+ *
+ * Every card is the same size, as slides in a deck are: the panel on show is
+ * centred in front of the player with the switcher under it, and a portal is
+ * placed by its centre, so a card of its own height would move the switcher
+ * or leave a gap under it from one panel to the next. The height is the
+ * tallest panel's, and a shorter one leaves room at the bottom.
  */
 export const cardStyle = stylesheet`
   .${CLASS_NAME} {
     box-sizing: border-box;
+    position: relative;
     font-family: ${fontFamily};
-    width: 22rem;
-    padding: 1.25rem 1.5rem 1.5rem;
+    width: ${CARD_WIDTH}px;
+    height: ${CARD_HEIGHT}px;
+    padding: 20px 26px 24px;
     background-color: rgb(250, 250, 253);
     border: 2px solid rgb(214, 218, 230);
     border-radius: 18px;
@@ -42,20 +54,44 @@ export const cardStyle = stylesheet`
 `;
 
 export const headingStyle = className`
-  margin: 0 0 1rem;
-  font-size: 1.4rem;
+  margin: 0 0 6px;
+  font-size: 24px;
 `;
 
 export const captionStyle = className`
-  margin: 0.9rem 0 0.35rem;
-  font-size: 0.7rem;
+  margin: 14px 0 6px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgb(122, 128, 148);
+  color: rgb(110, 116, 136);
 `;
 
 export const rowStyle = className`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
+
+/**
+ * The quiet grey button several panels share, for the controls that are
+ * there to change a specimen rather than to be one. The pointer panel's blue
+ * buttons are the ones under test.
+ */
+export const softButtonStyle = stylesheet`
+  .${CLASS_NAME} {
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    background-color: rgb(228, 231, 240);
+    color: rgb(40, 44, 58);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .${CLASS_NAME}:hover {
+    background-color: rgb(200, 206, 222);
+  }
 `;

@@ -56,24 +56,24 @@ const keyframesStyle = stylesheet`
 `;
 
 const spinnerStyle = className`
-  width: 2rem;
-  height: 2rem;
+  width: 36px;
+  height: 36px;
   border: 4px solid rgb(0, 123, 255);
   border-radius: 8px;
   animation: ${keyframesStyle}-spin 2.5s linear infinite;
 `;
 
 const pulseStyle = className`
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 26px;
+  height: 26px;
   background-color: rgb(221, 64, 104);
   border-radius: 50%;
   animation: ${keyframesStyle}-pulse 1.6s ease-in-out infinite;
 `;
 
 const breatheStyle = className`
-  padding: 0.35rem 1rem;
-  font-size: 0.85rem;
+  padding: 6px 16px;
+  font-size: 14px;
   color: rgb(255, 255, 255);
   background-color: rgb(64, 148, 88);
   border-radius: 999px;
@@ -81,8 +81,8 @@ const breatheStyle = className`
 `;
 
 const coinStyle = className`
-  width: 2.4rem;
-  height: 2.4rem;
+  width: 42px;
+  height: 42px;
   background-color: rgb(240, 180, 40);
   border: 4px solid rgb(178, 122, 24);
   border-radius: 50%;
@@ -90,8 +90,8 @@ const coinStyle = className`
 `;
 
 const liftedStyle = className`
-  padding: 0.35rem 1rem;
-  font-size: 0.85rem;
+  padding: 6px 16px;
+  font-size: 14px;
   color: rgb(255, 255, 255);
   background-color: rgb(64, 108, 220);
   border-radius: 10px;
@@ -100,28 +100,28 @@ const liftedStyle = className`
 
 const laneStyle = className`
   position: relative;
-  height: 2rem;
+  height: 36px;
 `;
 
 const sliderStyle = className`
   position: absolute;
   top: 0;
   left: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 36px;
+  height: 36px;
   background-color: rgb(148, 96, 220);
   border-radius: 10px;
 `;
 
 const trackStyle = className`
-  height: 0.8rem;
+  height: 14px;
   background-color: rgb(228, 231, 240);
   border-radius: 999px;
 `;
 
 const fillStyle = className`
   width: 100%;
-  height: 0.8rem;
+  height: 14px;
   background-color: rgb(0, 123, 255);
   border-radius: 999px;
 `;
@@ -156,7 +156,7 @@ const MotionPanel = component((ctx: WeakKey) => {
             set("className", sliderStyle),
             effects((el: HTMLDivElement) => {
               const animation = el.animate(
-                [{ transform: "translateX(0px)" }, { transform: "translateX(272px)" }],
+                [{ transform: "translateX(0px)" }, { transform: "translateX(508px)" }],
                 {
                   duration: 2200,
                   direction: "alternate",

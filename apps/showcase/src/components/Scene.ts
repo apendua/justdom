@@ -1,14 +1,64 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene } from "justdom-three";
-import { effects, effectsOnly, useEffects } from "justdom-signal";
+import {
+  children,
+  cursors,
+  $,
+  dom,
+  getScene,
+  list,
+  PortalPluginsContext,
+  withPanelOptions,
+  type PortalKeyboardOptions,
+  type PortalPlugin,
+} from "justdom-three";
+import { $ as $dom, attr, children as domChildren } from "justdom-core";
+import { Signal, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
-import ButtonsPanel from "./ButtonsPanel.js";
-import MotionPanel from "./MotionPanel.js";
-import BoxesPanel from "./BoxesPanel.js";
-import ImagesPanel from "./ImagesPanel.js";
-import VectorsPanel from "./VectorsPanel.js";
-import ListsPanel from "./ListsPanel.js";
+import { CARD_HEIGHT, CARD_WIDTH } from "./panels.js";
+import { PANELS, findPanel, loadPlugins, type Panel, type PanelId } from "./registry.js";
+import Switcher, { BAR_HEIGHT, SWITCHER_HEIGHT } from "./Switcher.js";
+import Keyboard from "./Keyboard.js";
+
+/**
+ * What a script driving the deck can do: the visual suite, mostly, which
+ * photographs every panel in one session and aims a controller at a control.
+ */
+export interface ShowcaseControls {
+  /** Every panel's id, in the deck's order. */
+  readonly panels: readonly PanelId[];
+  /**
+   * The panel on show. Under `?panel=all`, where every panel is, the one
+   * `show` was last asked for, or the first.
+   */
+  current(): PanelId;
+  /**
+   * Put a panel on show, loading the plugins it needs first. Resolves once
+   * its portal has mounted it and taken down the loading frame. A panel that
+   * is not atomic may still be bringing that mount into the scene a budget's
+   * worth per frame, with its container marked `data-xr-busy`, so a script
+   * that aims at a control waits for that mark to go as well.
+   *
+   * The last call wins. A call that a later one overtakes while it loads
+   * plugins never puts its panel on show, and it resolves, as does one whose
+   * panel was put on show and then replaced before it was whole. Rejects for
+   * an id the deck does not have, and for a panel whose plugins failed to
+   * load, which leaves the panel on show where it is.
+   *
+   * Under `?panel=all` every panel is on show already, so this only waits
+   * for the one asked for to be whole.
+   */
+  show(id: string): Promise<void>;
+  /**
+   * Where in the room the middle of the first element on show that matches
+   * `selector` is drawn, in the session's reference space, or null when no
+   * element matches. The panels on show are searched first, in the deck's
+   * order, then the keyboard while it is up. The page knows where an element
+   * is in its panel and the scene knows where the panel is, and this asks
+   * both.
+   */
+  locate(selector: string): [number, number, number] | null;
+}
 
 declare global {
   interface Window {
@@ -17,37 +67,105 @@ declare global {
      * photographs the scene. The reading is a live number and the chart is a
      * minute of live numbers, so a photograph with the panel in it is a
      * photograph that never matches the one before — and what these baselines
-     * are for is the six panels, not the instrument in front of them.
+     * are for is the panels, not the instrument in front of them.
      */
     __diagnostics?: DiagnosticsControls;
+    /** The deck, for scripts. See `ShowcaseControls`. */
+    __showcase?: ShowcaseControls;
   }
 }
 
 export interface SceneOptions {
   /**
-   * Whether the vector panel is in the scene. Off, the other five stay exactly
-   * where they are — the columns keep the room the panel was given — so the
-   * two versions differ by the panel and by nothing else, which is what a
-   * comparison of what the panel costs needs.
+   * The panel on show first, or `"all"` for every panel at once, in a grid
+   * and with no switcher: what `?panel=all` asks for, so that the
+   * paint-order benches in `packages/three` count every panel in one frame.
    */
-  vectors: boolean;
+  initial: PanelId | "all";
+  /**
+   * The plugins the panels on show first need, by id, already loaded: the
+   * caller fetches them beside the emulator rather than after it.
+   */
+  initialPlugins: ReadonlyMap<PanelId, readonly PortalPlugin[]>;
+  /** Told whenever another panel goes on show. */
+  onShow?: (id: PanelId) => void;
 }
 
 /**
- * Six panels in three columns and two rows. The outer columns are turned in
- * towards the middle so the set reads as a shallow cockpit rather than a flat
- * wall: interactions and pictures along the top, self-running motion and the
- * box path along the bottom. The middle column is square on and a step
- * further back, where the cockpit's curve puts its middle, with the vector
- * panel above the lists. Each is ordinary DOM projected through its own
- * portal.
- *
- * Panels are positioned by their centres — a portal puts its object's origin
- * there — so the two rows are separated by more than half of the tallest one
- * plus half of the one below it, and the columns by rather more than a panel
- * is wide, which is where these numbers come from.
+ * The portal's own scale, CSS px to the units of the object it is mounted on,
+ * for placing the switcher under the card and for `locate`.
  */
-const createScene = ({ vectors }: SceneOptions) =>
+const PANEL_SCALE = 0.01;
+
+/** The gap between the card and the switcher's bar, in px. */
+const GAP = 16;
+
+/**
+ * The grid `?panel=all` lays every panel out in: its columns, the gap
+ * between two cards in px, and how far in front of the player it hangs, in
+ * metres. It is far enough for the emulator's view to take in the whole
+ * grid, so that no panel is culled from what the benches count.
+ */
+const GRID_COLUMNS = 5;
+const GRID_GAP = 40;
+const GRID_DISTANCE = 1.3;
+
+/** Where the grid puts the panel at `index`, in the units its group is in. */
+function gridPosition(index: number): [number, number] {
+  const rows = Math.ceil(PANELS.length / GRID_COLUMNS);
+  const column = index % GRID_COLUMNS;
+  const row = Math.floor(index / GRID_COLUMNS);
+  return [
+    (column - (GRID_COLUMNS - 1) / 2) * (CARD_WIDTH + GRID_GAP) * PANEL_SCALE,
+    ((rows - 1) / 2 - row) * (CARD_HEIGHT + GRID_GAP) * PANEL_SCALE,
+  ];
+}
+
+/**
+ * Where the keyboard opens, in metres in the session's reference space: low
+ * in front of the card and nearer than it, upright and square on, so that a
+ * photograph shows it over the card's empty lower half, clear of the
+ * switcher, and a ray reaches its keys before the card. `KEYBOARD_SCALE` is
+ * metres per px of the board.
+ */
+const KEYBOARD_TOP = -0.05;
+const KEYBOARD_DISTANCE = 0.36;
+const KEYBOARD_SCALE = 0.0006;
+
+/**
+ * Resolves on the first animation frame where `done` holds. Frames and not a
+ * timer, because what it waits for is the portal's work, which happens on
+ * frames.
+ */
+function frameWhen(done: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const check = () => {
+      if (done()) {
+        resolve();
+      } else {
+        requestAnimationFrame(check);
+      }
+    };
+    check();
+  });
+}
+
+/**
+ * One panel at a time, square on in front of the player, with the switcher
+ * under it. The panel on show is the only one mounted: switching takes the
+ * portal down and builds the next one, so the scene costs what one panel
+ * costs, and every panel starts from its first state when it is shown again.
+ *
+ * Every card is the same size, and a portal is placed by its centre, so the
+ * switcher's bar sits the same gap under every card. The switcher's panel is
+ * taller than its bar, to have room for its menu below it, and its centre is
+ * placed to put the bar's top edge where it belongs.
+ *
+ * Under `?panel=all` (`SceneOptions.initial`) the same scene is a grid
+ * instead: every panel is mounted at once, further away, nothing is
+ * switched and there is no switcher.
+ */
+const createScene = ({ initial, initialPlugins, onShow }: SceneOptions) =>
   effectsOnly((ctx: WeakKey) => {
     const scale = 0.1;
     // The frame rate readout, head-locked and up to the left. There is no music
@@ -56,18 +174,145 @@ const createScene = ({ vectors }: SceneOptions) =>
     const diagnostics = createDiagnostics();
     window.__diagnostics = diagnostics;
 
+    const everything = initial === "all";
+    const current = Signal.of<PanelId>(everything ? PANELS[0].id : initial);
+    /** Plugins each panel was given, by id: loaded once, kept for a return visit. */
+    const plugins = new Map(initialPlugins);
+    /** The objects the panels on show are mounted on, by id, for `locate`. */
+    const mounted = new Map<PanelId, THREE.Object3D>();
+    /** How many times `show` has been called, so a call can tell it was overtaken. */
+    let requests = 0;
     /**
-     * Half the horizontal distance between the two columns, in container px:
-     * far enough apart that a card's width fits between them, with a little
-     * air either side of it.
+     * What the keyboard hangs from while it is up, for `locate`: its top
+     * edge is the anchor's origin, and the group two below it has its origin
+     * in the board's middle, as a panel's object does. It is only right for
+     * a board the scene placed: a board the player carried and put down
+     * comes back on a new anchor without `placement`, and `locate` then
+     * finds no key.
      */
-    const column = 3.9;
-    /** Half the vertical distance between the two rows. */
-    const row = 2.2;
-    /** How far each column is turned in towards the viewer. */
-    const yaw = 0.32;
-    /** How far forward the turn brings them, so the grid curves rather than shears. */
-    const depth = 1.2;
+    let keyboardAnchor: THREE.Object3D | undefined;
+
+    const keyboard: PortalKeyboardOptions = {
+      create: ({ onKey, field }) => Keyboard({ onKey, field }),
+      placement: ({ anchor }) => {
+        keyboardAnchor = anchor;
+        anchor.position.set(0, KEYBOARD_TOP, -KEYBOARD_DISTANCE);
+        anchor.rotation.set(0, 0, 0);
+      },
+      tilt: 0,
+      scale: KEYBOARD_SCALE,
+    };
+    const keyedCtx = withPanelOptions(ctx, { keyboard });
+
+    const show = async (asked: string) => {
+      const request = ++requests;
+      const entry = findPanel(asked);
+      if (!entry) {
+        throw new Error(`The deck has no panel called "${asked}".`);
+      }
+      const { id } = entry;
+      if (!plugins.has(id)) {
+        const loaded = await loadPlugins(entry);
+        plugins.set(id, loaded);
+        // A later call has been made while these loaded: it decides what is
+        // on show, and this one is done.
+        if (request !== requests) {
+          return;
+        }
+      }
+      current.set(id);
+      onShow?.(id);
+      await frameWhen(
+        () =>
+          current.get() !== id ||
+          (!!document.querySelector(`[data-xr-portal] [data-panel="${id}"]`) &&
+            !document.querySelector("[data-xr-loading]")),
+      );
+    };
+
+    /** The element `locate` asks for, and the object its portal is drawn on. */
+    const find = (selector: string): [Element, THREE.Object3D | undefined] | null => {
+      for (const { id } of PANELS) {
+        const object = mounted.get(id);
+        const inPanel =
+          object && document.querySelector(`[data-panel="${id}"]`)?.querySelector(selector);
+        if (inPanel) {
+          return [inPanel, object];
+        }
+      }
+      const inKeyboard = document.querySelector(`[data-keyboard] ${selector}`);
+      const board = keyboardAnchor?.parent ? keyboardAnchor.children[0]?.children[0] : undefined;
+      return inKeyboard ? [inKeyboard, board] : null;
+    };
+
+    const locate = (selector: string): [number, number, number] | null => {
+      const found = find(selector);
+      if (!found) {
+        return null;
+      }
+      const [element, object] = found;
+      const root = element.closest("[data-xr-portal]");
+      if (!object || !root) {
+        return null;
+      }
+      const frame = root.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      // The portal puts its object's origin in the middle of the panel, with
+      // y up, where the page's is at the top left with y down.
+      const point = new THREE.Vector3(
+        (box.left + box.width / 2 - frame.left - frame.width / 2) * PANEL_SCALE,
+        (frame.top + frame.height / 2 - box.top - box.height / 2) * PANEL_SCALE,
+        0,
+      );
+      object.updateWorldMatrix(true, false);
+      return object.localToWorld(point).toArray();
+    };
+
+    window.__showcase = {
+      panels: PANELS.map(({ id }) => id),
+      current: () => current.get(),
+      show,
+      locate,
+    };
+
+    /**
+     * One panel, mounted with its plugins and tagged with its id, and put in
+     * its place in the grid under `?panel=all`.
+     */
+    const panel = (entry: Panel) => {
+      const given = plugins.get(entry.id) ?? [];
+      const panelCtx = given.length ? PortalPluginsContext.set(keyedCtx, given) : keyedCtx;
+      return dom(
+        panelCtx,
+        $dom("div", [attr({ "data-panel": entry.id }), domChildren(entry.component(ctx))]),
+        [
+          effects((obj) => {
+            if (everything) {
+              const [x, y] = gridPosition(PANELS.indexOf(entry));
+              obj.position.set(x, y, 0);
+            }
+            mounted.set(entry.id, obj);
+            onCleanup(() => {
+              if (mounted.get(entry.id) === obj) {
+                mounted.delete(entry.id);
+              }
+            });
+          }),
+        ],
+        {
+          atomic: "atomic" in entry ? entry.atomic : true,
+          draggable: "draggable" in entry ? entry.draggable : false,
+        },
+      );
+    };
+
+    // The switcher's centre, in the units its group is in: the card's
+    // bottom edge, the gap, then half the switcher's own height.
+    const switcherY = -(CARD_HEIGHT / 2 + GAP + SWITCHER_HEIGHT / 2) * PANEL_SCALE;
+    // How far up the group goes, in metres, so that the card and the bar
+    // under it are centred on the eye line together: the card alone is
+    // centred on the group's origin, and the gap and the bar hang below it.
+    const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
     useEffects(getScene(ctx), [
       effects(() => {
@@ -85,65 +330,34 @@ const createScene = ({ vectors }: SceneOptions) =>
             o.scale.set(scale, scale, scale);
             // The XR button asks for a `local` reference space: the head sits at
             // the origin, so straight ahead is y = 0.
-            o.position.set(0, 0, -0.65);
+            // The grid is centred on the eye line on its own.
+            o.position.set(0, everything ? 0 : lift, everything ? -GRID_DISTANCE : -0.45);
           }),
-          // The Interactions and Boxes panels are not atomic: each runs a
-          // transition a click starts — the card's tilt, the meter's width —
-          // that invalidates the panel on every frame, and an atomic panel
-          // whose per-frame work outgrows its slice of the budget holds still
-          // until the transition ends. Instalments that move beat a whole
-          // update that jumps, for something under the player's hand.
           children(
-            dom(
-              ctx,
-              ButtonsPanel(ctx),
-              [
-                effects((obj) => {
-                  obj.position.set(-column, row, depth);
-                  obj.rotation.set(0, yaw, 0);
-                }),
-              ],
-              { atomic: false },
+            list(
+              () => (everything ? PANELS.map(({ id }) => id) : [current.get()]),
+              (id) => panel(findPanel(id)),
             ),
-            dom(ctx, ImagesPanel(ctx), [
-              effects((obj) => {
-                obj.position.set(column, row, depth);
-                obj.rotation.set(0, -yaw, 0);
-              }),
-            ]),
-            dom(ctx, MotionPanel(ctx), [
-              effects((obj) => {
-                obj.position.set(-column, -row, depth);
-                obj.rotation.set(0, yaw, 0);
-              }),
-            ]),
-            dom(
-              ctx,
-              BoxesPanel(ctx),
-              [
-                effects((obj) => {
-                  obj.position.set(column, -row, depth);
-                  obj.rotation.set(0, -yaw, 0);
-                }),
-              ],
-              { atomic: false },
-            ),
-            ...(vectors
-              ? [
-                  dom(ctx, VectorsPanel(ctx), [
-                    effects((obj) => {
-                      // Square on, half a step back from the columns: where the
-                      // cockpit's curve puts its middle.
-                      obj.position.set(0, row, depth / 2);
+            ...(everything
+              ? []
+              : [
+                  dom(
+                    ctx,
+                    Switcher({
+                      current: () => current.get(),
+                      show: (id) => {
+                        show(id).catch((err) => {
+                          console.error(`Could not show the ${id} panel:`, err);
+                        });
+                      },
                     }),
-                  ]),
-                ]
-              : []),
-            dom(ctx, ListsPanel(ctx), [
-              effects((obj) => {
-                obj.position.set(0, -row, depth / 2);
-              }),
-            ]),
+                    [
+                      effects((obj) => {
+                        obj.position.set(0, switcherY, 0);
+                      }),
+                    ],
+                  ),
+                ]),
           ),
         ]),
         cursors(ctx, { color: "#ff0000" }),

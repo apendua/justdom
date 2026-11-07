@@ -70,15 +70,28 @@ This package drives every demo in this repository —
 [`apps/todo`](https://github.com/apendua/justdom/tree/develop/apps/todo) and the rest — worth
 reading for realistic scenes combining lighting, keyed lists (`list`/`keyedList`), controller/hand
 input, and DOM panels projected into 3D space.
-[`apps/showcase`](https://github.com/apendua/justdom/tree/develop/apps/showcase) is the sampler: six
-panels in a grid demonstrating hover/press transitions, CSS keyframes, a Web Animations API
-animation, a `useFrame(ctx, fn)` loop writing inline styles, animated text colour, a paragraph
-revealed to a moving cursor, static transforms, a layout-tier width transition, every `object-fit`
-an image can be drawn with, a card of inline SVG (a diagram of boxes joined by dashed and dotted
-arrows with marker heads, nodes labelled through `<text>`, two pictures through `<image>`, a bar cut
-in half by a `clip-path`, an icon through a `viewBox` at three sizes, a star spun by a CSS animation
-on its `<g>`, a symbol drawn three times by `<use>`, marching ants and a stroke colour animated by
-keyframes), and a card of bulleted and numbered lists whose steps are numbered as they arrive.
+[`apps/showcase`](https://github.com/apendua/justdom/tree/develop/apps/showcase) is the sampler: a
+deck of panels, one on show at a time, each on one area of what a panel draws. Boxes covers radii,
+borders, opacity, an `overflow: hidden` corner and a layout-tier width transition; backgrounds
+covers linear, radial, conic and repeating gradients, `url()` pictures sized, placed and tiled, and
+the two stacks a panel draws differently from a page; before & after covers `::before` and `::after`
+in flow, as a `content: url()` picture, positioned, lifted by `z-index` and restyled on `:hover`;
+paint order covers a positioned box over later flow, a transformed one over its siblings, a
+translucent card over a label and a nested overlay menu; text covers weights, spacing, shadows,
+animated colour and a paragraph revealed to a moving cursor; lists covers bullets and numbers that
+arrive as steps are added; images covers every `object-fit`; vectors is a card of inline SVG (an
+icon sprite of `<symbol>`s drawn by `<use>`, a pipeline diagram with marker heads, dashed and dotted
+edges and `<text>` labels, a chart clipped to its plot by a `clip-path`, icons recoloured on hover,
+`<image>` and four animations); SVG paint covers gradients and patterns (both units, a focus off
+centre, `gradientTransform`, `href` inheritance, the three spread methods, `patternTransform` and a
+box-sized pattern); motion covers CSS keyframes, a Web Animations API animation and a
+`useFrame(ctx, fn)` loop writing inline styles; pointer covers hover and press through `:hover` and
+`:active`; forms covers checkboxes styled by `:checked` and `data-xr-checked`, the next sibling
+included, and text fields that open the scene's keyboard and wear `:focus` while it types; widgets
+covers justdom-three-ui's dropdown and scrollable, a list pulled by hand, drag and drop between two
+lists, and a `draggable` panel's carry strips. `?panel=<id>` opens it on one panel, and Prev and
+Next beside the XR button step through the deck without a session. `?panel=all` puts every panel in
+the scene at once, in a grid, which is what the paint-order benches in `packages/three` count.
 [`apps/desk`](https://github.com/apendua/justdom/tree/develop/apps/desk) is the same features in one
 scene, and mirrors a page that already exists rather than building panels for the scene: a desk
 whose monitor reveals its program, whose keys are pressed with the ray, whose floppies are dragged

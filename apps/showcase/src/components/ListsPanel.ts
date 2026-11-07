@@ -1,7 +1,17 @@
-import { className, stylesheet, text, $, children, attr, list, CLASS_NAME } from "justdom-core";
+import {
+  className,
+  stylesheet,
+  text,
+  $,
+  children,
+  attr,
+  list,
+  style,
+  CLASS_NAME,
+} from "justdom-core";
 import { set, on } from "justdom-core";
 import { Signal, component, observable } from "justdom-signal";
-import { cardStyle, captionStyle, classes, headingStyle } from "./panels.js";
+import { cardStyle, captionStyle, classes, headingStyle, softButtonStyle } from "./panels.js";
 
 /**
  * Lists with their markers. The browser lays an item out with room for its
@@ -20,14 +30,14 @@ const MORE_STEPS = ["See it numbered", "Press once more"];
 
 const listStyle = className`
   margin: 0;
-  padding-left: 1.6rem;
-  font-size: 0.9rem;
-  line-height: 1.45;
+  padding-left: 29px;
+  font-size: 15px;
+  line-height: 1.5;
 `;
 
 const columnsStyle = className`
   display: flex;
-  gap: 1rem;
+  gap: 28px;
 `;
 
 const circleStyle = className`
@@ -50,31 +60,12 @@ const stepsStyle = stylesheet`
 `;
 
 const insideStyle = className`
-  margin: 0.35rem 0 0;
+  margin: 6px 0 0;
   padding-left: 0;
   list-style-position: inside;
-  font-size: 0.9rem;
-  line-height: 1.45;
-  color: rgb(122, 128, 148);
-`;
-
-const buttonStyle = stylesheet`
-  .${CLASS_NAME} {
-    margin-top: 0.6rem;
-    padding: 0.35rem 0.8rem;
-    font-family: inherit;
-    font-size: 0.8rem;
-    background-color: rgb(228, 231, 240);
-    color: rgb(40, 44, 58);
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background-color 0.15s ease;
-  }
-
-  .${CLASS_NAME}[data-xr-hover] {
-    background-color: rgb(200, 206, 222);
-  }
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgb(110, 116, 136);
 `;
 
 /** Items with nothing on them but their labels. */
@@ -133,7 +124,8 @@ const ListsPanel = component((_ctx: WeakKey) => {
         children($("li", [children(text`An inside marker starts the line`)])),
       ]),
       $("button", [
-        set("className", buttonStyle),
+        set("className", softButtonStyle),
+        style({ marginTop: "12px" }),
         children(text`${observable(() => (full() ? "Start over" : "Add a step"))}`),
         on("click", press),
       ]),

@@ -1,6 +1,7 @@
 import { className, text, set, attr, $, children } from "justdom-core";
 import { component } from "justdom-signal";
 import { cardStyle, captionStyle, headingStyle, rowStyle } from "./panels.js";
+import { SPECIMEN } from "./specimen.js";
 
 /**
  * The picture path: an `<img>` is an ordinary box with a bitmap in it, and
@@ -12,35 +13,12 @@ import { cardStyle, captionStyle, headingStyle, rowStyle } from "./panels.js";
  */
 
 /**
- * The specimen, as markup rather than a binary blob: a reviewer can read what
- * is being drawn, and no asset has to travel with the app.
- *
- * Every part of it earns its place in a fit demonstration. It is four times
- * as wide as it is tall, so a square-ish frame has to do something visible to
- * it. The ring in the middle is a circle, so `fill` — which is the one fit
- * that ignores the aspect ratio — squashes it into an ellipse and says so at
- * a glance. And the two ends differ, a square at the left and an arrow at the
- * right, so a crop shows which end of the picture survived it.
- */
-const SPECIMEN = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="80">` +
-    `<rect x="0" width="80" height="80" fill="rgb(221,64,104)"/>` +
-    `<rect x="80" width="80" height="80" fill="rgb(240,170,60)"/>` +
-    `<rect x="160" width="80" height="80" fill="rgb(64,148,88)"/>` +
-    `<rect x="240" width="80" height="80" fill="rgb(0,123,255)"/>` +
-    `<circle cx="160" cy="40" r="29" fill="none" stroke="rgb(250,250,253)" stroke-width="7"/>` +
-    `<rect x="12" y="12" width="26" height="26" fill="rgb(250,250,253)"/>` +
-    `<path d="M282 24l24 16-24 16z" fill="rgb(250,250,253)"/>` +
-    `</svg>`,
-)}`;
-
-/**
  * A frame the specimen is deliberately the wrong shape for: half as wide,
  * relative to its height, as the picture is.
  */
 const FRAME = `
-  width: 5.75rem;
-  height: 2.9rem;
+  width: 120px;
+  height: 60px;
   background-color: rgb(228, 231, 240);
   border: 2px solid rgb(122, 128, 148);
 `;
@@ -74,16 +52,16 @@ const coverRightStyle = className`
 
 /** The corners come from the same distance field that rounds a box. */
 const avatarStyle = className`
-  width: 4rem;
-  height: 4rem;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   border: 3px solid rgb(221, 64, 104);
   object-fit: cover;
 `;
 
 const roundedStyle = className`
-  width: 9.5rem;
-  height: 3rem;
+  width: 200px;
+  height: 60px;
   border-radius: 14px;
   object-fit: cover;
 `;
@@ -94,15 +72,16 @@ const roundedStyle = className`
  * already subject to.
  */
 const windowStyle = className`
-  width: 8.5rem;
-  height: 3rem;
+  width: 180px;
+  height: 60px;
   overflow: hidden;
   border-radius: 10px;
 `;
 
 const tallStyle = className`
-  width: 8.5rem;
-  height: 6rem;
+  display: block;
+  width: 180px;
+  height: 120px;
   object-fit: cover;
 `;
 

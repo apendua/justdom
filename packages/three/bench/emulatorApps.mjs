@@ -109,7 +109,9 @@ export const APPS = {
     const browser = await launch();
     try {
       const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: harness.VIEWPORT });
-      await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
+      // The deck shows one panel at a time; `panel=all` puts every one of
+      // them in the scene at once, in a grid the view takes in whole.
+      await page.goto(`${url}?emulator=bare&panel=all`, { waitUntil: "load" });
       await page.waitForSelector("#ARButton");
       await harness.enterSession(page, { freeze: false });
       await visit(page, url, "showcase");

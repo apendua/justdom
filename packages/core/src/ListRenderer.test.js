@@ -83,36 +83,14 @@ describe("renders a simple DOM tree", () => {
     // The last item has no successor to be compared against, and used to be
     // re-appended on every emission for exactly that reason: one phantom
     // mutation per emission, per list.
-    const items$ = new BehaviorSubject(["A", "B", "C"]);
-    const innerHTML = inspectHTML(
-      $("ul", [
-        children(
-          list(items$, (item) => {
-            return $("li", [
-              (li) => {
-                li.textContent = item;
-              },
-            ]);
-          }),
-        ),
-      ]),
-    );
-    const ul = innerHTML.container.querySelector("ul");
-    assert.ok(ul);
-    const spy = new window.MutationObserver(() => {});
-    spy.observe(ul, { childList: true, subtree: true });
-
-    items$.next(["A", "B", "C"]);
-    items$.next(["A", "B", "C"]);
-    assert.deepEqual(spy.takeRecords(), [], "same items, same order, no mutations");
+    const view = mountList(["A", "B", "C"]);
+    assert.equal(view.emit(["A", "B", "C"]), 0, "same items, same order, no moves");
+    assert.equal(view.emit(["A", "B", "C"]), 0, "and again");
 
     // Reordering is still a move, so the guard is not a bypass.
-    items$.next(["C", "A", "B"]);
-    assert.notEqual(spy.takeRecords().length, 0, "a real reorder still moves nodes");
-    assert.strictEqual(innerHTML.get(), "<ul><li>C</li><li>A</li><li>B</li></ul>");
-
-    spy.disconnect();
-    innerHTML.dispose();
+    assert.notEqual(view.emit(["C", "A", "B"]), 0, "a real reorder still moves nodes");
+    assert.deepEqual(view.text(), ["C", "A", "B"]);
+    view.dispose();
   });
 
   it("updates HTML when items are removed", () => {
@@ -139,49 +117,6 @@ describe("renders a simple DOM tree", () => {
 });
 
 describe("moves only the items that must move", () => {
-  /**
-   * Renders `initial` as a list of `<li>`s and counts the items each later
-   * emission inserts: a new item, or an existing one moved.
-   *
-   * @param {string[]} initial
-   */
-  function mountList(initial) {
-    const items$ = new BehaviorSubject(initial);
-    const innerHTML = inspectHTML(
-      $("ul", [
-        children(
-          list(items$, (item) =>
-            $("li", [
-              (li) => {
-                li.textContent = item;
-              },
-            ]),
-          ),
-        ),
-      ]),
-    );
-    const ul = innerHTML.container.querySelector("ul");
-    assert.ok(ul);
-    const spy = new window.MutationObserver(() => {});
-    spy.observe(ul, { childList: true });
-    return {
-      /** @param {string[]} items */
-      emit(items) {
-        spy.takeRecords();
-        items$.next(items);
-        return spy
-          .takeRecords()
-          .flatMap((record) => [...record.addedNodes])
-          .filter((node) => node.nodeName === "LI").length;
-      },
-      text: () => [...ul.querySelectorAll("li")].map((li) => li.textContent),
-      dispose() {
-        spy.disconnect();
-        innerHTML.dispose();
-      },
-    };
-  }
-
   const letters = [..."ABCDEFGHIJ"];
 
   it("swapping two items moves two", () => {
@@ -258,6 +193,49 @@ describe("longestRunInOrder", () => {
     assert.deepEqual(run([..."ABC"], []), []);
   });
 });
+
+/**
+ * Renders `initial` as a list of `<li>`s and counts the items each later
+ * emission inserts: a new item, or an existing one moved.
+ *
+ * @param {string[]} initial
+ */
+function mountList(initial) {
+  const items$ = new BehaviorSubject(initial);
+  const innerHTML = inspectHTML(
+    $("ul", [
+      children(
+        list(items$, (item) =>
+          $("li", [
+            (li) => {
+              li.textContent = item;
+            },
+          ]),
+        ),
+      ),
+    ]),
+  );
+  const ul = innerHTML.container.querySelector("ul");
+  assert.ok(ul);
+  const spy = new window.MutationObserver(() => {});
+  spy.observe(ul, { childList: true });
+  return {
+    /** @param {string[]} items */
+    emit(items) {
+      spy.takeRecords();
+      items$.next(items);
+      return spy
+        .takeRecords()
+        .flatMap((record) => [...record.addedNodes])
+        .filter((node) => node.nodeName === "LI").length;
+    },
+    text: () => [...ul.querySelectorAll("li")].map((li) => li.textContent),
+    dispose() {
+      spy.disconnect();
+      innerHTML.dispose();
+    },
+  };
+}
 
 /**
  * @returns {Container}

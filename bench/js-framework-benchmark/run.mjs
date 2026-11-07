@@ -5,13 +5,15 @@
 //   node run.mjs [--chrome <path>] [--headless] [--count <n>]
 //                [--benchmark <prefix> ...] [--framework keyed/<name> ...]
 //
-// The suite is cloned into `work/` at the commit in UPSTREAM_COMMIT, the
+// The suite is fetched into `work/` at the commit in UPSTREAM_COMMIT, the
 // entry in `frameworks/keyed/justdom` is copied into it, every framework is
-// installed and built, `isKeyed` checks them, and the result files land in
-// `results/<date>/`. Run it again and it reuses the checkout and the installs.
+// installed and built, `isKeyed` checks them, and the result files land in a
+// folder of their own under `results/`. Run it again and it reuses the
+// checkout and the installs, as long as the checkout is still at the pin.
 
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -67,10 +69,33 @@ function sh(cwd, command, ...args) {
   }
 }
 
-if (!existsSync(suite)) {
-  mkdirSync(work, { recursive: true });
-  sh(work, "git", "clone", UPSTREAM, "js-framework-benchmark");
-  sh(suite, "git", "checkout", UPSTREAM_COMMIT);
+// The Chrome the suite will open: --chrome, or the path `browserPath()` in
+// the suite's `puppeteerAccess.ts` falls back to. Checked before the long
+// installs, so a missing Chrome stops the run at once.
+const chrome =
+  values.chrome ??
+  {
+    darwin: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    linux: "/snap/bin/chromium",
+    win32: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  }[platform()];
+if (!chrome || !existsSync(chrome)) {
+  console.error(`No Chrome at ${chrome ?? "a default path"}. Name one with --chrome <path>.`);
+  process.exit(1);
+}
+
+const head = existsSync(suite)
+  ? spawnSync("git", ["rev-parse", "HEAD"], { cwd: suite, encoding: "utf8" }).stdout.trim()
+  : undefined;
+if (head !== UPSTREAM_COMMIT) {
+  // Only the pinned commit, not the suite's whole history.
+  if (!existsSync(suite)) {
+    mkdirSync(suite, { recursive: true });
+    sh(suite, "git", "init", "--quiet");
+    sh(suite, "git", "remote", "add", "origin", UPSTREAM);
+  }
+  sh(suite, "git", "fetch", "--depth", "1", "origin", UPSTREAM_COMMIT);
+  sh(suite, "git", "checkout", "--force", "FETCH_HEAD");
   // The root package.json only holds the suite's lint tooling, whose peer
   // ranges conflict at this commit.
   sh(suite, "npm", "ci", "--legacy-peer-deps");
@@ -86,8 +111,7 @@ cpSync(join(here, "frameworks/keyed/justdom"), entry, {
 
 for (const framework of frameworks) {
   const dir = join(suite, "frameworks", framework);
-  const lock = existsSync(join(dir, "package-lock.json"));
-  sh(dir, "npm", lock ? "ci" : "install");
+  sh(dir, "npm", "ci");
   sh(dir, "npm", "run", "build-prod");
 }
 
@@ -101,10 +125,7 @@ const server = spawn("npm", ["start"], {
 });
 try {
   await waitForServer("http://localhost:8080/index.html");
-  const browser = [
-    ...(values.headless ? ["--headless"] : []),
-    ...(values.chrome ? ["--chromeBinary", values.chrome] : []),
-  ];
+  const browser = [...(values.headless ? ["--headless"] : []), "--chromeBinary", chrome];
   const driver = join(suite, "webdriver-ts");
   sh(driver, "npm", "run", "isKeyed", "--", ...browser, ...frameworks);
   rmSync(join(driver, "results"), { recursive: true, force: true });
@@ -120,15 +141,33 @@ try {
     "--framework",
     ...frameworks,
   );
-  const out = join(here, "results", new Date().toISOString().slice(0, 10));
-  mkdirSync(out, { recursive: true });
+  // One folder per run, so that a narrowed run never mixes with an earlier one.
+  const out = join(here, "results", new Date().toISOString().slice(0, 19).replace(/:/g, "-"));
+  mkdirSync(out);
   for (const file of readdirSync(join(driver, "results"))) {
     cpSync(join(driver, "results", file), join(out, file));
   }
   console.log(`\nResults in ${out}. Summarize them with: node summarize.mjs ${out}`);
 } finally {
-  if (process.platform === "win32") server.kill();
-  else process.kill(-server.pid);
+  stop(server);
+}
+
+/**
+ * Stops the server and the processes `npm start` started under it. A server
+ * that already exited, with port 8080 taken say, is left alone, so the error
+ * that says why reaches the console.
+ */
+function stop(child) {
+  if (child.exitCode !== null) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
+  } else {
+    try {
+      process.kill(-child.pid);
+    } catch (error) {
+      if (error.code !== "ESRCH") throw error;
+    }
+  }
 }
 
 async function waitForServer(url) {

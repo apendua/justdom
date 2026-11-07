@@ -1,0 +1,13 @@
+{
+  "name": "justdom-js-framework-benchmark",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runs justdom's js-framework-benchmark entry and checks it",
+  "type": "module",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

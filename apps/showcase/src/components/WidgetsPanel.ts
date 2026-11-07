@@ -141,6 +141,9 @@ const scrollBar = className`
 
 const scrollButton = stylesheet`
   .${CLASS_NAME} {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 22px;
     height: 22px;
     padding: 0;

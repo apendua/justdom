@@ -465,6 +465,39 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     );
   });
 
+  test("the scroll arrows sit in the middle of their buttons", async () => {
+    // An arrow is a box with a glyph in it, and nothing in the box puts the
+    // glyph anywhere but its top left corner unless the stylesheet centres
+    // it. The scene draws the glyph where the page laid it out, so the
+    // layout is what this measures: the glyph's box against its button's.
+    await showPanel(showcase.page, "widgets");
+    const offsets = await showcase.page.evaluate(() =>
+      [...document.querySelectorAll('[data-panel="widgets"] div')]
+        // The dropdown's caret is a ▼ too, but it is not an arrow.
+        .filter((element) => !element.closest('[role="combobox"]'))
+        .filter((element) => element.childElementCount === 0)
+        .filter((element) => ["\u25b2", "\u25bc"].includes(element.textContent ?? ""))
+        .map((element) => {
+          const box = element.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const glyph = range.getBoundingClientRect();
+          return {
+            mark: element.textContent,
+            x: glyph.x + glyph.width / 2 - (box.x + box.width / 2),
+            y: glyph.y + glyph.height / 2 - (box.y + box.height / 2),
+          };
+        }),
+    );
+    assert.equal(offsets.length, 2, "expected the two arrows of the scrolling window");
+    for (const { mark, x, y } of offsets) {
+      assert.ok(
+        Math.abs(x) <= 1.5 && Math.abs(y) <= 1.5,
+        `expected ${mark} centred in its button, found it ${x.toFixed(1)}, ${y.toFixed(1)} px off`,
+      );
+    }
+  });
+
   test("a label under a translucent card is tinted, not hidden", async () => {
     // The paint order panel has two positioned cards: a white one with a pure
     // blue label, and a half-transparent white veil over the whole label. A

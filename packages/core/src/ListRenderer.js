@@ -170,10 +170,15 @@ export default class ListRenderer {
         /** @type {Derived<number> | null} */
         let index = null;
         return () => {
-          index ??= new Derived(() => {
-            addDependency(filtered(childIndexesSubject, (changedKey) => changedKey === key));
-            return childIndexes.get(key) ?? -1;
-          });
+          if (!index) {
+            // Built once, outside the node, so that every run reads the same
+            // stream and its edge stays attached across index changes.
+            const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
+            index = new Derived(() => {
+              addDependency(changes);
+              return childIndexes.get(key) ?? -1;
+            });
+          }
           return index.get();
         };
       };

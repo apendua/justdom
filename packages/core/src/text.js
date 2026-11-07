@@ -1,6 +1,6 @@
-import { fromObservable, just, map, observable, Stream } from "justdom-signal";
+import { fromObservable, just, observable, Stream } from "justdom-signal";
 import { claimText } from "./hydrate.js";
-import { toMountable } from "./dom.js";
+import { asMountable } from "./dom.js";
 
 /**
  * @import { Source, Subscribable } from "justdom-signal";
@@ -111,5 +111,5 @@ export function renderText(strings, ...values) {
  * @returns {Source<Mountable>} An observable that emits a Text node.
  */
 export function text(strings, ...values) {
-  return map(toMountable)(textNode(renderText(strings, ...values)));
+  return asMountable(textNode(renderText(strings, ...values)));
 }

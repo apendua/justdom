@@ -290,16 +290,16 @@ export function keyedList(items, renderItem) {
 }
 
 /**
- * An element's stream, emitting the element as something to mount.
+ * A node's stream, emitting the node as something to mount.
  *
  * A plain relay rather than `map(toMountable)`: `map` runs its function in an
  * `observable` so that what it reads is tracked, which costs a `Derived` and
- * an `Effect` per element, and `toMountable` reads nothing.
+ * an `Effect` per node, and `toMountable` reads nothing.
  *
  * @param {Subscribable<Node>} source
  * @returns {Source<Mountable>}
  */
-function asMountable(source) {
+export function asMountable(source) {
   return new Stream((subscriber) =>
     source.subscribe({
       next: (node) => subscriber.next(toMountable(node)),

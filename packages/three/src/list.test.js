@@ -34,10 +34,10 @@ describe("list()", () => {
   test("gives every row its index, and moves it when the rows move", () => {
     const items = Signal.of(["a", "b", "c"]);
     const mounted = mountIndexed(items);
-    assert.deepStrictEqual([...mounted.names()].sort(), ["a@0", "b@1", "c@2"]);
+    assert.deepStrictEqual(mounted.names().sort(), ["a@0", "b@1", "c@2"]);
 
     items.set(["c", "a", "b"]);
-    assert.deepStrictEqual([...mounted.names()].sort(), ["a@1", "b@2", "c@0"]);
+    assert.deepStrictEqual(mounted.names().sort(), ["a@1", "b@2", "c@0"]);
     mounted.dispose();
   });
 

@@ -23,8 +23,8 @@ what an app gets from `npm install` rather than the workspace.
 
 ## Running it
 
-`run.mjs` does the whole run from a clean machine with Node 20 or later, git and Chrome, on macOS,
-Linux or Windows:
+`run.mjs` does the whole run from a clean machine with Node 20 or later, git and Chrome, on macOS or
+Linux. It has code for Windows too, but that path has not been run:
 
 ```
 node run.mjs

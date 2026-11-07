@@ -43,8 +43,6 @@ jobs:
       # are written through the issues API.
       pull-requests: write
       issues: write
-    env:
-      OUT: ${{ runner.temp }}/bench
     steps:
       - uses: actions/checkout@v7
         with:
@@ -60,8 +58,11 @@ jobs:
           node-version: 22
       - name: Name the two sides
         id: sides
+        # Where both benches write, for the report and the artifact. Set here
+        # because a job's own `env` cannot read the runner context.
         run: |
-          mkdir -p "$OUT"
+          echo "OUT=$RUNNER_TEMP/bench" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/bench"
           echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "base=$(git rev-parse origin/develop)" >> "$GITHUB_OUTPUT"
       # As in visual.yml and driven.yml, and under the same key: the lockfile

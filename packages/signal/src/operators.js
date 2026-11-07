@@ -5,6 +5,9 @@ import { observable, component } from "./factories.js";
 import { addDependency } from "./core.js";
 import { toObservable, toEffect, nodeOf } from "./interop.js";
 
+/** What a getter `set` has written before its first run: nothing it can return. */
+const UNWRITTEN = Symbol("unwritten");
+
 // Moved to `Effect.js`, where `useEffect` wires it; re-exported so existing
 // importers keep their path.
 export { failuresOf };
@@ -119,20 +122,28 @@ export function set(keyOrValues, value) {
   if (typeof value === "function") {
     const valueFn = value;
     return (entity, { fail }) => {
-      // A `Derived` in front of the assignment for its equality cutoff, which
-      // is what the observable this used to route through was providing: a
-      // recomputation that lands on the value already written writes nothing.
-      const source = new Derived(() => valueFn());
+      // The last value written, for an equality cutoff: a recomputation that
+      // lands on the value already written writes nothing. Held here rather
+      // than in a `Derived`, which would cost a node and an edge per mounting
+      // for the same comparison.
+      /** @type {unknown} */
+      let written = UNWRITTEN;
       // `onError` because a getter that throws on the *first* run throws into
       // the mounting, which handles it, while one that starts throwing on a
       // later run throws from the scheduler's flush, where nobody is waiting.
       // `fail` is the mounting's own channel, and it is where the observable
-      // branch below has always landed.
+      // branch below has always landed. Standalone, because `fail` is already
+      // where its failures go; the dependency `useEffect` adds to hear them
+      // would be a second route to the same place.
       useEffect(
         () => {
-          entity[keyOrValues] = source.get();
+          const next = valueFn();
+          if (!Object.is(next, written)) {
+            written = next;
+            entity[keyOrValues] = next;
+          }
         },
-        { name: "set", onError: fail },
+        { name: "set", onError: fail, standalone: true },
       );
     };
   }

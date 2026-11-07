@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { just } from "justdom-signal";
+import { just, Stream } from "justdom-signal";
 import { $, $$, children } from "./dom.js";
 import { text } from "./text.js";
 
@@ -100,5 +100,46 @@ describe("$$()", () => {
     just(root, [children(shared, shared)]).subscribe();
 
     assert.strictEqual(root.querySelectorAll("circle").length, 2);
+  });
+});
+
+describe("children()", () => {
+  it("reports a child's failure, now or later, to whoever mounted the element", () => {
+    const failure = new Error("child failed");
+    /** @type {((err: Error) => void) | undefined} */
+    let failLater;
+    const later = new Stream((subscriber) => {
+      failLater = (err) => subscriber.error(err);
+    });
+
+    /** @type {unknown[]} */
+    const heardNow = [];
+    just(document.createElement("div"), [
+      children(new Stream((subscriber) => subscriber.error(failure))),
+    ]).subscribe({ error: (err) => heardNow.push(err) });
+    assert.deepStrictEqual(heardNow, [failure], "a child failing as it is mounted");
+
+    /** @type {unknown[]} */
+    const heardLater = [];
+    just(document.createElement("div"), [children($("span"), later)]).subscribe({
+      error: (err) => heardLater.push(err),
+    });
+    assert.deepStrictEqual(heardLater, []);
+    failLater?.(failure);
+    assert.deepStrictEqual(heardLater, [failure], "a child failing once it is mounted");
+  });
+
+  it("takes its children out, and lets go of them, when the mounting comes down", () => {
+    let unsubscribed = 0;
+    const child = new Stream(() => () => {
+      unsubscribed += 1;
+    });
+    const root = document.createElement("main");
+    const subscription = just(root, [children($("span"), child)]).subscribe();
+    assert.strictEqual(root.querySelectorAll("span").length, 1);
+
+    subscription.unsubscribe();
+    assert.strictEqual(root.querySelectorAll("span").length, 0);
+    assert.strictEqual(unsubscribed, 1);
   });
 });

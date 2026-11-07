@@ -329,6 +329,17 @@ export class Effect extends ReactiveNode {
     return this.#channel;
   }
 
+  /**
+   * Whether this effect has run and can never run again or owe anything: it
+   * read nothing that could wake it and registered no teardown. Disposing
+   * one does nothing, so a caller holding many may let go of it instead.
+   *
+   * @returns {boolean}
+   */
+  isInert() {
+    return this.#runs > 0 && !this.queued && this.holdsNothing();
+  }
+
   get isDisposed() {
     return this.#disposed;
   }

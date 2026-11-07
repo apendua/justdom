@@ -1,4 +1,6 @@
 import { describe, it, mock } from "node:test";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import assert from "node:assert/strict";
 import { makeNonReactive, onCleanup } from "./index.js";
 import { on } from "./Emitter.js";
@@ -359,4 +361,49 @@ describe("just()", () => {
     assert.deepStrictEqual(seen, [entity]);
     subscription.unsubscribe();
   });
+
+  it("lets go of an effect that read nothing and owes nothing", async () => {
+    // A static `set` runs once and is done. The mounting holding its `Effect`
+    // until it comes down costs a node per element and buys nothing, since
+    // disposing it would do nothing. The effect's context leads back to the
+    // effect, so the context being collected says the effect was let go of.
+    const gc = collector();
+    /** @type {WeakRef<object> | undefined} */
+    let inert;
+    /** @type {WeakRef<object> | undefined} */
+    let reactive;
+    const value = Signal.of(1);
+    const entity = { a: 0, b: 0 };
+    const subscription = just(entity, [
+      (target, context) => {
+        inert = new WeakRef(context);
+        target.a = 1;
+      },
+      (target, context) => {
+        reactive = new WeakRef(context);
+        target.b = value.get();
+      },
+    ]).subscribe();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    gc();
+    assert.strictEqual(inert?.deref(), undefined, "the inert effect was let go of");
+    assert.notStrictEqual(reactive?.deref(), undefined, "the reactive one is still held");
+
+    value.set(2);
+    assert.strictEqual(entity.b, 2);
+    subscription.unsubscribe();
+    value.set(3);
+    assert.strictEqual(entity.b, 2, "and it still comes down with the mounting");
+  });
 });
+
+/**
+ * The engine's collector, for a test about what is no longer held.
+ *
+ * @returns {() => void}
+ */
+function collector() {
+  setFlagsFromString("--expose-gc");
+  return runInNewContext("gc");
+}

@@ -98,10 +98,10 @@ describe("DOM Operators", () => {
     });
 
     it("should not write a getter's value again when it has not moved", () => {
-      // The cutoff a `Derived` brings, and the reason the getter form wants one
-      // at all: a write upstream that leaves this value alone must not touch
-      // the attribute, because in a portal a touched attribute is a mutation
-      // record and a re-measure.
+      // The cutoff the getter form keeps the last written value for: a write
+      // upstream that leaves this value alone must not touch the attribute,
+      // because in a portal a touched attribute is a mutation record and a
+      // re-measure.
       const div = document.createElement("div");
       const source = Signal.of({ label: "a", unrelated: 0 });
       let writes = 0;

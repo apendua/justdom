@@ -134,15 +134,16 @@ export function just(valueOrFactory, effects = []) {
     });
   }
   return new Stream((/** @type {import("./Stream.js").Subscriber<T>} */ subscriber) => {
-    /** @type {Array<{ dispose: () => void } | { unsubscribe: () => void }>} */
-    const mounted = [];
+    // Built from a literal rather than pushed onto `[]`, which V8 would give
+    // room for seventeen: there is one of these per element.
+    /** @type {Effect[] | null} */
+    let mounted = null;
     const dispose = () => {
-      for (const held of mounted) {
-        if ("dispose" in held) {
-          held.dispose();
-        } else {
-          held.unsubscribe();
-        }
+      if (!mounted) {
+        return;
+      }
+      for (const effect of mounted) {
+        effect.dispose();
       }
     };
     try {
@@ -166,12 +167,20 @@ export function just(valueOrFactory, effects = []) {
         // lands in the `catch` below and reaches the subscriber
         // synchronously, with everything already mounted taken down again,
         // and later news goes to the error channel and ends the mounting.
-        mounted.push(
-          new Effect((context) => fn(entity, context), {
-            name: "just",
-            onError: (err) => subscriber.error(err),
-          }),
-        );
+        const effect = new Effect((context) => fn(entity, context), {
+          name: "just",
+          onError: (err) => subscriber.error(err),
+        });
+        // One that read nothing and owes nothing, a static `set` most often,
+        // is done with for good, and holding it would only keep it alive.
+        if (effect.isInert()) {
+          continue;
+        }
+        if (mounted) {
+          mounted.push(effect);
+        } else {
+          mounted = [effect];
+        }
       }
       subscriber.next(entity);
     } catch (err) {

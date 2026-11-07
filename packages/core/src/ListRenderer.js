@@ -1,5 +1,14 @@
 import { removeSegment, toSegment } from "./helpers.js";
-import { addDependency, batch, Derived, each, filtered, Stream, Subject } from "justdom-signal";
+import {
+  addDependency,
+  batch,
+  Derived,
+  each,
+  filtered,
+  makeNonReactive,
+  Stream,
+  Subject,
+} from "justdom-signal";
 
 /**
  * @import { MonoTypeOperator, Subscribable, Source, Unsubscribable } from "justdom-signal";
@@ -73,37 +82,55 @@ export default class ListRenderer {
    */
   renderFragment(children) {
     return new Stream((subscriber) => {
-      /** @type {Map<number, SegmentOf<T>>} */
-      const segments = new Map();
+      /** @type {Array<SegmentOf<T> | null>} */
+      const segments = [];
       const container = this.#createContainer();
 
       for (let i = 0; i < children.length; i++) {
         const node = container.appendChild(this.#createPlaceholder());
-        segments.set(i, toSegment(node));
+        segments.push(toSegment(node));
       }
 
+      // One subscription per child and nothing around it: this runs for
+      // every element with children, so each layer of stream here is paid
+      // per element. Non-reactive like `each`, which this used to go
+      // through: a replacement is not a read.
+      const replace = makeNonReactive(
+        /**
+         * @param {number} i
+         * @param {MountableOf<T>} newMountable
+         */
+        (i, newMountable) => {
+          const oldSegment = segments[i];
+          if (oldSegment) {
+            segments[i] = newMountable.replace(oldSegment);
+          }
+        },
+      );
       children.forEach((child, i) => {
+        // The subscription goes on the teardown list first, so it is undone
+        // before the nodes come out of the document.
         subscriber.add(
-          teardown(() => {
-            const oldSegment = segments.get(i);
-            if (oldSegment) {
-              removeSegment(oldSegment);
-              segments.delete(i);
-            }
-          })(
-            each(child, (newMountable) => {
-              const oldSegment = segments.get(i);
-              if (oldSegment) {
-                segments.set(i, newMountable.replace(oldSegment));
+          child.subscribe({
+            next: (newMountable) => {
+              try {
+                replace(i, newMountable);
+              } catch (error) {
+                subscriber.error(error);
               }
-            }),
-          ).subscribe({
+            },
             error: (error) => {
-              // TODO: Render error message instead of failing the whole fragment.
               subscriber.error(error);
             },
           }),
         );
+        subscriber.add(() => {
+          const oldSegment = segments[i];
+          if (oldSegment) {
+            removeSegment(oldSegment);
+            segments[i] = null;
+          }
+        });
       });
       subscriber.next(container.toMountable());
     });
@@ -138,12 +165,22 @@ export default class ListRenderer {
        */
       const createGetIndex = (item) => {
         const key = getKey(item);
-        const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
-        const index = new Derived(() => {
-          addDependency(changes);
-          return childIndexes.get(key) ?? -1;
-        });
-        return () => index.get();
+        // Built on the first read: most items never ask for their index, and
+        // the node and its filtered stream would be held for every one.
+        /** @type {Derived<number> | null} */
+        let index = null;
+        return () => {
+          if (!index) {
+            // Built once, outside the node, so that every run reads the same
+            // stream and its edge stays attached across index changes.
+            const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
+            index = new Derived(() => {
+              addDependency(changes);
+              return childIndexes.get(key) ?? -1;
+            });
+          }
+          return index.get();
+        };
       };
       /**
        * Adopts the markup for the initial set of items.

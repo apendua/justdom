@@ -60,6 +60,17 @@ function reportUnhandledFailure(node, err) {
  */
 const NO_CLEANUPS = /** @type {Array<() => void>} */ (/** @type {unknown} */ (Object.freeze([])));
 
+// Shared stand-ins for a node's collections until it first writes to one.
+// Most nodes in a rendered tree have no dependents, no observers or no
+// edges, and an empty `Map` or `Set` costs as much as a small object; a list
+// of a thousand rows holds tens of thousands of them. Only reads reach
+// these: every write first swaps in a collection of the node's own, and a
+// delete only follows a lookup that found something.
+/** @type {Map<any, any>} */
+const NO_EDGES = new Map();
+/** @type {Set<any>} */
+const NO_MEMBERS = new Set();
+
 /**
  * One dependency edge, and everything this node remembers about it.
  *
@@ -164,16 +175,16 @@ export default class ReactiveNode {
   version = 0;
 
   /** @type {Map<Dependency, Edge>} */
-  #edges = new Map();
+  #edges = NO_EDGES;
 
   /** @type {Set<ReactiveNode>} */
-  #dependents = new Set();
+  #dependents = NO_MEMBERS;
 
   /** @type {ReactiveNode[] | null} */
   #dependentsSnapshot = null;
 
   /** @type {Set<Entry>} */
-  #observers = new Set();
+  #observers = NO_MEMBERS;
 
   /** @type {Entry[] | null} */
   #observersSnapshot = null;
@@ -182,7 +193,7 @@ export default class ReactiveNode {
   #connected = false;
 
   /** @type {Array<() => void>} */
-  #cleanups = [];
+  #cleanups = NO_CLEANUPS;
 
   /**
    * The error this node died of, if it did. Terminal, because the only thing
@@ -206,6 +217,15 @@ export default class ReactiveNode {
    */
   constructor(options) {
     this.#options = options ?? {};
+  }
+
+  /**
+   * Whether this node holds nothing: no dependency and no teardown owed.
+   *
+   * @returns {boolean}
+   */
+  holdsNothing() {
+    return this.#edges.size === 0 && this.#cleanups.length === 0;
   }
 
   /**
@@ -243,6 +263,9 @@ export default class ReactiveNode {
     let edge = this.#edges.get(dependency);
     if (!edge) {
       edge = new Edge();
+      if (this.#edges === NO_EDGES) {
+        this.#edges = new Map();
+      }
       this.#edges.set(dependency, edge);
       if (this.#connected) {
         this.#attach(dependency, edge);
@@ -285,7 +308,13 @@ export default class ReactiveNode {
    * @returns {void}
    */
   onCleanup(fn) {
-    this.#cleanups.push(makeNonReactive(fn));
+    // A literal rather than a push onto `[]`, which V8 would give room for
+    // seventeen: most nodes are only ever owed one.
+    if (this.#cleanups === NO_CLEANUPS) {
+      this.#cleanups = [makeNonReactive(fn)];
+    } else {
+      this.#cleanups.push(makeNonReactive(fn));
+    }
   }
 
   /**
@@ -305,7 +334,7 @@ export default class ReactiveNode {
     if (cleanups.length === 0) {
       return;
     }
-    this.#cleanups = [];
+    this.#cleanups = NO_CLEANUPS;
     runCleanups(cleanups);
   }
 
@@ -328,7 +357,7 @@ export default class ReactiveNode {
       // the caller is holding as "what the previous run left behind".
       return NO_CLEANUPS;
     }
-    this.#cleanups = [];
+    this.#cleanups = NO_CLEANUPS;
     return cleanups;
   }
 
@@ -361,8 +390,7 @@ export default class ReactiveNode {
     if (!keepCleanups) {
       this.cleanup();
     }
-    const edges = this.#edges;
-    for (const edge of edges.values()) {
+    for (const edge of this.#edges.values()) {
       edge.seen = edge.pinned;
     }
     try {
@@ -372,7 +400,10 @@ export default class ReactiveNode {
       // unread, and record where everything else stood. The versions are
       // taken here rather than at the moment of each read because a
       // dependency is only settled once it has been resolved, and resolving
-      // it is what the read was doing.
+      // it is what the read was doing. The map is read again here rather
+      // than held from the top, because a node's first read is what gives
+      // it a map of its own.
+      const edges = this.#edges;
       for (const [dependency, edge] of edges) {
         if (!edge.seen) {
           edges.delete(dependency);
@@ -498,6 +529,9 @@ export default class ReactiveNode {
     }
     /** @type {Entry} */
     const entry = { observer, closed: false };
+    if (this.#observers === NO_MEMBERS) {
+      this.#observers = new Set();
+    }
     this.#observers.add(entry);
     this.#observersSnapshot = null;
     this.#cancelReset();
@@ -531,6 +565,9 @@ export default class ReactiveNode {
     if (this.#failure) {
       dependent.fail(this.#failure.value);
       return;
+    }
+    if (this.#dependents === NO_MEMBERS) {
+      this.#dependents = new Set();
     }
     this.#dependents.add(dependent);
     this.#dependentsSnapshot = null;
@@ -639,9 +676,9 @@ export default class ReactiveNode {
     this.#failure = { value: err };
     const dependents = this.#peekDependents();
     const observers = this.#peekObservers();
-    this.#dependents.clear();
+    this.#dependents = NO_MEMBERS;
     this.#dependentsSnapshot = null;
-    this.#observers.clear();
+    this.#observers = NO_MEMBERS;
     this.#observersSnapshot = null;
     this.disconnect();
     let heard = dependents.length > 0;

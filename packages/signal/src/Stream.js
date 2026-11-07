@@ -78,9 +78,13 @@ class StreamSubscription {
    * function returns goes on the end, which is where RxJS puts it too: what a
    * source acquired first is undone first.
    *
-   * @type {Teardown[]}
+   * Empty until the first one arrives: most subscriptions are never owed
+   * anything beyond the one teardown their source returns, and plenty are
+   * owed nothing at all.
+   *
+   * @type {Teardown[] | null}
    */
-  #teardowns = [];
+  #teardowns = null;
 
   #closed = false;
 
@@ -158,7 +162,13 @@ class StreamSubscription {
       undo(teardown);
       return;
     }
-    this.#teardowns.push(teardown);
+    // A literal rather than a push onto `[]`, which V8 would give room for
+    // seventeen: most subscriptions are only ever owed this one.
+    if (this.#teardowns) {
+      this.#teardowns.push(teardown);
+    } else {
+      this.#teardowns = [teardown];
+    }
   }
 
   /**
@@ -201,7 +211,10 @@ class StreamSubscription {
    */
   #undo() {
     const teardowns = this.#teardowns;
-    this.#teardowns = [];
+    if (!teardowns) {
+      return;
+    }
+    this.#teardowns = null;
     /** @type {{ value: unknown } | null} */
     let failure = null;
     for (const teardown of teardowns) {

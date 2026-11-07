@@ -7,16 +7,26 @@
 // factor against the best library in that row, as the suite's own results
 // page computes it. The CPU summary row is the weighted geometric mean of the
 // factors, with the suite's weights; memory and size use equal weights.
+// For a run of some of the CPU benchmarks, the mean divides by the weights of
+// the benchmarks present, where the results page divides by all nine, so the
+// two disagree on a subset.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-// webdriver-ts-results/src/Common.ts, in benchmark order 01 to 09.
-const CPU_WEIGHTS = [
-  0.64280248137063, 0.5607178150466176, 0.5643800750716564, 0.1925635870170522, 0.13200612879341714,
-  0.5277091212292658, 0.5644449600965534, 0.5508359820582848, 0.4225836631419211,
-];
+// webdriver-ts-results/src/Common.ts, by benchmark id.
+const CPU_WEIGHTS = {
+  "01_run1k": 0.64280248137063,
+  "02_replace1k": 0.5607178150466176,
+  "03_update10th1k_x16": 0.5643800750716564,
+  "04_select1k": 0.1925635870170522,
+  "05_swap1k": 0.13200612879341714,
+  "06_remove-one-1k": 0.5277091212292658,
+  "07_create10k": 0.5644449600965534,
+  "08_create1k-after1k_x2": 0.5508359820582848,
+  "09_clear1k_x8": 0.4225836631419211,
+};
 
 const { values, positionals } = parseArgs({
   options: { mean: { type: "boolean", default: false } },
@@ -57,10 +67,11 @@ for (const [type, benchmarks] of [...byType].sort()) {
   console.log(`\n### ${type}\n`);
   console.log(`| Benchmark | ${columns.map(short).join(" | ")} |`);
   console.log(`| --- | ${columns.map(() => "---:").join(" | ")} |`);
-  ids.forEach((id, index) => {
+  for (const id of ids) {
     const row = benchmarks.get(id);
     const best = Math.min(...[...row.values()].map((v) => v[statistic]));
-    const weight = type === "cpu" ? (CPU_WEIGHTS[index] ?? 1) : 1;
+    const weight = type === "cpu" ? CPU_WEIGHTS[id] : 1;
+    if (weight === undefined) throw new Error(`No weight for the CPU benchmark ${id}`);
     const cells = columns.map((column) => {
       const value = row.get(column);
       if (!value) return "–";
@@ -71,7 +82,7 @@ for (const [type, benchmarks] of [...byType].sort()) {
       return `${value[statistic].toFixed(1)}${spread} (${factor.toFixed(2)})`;
     });
     console.log(`| ${id} | ${cells.join(" | ")} |`);
-  });
+  }
   const means = columns.map((c) => Math.exp(logSums.get(c) / weightSums.get(c)).toFixed(2));
   console.log(`| **geometric mean** | ${means.map((m) => `**${m}**`).join(" | ")} |`);
 }

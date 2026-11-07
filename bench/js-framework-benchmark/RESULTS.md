@@ -6,8 +6,9 @@ A first run of the eight entries, made to find justdom's weak spots before the r
 Treat it as a pilot, not as the published numbers:
 
 - It ran in a 4-core cloud container, not on a quiet desktop, with headless Chrome for Testing
-  153.0.8010.12. The suite's README asks for a visible window, because a headless Chrome can skip
-  paint events. The numbers to publish come from `node run.mjs` on a desktop.
+  153.0.8010.12. The suite runs a visible window by default, and its README (section 2.4) says "You
+  should keep the chrome window visible since otherwise it seems like paint events can be skipped
+  leading to wrong results." The numbers to publish come from `node run.mjs` on a desktop.
 - The suite is at commit `fa510a7`, with the default iteration counts. The only local change was
   `--no-sandbox` in the Chrome arguments, because the container runs as root.
 - Versions: justdom-core 0.5.0 with justdom-signal 1.2.0, Solid 1.9.3, Svelte 5.42.1, Vue 3.5.39,
@@ -53,9 +54,9 @@ in that row. CPU times are in ms, memory in MB, sizes in kB.
 
 ## What the pilot shows
 
-justdom is the slowest of the eight on every CPU case, with a weighted geometric mean of 2.97
-against Solid's 1.07 and React's 1.41. Most of it traces to three costs that a profile of the same
-page shows directly.
+justdom is the slowest of the eight on eight of the nine CPU cases (on `04_select1k` it is ahead of
+Svelte, Lit and React), with a weighted geometric mean of 2.97 against Solid's 1.07 and React's
+1.41. Most of it traces to three costs that a profile of the same page shows directly.
 
 **Each row costs about 50 kB of heap.** After "Create 1,000 rows" the page holds 50.6 MB, against
 1.9 MB for vanillajs and 2.7 MB for Solid (`22_run-memory`, factor 27). A heap snapshot of that page
@@ -70,9 +71,16 @@ structure.
 997 insertions for one "Swap Rows" in justdom, against 2 and 2 in vanillajs and Solid.
 `ListRenderer` walks the new order from the end and re-inserts every item whose next sibling has
 changed, so moving row 998 to position 1 knocks every row between them out of place. That is
-`05_swap1k` at 6.86, close to React's 6.15, and React's swap shows the same 997 moves. Removing one
-row also moves 9 rows, where the others move none. A reconcile that keeps the longest run of rows
-already in order, as Vue's does, would bring both down to the minimum.
+`05_swap1k` at 6.86, close to React's 6.15, and React's swap shows the same 997 moves. A reconcile
+that keeps the longest run of rows already in order, as Vue's does, would bring it down to two
+moves.
+
+**Removing row _n_ moves the _n_ − 1 rows before it.** Removing row 4 moves 3 rows, and removing row
+500 moves 499, where the other libraries move none. `ListRenderer` removes the rows that left only
+after its walk, so during the walk the removed row is still in place, and every row before it sees a
+next sibling it does not expect and is re-inserted. The suite's `06_remove-one-1k` removes rows 5 to
+9, so it sees 4 to 8 moves and only a factor of 1.54; a removal from the middle of a long list costs
+far more.
 
 **Fine-grained updates are fine but not free.** `03_update10th1k_x16` (1.46) and `04_select1k`
 (1.50) are the cases the design should win. The label and selection writes reach only the bindings
@@ -86,10 +94,12 @@ is 85 ms, in the same band as Lit, Preact and Svelte.
 
 ## What this means for the plan
 
-- The three findings above are each a justdom change of its own, and each should come with the case
-  that shows it: a keyed move pass in `ListRenderer`, fewer objects per element and binding, and
+- The findings above are each a justdom change of its own, and each should come with the case that
+  shows it: removing departed rows before `ListRenderer`'s walk (a small change), a reconcile that
+  keeps the longest run in order for swaps and reorders, fewer objects per element and binding, and
   cheaper teardown. Stage 3's custom suite is where those cases belong, alongside the reorder
   scenario it already plans.
-- The upstream PR (stage 2) is better opened after the first two are fixed. At these numbers justdom
-  would enter the official table behind every library it is compared with here.
+- The upstream PR (stage 2) is better opened after the list moves and the per-row cost are fixed. At
+  these numbers justdom would enter the official table behind every library it is compared with
+  here.
 - The desktop run with `node run.mjs` replaces this pilot's numbers once it is done.

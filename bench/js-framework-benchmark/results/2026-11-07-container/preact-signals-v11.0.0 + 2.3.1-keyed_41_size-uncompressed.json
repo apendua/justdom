@@ -1,0 +1,1 @@
+{"framework":"preact-signals-v11.0.0 + 2.3.1-keyed","keyed":true,"benchmark":"41_size-uncompressed","type":"size","values":{"DEFAULT":{"min":23.3,"max":23.3,"median":23.3,"mean":23.3,"stddev":null,"values":[23.3]}}}

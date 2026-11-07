@@ -11,11 +11,11 @@
   "scripts": {
     "bench": "node bench/run.js",
     "bench:against": "node bench/run.js --against origin/develop",
-    "build": "tsc && vite build",
+    "build": "npm run --loglevel=warn test && tsc && vite build",
     "build:watch": "",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "",
+    "test": "node --test bench/*.test.js",
     "test:visual": "node --test tests/*.test.js",
     "test:visual:update": "UPDATE_BASELINES=1 node --test tests/*.test.js"
   },

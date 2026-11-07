@@ -33,9 +33,27 @@ node bench/run.js --style-reads             # + computed-style property reads
 | `--rounds <n>`    | 20      | presses of "Add 10 items" during setup.                                      |
 | `--burst <n>`     | 100     | items each `mount` burst adds at once.                                       |
 | `--style-reads`   | off     | wrap computed styles to count property reads.                                |
+| `--json <file>`   | none    | also write every round of every side to a file, for `report.js`.             |
 
 A full six-scenario A/B at `--repeat 3` is around 25 minutes; one scenario at `--repeat 1` is about
 three.
+
+## On a pull request
+
+Add the `bench` label to a pull request and `.github/workflows/bench.yml` runs this suite, all six
+scenarios at `--repeat 3`, and `packages/three/bench/paintOrderDraws.browser.mjs`, the draw-call
+bench. Both measure the pull request's head against develop, never against its base, so a pull
+request high in a stack is measured with everything below it. The run posts one comment on the pull
+request, which later runs rewrite, and takes the label off when it ends; add the label again to
+measure a newer push. Expect it to take about an hour.
+
+The comment is written by `report.js` from this suite's `--json` file and the draw bench's tables.
+It follows the rules below: a count that moved is flagged, and a time is a median with the range of
+its rounds, called faster or slower only when the two ranges do not overlap. The same report is on
+the run's summary page, and the artifact holds everything both benches printed.
+
+The workflow can also be run from the Actions tab on any branch, with a narrower set of scenarios or
+another number of rounds. It then writes the report to the run's summary and posts no comment.
 
 ## Reading `mount`
 

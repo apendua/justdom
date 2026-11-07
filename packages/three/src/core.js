@@ -264,12 +264,22 @@ export function addDynamicToParent(parent, items, getKey, renderItem) {
      */
     const createGetIndex = (item) => {
       const key = getKey(item);
-      const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
-      const index = new Derived(() => {
-        addDependency(changes);
-        return childIndexes.get(key) ?? -1;
-      });
-      return () => index.get();
+      // Built on the first read: most items never ask for their index, and
+      // the node and its filtered stream would be held for every one. The
+      // stream is built beside the node rather than inside it, so that every
+      // run reads the same one and its edge stays attached.
+      /** @type {Derived<number> | null} */
+      let index = null;
+      return () => {
+        if (!index) {
+          const changes = filtered(childIndexesSubject, (changedKey) => changedKey === key);
+          index = new Derived(() => {
+            addDependency(changes);
+            return childIndexes.get(key) ?? -1;
+          });
+        }
+        return index.get();
+      };
     };
     subscriber.add(
       items.subscribe({

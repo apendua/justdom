@@ -121,8 +121,9 @@ const PAGE_MARGIN = 24;
 
 /**
  * How much of the page's height, in CSS px, the Prev, XR and Next buttons
- * take at the bottom: `index.css` stands them 20px up, about 44px tall.
- * The page view keeps the deck clear of as much at the top and the bottom.
+ * take at the bottom: `index.css` stands them 20px up, they are about 44px
+ * tall, and 8px more keeps the deck off them. The page view keeps the deck
+ * clear of as much at the top and the bottom.
  */
 const PAGE_BUTTONS = 72;
 
@@ -368,21 +369,21 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
     useEffects(getScene(ctx), [
-      // The page view, outside a session: a window too small for the deck
-      // at the camera's own field of view widens the field until the deck
-      // fits. Across, a phone held upright, the card and `PAGE_MARGIN` either
-      // side of it. Down, a phone held sideways, the card and the switcher's
-      // bar and `PAGE_MARGIN` above and below, clear of the page's buttons
-      // at the bottom (and as much at the top, since the deck is centred). A
-      // session draws with the headset's own projection and never reads
-      // this.
+      // The page view, outside a session: the field of view is set so that
+      // the deck fits the window. Across, for a phone held upright, the card
+      // and `PAGE_MARGIN` either side of it. Down, for a phone held sideways
+      // and for every other window, since the deck does not fit down even a
+      // desktop at the 70 degrees `render` gives, the card and the
+      // switcher's bar and `PAGE_MARGIN` above and below, clear of the
+      // page's buttons at the bottom (and as much at the top, since the deck
+      // is centred). A session draws with the headset's own projection and
+      // never reads this.
       effects(() => {
         if (everything) {
           return;
         }
         const camera = getCamera(ctx) as THREE.PerspectiveCamera;
-        // The field `render` gave the camera, kept wherever the window is
-        // big enough for the deck at that.
+        // The field `render` gave the camera, put back when the deck goes.
         const own = camera.fov;
         const metres = PANEL_SCALE * scale;
         const halfWidth = (CARD_WIDTH / 2 + PAGE_MARGIN) * metres;
@@ -394,11 +395,7 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
           // The share of the page's height the deck may take. A page too
           // short for the buttons and a deck at all gives the deck half.
           const usable = Math.max(height - 2 * PAGE_BUTTONS, height / 2) / height;
-          camera.fov = Math.max(
-            own,
-            fieldFor(halfWidth / camera.aspect),
-            fieldFor(halfHeight / usable),
-          );
+          camera.fov = Math.max(fieldFor(halfWidth / camera.aspect), fieldFor(halfHeight / usable));
           camera.updateProjectionMatrix();
         };
         fit();

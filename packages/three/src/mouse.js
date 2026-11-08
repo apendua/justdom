@@ -138,11 +138,11 @@ export const MIN_REACH = 0.2;
  *   as `pointsAtNothing` says, whether or not it turns the camera), starts
  *   a zoom, if the camera is a perspective one. A press that began on a
  *   thing, a button or a slider, refuses it, and so does a grip on
- *   anything, as a grab refuses a pinch on `justdom-xr`'s touch layer. The first finger's tap and
- *   hold are cancelled and its turn stops, the group is hidden, and from
- *   then on that finger aims, turns and presses nothing until it lifts, and
- *   starts no pinch: a second finger that lands after the zoom ended is
- *   ignored. While the zoom lasts, the
+ *   anything, as a grab refuses a pinch on `justdom-xr`'s touch layer.
+ *   The first finger's tap and hold are cancelled and its turn stops, the
+ *   group is hidden, and from then on that finger aims, turns and presses
+ *   nothing until it lifts, and starts no pinch: a second finger that
+ *   lands after the zoom ended is ignored. While the zoom lasts, the
  *   camera's `zoom` goes as the fingers' spread: spread them twice as far
  *   apart and what is on the screen is drawn twice as large. It never
  *   zooms out past the camera's `zoom` as this started, nor in past a

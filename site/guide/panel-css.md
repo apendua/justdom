@@ -14,7 +14,8 @@ nothing. An `<img>` is a picture on the same box, with `object-fit` and `object-
 has its marker. A checkbox is a box with a tick in it, in the element's `color`; a text field is a
 box with its value in it. Inline `<svg>` is drawn when the scene installs the `svgElements()` plugin
 from `justdom-three/svg`, from the shapes' computed style, so a class on a `<path>` and
-`fill: currentColor` work.
+`fill: currentColor` work. A colour can be written in any CSS colour space, `oklch()`, `lab()` and
+`color(display-p3 …)` among them, and one outside sRGB is clipped to it.
 
 ## What to prefer
 

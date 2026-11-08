@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "justdom-signal";
-import VisualProperties from "./VisualProperties.js";
+import VisualProperties, { parseAlpha } from "./VisualProperties.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
@@ -170,6 +170,25 @@ describe("VisualProperties colours", () => {
     const properties = propertiesOf({ border: "2px solid rgba(255, 210, 31, 0.5)" });
     assert.equal(properties.borderColor.getHex(), asThreeWouldParse("rgb(255, 210, 31)"));
     assert.equal(properties.borderAlpha, 0.5);
+  });
+
+  test("reads a colour in a modern space as the colour it names", () => {
+    // Chromium keeps `oklch()` as written in computed style, and so does
+    // jsdom. Chromium draws this one as rgb(75, 163, 247).
+    const properties = propertiesOf({ backgroundColor: "oklch(0.7 0.15 250)" });
+    const expected = new THREE.Color().setRGB(0.29443, 0.639497, 0.969808, THREE.SRGBColorSpace);
+    assert.ok(
+      properties.backgroundColor.getHex() === expected.getHex(),
+      `expected #${expected.getHexString()}, got #${properties.backgroundColor.getHexString()}`,
+    );
+    assert.equal(properties.backgroundAlpha, 1);
+  });
+
+  test("a modern colour with an alpha of 0 paints nothing", () => {
+    const properties = propertiesOf({ backgroundColor: "oklch(0.7 0.15 250 / 0)" });
+    assert.equal(properties.backgroundAlpha, 0);
+    assert.equal(parseAlpha("oklch(0.7 0.15 250 / 0)"), 0);
+    assert.equal(parseAlpha("color(srgb 1 0 0 / 0.25)"), 0.25);
   });
 
   test("does not lighten a dark colour", () => {

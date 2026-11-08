@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Colours in any CSS colour space draw as the colour they name, and gradients mix in the space they ask for",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

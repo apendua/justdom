@@ -16,6 +16,7 @@ import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { getDrawLevel, getRenderBand } from "./elevation.js";
+import { parseCssColor } from "./cssColor.js";
 import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradient.js";
 
 /**
@@ -118,12 +119,6 @@ function parseSize(value, units) {
 }
 
 /**
- * A computed CSS colour as `getComputedStyle` serializes one: `rgb(r, g, b)`
- * or `rgba(r, g, b, a)`. The fourth group is the alpha, when there is one.
- */
-const COLOR_PATTERN = /rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/;
-
-/**
  * The alpha of a computed CSS colour alone, as `parseColor` reads it, for
  * the callers that want nothing else: it builds no `THREE.Color` and does
  * not convert one to linear.
@@ -132,13 +127,13 @@ const COLOR_PATTERN = /rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/;
  * @returns {number}
  */
 export function parseAlpha(colorString) {
-  const match = COLOR_PATTERN.exec(colorString);
-  return match?.[4] !== undefined ? parseFloat(match[4]) : 1.0;
+  return parseCssColor(colorString)?.[3] ?? 1.0;
 }
 
 /**
  * A computed CSS colour, as the colour three.js should draw and the alpha it
- * should draw it with.
+ * should draw it with. Any colour `parseCssColor` reads, in any space; one it
+ * does not read draws opaque white.
  *
  * The channels are read as sRGB, which is what CSS means by them. Handing the
  * three numbers straight to `new THREE.Color(r, g, b)` would instead declare
@@ -150,17 +145,12 @@ export function parseAlpha(colorString) {
  * @returns {[THREE.Color, number]}
  */
 export function parseColor(colorString) {
-  const match = COLOR_PATTERN.exec(colorString);
-  if (!match) {
-    const color = new THREE.Color();
-    return [color, 1.0];
+  const rgba = parseCssColor(colorString);
+  if (!rgba) {
+    return [new THREE.Color(), 1.0];
   }
-  const r = parseInt(match[1], 10) / 255;
-  const g = parseInt(match[2], 10) / 255;
-  const b = parseInt(match[3], 10) / 255;
-  const a = match[4] !== undefined ? parseFloat(match[4]) : 1.0;
-  const color = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
-  return [color, a];
+  const color = new THREE.Color().setRGB(rgba[0], rgba[1], rgba[2], THREE.SRGBColorSpace);
+  return [color, rgba[3]];
 }
 
 /**

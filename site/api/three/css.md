@@ -412,8 +412,15 @@ Followed:
 
 - `linear-`, `radial-` and `conic-gradient` and their `repeating-` forms, with stops in `%`, `px` or
   angles, hard stops, double-position stops and interpolation hints.
-- Interpolation in premultiplied sRGB, compositing over the background colour in sRGB, which is what
-  CSS does, so a fade to `transparent` keeps its hue.
+- Stop colours in every CSS colour space: hex and names, `rgb()`, `hsl()`, `hwb()`, `lab()`,
+  `lch()`, `oklab()`, `oklch()`, and `color()` in `srgb`, `srgb-linear`, `display-p3`, `a98-rgb`,
+  `prophoto-rgb`, `rec2020` and the `xyz` spaces. The same parser reads every other colour a panel
+  draws: backgrounds, borders, text and SVG fills.
+- Interpolation premultiplied, in the space the gradient names (`in oklch longer hue`), or with none
+  named in sRGB when every stop is written in a legacy syntax (hex, a name, `rgb()`, `hsl()`,
+  `hwb()`) and in Oklab otherwise, as CSS says. A polar space follows its hue method, and a grey
+  stop takes the other stop's hue. The result composites over the background colour in sRGB, which
+  is what CSS does, so a fade to `transparent` keeps its hue.
 - `background-size`, `background-position`, `background-repeat` (`round` included) and
   `background-origin`.
 
@@ -424,9 +431,9 @@ Not followed:
 - **`background-clip`.** The background, colour and gradient alike, fills the padding box, so a
   `content-box` clip draws wider than the page does.
 - **`space` repeats as `repeat`**: tiles are laid edge to edge rather than spaced out.
-- **Interpolation is sRGB whatever the gradient asks for.** `in oklab` and its kin are accepted and
-  ignored. A stop colour in a space browsers do not compute to `rgb()`, such as `oklch()`, makes the
-  gradient unreadable and the box draws its background colour alone.
+- **Colours outside sRGB are clipped per channel**, a stop before it is mixed and the mix after,
+  where CSS maps them into gamut by reducing their chroma. Only a colour sRGB cannot hold, a
+  saturated `display-p3` red say, draws differently.
 - Tile edges are antialiased like every other edge in a panel, so a `no-repeat` tile's border is a
   pixel softer than the page's.
 

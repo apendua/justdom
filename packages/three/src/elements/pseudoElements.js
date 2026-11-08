@@ -281,7 +281,7 @@ export function paintsBox(style) {
     parseAlpha(style.backgroundColor || "transparent") > 0 ||
     (style.backgroundImage || "none") !== "none" ||
     parseAlpha(getDrawnBorderColor(style)) > 0 ||
-    ((style.outlineStyle || "none") !== "none" && parseFloat(style.outlineWidth) > 0) ||
+    (style.outlineStyle || "none") !== "none" ||
     (style.boxShadow || "none") !== "none"
   );
 }

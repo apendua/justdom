@@ -112,10 +112,10 @@ export const OUTER_SHADOW_BIAS = (UNBATCHED_BOX_BIAS + BOX_BUCKET_BIAS) / 2;
 
 /**
  * How far behind its integer a batched box's inset shadows draw: right
- * after the box, so over its background and border, and before the next
- * level's text, its content. Its place in the level is in the table at
- * `BOX_BUCKET_BIAS`. A page paints an inset shadow under the border; here
- * it is clipped to the padding box, so it does not reach the border.
+ * after the box, so over its background, and before the next level's
+ * text, its content. Its place in the level is in the table at
+ * `BOX_BUCKET_BIAS`. It is clipped to the padding box, as CSS clips an
+ * inset shadow, so the border stays clear of it.
  */
 export const INSET_SHADOW_BIAS = BOX_BUCKET_BIAS + 1 / 8;
 

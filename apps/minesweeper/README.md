@@ -19,8 +19,9 @@ so a session needs the network. `?emulator` installs a headset in the browser (I
 panels) and the **Enter** button appears at the bottom; press it and the emulated session is drawn
 over the page. `?emulator=bare` installs the runtime without the panels. `?touch` installs it with
 `justdom-xr`'s touch layer instead, for a phone: once the session is up, a drag turns the head, a
-tap uncovers a tile, a finger held still for 400 ms flags one and two fingers pinch the view in and
-out. On a phone `?emulator` installs the touch layer too, and `?emulator=devui` keeps the panels.
+tap uncovers a tile, a finger held still for 400 ms and lifted flags one, held and moved drags with
+the trigger, and two fingers pinch the view in and out. On a phone `?emulator` installs the touch
+layer too, and `?emulator=devui` keeps the panels.
 
 `node tests/xr-check.mjs` first builds the app for production and fails unless its service worker
 precaches exactly the JS the page loads: the entry chunk and what it imports, and none of the chunks

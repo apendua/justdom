@@ -57,12 +57,12 @@ headless Chromium through `justdom-xr/driver`.
 `?touch` puts the same emulated headset on a phone, without IWER's panels and with a touch layer
 over the session from `justdom-xr/touch`. On a phone, `?emulator` does the same, since IWER's panels
 are drawn for a mouse; `?emulator=devui` asks for the panels anyway. A drag turns the head, a tap
-aims the right controller through the tapped spot and pulls its trigger, and a finger held still for
-400 ms closes its grip and moves the ray with the finger until it lifts. Two fingers pinch the view
-in and out. An app opts in by passing `touch` to `offerHeadset`, below, or to `installEmulator` from
-`justdom-xr/offer` when it offers its session another way, and can add its desk keys as a row of
-buttons. Every headset demo does. The [API reference](/api/xr#justdom-xr-touch) has the rules for
-each gesture.
+aims the right controller through the tapped spot and pulls its trigger, a finger held still for 400
+ms and then moved drags with the trigger from where it landed, and one held and lifted without
+moving presses the grip. Two fingers pinch the view in and out. An app opts in by passing `touch` to
+`offerHeadset`, below, or to `installEmulator` from `justdom-xr/offer` when it offers its session
+another way, and can add its desk keys as a row of buttons. Every headset demo does. The
+[API reference](/api/xr#justdom-xr-touch) has the rules for each gesture.
 
 ## Offering a session to a page
 

@@ -470,53 +470,53 @@ describe("installTouch", () => {
     });
   });
 
-  describe("a grab", () => {
+  describe("a hold", () => {
     beforeEach(async () => {
       install({ pitch: 0 });
       await startSession();
     });
 
-    it("waits for the finger to stay still", () => {
+    it("waits for the finger to stay still, then aims and presses nothing", () => {
       finger("pointerdown", 200, 400);
       mock.timers.tick(HOLD_MS - 1);
       frames(STEP_FRAMES);
       assert.ok(rightParked());
       mock.timers.tick(1);
       assert.ok(!rightParked());
+      near(rightRay().y, 0);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      assert.ok(!rightParked());
+    });
+
+    it("keeps the ray where the finger landed while it moves within the slop", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointermove", 200, 400 - SLOP_PX / 2);
+      mock.timers.tick(HOLD_MS);
+      finger("pointermove", 200, 400 - SLOP_PX);
+      near(rightRay().y, 0);
+    });
+
+    it("lifted without moving, is a press of the grip, then parks", () => {
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      finger("pointerup", 200, 400);
+      assert.deepEqual(headset.controllers.right.buttons, []);
       frames(STEP_FRAMES);
       assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1"]);
-    });
-
-    it("keeps the ray under the finger, and leaves the head where it is", () => {
-      finger("pointerdown", 200, 400);
-      mock.timers.tick(HOLD_MS);
       frames(STEP_FRAMES);
-      finger("pointermove", 200, 0);
-      near(Math.asin(rightRay().y), fovy / 2);
-      near(headAhead().y, 0);
-      near(headAhead().x, 0);
-    });
-
-    it("opens the grip on the lift, then parks a step later", () => {
-      finger("pointerdown", 200, 400);
-      mock.timers.tick(HOLD_MS);
-      frames(STEP_FRAMES);
-      finger("pointerup", 200, 400);
       assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "squeeze 0"]);
       assert.ok(!rightParked());
       frames(STEP_FRAMES);
       assert.ok(rightParked());
     });
 
-    it("holds the grip for a step when the finger lifted while it closed", () => {
+    it("cancelled by the browser, presses nothing and parks", () => {
       finger("pointerdown", 200, 400);
       mock.timers.tick(HOLD_MS);
-      finger("pointerup", 200, 400);
-      frames(STEP_FRAMES);
-      assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1"]);
-      frames(STEP_FRAMES);
-      assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "squeeze 0"]);
-      frames(STEP_FRAMES);
+      finger("pointercancel", 200, 400);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
       assert.ok(rightParked());
     });
 
@@ -538,15 +538,95 @@ describe("installTouch", () => {
     it("lets go when the session ends, and parks at once", () => {
       finger("pointerdown", 200, 400);
       mock.timers.tick(HOLD_MS);
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
       frames(STEP_FRAMES);
       session?.dispatchEvent(new Event("end"));
       assert.equal(layer.style.display, "none");
       assert.ok(rightParked());
-      assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "trigger 0", "squeeze 0"]);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "squeeze 0"]);
       // The finger is forgotten: its lift does nothing.
       finger("pointerup", 200, 400);
       frames(3 * STEP_FRAMES);
       assert.equal(headset.controllers.right.buttons.length, 3);
+    });
+  });
+
+  describe("a drag", () => {
+    beforeEach(async () => {
+      install({ pitch: 0 });
+      await startSession();
+    });
+
+    /** A hold at (200, 400), then a move past the slop to (200 + 2 slop, 400). */
+    const dragFrom = () => {
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
+    };
+
+    it("pulls the trigger a step later, where the finger landed", () => {
+      dragFrom();
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      // Still aimed where it landed: the middle of the screen's height.
+      near(rightRay().y, 0);
+      near(rightRay().x, 0);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+    });
+
+    it("only starts once the hold has: a move before it is a look", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
+      mock.timers.tick(HOLD_MS);
+      frames(2 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      assert.ok(rightParked());
+    });
+
+    it("counts the slop from the touch, not from the hold", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointermove", 200 + SLOP_PX, 400);
+      mock.timers.tick(HOLD_MS);
+      finger("pointermove", 200 + SLOP_PX + 1, 400);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+    });
+
+    it("then keeps the ray under the finger, and leaves the head where it is", () => {
+      dragFrom();
+      frames(STEP_FRAMES);
+      finger("pointermove", 200, 0);
+      near(Math.asin(rightRay().y), fovy / 2);
+      near(headAhead().y, 0);
+      near(headAhead().x, 0);
+    });
+
+    it("lets the trigger go on the lift, then parks a step later", () => {
+      dragFrom();
+      frames(STEP_FRAMES);
+      finger("pointerup", 200, 0);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+      assert.ok(!rightParked());
+      frames(STEP_FRAMES);
+      assert.ok(rightParked());
+    });
+
+    it("lets it go on the browser's cancel too", () => {
+      dragFrom();
+      frames(STEP_FRAMES);
+      finger("pointercancel", 200, 0);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+    });
+
+    it("holds the trigger for a step when the finger lifted before it went down", () => {
+      dragFrom();
+      finger("pointerup", 200 + 2 * SLOP_PX, 400);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+      frames(STEP_FRAMES);
+      assert.ok(rightParked());
     });
   });
 
@@ -598,7 +678,7 @@ describe("installTouch", () => {
       near(headset.fovy, MIN_FOVY);
     });
 
-    it("cancels the first finger's tap and grab, and turns nothing", () => {
+    it("cancels the first finger's tap and hold, and turns nothing", () => {
       pinchFrom();
       mock.timers.tick(HOLD_MS);
       finger("pointermove", 300, 400, 2);
@@ -660,7 +740,7 @@ describe("installTouch", () => {
       near(headset.fovy, magnified(1.5));
     });
 
-    it("does not start during a grab", () => {
+    it("does not start during a hold", () => {
       finger("pointerdown", 150, 400, 1);
       mock.timers.tick(HOLD_MS);
       frames(STEP_FRAMES);
@@ -668,6 +748,7 @@ describe("installTouch", () => {
       finger("pointermove", 400, 400, 2);
       near(headset.fovy, fovy);
       finger("pointerup", 150, 400, 1);
+      frames(2 * STEP_FRAMES);
       assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "squeeze 0"]);
     });
 

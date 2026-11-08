@@ -74,30 +74,38 @@ A finger on the scene is undecided until it does one of four things:
 - **Tap.** Lifting within 10 px aims the right controller through the tapped pixel, from just behind
   the eye, and pulls its trigger: aim, 4 frames, trigger down, 4 frames, trigger up, 4 frames, then
   the controller is parked again. A tap that lands while the last one is still running is dropped.
-- **Grab.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way and
-  closes its grip 4 frames later. The ray then follows the finger, the head stays where it is, and
-  the lift opens the grip and parks the controller 4 frames after. A finger lifted while the grip is
-  still closing keeps it closed for 4 frames, so the app sees it held. A grab never turns the head.
-  A grab that starts while a tap is still running is dropped the same way: the finger then turns
-  nothing and its lift presses nothing.
+- **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way and
+  presses nothing yet. What the finger does next decides the press:
+  - **Drag.** Moving more than 10 px in all, counted from the touch, pulls the trigger 4 frames
+    later where the finger landed. From then on the ray follows the finger, the head stays where it
+    is, and the lift, or the browser's cancel, lets the trigger go and parks the controller 4 frames
+    after. A finger lifted before the trigger went down keeps it down for 4 frames, so the app sees
+    the press. This is what drags a panel's rows, cards and handles, and `drag()`'s things.
+  - **Long press.** Lifting without moving presses the grip: 4 frames, grip down, 4 frames, grip up,
+    4 frames, parked. That is the right button on a panel, a `contextmenu`.
+
+  A hold never turns the head. A hold that starts while a tap is still running is dropped the same
+  way: the finger then turns nothing and its lift presses nothing. A hold the browser cancels
+  presses nothing.
+
 - **Pinch.** A second finger that lands while the first is undecided or looking zooms the view as
   the page's pointer does: spreading the fingers twice as far apart draws the view twice as large
   (the tangent of half the vertical field of view goes inversely with the spread), between 20°
   (`MIN_FOVY`, the narrowest `justdom-three`'s pointer zooms to as well) and the headset's own 90°.
-  A pinch cancels the first finger's tap and grab, and turns nothing. It ends when either finger
+  A pinch cancels the first finger's tap and hold, and turns nothing. It ends when either finger
   lifts, and the one left does nothing until it lifts too. The zoom stays where the pinch left it. A
-  tap's and a grab's ray, and a look's turn for each pixel, follow the field of view, so they work
+  tap's and a hold's ray, and a look's turn for each pixel, follow the field of view, so they work
   the same at any zoom.
 
-A second finger is ignored while the first is grabbing, and a third always is. Unlike the page's
-pointer, the layer cannot move a held thing nearer or further with a pinch: the thing hangs off the
-emulated controller, and the layer could only move it by moving the controller into the view. The
-limits (`HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT`, `MIN_FOVY`) are `justdom-three`'s, re-exported here.
-Parked, both controllers sit under the head, turned with it, pointing at the floor, so neither model
-nor ray is in the view. `installTouch` sets `ipd` to 0, so the session is drawn from the head and a
-ray from the head lands on the pixel touched. The session ending hides the layer, lets go of the
-trigger and the grip, parks the controllers at once, forgets the fingers and zooms back out to the
-headset's own field of view.
+A second finger is ignored while the first is holding or dragging, and a third always is. Unlike the
+page's pointer, the layer cannot move a held thing nearer or further with a pinch: the thing hangs
+off the emulated controller, and the layer could only move it by moving the controller into the
+view. The limits (`HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT`, `MIN_FOVY`) are `justdom-three`'s,
+re-exported here. Parked, both controllers sit under the head, turned with it, pointing at the
+floor, so neither model nor ray is in the view. `installTouch` sets `ipd` to 0, so the session is
+drawn from the head and a ray from the head lands on the pixel touched. The session ending hides the
+layer, lets go of the trigger and the grip, parks the controllers at once, forgets the fingers and
+zooms back out to the headset's own field of view.
 
 **Tilt**, in the top corner, turns the head with the phone as well, as a window onto the room, and
 the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a page
@@ -257,9 +265,9 @@ names. Minesweeper's, the desk's, Euclid's and Knights' checks use it, by hand.
 
 `npm test` in the package, or `rush build --to justdom-xr`, runs `node --test` over `src`: the
 session's rules, `canPresent` against a stubbed `navigator.xr`, the offer against a stubbed
-platform, service worker and emulator, the touch layer's look, tap, grab and buttons against a
-stand-in headset under jsdom, the controller and hand models' addresses against a stubbed `fetch`,
-`clientRect` against a stand-in `ResizeObserver`, the clear-state shadow against a stand-in WebGL
-context, and which queries `followThemingQuery` and `followOutlinesQuery` take. `install` itself
-needs a browser, and is exercised by the apps' own check scripts, as is the driver. Minesweeper's
-also plays a session through `?touch`, with a long press, a tap and a tap on the ×.
+platform, service worker and emulator, the touch layer's look, tap, hold, drag, long press and
+buttons against a stand-in headset under jsdom, the controller and hand models' addresses against a
+stubbed `fetch`, `clientRect` against a stand-in `ResizeObserver`, the clear-state shadow against a
+stand-in WebGL context, and which queries `followThemingQuery` and `followOutlinesQuery` take.
+`install` itself needs a browser, and is exercised by the apps' own check scripts, as is the driver.
+Minesweeper's also plays a session through `?touch`, with a long press, a tap and a tap on the ×.

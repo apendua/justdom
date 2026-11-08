@@ -30,8 +30,8 @@ bottom; press it and the emulated session is drawn over the page, driven from th
 `?emulator=bare` installs the runtime without the panels, for a harness photographing the scene. On
 a phone `?emulator` installs `justdom-xr`'s touch layer instead of the panels (`?emulator=devui`
 keeps them), and `?touch` installs it anywhere: once the session is up, a drag turns the head, a tap
-presses what it lands on, a finger held still for 400 ms grips it and two fingers pinch the view in
-and out.
+presses what it lands on, a finger held still for 400 ms and then moved drags it, held and lifted is
+a long press, and two fingers pinch the view in and out.
 
 ## How it is put together
 

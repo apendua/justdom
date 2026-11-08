@@ -3,7 +3,7 @@ import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "justdom-three/limits";
 
 // The page's pointer and the touch layer go by the same limits: how far up
 // or down a drag tips the view, how far a finger may wander and still tap,
-// how long it holds still to grab, and how far in a pinch zooms. They are
+// how long it holds still before it presses, and how far in a pinch zooms. They are
 // `justdom-three`'s, and here as well for whoever reads them off the layer.
 export { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX };
 
@@ -24,7 +24,7 @@ export { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX };
 /**
  * @typedef {object} TouchOptions
  * @property {TouchButton[]} [buttons] The app's desk keys, as buttons. None
- *   leaves the look, the tap and the grab, which is all an app needs whose
+ *   leaves the look, the tap, the long press and the drag, which is all an app needs whose
  *   every control is a panel or a thing in the scene.
  * @property {number} [pitch] Where the head looks as the layer comes up, in
  *   radians above the horizon: `START_PITCH`, down at a table, unless the
@@ -251,29 +251,33 @@ const afterStep = (then) => {
 
 /**
  * What the right controller is doing for the finger, while it is aimed
- * rather than parked: a tap running its steps, or a grab with the grip
- * closed or about to close. `held` says the grip has closed, and `lifted`
- * that the finger has come up, so a grab lifted before its grip closes lets
- * go as soon as it has.
+ * rather than parked: a tap running its steps, a held finger's aim with no
+ * button chosen yet (`button` null), a long press's grip, or a drag's
+ * trigger. `held` says the button has gone down, and `lifted` that the
+ * finger has come up, so a drag lifted before its trigger goes down lets go
+ * as soon as it has.
  *
- * @typedef {{ held: boolean, lifted: boolean }} Press
+ * @typedef {{ button: "trigger" | "squeeze" | null, held: boolean, lifted: boolean }} Press
  */
 
 /**
  * The finger on the scene, if one is. It is `undecided` from the touch
  * until it has moved `SLOP_PX` (a `look`), stayed still for `HOLD_MS` (a
- * `grab`) or lifted (a tap), or until a second finger lands while it is
- * undecided or a look (a `pinch`). `press` is the grab's, and null for a
- * grab that landed while the controller was busy, which then does nothing.
- * A finger of a pinch that has ended stays a `pinch`, and does nothing
- * until it lifts.
+ * `hold`) or lifted (a tap), or until a second finger lands while it is
+ * undecided or a look (a `pinch`). A hold becomes a `drag` once it has
+ * moved `SLOP_PX` in all, and its lift without that is a long press.
+ * `press` is the hold's, and null for a hold that came while the controller
+ * was busy, which then does nothing. A finger of a pinch that has ended
+ * stays a `pinch`, and does nothing until it lifts.
  *
  * @typedef {object} Finger
  * @property {number} id
  * @property {number} x
  * @property {number} y
+ * @property {{ x: number, y: number }} landed Where it touched down: where
+ *   a hold aims, and so where a drag and a long press press.
  * @property {number} moved How far it has moved in all, in CSS pixels.
- * @property {"undecided" | "look" | "grab" | "pinch"} kind
+ * @property {"undecided" | "look" | "hold" | "drag" | "pinch"} kind
  * @property {ReturnType<typeof setTimeout>} timer
  * @property {Press | null} press
  */
@@ -281,9 +285,10 @@ const afterStep = (then) => {
 /**
  * Put a phone's touch screen in front of the emulated headset, for
  * `?touch`: a drag turns the head, a tap points the right controller
- * through the tapped spot and pulls its trigger, and a finger held still
- * for `HOLD_MS` closes its grip and keeps the ray under the finger as it
- * moves, until it lifts. Two fingers pinch the view in and out. The app's
+ * through the tapped spot and pulls its trigger, a finger held still for
+ * `HOLD_MS` and then moved drags with the trigger from where it landed,
+ * and one held and lifted without moving is a press of the grip. Two
+ * fingers pinch the view in and out. The app's
  * `buttons` go along the bottom, and **Tilt**, in the top corner, turns the
  * head with the phone as well (`Look`).
  *
@@ -293,27 +298,42 @@ const afterStep = (then) => {
  * `navigator.xr.requestSession`, so call this after `install` and before
  * the page asks for one; `offerHeadset` does both for `?touch`.
  *
- * The rules for the finger, the tap, the grab and the pinch:
+ * The rules for the finger, the tap, the hold, the drag and the pinch:
  *
  * - One finger on the scene drives one thing, and the buttons never touch
  *   the finger's state. A second finger that lands while the first is
  *   undecided or looking starts a pinch, which cancels the first finger's
- *   tap and grab. Any other second finger, and a third, are ignored: a
- *   pinch during a grab cannot move the held thing, as the page's pointer
- *   does, since the thing hangs off the controller and only moving the
- *   controller into the view would move it.
+ *   tap and hold. Any other second finger, and a third, are ignored: a
+ *   pinch during a drag cannot move the dragged thing, as the page's
+ *   pointer does, since the thing hangs off the controller and only moving
+ *   the controller into the view would move it.
+ * - A hold aims the right controller through the point the finger landed
+ *   on, from just behind the eye, and presses nothing yet. The ray rests
+ *   there, whatever the finger does within `SLOP_PX`, so a small target
+ *   under it stays under it; a tilt keeps the ray on that point of the
+ *   screen.
+ * - A hold that then moves `SLOP_PX` in all, counted from the touch, is a
+ *   drag: a step later the trigger goes down where the ray rests, and from
+ *   the step after, the ray follows the finger until it lifts or the
+ *   browser cancels it, which lets the trigger go and parks the controller
+ *   a step later. A drag lifted before its trigger has gone down keeps the
+ *   trigger down for a step, so the app sees the press.
+ * - A hold that lifts without moving is a long press: a step later the
+ *   grip goes down where the ray rests, a step after it comes up, and a
+ *   step after that the controller parks. A hold the browser cancels
+ *   presses nothing and parks.
  * - A pinch zooms as the page's pointer does: spread the fingers twice as
  *   far apart and what is on the screen is drawn twice as large (the
  *   tangent of half the vertical field of view goes inversely with the
  *   spread), between `MIN_FOVY` and the headset's own, which is the
  *   widest. The pinch ends when either finger lifts, and the one left on
  *   the screen does nothing until it lifts too. The zoom stays where the
- *   pinch left it. A tap's and a grab's ray, and a look's turn for each
+ *   pinch left it. A tap's and a hold's ray, and a look's turn for each
  *   pixel, follow the field of view, so they work the same at any zoom.
- * - A look never presses anything, a grab never turns the head, and a pinch
- *   does neither.
- * - A tap or a grab that starts while the controller is still busy with
- *   the last one is dropped, not queued.
+ * - A look never presses anything, a hold and a drag never turn the head,
+ *   and a pinch does neither.
+ * - A tap or a hold that starts while the controller is still busy with
+ *   the last press is dropped, not queued.
  * - The session ending hides the layer, lets go of whatever the controller
  *   holds and parks it at once, forgets the fingers, and zooms back out to
  *   the headset's own field of view.
@@ -402,16 +422,32 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   };
 
   /**
-   * The head turned as `look` has it, the controllers parked, and a held
-   * grab's ray put back under its finger, which a tilt would otherwise
-   * move off it.
+   * Where on the screen the ray should run for the finger, if the finger
+   * has the controller: a drag's under the finger once its trigger is
+   * down, and before that, as for a hold, where the finger landed.
+   *
+   * @param {Finger | null} on
+   * @returns {{ x: number, y: number } | null}
+   */
+  const aimedAt = (on) => {
+    if (!on?.press || on.press !== press || (on.kind !== "hold" && on.kind !== "drag")) {
+      return null;
+    }
+    return on.kind === "drag" && on.press.held ? on : on.landed;
+  };
+
+  /**
+   * The head turned as `look` has it, the controllers parked, and a hold's
+   * or a drag's ray put back where it runs on the screen, which a tilt
+   * would otherwise move it off.
    */
   const applyLook = () => {
     look.quaternion(turn);
     headset.quaternion.set(turn.x, turn.y, turn.z, turn.w);
     park();
-    if (finger?.kind === "grab" && finger.press && finger.press === press) {
-      aimThrough(finger.x, finger.y);
+    const at = aimedAt(finger);
+    if (at) {
+      aimThrough(at.x, at.y);
     }
   };
   applyLook();
@@ -442,7 +478,7 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       return;
     }
     /** @type {Press} */
-    const run = { held: false, lifted: true };
+    const run = { button: "trigger", held: false, lifted: true };
     press = run;
     aimThrough(x, y);
     step(run, () => {
@@ -455,29 +491,43 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   };
 
   /**
+   * Aim the right controller through (`x`, `y`) for a hold, with no button
+   * chosen yet, unless it is busy.
+   *
    * @param {number} x
    * @param {number} y
    * @returns {Press | null}
    */
-  const grab = (x, y) => {
-    const controller = headset.controllers.right;
-    if (press || !controller) {
+  const hold = (x, y) => {
+    if (press || !headset.controllers.right) {
       return null;
     }
     /** @type {Press} */
-    const run = { held: false, lifted: false };
+    const run = { button: null, held: false, lifted: false };
     press = run;
     aimThrough(x, y);
+    return run;
+  };
+
+  /**
+   * Put `button` down a step from now, where the ray rests: the trigger
+   * for a drag, which stays down until the finger lets go, or the grip for
+   * a long press, which comes up a step later.
+   *
+   * @param {Press} run
+   * @param {"trigger" | "squeeze"} button
+   */
+  const pressDown = (run, button) => {
+    run.button = button;
     step(run, () => {
-      controller.updateButtonValue("squeeze", 1);
+      headset.controllers.right?.updateButtonValue(button, 1);
       run.held = true;
-      // A finger that lifted while the grip was closing: the grip stays
-      // closed for a step, so the app sees it held before it opens.
+      // A finger that lifted while the button was going down: it stays
+      // down for a step, so the app sees it pressed before it comes up.
       if (run.lifted) {
         step(run, () => release(run));
       }
     });
-    return run;
   };
 
   /** @param {Press} run */
@@ -485,13 +535,16 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     run.lifted = true;
     if (run.held) {
       release(run);
+    } else if (run.button === null) {
+      // A hold that never chose a button: nothing to let go of.
+      done(run);
     }
   };
 
   /** @param {Press} run */
   const release = (run) => {
-    if (press === run) {
-      headset.controllers.right?.updateButtonValue("squeeze", 0);
+    if (press === run && run.button) {
+      headset.controllers.right?.updateButtonValue(run.button, 0);
       done(run);
     }
   };
@@ -519,14 +572,15 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       id: event.pointerId,
       x: event.clientX,
       y: event.clientY,
+      landed: { x: event.clientX, y: event.clientY },
       moved: 0,
       kind: "undecided",
       press: null,
     });
     landed.timer = setTimeout(() => {
       if (finger === landed && landed.kind === "undecided") {
-        landed.kind = "grab";
-        landed.press = grab(landed.x, landed.y);
+        landed.kind = "hold";
+        landed.press = hold(landed.landed.x, landed.landed.y);
       }
     }, HOLD_MS);
     finger = landed;
@@ -552,17 +606,21 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     const dy = event.clientY - finger.y;
     finger.x = event.clientX;
     finger.y = event.clientY;
-    if (finger.kind === "undecided") {
-      finger.moved += Math.hypot(dx, dy);
-      if (finger.moved > SLOP_PX) {
-        finger.kind = "look";
-        clearTimeout(finger.timer);
+    finger.moved += Math.hypot(dx, dy);
+    if (finger.kind === "undecided" && finger.moved > SLOP_PX) {
+      finger.kind = "look";
+      clearTimeout(finger.timer);
+    } else if (finger.kind === "hold" && finger.moved > SLOP_PX) {
+      finger.kind = "drag";
+      if (finger.press === press && finger.press) {
+        pressDown(finger.press, "trigger");
       }
+      return;
     }
     if (finger.kind === "look") {
       look.drag(dx, dy, headset.fovy / viewport().height);
       applyLook();
-    } else if (finger.kind === "grab" && finger.press && finger.press === press) {
+    } else if (finger.kind === "drag" && finger.press?.held && finger.press === press) {
       aimThrough(finger.x, finger.y);
     }
   });
@@ -584,8 +642,14 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     clearTimeout(finger.timer);
     if (finger.kind === "undecided" && event.type === "pointerup") {
       tap(event.clientX, event.clientY);
-    } else if (finger.kind === "grab" && finger.press) {
-      letGo(finger.press);
+    } else if (finger.press && finger.press === press) {
+      if (finger.kind === "hold" && event.type === "pointerup") {
+        // A long press: the grip, down and up.
+        finger.press.lifted = true;
+        pressDown(finger.press, "squeeze");
+      } else {
+        letGo(finger.press);
+      }
     }
     finger = null;
   };

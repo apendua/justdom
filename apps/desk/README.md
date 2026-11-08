@@ -36,8 +36,8 @@ installs a headset in the browser (IWER, with its dev panels, from `justdom-xr`)
 appears at the bottom; `?emulator=bare` installs the runtime without the panels. On a phone
 `?emulator` installs `justdom-xr`'s touch layer instead of the panels (`?emulator=devui` keeps
 them), and `?touch` installs it anywhere: once the session is up, a drag turns the head, a tap
-presses what it lands on, a finger held still for 400 ms grips it and two fingers pinch the view in
-and out.
+presses what it lands on, a finger held still for 400 ms and then moved drags it, held and lifted is
+a long press, and two fingers pinch the view in and out.
 
 `?trace`, under the dev server, keeps a row for every frame of each session and saves them as the
 session ends (`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk:

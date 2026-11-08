@@ -36,8 +36,8 @@ emulated session is drawn over the page. The controller and hand models come fro
 CDN, so a headset with no network draws no models. `?emulator=bare` installs the runtime without the
 panels. On a phone `?emulator` installs `justdom-xr`'s touch layer instead of the panels
 (`?emulator=devui` keeps them), and `?touch` installs it anywhere: once the session is up, a drag
-turns the head, a tap presses what it lands on, a finger held still for 400 ms grips it and two
-fingers pinch the view in and out.
+turns the head, a tap presses what it lands on, a finger held still for 400 ms and then moved drags
+it, held and lifted is a long press, and two fingers pinch the view in and out.
 
 The page needed four changes to look the same in the panel. The first three do not show on the page;
 the fourth does:

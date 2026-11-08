@@ -138,6 +138,11 @@ attributes outside a session.
 
 Rules written for both states, `.button:hover, .button[data-xr-hover]`, go on working.
 
+`:checked` needs no rewrite. A ray's click is a click, so the browser ticks the box and `:checked`
+matches it as it does on the page. The portal also writes `data-xr-checked` on a ticked checkbox,
+and that attribute change is what makes the panel read the box's style again, and its siblings'. So
+`.done:checked` and `input:checked + .label` work as written.
+
 A page that sets the attributes itself with no panel up, as one whose elements the browser draws
 into a texture does, turns the rewrite on with `followUserActions()` from `justdom-three/page`. It
 counts as one more panel watching: the rules stay rewritten until it and every panel have stopped,
@@ -149,8 +154,9 @@ Not followed:
   hovered element, while `data-xr-hover` goes on ray targets (an element under `cursor: pointer`, a
   field, a checkbox) and the clickable controls around them. A `.card:hover` on a card that is none
   of those does nothing in a panel; give the card `cursor: pointer` to make it one.
-- **`:focus-within`** and `:checked`, which are not rewritten. Write `[data-xr-checked]` beside
-  `:checked` yourself.
+- **`:focus-within`**, which is not rewritten.
+- **`:checked` on a radio button.** A radio is drawn as a plain box and never flagged, and ticking
+  one unticks another with no attribute change, so a radio's `:checked` style can stay as it was.
 - **A pseudo-class after a pseudo-element**, such as `::-webkit-scrollbar-thumb:hover`, which
   `:is()` may not follow.
 - **A rule no stylesheet watcher sees.** A sheet from another origin served without CORS cannot be

@@ -448,6 +448,77 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
+  test("a stylesheet's :checked rule alone restyles a box a ray ticks", async () => {
+    // Written for the page alone, with no `[data-xr-checked]` beside it.
+    const style = document.createElement("style");
+    style.textContent =
+      ".checked-only { background-color: rgb(255, 255, 255); }" +
+      " .checked-only:checked { background-color: rgb(0, 0, 255); }" +
+      " .checked-only:checked + .checked-label { color: rgb(255, 0, 0); }";
+    document.head.appendChild(style);
+    const { manager, ctx, targets } = countingManager();
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("justdom-core").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $("input", [attr("type", () => "checkbox"), attr("class", () => "checked-only")]),
+        $("div", [attr("class", () => "checked-label")]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const input = /** @type {HTMLInputElement} */ (document.querySelector(".checked-only"));
+    const label = /** @type {HTMLElement} */ (document.querySelector(".checked-label"));
+    const observing = new UpdateChannel({ name: "observing", order: 1 });
+    const background = withChannel(
+      observing,
+      () => new Derived(() => getComputedStyleCached(input).backgroundColor),
+    );
+    const color = withChannel(
+      observing,
+      () => new Derived(() => getComputedStyleCached(label).color),
+    );
+    const watching = [background, color].map((signal) =>
+      signal.subscribe({ next: () => signal.get() }),
+    );
+    assert.equal(background.get(), "rgb(255, 255, 255)");
+
+    const control = [...targets].find(
+      (object) => !(object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry),
+    );
+    assert.ok(control);
+    manager.dispatch(
+      /** @type {any} */ (control),
+      /** @type {any} */ ({ type: "select", originalTarget: control }),
+    );
+    await pump();
+    assert.equal(input.checked, true);
+    assert.equal(background.get(), "rgb(0, 0, 255)", "the box follows its :checked rule");
+    assert.equal(color.get(), "rgb(255, 0, 0)", "and so does the label after it");
+
+    manager.dispatch(
+      /** @type {any} */ (control),
+      /** @type {any} */ ({ type: "select", originalTarget: control }),
+    );
+    await pump();
+    assert.equal(background.get(), "rgb(255, 255, 255)", "and back when unticked");
+
+    for (const subscriptionOf of watching) {
+      subscriptionOf.unsubscribe();
+    }
+    subscription.unsubscribe();
+    portal.disconnect();
+    style.remove();
+  });
+
   test("disabling a mounted checkbox takes it out of the raycast set", async () => {
     const manager = new InteractionManager();
     /** @type {THREE.Object3D[]} */

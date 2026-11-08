@@ -19,6 +19,9 @@ headset without passthrough the button falls back to plain VR instead of refusin
 - `?emulator=bare` — the same without the DevUI, and with the `XRDevice` exposed as
   `window.xrDevice` so a script can drive the headset and controllers directly. The DevUI writes a
   pose of its own every frame and would otherwise fight whatever the script is doing.
+- `?pointer` — turns on `render()`'s `pointer` option with `look: "orbit"`, so the mouse and a
+  finger play on the page with no session, and a drag on nothing turns the camera. Off without the
+  flag while it is tried out.
 
 The emulator is a dynamic import in its own chunk and replaces `navigator.xr`, so do not use it on a
 real headset.

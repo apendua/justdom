@@ -127,6 +127,10 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   was, the other way, so what is at the point follows the pointer, as an orbit does. `around` is
   only taken beside `look: "orbit"`. `mouse(ctx, { look: "orbit" })` is the same for a scene that
   mounts it itself. Without `look`, a drag on nothing does nothing.
+- The wheel moves what the pointer holds along the ray: a hand reaches into the room and the mouse
+  cannot, so a thing picked up with `drag` is pushed further off by turning the wheel away and
+  brought nearer by turning it towards the screen, 20 cm a notch and never nearer than 20 cm. While
+  nothing is held, the wheel scrolls the page as ever.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The mouse's wheel moves what it holds along the ray, so a thing picked up with drag can be put down further off or nearer",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

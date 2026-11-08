@@ -9,6 +9,12 @@ import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.
  */
 
 const FORWARD = new THREE.Vector3(0, 0, -1);
+// A line of a wheel that scrolls by lines, as Firefox's can, in pixels.
+const LINE_PX = 16;
+// `WheelEvent`'s modes, spelled out rather than read off the class, which
+// not every environment a scene is built in defines.
+const DOM_DELTA_LINE = 1;
+const DOM_DELTA_PAGE = 2;
 // Scratch for the camera's turn, which runs on every move of a drag.
 const _euler = new THREE.Euler();
 const _around = new THREE.Vector3();
@@ -25,6 +31,18 @@ export const HOLD_MS = 400;
  * Further, and it is a drag with the trigger.
  */
 export const SLOP_PX = 10;
+
+/**
+ * How far one pixel of the wheel moves a held thing along the ray, in
+ * metres: a notch of a usual wheel, 100 px, is 20 cm.
+ */
+export const WHEEL_METRES_PER_PIXEL = 0.002;
+
+/**
+ * The nearest the wheel brings a held thing, in metres along the ray: short
+ * of the camera's near plane, where it would vanish.
+ */
+export const MIN_REACH = 0.2;
 
 /**
  * Where a release is heard: the window, so a press let go off the canvas
@@ -109,6 +127,14 @@ export const PITCH_LIMIT = 1.4;
  * what is at the point follows the pointer, as an orbit does. The group
  * is aimed on each move as usual, and the press is still sent: it began on
  * nothing, so nothing hears it. The drag ends with the press.
+ *
+ * The wheel. What the group holds (`drag` puts what it picks up among the
+ * group's children) the wheel moves along the ray: towards the screen
+ * brings it nearer, away pushes it further, by `WHEEL_METRES_PER_PIXEL`,
+ * and never nearer than `MIN_REACH`. A hand reaches into the room and the
+ * mouse cannot, so this is how a thing picked up with the mouse is put
+ * down further off or nearer. While the group holds nothing the wheel is
+ * the page's, and scrolls it as ever.
  *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.
@@ -354,6 +380,26 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   const onContextMenu = (event) => {
     event.preventDefault();
   };
+  /** @param {WheelEvent} event */
+  const onWheel = (event) => {
+    if (pointer.children.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const pixels =
+      event.deltaMode === DOM_DELTA_LINE
+        ? event.deltaY * LINE_PX
+        : event.deltaMode === DOM_DELTA_PAGE
+          ? event.deltaY * canvas.getBoundingClientRect().height
+          : event.deltaY;
+    for (const child of pointer.children) {
+      // The ray is the group's -Z, so how far out a thing is held is the
+      // negative of its z, and moving it along the ray changes z alone.
+      const reach = Math.max(MIN_REACH, -child.position.z - pixels * WHEEL_METRES_PER_PIXEL);
+      child.position.z = -reach;
+      child.updateMatrixWorld(true);
+    }
+  };
 
   const touchAction = canvas.style.touchAction;
   canvas.style.touchAction = "none";
@@ -362,6 +408,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   canvas.addEventListener("pointerdown", onDown);
   canvas.addEventListener("pointercancel", onCancel);
   canvas.addEventListener("contextmenu", onContextMenu);
+  canvas.addEventListener("wheel", onWheel, { passive: false });
   view.addEventListener("pointerup", /** @type {EventListener} */ (onUp));
 
   return () => {
@@ -370,6 +417,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     canvas.removeEventListener("pointerdown", onDown);
     canvas.removeEventListener("pointercancel", onCancel);
     canvas.removeEventListener("contextmenu", onContextMenu);
+    canvas.removeEventListener("wheel", onWheel);
     view.removeEventListener("pointerup", /** @type {EventListener} */ (onUp));
     canvas.style.touchAction = touchAction;
     lift();

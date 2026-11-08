@@ -2,7 +2,15 @@ import { describe, test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { followMouse, HOLD_MS, mouse, PITCH_LIMIT, SLOP_PX } from "./mouse.js";
+import {
+  followMouse,
+  HOLD_MS,
+  MIN_REACH,
+  mouse,
+  PITCH_LIMIT,
+  SLOP_PX,
+  WHEEL_METRES_PER_PIXEL,
+} from "./mouse.js";
 import { CameraContext, RendererContext, runFrame } from "./render.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
@@ -459,6 +467,80 @@ describe("a drag on nothing, with look: orbit", () => {
     } finally {
       mock.timers.reset();
     }
+  });
+});
+
+describe("the wheel", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {THREE.Group<XREventMap>} */
+  let group;
+  /** @type {() => void} */
+  let stop;
+
+  beforeEach(() => {
+    canvas = pageCanvas();
+    group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
+    stop = followMouse(group, new THREE.PerspectiveCamera(), canvas);
+  });
+
+  afterEach(() => {
+    stop();
+  });
+
+  /**
+   * @param {number} deltaY
+   * @param {number} [deltaMode]
+   */
+  function wheel(deltaY, deltaMode = 0) {
+    // What a `WheelEvent` carries, on an event the test's document takes.
+    const event = Object.assign(new Event("wheel", { cancelable: true }), { deltaY, deltaMode });
+    canvas.dispatchEvent(event);
+    return event;
+  }
+
+  /** Something held 2 m out along the ray, a little off it, as `drag` leaves it. */
+  function held() {
+    const thing = new THREE.Object3D();
+    thing.position.set(0.1, 0, -2);
+    group.add(thing);
+    return thing;
+  }
+
+  test("pushes what the group holds further along the ray when turned away", () => {
+    const thing = held();
+    const event = wheel(-100);
+    assert.ok(Math.abs(thing.position.z - (-2 - 100 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
+    // Along the ray: the offset from it stays.
+    assert.equal(thing.position.x, 0.1);
+    // And the page does not scroll as well.
+    assert.equal(event.defaultPrevented, true);
+  });
+
+  test("brings it nearer when turned towards the screen, never nearer than the floor", () => {
+    const thing = held();
+    wheel(100);
+    assert.ok(Math.abs(thing.position.z - (-2 + 100 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
+    wheel(100_000);
+    assert.equal(thing.position.z, -MIN_REACH);
+  });
+
+  test("counts a wheel that scrolls by lines in lines", () => {
+    const thing = held();
+    // DOM_DELTA_LINE.
+    wheel(-1, 1);
+    assert.ok(Math.abs(thing.position.z - (-2 - 16 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
+  });
+
+  test("is the page's while the group holds nothing", () => {
+    assert.equal(wheel(-100).defaultPrevented, false);
+  });
+
+  test("is the page's again once it stops", () => {
+    const thing = held();
+    stop();
+    assert.equal(wheel(-100).defaultPrevented, false);
+    assert.equal(thing.position.z, -2);
   });
 });
 

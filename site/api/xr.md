@@ -78,12 +78,14 @@ A finger on the scene is undecided until it does one of three things:
   closes its grip 4 frames later. The ray then follows the finger, the head stays where it is, and
   the lift opens the grip and parks the controller 4 frames after. A finger lifted while the grip is
   still closing keeps it closed for 4 frames, so the app sees it held. A grab never turns the head.
+  A grab that starts while a tap is still running is dropped the same way: the finger then turns
+  nothing and its lift presses nothing.
 
 A second finger is ignored while the first is down. Parked, both controllers sit under the head,
-turned with it, pointing at the floor, so neither model nor ray is in the view. `install` sets `ipd`
-to 0, so the session is drawn from the head and a ray from the head lands on the pixel touched. The
-session ending hides the layer, lets go of the trigger and the grip, parks the controllers at once
-and forgets the finger.
+turned with it, pointing at the floor, so neither model nor ray is in the view. `installTouch` sets
+`ipd` to 0, so the session is drawn from the head and a ray from the head lands on the pixel
+touched. The session ending hides the layer, lets go of the trigger and the grip, parks the
+controllers at once and forgets the finger.
 
 **Tilt**, in the top corner, turns the head with the phone as well, as a window onto the room, and
 the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a page

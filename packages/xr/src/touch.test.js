@@ -531,6 +531,21 @@ describe("installTouch", () => {
       assert.ok(rightParked());
     });
 
+    it("is dropped while a tap is still running, and the finger does nothing after", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(1);
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      finger("pointermove", 200 + 3 * SLOP_PX, 0);
+      finger("pointerup", 200 + 3 * SLOP_PX, 0);
+      frames(4 * STEP_FRAMES);
+      near(headAhead().x, 0);
+      near(headAhead().y, 0);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+      assert.ok(rightParked());
+    });
+
     it("lets go when the session ends, and parks at once", () => {
       finger("pointerdown", 200, 400);
       mock.timers.tick(HOLD_MS);

@@ -64,8 +64,8 @@ Hover and press are written onto the element as attributes, since `:hover` and `
 set from outside: `data-xr-hover` while a ray is on it and `data-xr-active` while it is held. The
 page's own `:hover`, `:active` and `:focus` rules answer them as written, since the portal rewrites
 each to name its attribute too ([Hover, press and focus](/api/three/css#hover-press-and-focus)). A
-ticked box needs no rewrite: a ray's click ticks it, and the portal writes `data-xr-checked` so the
-panel reads its style again, so `:checked` works as written:
+ticked box needs no rewrite: a ray's click ticks it, and the portal writes `data-xr-checked`, which
+makes the panel read its style again. `:checked` works as written:
 
 ```css
 .button:hover {

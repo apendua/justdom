@@ -135,9 +135,10 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   that lands while the first is dragging something does what the wheel does: spread the two fingers
   and the thing comes nearer by the same ratio, close them and it goes further off. A second finger
   that lands while nothing is held, and the first has pressed nothing (it has not yet pressed, or
-  its press began on nothing, turning the camera or not), zooms a perspective camera instead: spread
-  the fingers twice as far apart and the scene is drawn twice as large, never wider than the
-  camera's own view and never narrower than a vertical field of view of 20° (`MIN_FOVY`). The zoom
+  its trigger began on nothing, turning the camera or not), zooms a perspective camera instead:
+  spread the fingers twice as far apart and the scene is drawn twice as large, never wider than the
+  camera's own view and never narrower than a vertical field of view of 20° (`MIN_FOVY`). A grip
+  refuses it, on something or on nothing, as a grab does on `justdom-xr`'s touch layer. The zoom
   cancels the first finger's tap and grip and stops its turn, and the finger left after the zoom
   does nothing until it lifts, a new second finger included. Lifting either finger ends the pinch;
   lifting the first also ends its press. The zoom stays until the pointer stops (a session starting,

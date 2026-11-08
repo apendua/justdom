@@ -134,10 +134,11 @@ export const MIN_REACH = 0.2;
  *   never nearer than `MIN_REACH`. The first finger still aims the group as
  *   it moves.
  * - A second finger that lands while the group holds nothing, and the first
- *   has pressed nothing (it is undecided, or its press began on nothing, as
- *   `pointsAtNothing` says, whether or not it turns the camera), starts a
- *   zoom, if the camera is a perspective one. A press that began on a
- *   thing, a button or a slider, refuses it. The first finger's tap and
+ *   has pressed nothing (it is undecided, or its trigger began on nothing,
+ *   as `pointsAtNothing` says, whether or not it turns the camera), starts
+ *   a zoom, if the camera is a perspective one. A press that began on a
+ *   thing, a button or a slider, refuses it, and so does a grip on
+ *   anything, as a grab refuses a pinch on `justdom-xr`'s touch layer. The first finger's tap and
  *   hold are cancelled and its turn stops, the group is hidden, and from
  *   then on that finger aims, turns and presses nothing until it lifts, and
  *   starts no pinch: a second finger that lands after the zoom ended is
@@ -432,7 +433,10 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       if (finger && !pinch && !finger.zoomed) {
         const holding = pointer.children.length > 0;
         const reach = holding && finger.button !== null;
-        const zoom = !holding && (finger.button === null || finger.onNothing) ? lens : null;
+        const zoom =
+          !holding && (finger.button === null || (finger.button === "select" && finger.onNothing))
+            ? lens
+            : null;
         if (reach || zoom) {
           canvas.setPointerCapture(event.pointerId);
           pinch = { id: event.pointerId, x: event.clientX, y: event.clientY, spread: 0, zoom };

@@ -681,7 +681,8 @@ describe("a pinch", () => {
     assert.equal(group.visible, true);
   });
 
-  test("does not start on a grip that holds nothing", () => {
+  test("does not start on a grip that holds nothing, even a grip on nothing", () => {
+    nothing = true;
     grip();
     canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
     const thing = held();

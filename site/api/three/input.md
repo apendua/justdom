@@ -131,10 +131,19 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   the mouse cannot. Rolled forward, towards the screen, it brings the thing nearer, as a wheel zooms
   in; rolled back, towards you, it pushes it further off, 20 cm a notch and never nearer than 20 cm.
   A `carry` keeps its own distance, and while nothing is dragged the wheel scrolls the page as ever.
-- On a touch screen a two-finger pinch does what the wheel does. A second finger that lands while
-  the first is dragging something starts one: spread the two fingers and the thing comes nearer by
-  the same ratio, close them and it goes further off. Lifting the second finger ends the two-finger
-  pinch and leaves the drag to the first.
+- On a touch screen a two-finger pinch moves what is held, or zooms when nothing is. A second finger
+  that lands while the first is dragging something does what the wheel does: spread the two fingers
+  and the thing comes nearer by the same ratio, close them and it goes further off. A second finger
+  that lands while nothing is held, and the first has not yet pressed or is turning the camera,
+  zooms a perspective camera instead: spread the fingers twice as far apart and the scene is drawn
+  twice as large, never wider than the camera's own view and never narrower than a vertical field of
+  view of 20° (`MIN_FOVY`). The zoom cancels the first finger's tap and grip and stops its turn, and
+  the finger left after the zoom does nothing until it lifts. Lifting either finger ends the pinch;
+  lifting the first also ends its press. The zoom stays until the pointer stops (a session starting,
+  or the scene going), which puts the camera's `zoom` back. A second finger at any other time, and a
+  third, are ignored.
+- `HOLD_MS` (400), `SLOP_PX` (10), `PITCH_LIMIT` (1.4 rad) and `MIN_FOVY` are exported, and
+  `justdom-xr/touch` goes by the same ones.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,

@@ -82,17 +82,21 @@ A finger on the scene is undecided until it does one of four things:
   nothing and its lift presses nothing.
 - **Pinch.** A second finger that lands while the first is undecided or looking zooms the view: the
   vertical field of view goes inversely with the fingers' spread, so spreading them twice as far
-  apart halves it, between 20° (`MIN_FOVY`) and the headset's own 90°. A pinch cancels the first
-  finger's tap and grab, and turns nothing. It ends when either finger lifts, and the one left does
-  nothing until it lifts too. The zoom stays where the pinch left it. A tap's and a grab's ray, and
-  a look's turn for each pixel, follow the field of view, so they work the same at any zoom.
+  apart halves it, between 20° (`MIN_FOVY`, the narrowest `justdom-three`'s pointer zooms to as
+  well) and the headset's own 90°. A pinch cancels the first finger's tap and grab, and turns
+  nothing. It ends when either finger lifts, and the one left does nothing until it lifts too. The
+  zoom stays where the pinch left it. A tap's and a grab's ray, and a look's turn for each pixel,
+  follow the field of view, so they work the same at any zoom.
 
-A second finger is ignored while the first is grabbing, and a third always is. Parked, both
-controllers sit under the head, turned with it, pointing at the floor, so neither model nor ray is
-in the view. `installTouch` sets `ipd` to 0, so the session is drawn from the head and a ray from
-the head lands on the pixel touched. The session ending hides the layer, lets go of the trigger and
-the grip, parks the controllers at once, forgets the fingers and zooms back out to the headset's own
-field of view.
+A second finger is ignored while the first is grabbing, and a third always is. Unlike the page's
+pointer, the layer cannot move a held thing nearer or further with a pinch: the thing hangs off the
+emulated controller, and the layer could only move it by moving the controller into the view. The
+limits (`HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT`, `MIN_FOVY`) are `justdom-three`'s, re-exported here.
+Parked, both controllers sit under the head, turned with it, pointing at the floor, so neither model
+nor ray is in the view. `installTouch` sets `ipd` to 0, so the session is drawn from the head and a
+ray from the head lands on the pixel touched. The session ending hides the layer, lets go of the
+trigger and the grip, parks the controllers at once, forgets the fingers and zooms back out to the
+headset's own field of view.
 
 **Tilt**, in the top corner, turns the head with the phone as well, as a window onto the room, and
 the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a page

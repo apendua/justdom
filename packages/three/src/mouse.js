@@ -59,6 +59,14 @@ export const MIN_REACH = 0.2;
 export const PITCH_LIMIT = 1.4;
 
 /**
+ * The narrowest a pinch zooms the view to: the vertical field of view, in
+ * radians. Twenty degrees is two and a half times narrower than a page's
+ * usual fifty and four and a half times narrower than a headset's ninety,
+ * close enough to read a small panel from where the camera stands.
+ */
+export const MIN_FOVY = (20 * Math.PI) / 180;
+
+/**
  * What a drag that starts on nothing does: `"orbit"` turns the camera about
  * `around`, or in place when `around` is not given. Without `look` such a
  * drag does nothing, which is the default.
@@ -140,15 +148,34 @@ export const PITCH_LIMIT = 1.4;
  * further off or nearer. While the group holds nothing the wheel is the
  * page's, and scrolls it as ever.
  *
- * The pinch, the wheel of a touch screen. A second finger that lands while
- * the first holds a press and the group holds something starts one; at any
- * other time a second finger is ignored, as above. While it lasts, a move
- * of either finger moves what the group holds along the ray by the ratio
- * of the fingers' spread: spread them twice as far apart and it comes to
- * half the distance, as a pinch zooms in; close them and it goes further
- * off, never nearer than `MIN_REACH`. The first finger still aims the
- * group as it moves. The second finger's lift or cancel ends the pinch and
- * nothing else; the first's ends the press and the pinch with it.
+ * The pinch. Holding something, a pinch moves it nearer or further off;
+ * holding nothing, it zooms. Which of the two it is, is settled as the
+ * second finger lands, and a pinch stays what it started as:
+ *
+ * - A second finger that lands while the first holds a press and the group
+ *   holds something starts a reach. While it lasts, a move of either finger
+ *   moves what the group holds along the ray by the ratio of the fingers'
+ *   spread: spread them twice as far apart and it comes to half the
+ *   distance, as a pinch zooms in; close them and it goes further off,
+ *   never nearer than `MIN_REACH`. The first finger still aims the group as
+ *   it moves.
+ * - A second finger that lands while the group holds nothing, and the first
+ *   is undecided or turning the camera, starts a zoom, if the camera is a
+ *   perspective one. The first finger's tap and hold are cancelled and its
+ *   turn stops, the group is hidden, and from then on that finger aims,
+ *   turns and presses nothing until it lifts. While the zoom lasts, the
+ *   camera's `zoom` goes as the fingers' spread: spread them twice as far
+ *   apart and what is on the screen is drawn twice as large. It never
+ *   zooms out past the camera's `zoom` as this started, nor in past a
+ *   vertical field of view of `MIN_FOVY`.
+ * - At any other time a second finger is ignored, and a third always is.
+ * - The second finger's lift or cancel ends the pinch and nothing else. The
+ *   first finger's ends the pinch and its own press, if it made one (a
+ *   zoom's first finger lets go of a press that began on nothing, and a
+ *   hidden group's release is a miss).
+ * - The zoom stays where the last pinch left it until this stops, which
+ *   puts the camera's `zoom` back. A turn and a ray follow the zoom, so
+ *   both work the same at any zoom.
  *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.
@@ -156,7 +183,7 @@ export const PITCH_LIMIT = 1.4;
  * Returns the way to stop, which leaves the group hidden: the state it
  * starts in, so a later start (the one after a session ends) begins
  * pointing at nothing until the mouse moves onto the canvas again. The
- * canvas gets back the `touch-action` it had.
+ * canvas gets back the `touch-action` it had, and the camera its `zoom`.
  *
  * @param {THREE.Object3D<XREventMap>} pointer
  * @param {THREE.Camera} camera
@@ -259,7 +286,8 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
 
   /**
    * The finger that drives the group, from its landing to its lift.
-   * `button` is null while what it presses is undecided.
+   * `button` is null while what it presses is undecided. `zoomed` says a
+   * zoom has started on it, after which it drives nothing.
    *
    * @type {{
    *   id: number,
@@ -269,17 +297,37 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
    *   now: { x: number, y: number },
    *   button: "select" | "squeeze" | null,
    *   hold: ReturnType<typeof setTimeout>,
+   *   zoomed: boolean,
    * } | null}
    */
   let finger = null;
 
   /**
-   * The second finger of a pinch, while one is under way: where it is, and
-   * how far apart the two fingers were at the last move.
+   * The second finger of a pinch, while one is under way: where it is, how
+   * far apart the two fingers were at the last move, and whether the pinch
+   * zooms or moves what is held.
    *
-   * @type {{ id: number, x: number, y: number, spread: number } | null}
+   * @type {{ id: number, x: number, y: number, spread: number, zoom: boolean } | null}
    */
   let pinch = null;
+
+  // The camera's lens, if a pinch can zoom it: its `zoom` as this starts is
+  // the widest, and the narrowest is the one that shows `MIN_FOVY`.
+  const lens = /** @type {THREE.PerspectiveCamera} */ (camera).isPerspectiveCamera
+    ? /** @type {THREE.PerspectiveCamera} */ (camera)
+    : null;
+  const wideZoom = lens?.zoom ?? 1;
+  const maxZoom = lens
+    ? Math.max(wideZoom, Math.tan(THREE.MathUtils.degToRad(lens.fov) / 2) / Math.tan(MIN_FOVY / 2))
+    : 1;
+
+  /** @param {number} zoom */
+  const zoomTo = (zoom) => {
+    if (lens && lens.zoom !== zoom) {
+      lens.zoom = zoom;
+      lens.updateProjectionMatrix();
+    }
+  };
 
   /**
    * Move everything the group holds along the ray, to the reach `to` gives
@@ -303,15 +351,22 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   const spread = () =>
     finger && pinch ? Math.hypot(pinch.x - finger.now.x, pinch.y - finger.now.y) : 0;
 
-  /** Bring the held things nearer by as much as the fingers spread. */
-  const pinchReach = () => {
+  /**
+   * Zoom in, or bring the held things nearer, by as much as the fingers
+   * spread.
+   */
+  const pinchMove = () => {
     if (!pinch) {
       return;
     }
     const now = spread();
     if (now > 0 && pinch.spread > 0) {
       const ratio = pinch.spread / now;
-      reachOut((reach) => reach * ratio);
+      if (pinch.zoom) {
+        zoomTo(THREE.MathUtils.clamp((lens?.zoom ?? 1) / ratio, wideZoom, maxZoom));
+      } else {
+        reachOut((reach) => reach * ratio);
+      }
     }
     pinch.spread = now;
   };
@@ -348,13 +403,17 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     if (pinch && event.pointerId === pinch.id) {
       pinch.x = event.clientX;
       pinch.y = event.clientY;
-      pinchReach();
+      pinchMove();
       return;
     }
     if (!finger || event.pointerId !== finger.id) {
       return;
     }
     finger.now = { x: event.clientX, y: event.clientY };
+    if (finger.zoomed) {
+      pinchMove();
+      return;
+    }
     if (finger.button === null) {
       const dx = event.clientX - finger.x;
       const dy = event.clientY - finger.y;
@@ -366,7 +425,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     }
     turn(event);
     aim(event);
-    pinchReach();
+    pinchMove();
   };
   const onLeave = (/** @type {PointerEvent} */ event) => {
     if (event.pointerType !== "touch") {
@@ -376,12 +435,22 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   /** @param {PointerEvent} event */
   const onDown = (event) => {
     if (event.pointerType === "touch") {
-      if (finger && finger.button !== null && !pinch && pointer.children.length > 0) {
-        // A second finger while the first holds something: a pinch.
-        canvas.setPointerCapture(event.pointerId);
-        pinch = { id: event.pointerId, x: event.clientX, y: event.clientY, spread: 0 };
-        pinch.spread = spread();
-        return;
+      if (finger && !pinch) {
+        const holding = pointer.children.length > 0;
+        const reach = holding && finger.button !== null;
+        const zoom = !holding && lens !== null && (finger.button === null || turning !== null);
+        if (reach || zoom) {
+          canvas.setPointerCapture(event.pointerId);
+          pinch = { id: event.pointerId, x: event.clientX, y: event.clientY, spread: 0, zoom };
+          pinch.spread = spread();
+          if (zoom) {
+            clearTimeout(finger.hold);
+            finger.zoomed = true;
+            turning = null;
+            pointer.visible = false;
+          }
+          return;
+        }
       }
       if (finger || !event.isPrimary) {
         return;
@@ -396,6 +465,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
         now: { x: event.clientX, y: event.clientY },
         button: null,
         hold: setTimeout(() => press("squeeze", event), HOLD_MS),
+        zoomed: false,
       };
       return;
     }
@@ -416,6 +486,14 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
         return;
       }
       if (!finger || event.pointerId !== finger.id) {
+        return;
+      }
+      if (finger.zoomed) {
+        if (finger.button !== null) {
+          send(`${finger.button}end`);
+          send(finger.button);
+        }
+        lift();
         return;
       }
       const button = finger.button ?? "select";
@@ -498,6 +576,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     view.removeEventListener("pointerup", /** @type {EventListener} */ (onUp));
     canvas.style.touchAction = touchAction;
     lift();
+    zoomTo(wideZoom);
   };
 }
 

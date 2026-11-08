@@ -5,6 +5,7 @@ import { InteractionContext, InteractionManager } from "./interactions.js";
 import {
   followMouse,
   HOLD_MS,
+  MIN_FOVY,
   MIN_REACH,
   mouse,
   PITCH_LIMIT,
@@ -452,6 +453,28 @@ describe("a drag on nothing, with look: orbit", () => {
     assert.ok(at.camera.position.x < 0);
   });
 
+  test("stops for a second finger, which zooms", () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      canvas.setPointerCapture = () => {};
+      const at = orbiting(canvas);
+      stop = at.stop;
+      canvas.dispatchEvent(finger("pointerdown", 0, 0));
+      canvas.dispatchEvent(finger("pointermove", 30, 0));
+      canvas.dispatchEvent(finger("pointerdown", 60, 0, 2));
+      canvas.dispatchEvent(finger("pointermove", 90, 0, 2));
+      // The first finger moves too, and turns nothing.
+      canvas.dispatchEvent(finger("pointermove", 30, 40));
+      // Spread from 30 px to 60 by 40.
+      assert.ok(Math.abs(at.camera.zoom - Math.hypot(60, 40) / 30) < 1e-9);
+      assert.ok(Math.abs(heading(at.camera).y - 30 * PER_PIXEL) < 1e-6);
+      assert.ok(Math.abs(heading(at.camera).x) < 1e-6);
+      canvas.dispatchEvent(finger("pointerup", 30, 40));
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
   test("is a finger's too, once it has moved past the slop", () => {
     mock.timers.enable({ apis: ["setTimeout"] });
     try {
@@ -564,8 +587,12 @@ describe("a pinch", () => {
   let canvas;
   /** @type {THREE.Group<XREventMap>} */
   let group;
+  /** @type {THREE.PerspectiveCamera} */
+  let camera;
   /** @type {() => void} */
   let stop;
+  /** @type {string[]} What the group has sent. */
+  let sent;
 
   beforeEach(() => {
     mock.timers.enable({ apis: ["setTimeout"] });
@@ -575,7 +602,17 @@ describe("a pinch", () => {
     canvas.setPointerCapture = () => {};
     document.body.append(canvas);
     group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
-    stop = followMouse(group, new THREE.PerspectiveCamera(), canvas);
+    sent = [];
+    for (const type of /** @type {const} */ ([
+      "selectstart",
+      "select",
+      "squeezestart",
+      "squeeze",
+    ])) {
+      group.addEventListener(type, () => sent.push(type));
+    }
+    camera = new THREE.PerspectiveCamera();
+    stop = followMouse(group, camera, canvas);
   });
 
   afterEach(() => {
@@ -649,20 +686,92 @@ describe("a pinch", () => {
     assert.equal(group.visible, true);
   });
 
-  test("does not start while nothing is held", () => {
+  test("does not start on a grip that holds nothing", () => {
     grip();
     canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
     const thing = held();
     canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
     assert.equal(reach(thing), 2);
+    assert.equal(camera.zoom, 1);
   });
 
-  test("does not start before the first finger has pressed", () => {
+  test("does not start before the first finger has pressed on what is held", () => {
     const thing = held();
     canvas.dispatchEvent(finger("pointerdown", 50, 50));
     canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
     canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
     assert.equal(reach(thing), 2);
+    assert.equal(camera.zoom, 1);
+  });
+
+  test("holding nothing, spread twice as far, draws the scene twice as large", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    assert.ok(Math.abs(camera.zoom - 2) < 1e-9);
+    // The projection follows, which is what the ray and the turn read.
+    assert.ok(
+      Math.abs(camera.projectionMatrix.elements[5] - 2 / Math.tan((25 * Math.PI) / 180)) < 1e-9,
+    );
+  });
+
+  test("zooming, the first finger's move counts too", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 40, 50));
+    assert.ok(Math.abs(camera.zoom - 2) < 1e-9);
+  });
+
+  test("never zooms out past the camera's own view", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 70, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 60, 50, 2));
+    assert.equal(camera.zoom, 1);
+  });
+
+  test("never zooms in past MIN_FOVY", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 51, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 100, 50, 2));
+    const fovy = 2 * Math.atan(1 / camera.projectionMatrix.elements[5]);
+    assert.ok(Math.abs(fovy - MIN_FOVY) < 1e-9);
+  });
+
+  test("zooming cancels the first finger's tap and grip, and hides the group", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    assert.equal(group.visible, false);
+    mock.timers.tick(HOLD_MS);
+    canvas.dispatchEvent(finger("pointerup", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointerup", 50, 50));
+    assert.deepEqual(sent, []);
+  });
+
+  test("after a zoom, the finger left drives nothing until it lifts", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    canvas.dispatchEvent(finger("pointerup", 70, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 90, 90));
+    assert.equal(group.visible, false);
+    assert.ok(Math.abs(camera.zoom - 2) < 1e-9);
+    canvas.dispatchEvent(finger("pointerup", 90, 90));
+    assert.deepEqual(sent, []);
+    // The next finger is a finger again.
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerup", 50, 50));
+    assert.deepEqual(sent, ["selectstart", "select"]);
+  });
+
+  test("the zoom stays until the pointer stops, which puts it back", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    canvas.dispatchEvent(finger("pointerup", 70, 50, 2));
+    canvas.dispatchEvent(finger("pointerup", 50, 50));
+    assert.ok(Math.abs(camera.zoom - 2) < 1e-9);
+    stop();
+    assert.equal(camera.zoom, 1);
   });
 });
 

@@ -1,4 +1,11 @@
 import * as THREE from "three";
+import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "justdom-three";
+
+// The page's pointer and the touch layer go by the same limits: how far up
+// or down a drag tips the view, how far a finger may wander and still tap,
+// how long it holds still to grab, and how far in a pinch zooms. They are
+// `justdom-three`'s, and here as well for whoever reads them off the layer.
+export { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX };
 
 /** @typedef {import("iwer").XRDevice} XRDevice */
 
@@ -32,38 +39,11 @@ import * as THREE from "three";
 export const START_PITCH = -0.45;
 
 /**
- * How far up or down the drag and the tilt tip the head, short of straight
- * up or down.
- */
-export const PITCH_LIMIT = 1.4;
-
-/**
- * How far a finger may move, in CSS pixels, before it turns the head. Less
- * than that and it is a tap, or a grab once it has stayed down for
- * `HOLD_MS`.
- */
-export const SLOP_PX = 10;
-
-/**
- * How long a finger has to stay down without moving, in milliseconds,
- * before it closes the grip.
- */
-export const HOLD_MS = 400;
-
-/**
  * Frames to wait between each step of a press: aim, button down, button
  * up, park. A panel takes a ray's hover on one frame and the press on a
  * later one, as `aimAt` and `press` in `justdom-xr/driver` wait for.
  */
 export const STEP_FRAMES = 4;
-
-/**
- * The narrowest the pinch zooms the view to: the vertical field of view, in
- * radians. Twenty degrees is four and a half times narrower than the
- * headset's own ninety, close enough to read a small panel from where the
- * player stands.
- */
-export const MIN_FOVY = (20 * Math.PI) / 180;
 
 /**
  * The head's turn, as a drag and the phone's tilt set it: the yaw about the
@@ -318,7 +298,10 @@ const afterStep = (then) => {
  * - One finger on the scene drives one thing, and the buttons never touch
  *   the finger's state. A second finger that lands while the first is
  *   undecided or looking starts a pinch, which cancels the first finger's
- *   tap and grab. Any other second finger, and a third, are ignored.
+ *   tap and grab. Any other second finger, and a third, are ignored: a
+ *   pinch during a grab cannot move the held thing, as the page's pointer
+ *   does, since the thing hangs off the controller and only moving the
+ *   controller into the view would move it.
  * - A pinch zooms: the vertical field of view goes as the fingers' spread
  *   goes inversely, between `MIN_FOVY` and the headset's own, which is the
  *   widest. The pinch ends when either finger lifts, and the one left on

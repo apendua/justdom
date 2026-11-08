@@ -3,6 +3,12 @@
    look's own design is in src/looks/, and only the chosen one is loaded. */
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
+/* Safari on an iPhone boosts the type of a block wider than the screen, as
+   the 1600px desk is, and lays the monitor's text out at the boosted size
+   while getComputedStyle still reports the stylesheet's. justdom-three draws
+   text at the computed size and cuts a reveal at the laid-out edges, so the
+   two would disagree. `none` turns the boost off on every device. */
+html { -webkit-text-size-adjust: none; text-size-adjust: none; }
 .stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 .desk { position: relative; width: 1600px; height: 1000px; flex: none; transform-origin: center center; overflow: hidden; }
 .zone { position: absolute; }

@@ -357,7 +357,9 @@ Followed:
   after everything else in its box's layer and before the layers over it, in tree order among the
   layer's rings: an instance of its own in the panel's batch, placed at the end of the layer's band
   (`RING_PLACE` in `paintBatch.js`), so it costs no draw call.
-- It is clipped as its box is, by the `overflow` of the boxes around it.
+- It is clipped as its box is, by the `overflow` of the boxes around it, and culled with it: once
+  the box's border box is wholly outside its clip, the box and its ring are not drawn, though the
+  ring's outer px could still be inside.
 - An `outline-style` of `none` draws nothing, whatever the width, so a browser's computed `3px` for
   an outline that is not there draws nothing either. The browser's own focus ring, `auto`, is drawn,
   solid.
@@ -367,6 +369,8 @@ Not followed:
 - `dashed`, `dotted`, `double`, `groove`, `ridge`, `inset` and `outset` outlines are drawn solid.
 - A box drawn on its own rather than in the batch, an `<img>` or a box with a `url()` picture, has
   no outline, and nor has an SVG shape.
+- A ring on the parent of an overlay draws under the overlay, which is a layer of its own in front.
+  A page paints a stacking context's outline over its positive `z-index` children.
 - A ring is not a ray target.
 
 ## Images

@@ -121,11 +121,12 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   cancels ends its press as a miss that says `lost`, as a hand that went does. The canvas has
   `touch-action: none` meanwhile, so a drag is not a scroll.
 - `pointer: { look: "orbit" }` gives a drag that starts on nothing to the camera, from the left
-  button or from a finger: it turns by the angle the screen shows over the drag, so what is under
-  the pointer stays under it, and its pitch stops short of straight up and down. With
-  `around: { x, y, z }` the camera swings about that point at the distance it was; without, it turns
-  where it stands. `mouse(ctx, { look: "orbit" })` is the same for a scene that mounts it itself.
-  Without `look`, a drag on nothing does nothing.
+  button or from a finger: it turns by the angle the screen shows over the drag, and its pitch stops
+  short of straight up and down. Without `around` it turns where it stands, so what is under the
+  pointer stays under it. With `around: { x, y, z }` it swings about that point at the distance it
+  was, the other way, so what is at the point follows the pointer, as an orbit does. `around` is
+  only taken beside `look: "orbit"`. `mouse(ctx, { look: "orbit" })` is the same for a scene that
+  mounts it itself. Without `look`, a drag on nothing does nothing.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,

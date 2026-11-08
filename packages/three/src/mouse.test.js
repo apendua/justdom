@@ -428,6 +428,7 @@ describe("a drag on nothing, with look: orbit", () => {
   });
 
   test("swings the camera about around, keeping its distance", () => {
+    // Standing 3 m back from the point, as a camera orbiting a table would.
     const at = orbiting(canvas, { look: "orbit", around: { x: 0, y: 0, z: -3 } });
     stop = at.stop;
     canvas.dispatchEvent(pointer("pointerdown", 0, 0));
@@ -438,7 +439,9 @@ describe("a drag on nothing, with look: orbit", () => {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(at.camera.quaternion);
     const toPoint = point.clone().sub(at.camera.position).normalize();
     assert.ok(forward.distanceTo(toPoint) < 1e-6);
-    assert.ok(at.camera.position.x !== 0);
+    // A drag right swings the camera to the left of the point, so what is
+    // at the point moves right with the drag.
+    assert.ok(at.camera.position.x < 0);
   });
 
   test("is a finger's too, once it has moved past the slop", () => {
@@ -457,6 +460,11 @@ describe("a drag on nothing, with look: orbit", () => {
       mock.timers.reset();
     }
   });
+});
+
+test("around is refused without look: orbit", () => {
+  // @ts-expect-error -- nothing orbits without look: "orbit".
+  mouse({}, { around: { x: 0, y: 0, z: 0 } });
 });
 
 describe("mouse(ctx)", () => {

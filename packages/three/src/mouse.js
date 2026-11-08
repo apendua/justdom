@@ -45,10 +45,11 @@ export const PITCH_LIMIT = 1.4;
  * `around`, or in place when `around` is not given. Without `look` such a
  * drag does nothing, which is the default.
  *
- * @typedef {object} PointerOptions
- * @property {"orbit"} [look]
- * @property {THREE.Vector3Like} [around] The point the camera orbits, in the
- *   scene's coordinates.
+ * `around` is only taken beside `look: "orbit"`, since without it nothing
+ * orbits.
+ *
+ * @typedef {{ look?: undefined } | { look: "orbit", around?: THREE.Vector3Like }} PointerOptions
+ *   `around` is the point the camera orbits, in the scene's coordinates.
  */
 
 /**
@@ -101,10 +102,11 @@ export const PITCH_LIMIT = 1.4;
  * The camera. With `look: "orbit"`, a press of the trigger that begins on
  * nothing (`pointsAtNothing`), from the left button or from a finger,
  * makes the drag that follows the camera's. Each move turns it by the angle
- * the screen shows over the distance moved, so what is under the pointer
- * stays under it: yaw about the scene's up, and pitch clamped at
- * `PITCH_LIMIT`. With `around`, the camera keeps its distance from that
- * point and swings about it; without, it turns where it stands. The group
+ * the screen shows over the distance moved: yaw about the scene's up, and
+ * pitch clamped at `PITCH_LIMIT`. Without `around` it turns where it
+ * stands, so what is under the pointer stays under it. With `around` it
+ * keeps its distance from that point and swings about it the other way, so
+ * what is at the point follows the pointer, as an orbit does. The group
  * is aimed on each move as usual, and the press is still sent: it began on
  * nothing, so nothing hears it. The drag ends with the press.
  *
@@ -181,15 +183,20 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     const perPixel =
       (2 * Math.atan(1 / camera.projectionMatrix.elements[5])) /
       canvas.getBoundingClientRect().height;
-    turning.yaw += (event.clientX - turning.x) * perPixel;
+    const around = options.look === "orbit" ? options.around : undefined;
+    // Turning in place, the camera turns against the drag, so the room
+    // follows the pointer. Swinging about a point, it moves against the
+    // drag, and so turns with it: what is at the point follows the pointer,
+    // the table rather than the room behind it.
+    const sign = around ? -1 : 1;
+    turning.yaw += sign * (event.clientX - turning.x) * perPixel;
     turning.pitch = THREE.MathUtils.clamp(
-      turning.pitch + (event.clientY - turning.y) * perPixel,
+      turning.pitch + sign * (event.clientY - turning.y) * perPixel,
       -PITCH_LIMIT,
       PITCH_LIMIT,
     );
     turning.x = event.clientX;
     turning.y = event.clientY;
-    const around = options.around;
     const distance = around ? camera.position.distanceTo(_around.copy(around)) : 0;
     camera.quaternion.setFromEuler(_euler.set(turning.pitch, turning.yaw, 0, "YXZ"));
     if (around) {

@@ -197,6 +197,10 @@ export {
  */
 
 /**
+ * @typedef {import('./mouse.js').PointerOptions} PointerOptions
+ */
+
+/**
  * @typedef {import('./drag.js').Drag} Drag
  */
 

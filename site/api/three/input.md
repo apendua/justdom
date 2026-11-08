@@ -120,13 +120,20 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   within 10 px for 400 ms, it presses the grip where it landed and drags. A finger the browser
   cancels ends its press as a miss that says `lost`, as a hand that went does. The canvas has
   `touch-action: none` meanwhile, so a drag is not a scroll.
+- `pointer: { look: "orbit" }` gives a drag that starts on nothing to the camera, from the left
+  button or from a finger: it turns by the angle the screen shows over the drag, so what is under
+  the pointer stays under it, and its pitch stops short of straight up and down. With
+  `around: { x, y, z }` the camera swings about that point at the distance it was; without, it turns
+  where it stands. `mouse(ctx, { look: "orbit" })` is the same for a scene that mounts it itself.
+  Without `look`, a drag on nothing does nothing.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,
   is a miss.
 - It stands down while a session is presenting, since a click on the canvas then is not a click in
   the room.
-- Nothing but a mouse move re-aims it, so the camera is expected to stand still between sessions.
+- Nothing but a mouse move re-aims it, so the camera is expected to stand still between sessions,
+  but for the turn `look: "orbit"` makes, which a mouse move makes.
 
 `followMouse(pointer, camera, canvas)` is the part that keeps a group on the mouse, for a test or
 for a scene that registers the group itself.

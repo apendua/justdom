@@ -534,14 +534,15 @@ export function frames(ctx) {
  *   shape subtree, which a scene without an SVG in it should not carry.
  *   None by default. A single panel adds its own through
  *   `PortalOptions.plugins`.
- * @property {boolean} [pointer] The mouse, and a finger on a touch screen, as
+ * @property {boolean | import('./mouse.js').PointerOptions} [pointer] The mouse, and a finger on a touch screen, as
  *   one more controller while no session is presenting: `render` mounts
  *   `mouse(ctx)` under the scene, so everything that answers a ray answers
  *   a click, a tap or a drag on the canvas. The left button and a finger's
  *   tap or drag are the trigger, the right button and a finger held still
  *   for 400 ms the grip; `followMouse` has the rules. Off by default,
- *   which leaves the canvas to the app. A scene with it on does not mount
- *   `mouse(ctx)` of its own.
+ *   which leaves the canvas to the app. An object is on, and says what a
+ *   drag that starts on nothing does: `{ look: "orbit" }` turns the camera.
+ *   A scene with it on does not mount `mouse(ctx)` of its own.
  * @property {import('./elements/panelOptions.js').PanelOptions} [panelOptions]
  *   What every panel in this scene starts from — the keyboard its fields are
  *   typed with, most of all — with each panel's own options laid over it.
@@ -718,7 +719,8 @@ export function render(fn, options = {}) {
     // down with the renderer.
     subscriber.add(fn(ctx).subscribe({}));
     if (options.pointer) {
-      subscriber.add(addToParent(scene, mouse(ctx)).subscribe({}));
+      const pointer = options.pointer === true ? {} : options.pointer;
+      subscriber.add(addToParent(scene, mouse(ctx, pointer)).subscribe({}));
     }
 
     let previousFrameTime = 0;

@@ -9,6 +9,10 @@ import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.
  */
 
 const FORWARD = new THREE.Vector3(0, 0, -1);
+// Scratch for the camera's turn, which runs on every move of a drag.
+const _euler = new THREE.Euler();
+const _around = new THREE.Vector3();
+const _forward = new THREE.Vector3();
 
 /**
  * How long a finger has to stay still on the canvas before its press is the
@@ -27,6 +31,33 @@ export const SLOP_PX = 10;
  * still ends.
  *
  * @typedef {Pick<Window, "addEventListener" | "removeEventListener">} MouseView
+ */
+
+/**
+ * How far the camera may pitch up or down while a drag turns it, in
+ * radians: short of straight up and straight down, where yaw stops meaning
+ * anything.
+ */
+export const PITCH_LIMIT = 1.4;
+
+/**
+ * What a drag that starts on nothing does: `"orbit"` turns the camera about
+ * `around`, or in place when `around` is not given. Without `look` such a
+ * drag does nothing, which is the default.
+ *
+ * @typedef {object} PointerOptions
+ * @property {"orbit"} [look]
+ * @property {THREE.Vector3Like} [around] The point the camera orbits, in the
+ *   scene's coordinates.
+ */
+
+/**
+ * `followMouse`'s own options: the drag on nothing (`PointerOptions`), and
+ * how to tell nothing from something.
+ *
+ * @typedef {PointerOptions & { pointsAtNothing?: () => boolean }} FollowOptions
+ *   `pointsAtNothing` is asked as a press of the trigger begins, with the
+ *   group already aimed where it begins: true makes the drag the camera's.
  */
 
 /**
@@ -67,6 +98,16 @@ export const SLOP_PX = 10;
  * a long press and, left to open, cancels the touch, which would end every
  * hold as it became a grip.
  *
+ * The camera. With `look: "orbit"`, a press of the trigger that begins on
+ * nothing (`pointsAtNothing`), from the left button or from a finger,
+ * makes the drag that follows the camera's. Each move turns it by the angle
+ * the screen shows over the distance moved, so what is under the pointer
+ * stays under it: yaw about the scene's up, and pitch clamped at
+ * `PITCH_LIMIT`. With `around`, the camera keeps its distance from that
+ * point and swings about it; without, it turns where it stands. The group
+ * is aimed on each move as usual, and the press is still sent: it began on
+ * nothing, so nothing hears it. The drag ends with the press.
+ *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.
  *
@@ -79,9 +120,10 @@ export const SLOP_PX = 10;
  * @param {THREE.Camera} camera
  * @param {HTMLElement} canvas
  * @param {MouseView} [view]
+ * @param {FollowOptions} [options]
  * @returns {() => void}
  */
-export function followMouse(pointer, camera, canvas, view = window) {
+export function followMouse(pointer, camera, canvas, view = window, options = {}) {
   pointer.visible = false;
   // Where the mouse is, in normalised device coordinates, until the next move.
   const at = new THREE.Vector2();
@@ -107,6 +149,58 @@ export function followMouse(pointer, camera, canvas, view = window) {
     send("move");
   };
 
+  /**
+   * The drag that turns the camera, while one is under way: where the
+   * pointer was at the last move, and the camera's heading.
+   *
+   * @type {{ x: number, y: number, yaw: number, pitch: number } | null}
+   */
+  let turning = null;
+
+  /**
+   * Make the drag about to begin the camera's, if `look` asks for that and
+   * the pointer is on nothing.
+   *
+   * @param {PointerEvent} event
+   */
+  const startTurning = (event) => {
+    if (options.look !== "orbit" || !options.pointsAtNothing?.()) {
+      return;
+    }
+    _euler.setFromQuaternion(camera.quaternion, "YXZ");
+    turning = { x: event.clientX, y: event.clientY, yaw: _euler.y, pitch: _euler.x };
+  };
+
+  /** @param {PointerEvent} event */
+  const turn = (event) => {
+    if (!turning) {
+      return;
+    }
+    // The angle one pixel shows, from the vertical field of view the
+    // projection holds.
+    const perPixel =
+      (2 * Math.atan(1 / camera.projectionMatrix.elements[5])) /
+      canvas.getBoundingClientRect().height;
+    turning.yaw += (event.clientX - turning.x) * perPixel;
+    turning.pitch = THREE.MathUtils.clamp(
+      turning.pitch + (event.clientY - turning.y) * perPixel,
+      -PITCH_LIMIT,
+      PITCH_LIMIT,
+    );
+    turning.x = event.clientX;
+    turning.y = event.clientY;
+    const around = options.around;
+    const distance = around ? camera.position.distanceTo(_around.copy(around)) : 0;
+    camera.quaternion.setFromEuler(_euler.set(turning.pitch, turning.yaw, 0, "YXZ"));
+    if (around) {
+      // Back from the point along the new heading, as far as it was.
+      camera.position
+        .copy(_around)
+        .addScaledVector(_forward.copy(FORWARD).applyQuaternion(camera.quaternion), -distance);
+    }
+    camera.updateMatrixWorld(true);
+  };
+
   /** @param {PointerEvent} event */
   const follow = (event) => {
     if (event.target !== canvas) {
@@ -124,6 +218,7 @@ export function followMouse(pointer, camera, canvas, view = window) {
    *   id: number,
    *   x: number,
    *   y: number,
+   *   landing: PointerEvent,
    *   button: "select" | "squeeze" | null,
    *   hold: ReturnType<typeof setTimeout>,
    * } | null}
@@ -131,10 +226,13 @@ export function followMouse(pointer, camera, canvas, view = window) {
   let finger = null;
 
   /** @param {"select" | "squeeze"} button */
-  const press = (button) => {
+  const press = (button, /** @type {PointerEvent} */ event) => {
     if (finger) {
       clearTimeout(finger.hold);
       finger.button = button;
+      if (button === "select") {
+        startTurning(event);
+      }
       send(`${button}start`);
     }
   };
@@ -144,12 +242,14 @@ export function followMouse(pointer, camera, canvas, view = window) {
       clearTimeout(finger.hold);
       finger = null;
     }
+    turning = null;
     pointer.visible = false;
   };
 
   /** @param {PointerEvent} event */
   const onMove = (event) => {
     if (event.pointerType !== "touch") {
+      turn(event);
       follow(event);
       return;
     }
@@ -163,8 +263,9 @@ export function followMouse(pointer, camera, canvas, view = window) {
         return;
       }
       // Pressed where it landed, which is where the group still points.
-      press("select");
+      press("select", finger.landing);
     }
+    turn(event);
     aim(event);
   };
   const onLeave = (/** @type {PointerEvent} */ event) => {
@@ -184,14 +285,18 @@ export function followMouse(pointer, camera, canvas, view = window) {
         id: event.pointerId,
         x: event.clientX,
         y: event.clientY,
+        landing: event,
         button: null,
-        hold: setTimeout(() => press("squeeze"), HOLD_MS),
+        hold: setTimeout(() => press("squeeze", event), HOLD_MS),
       };
       return;
     }
     const button = buttonOf(event);
     if (button) {
       follow(event);
+      if (button === "select") {
+        startTurning(event);
+      }
       send(`${button}start`);
     }
   };
@@ -203,8 +308,9 @@ export function followMouse(pointer, camera, canvas, view = window) {
       }
       const button = finger.button ?? "select";
       if (finger.button === null) {
-        press(button);
+        press(button, event);
       } else {
+        turn(event);
         aim(event);
       }
       // Ended while the group is still shown: the manager casts the
@@ -221,6 +327,9 @@ export function followMouse(pointer, camera, canvas, view = window) {
       // manager turns the pair into a press or a miss.
       send(`${button}end`);
       send(button);
+      if (button === "select") {
+        turning = null;
+      }
     }
   };
   /** @param {PointerEvent} event */
@@ -295,15 +404,20 @@ function buttonOf(event) {
  * room.
  *
  * It goes straight into the scene's children, since its pose is written as
- * its own, and the camera is expected to stand still between sessions:
- * nothing but a mouse move re-aims the ray.
+ * its own, and the camera is expected to stand still between sessions but
+ * for the turn `look: "orbit"` gives it: nothing but a mouse move re-aims
+ * the ray, and that turn is made by a mouse move.
  *
  * `render(fn, { pointer: true })` mounts one for the whole scene. A scene
  * rendered that way does not mount another, or the page has two mice.
  *
+ * `options` says what a drag that starts on nothing does (`PointerOptions`);
+ * by default nothing.
+ *
  * @param {WeakKey} ctx
+ * @param {PointerOptions} [options]
  */
-export function mouse(ctx) {
+export function mouse(ctx, options = {}) {
   const pointer = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
   pointer.name = "mouse";
   return $(pointer, [
@@ -324,7 +438,13 @@ export function mouse(ctx) {
           (fn) => onLateFrame(ctx, fn),
         )
         .subscribe();
-      const stop = followMouse(pointer, camera, renderer.domElement);
+      const stop = followMouse(pointer, camera, renderer.domElement, window, {
+        ...options,
+        pointsAtNothing: () =>
+          !manager.getIntersection(
+            /** @type {THREE.XRTargetRaySpace} */ (/** @type {unknown} */ (pointer)),
+          ),
+      });
       return () => {
         stop();
         registration.unsubscribe();

@@ -2,7 +2,7 @@ import { describe, test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { followMouse, HOLD_MS, mouse, SLOP_PX } from "./mouse.js";
+import { followMouse, HOLD_MS, mouse, PITCH_LIMIT, SLOP_PX } from "./mouse.js";
 import { CameraContext, RendererContext, runFrame } from "./render.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
@@ -331,6 +331,131 @@ describe("a finger on the canvas", () => {
     canvas.dispatchEvent(finger("pointerup"));
     assert.deepEqual(at.events, []);
     assert.equal(at.group.visible, false);
+  });
+});
+
+/**
+ * A camera following the mouse on `canvas` with `look: "orbit"`, told what
+ * the pointer is on by a box straight ahead, the way `mouse(ctx)` tells it.
+ *
+ * @param {HTMLElement} canvas
+ * @param {import("./mouse.js").PointerOptions} [options]
+ */
+function orbiting(canvas, options = { look: "orbit" }) {
+  const camera = new THREE.PerspectiveCamera();
+  const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
+  const manager = new InteractionManager();
+  modelAhead(manager);
+  const stop = followMouse(group, camera, canvas, window, {
+    ...options,
+    pointsAtNothing: () =>
+      !manager.getIntersection(
+        /** @type {THREE.XRTargetRaySpace} */ (/** @type {unknown} */ (group)),
+      ),
+  });
+  return { camera, stop };
+}
+
+/** The angle one pixel of the 100 px canvas shows to a default camera. */
+const PER_PIXEL = THREE.MathUtils.degToRad(50) / 100;
+
+/** @param {THREE.Camera} camera */
+function heading(camera) {
+  return new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
+}
+
+describe("a drag on nothing, with look: orbit", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {(() => void) | undefined} */
+  let stop;
+
+  beforeEach(() => {
+    canvas = pageCanvas();
+    document.body.append(canvas);
+  });
+
+  afterEach(() => {
+    stop?.();
+    canvas.remove();
+  });
+
+  test("turns the camera by the angle the screen shows over the drag", () => {
+    const at = orbiting(canvas);
+    stop = at.stop;
+    // The corner is off the box.
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    canvas.dispatchEvent(pointer("pointermove", 20, 10));
+    const { x: pitch, y: yaw } = heading(at.camera);
+    assert.ok(Math.abs(yaw - 20 * PER_PIXEL) < 1e-6);
+    assert.ok(Math.abs(pitch - 10 * PER_PIXEL) < 1e-6);
+  });
+
+  test("stops turning it when the button comes up", () => {
+    const at = orbiting(canvas);
+    stop = at.stop;
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    canvas.dispatchEvent(pointer("pointermove", 20, 0));
+    canvas.dispatchEvent(pointer("pointerup", 20, 0));
+    canvas.dispatchEvent(pointer("pointermove", 60, 0));
+    assert.ok(Math.abs(heading(at.camera).y - 20 * PER_PIXEL) < 1e-6);
+  });
+
+  test("clamps the pitch short of straight up", () => {
+    const at = orbiting(canvas);
+    stop = at.stop;
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    for (let y = 0; y <= 1000; y += 100) {
+      canvas.dispatchEvent(pointer("pointermove", 0, y));
+    }
+    assert.ok(Math.abs(heading(at.camera).x - PITCH_LIMIT) < 1e-6);
+  });
+
+  test("leaves the camera alone when the press is on something", () => {
+    const at = orbiting(canvas);
+    stop = at.stop;
+    canvas.dispatchEvent(pointer("pointerdown"));
+    canvas.dispatchEvent(pointer("pointermove", 90, 90));
+    assert.equal(at.camera.quaternion.angleTo(new THREE.Quaternion()), 0);
+  });
+
+  test("leaves it alone without look", () => {
+    const at = orbiting(canvas, {});
+    stop = at.stop;
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    canvas.dispatchEvent(pointer("pointermove", 20, 10));
+    assert.equal(at.camera.quaternion.angleTo(new THREE.Quaternion()), 0);
+  });
+
+  test("swings the camera about around, keeping its distance", () => {
+    const at = orbiting(canvas, { look: "orbit", around: { x: 0, y: 0, z: -3 } });
+    stop = at.stop;
+    canvas.dispatchEvent(pointer("pointerdown", 0, 0));
+    canvas.dispatchEvent(pointer("pointermove", 40, 0));
+    const point = new THREE.Vector3(0, 0, -3);
+    assert.ok(Math.abs(at.camera.position.distanceTo(point) - 3) < 1e-6);
+    // And still faces it.
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(at.camera.quaternion);
+    const toPoint = point.clone().sub(at.camera.position).normalize();
+    assert.ok(forward.distanceTo(toPoint) < 1e-6);
+    assert.ok(at.camera.position.x !== 0);
+  });
+
+  test("is a finger's too, once it has moved past the slop", () => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const at = orbiting(canvas);
+      stop = at.stop;
+      canvas.dispatchEvent(finger("pointerdown", 0, 0));
+      canvas.dispatchEvent(finger("pointermove", 5, 0));
+      assert.equal(at.camera.quaternion.angleTo(new THREE.Quaternion()), 0);
+      canvas.dispatchEvent(finger("pointermove", 30, 0));
+      // From where it landed, not from where it crossed the slop.
+      assert.ok(Math.abs(heading(at.camera).y - 30 * PER_PIXEL) < 1e-6);
+      canvas.dispatchEvent(finger("pointerup", 30, 0));
+    } finally {
+      mock.timers.reset();
+    }
   });
 });
 

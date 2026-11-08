@@ -112,9 +112,10 @@ The buttons go through the desk's own keys rather than calling into the app, so 
 the key does. An app whose every control is a panel or a thing in the scene passes none.
 
 The touch layer imports three.js, which splits three's core into a chunk of its own,
-`three.core-<hash>.js`, shared with the scene's chunk. A service worker that precaches the app
-should leave both out with the emulator's: `minesweeper` and `todo` add `"**/touch-*.js"` and
-`"**/three.core-*.js"` to their `globIgnores`.
+`three.core-<hash>.js`, shared with the scene's chunk, and `justdom-three/limits`, which lands in a
+small `limits-<hash>.js` chunk the same way. A service worker that precaches the app should leave
+all three out with the emulator's: `minesweeper` and `todo` add `"**/touch-*.js"`,
+`"**/three.core-*.js"` and `"**/limits-*.js"` to their `globIgnores`.
 
 ## `justdom-xr/offer`
 
@@ -126,10 +127,20 @@ offerHeadset(() => import("./xr"), { touch: { pitch: -0.15 } }).then((xr) =>
 );
 ```
 
-`offerHeadset(scene, options)` offers the page a headset if it can have one. It installs the
-emulator first behind `?emulator` (`?emulator=bare` for no dev UI), or behind `?touch` without its
-dev UI and with the touch layer over it, `options.touch` being `installTouch`'s options. An app that
-passes no `touch` ignores `?touch`, since its controls have not been tried on a phone. Then it asks
+`offerHeadset(scene, options)` offers the page a headset if it can have one. It first installs the
+emulated headset the address asks for, with `installEmulator(options)`, `options.touch` being
+`installTouch`'s options. Passing `touch` at all says the app's controls work on a phone. The
+address picks the flavour (`emulatorFor(query, { touch, coarse })` is the rule on its own):
+
+| Address           | Laptop                      | Phone (`(pointer: coarse)`) |
+| ----------------- | --------------------------- | --------------------------- |
+| `?emulator`       | IWER's panels               | the touch layer, if `touch` |
+| `?emulator=devui` | IWER's panels               | IWER's panels               |
+| `?emulator=bare`  | no panels                   | no panels                   |
+| `?touch`          | the touch layer, if `touch` | the touch layer, if `touch` |
+
+An app that passes no `touch` gets IWER's panels for `?emulator` on a phone too, and ignores
+`?touch`, since its controls have not been tried on a phone. Then `offerHeadset` asks
 `canPresent()`, and only then calls `scene`, a dynamic import of the module that makes the renderer
 and the scene, and resolves to that module, or to null on a platform that cannot present. Nothing
 here imports three.js, so on a laptop the page is the page and the scene's chunk, with three.js in
@@ -140,6 +151,12 @@ from a service worker's precache and a deploy has replaced the chunks it names, 
 once a newer worker has taken it over, and at once if one already has. A page whose worker has not
 been replaced has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid,
 Knights and the todo app offer their sessions this way.
+
+A page that offers its session another way, through `justdom-three`'s own Enter button, calls
+`installEmulator(options)` before it renders, so `navigator.xr` is the emulator's by the time
+three.js asks. It resolves once the headset is in, logs a chunk it could not fetch rather than
+throwing, and reloads into a new deploy as `offerHeadset` does. Castle, the showcase and the desk do
+this, each with `touch`.
 
 ## `justdom-xr/scene`
 

@@ -1,5 +1,6 @@
 import { render, createXRButton, canDrawHtmlInCanvas } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
+import { installEmulator } from "justdom-xr/offer";
 import { canPresent } from "justdom-xr/session";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import Scene from "./components/Scene.js";
@@ -15,8 +16,11 @@ import type { Panels } from "./texture/panels.js";
  * is the page and nothing else.
  *
  * `?emulator` installs a headset in the browser first, so that a session
- * can be driven by hand without one; `?emulator=bare` installs it without
- * the panels that drive it, for a harness photographing the scene.
+ * can be driven by hand without one: with IWER's panels on a laptop, and
+ * with the touch layer on a phone. `?emulator=bare` installs it without
+ * the panels that drive it, for a harness photographing the scene, and
+ * `?touch` with the touch layer anywhere (`installEmulator` in
+ * `justdom-xr/offer`).
  *
  * `?trace` records each session's frames and saves them as it ends
  * (`deskTrace.ts`), under the dev server.
@@ -30,14 +34,7 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
-  if (query.has("emulator")) {
-    try {
-      const { install } = await import("justdom-xr/emulator");
-      install({ devUI: query.get("emulator") !== "bare" });
-    } catch (err) {
-      console.error("Could not install the XR emulator:", err);
-    }
-  }
+  await installEmulator({ touch: {} });
   if (!(await canPresent())) {
     return;
   }

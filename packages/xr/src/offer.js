@@ -8,6 +8,87 @@ import { canPresent } from "./session.js";
 const servedBy = navigator.serviceWorker?.controller ?? null;
 
 /**
+ * Which emulated headset the page's address asks for, if any:
+ *
+ * - `?touch`, for an app that passes `touch`, is the phone's: the headset
+ *   without its panels, and the touch layer in front of it. An app that
+ *   passes nothing ignores the flag, since its controls have not been tried
+ *   on a phone, and the rest of the query decides.
+ * - `?emulator=bare` is the headset without its panels, for a harness
+ *   photographing the scene or driving it from a script.
+ * - `?emulator=devui` is the headset with IWER's panels, on any screen.
+ * - `?emulator`, with any other value or none, is the phone's on a browser
+ *   whose main pointer is a finger (`coarse`), for an app that passes
+ *   `touch`, and the one with panels everywhere else: the panels are drawn
+ *   for a mouse, and too small to use on a phone.
+ * - Without either flag, none.
+ *
+ * @param {URLSearchParams} query
+ * @param {{ touch: boolean, coarse: boolean }} page Whether the app passes
+ *   `touch`, and whether the page's main pointer is coarse.
+ * @returns {"touch" | "devui" | "bare" | null}
+ */
+export function emulatorFor(query, { touch, coarse }) {
+  if (touch && query.has("touch")) {
+    return "touch";
+  }
+  if (!query.has("emulator")) {
+    return null;
+  }
+  const value = query.get("emulator");
+  if (value === "bare") {
+    return "bare";
+  }
+  if (value === "devui") {
+    return "devui";
+  }
+  return touch && coarse ? "touch" : "devui";
+}
+
+/**
+ * Install the emulated headset the page's address asks for
+ * (`emulatorFor`), and resolve once it is in, or at once when none is
+ * asked for. The emulator and the touch layer are chunks of their own,
+ * fetched only when asked for. A chunk that cannot be fetched is logged
+ * rather than thrown, since the page works without a headset, and a page
+ * a service worker served from an old deploy reloads into the new one
+ * (`fetched`).
+ *
+ * `offerHeadset` calls this first. A page that offers its session another
+ * way calls it before it renders, so `navigator.xr` is the emulator's by
+ * the time three.js looks.
+ *
+ * @param {{ touch?: import("./touch.js").TouchOptions }} [options] The
+ *   app's touch layer: its buttons and where the head starts. Passing it
+ *   at all says the app's controls work on a phone.
+ * @returns {Promise<void>}
+ */
+export async function installEmulator({ touch } = {}) {
+  const flavor = emulatorFor(new URLSearchParams(location.search), {
+    touch: touch !== undefined,
+    coarse: globalThis.matchMedia?.("(pointer: coarse)").matches ?? false,
+  });
+  if (flavor === "touch") {
+    try {
+      const [{ install }, { installTouch }] = await Promise.all([
+        fetched(import("./emulator.js")),
+        fetched(import("./touch.js")),
+      ]);
+      installTouch(install({ devUI: false }), touch);
+    } catch (err) {
+      console.error("Could not install the XR emulator's touch mode:", err);
+    }
+  } else if (flavor) {
+    try {
+      const { install } = await fetched(import("./emulator.js"));
+      install({ devUI: flavor === "devui" });
+    } catch (err) {
+      console.error("Could not install the XR emulator:", err);
+    }
+  }
+}
+
+/**
  * Offer the page a headset, if it can have one: load the scene with
  * `scene`, a dynamic import of the module that builds it, only once a
  * session is known to be possible, and resolve to that module, or to null
@@ -15,17 +96,10 @@ const servedBy = navigator.serviceWorker?.controller ?? null;
  * three.js, so on a laptop the page is the page and nothing else is
  * fetched.
  *
- * `?emulator` installs a headset in the browser first, which is what makes
- * the session drivable by hand without one; `?emulator=bare` installs the
- * runtime without the panels that drive it, for a harness photographing the
- * scene or driving it from a script.
- *
- * `?touch` installs the headset without its panels too, and puts a phone's
- * touch screen in front of it (`installTouch` in `justdom-xr/touch`), for
- * an app that passes `touch`: the app's buttons, if any, and where the
- * head starts. An app that passes nothing ignores the flag, since its
- * controls have not been tried on a phone. The touch layer is a chunk of
- * its own, as the emulator is, loaded only for `?touch`.
+ * It first installs the emulated headset the address asks for
+ * (`installEmulator`), which is what makes the session drivable without
+ * one: `?emulator`, `?emulator=bare`, `?emulator=devui` and `?touch`, as
+ * `emulatorFor` says.
  *
  * If any of these chunks cannot be fetched because the page came from a
  * service worker's precache and a deploy has replaced the chunks it names,
@@ -36,27 +110,8 @@ const servedBy = navigator.serviceWorker?.controller ?? null;
  * @param {{ touch?: import("./touch.js").TouchOptions }} [options]
  * @returns {Promise<T | null>}
  */
-export async function offerHeadset(scene, { touch } = {}) {
-  const query = new URLSearchParams(location.search);
-  const touchOptions = query.has("touch") ? touch : undefined;
-  if (touchOptions) {
-    try {
-      const [{ install }, { installTouch }] = await Promise.all([
-        fetched(import("./emulator.js")),
-        fetched(import("./touch.js")),
-      ]);
-      installTouch(install({ devUI: false }), touchOptions);
-    } catch (err) {
-      console.error("Could not install the XR emulator's touch mode:", err);
-    }
-  } else if (query.has("emulator")) {
-    try {
-      const { install } = await fetched(import("./emulator.js"));
-      install({ devUI: query.get("emulator") !== "bare" });
-    } catch (err) {
-      console.error("Could not install the XR emulator:", err);
-    }
-  }
+export async function offerHeadset(scene, options = {}) {
+  await installEmulator(options);
   if (!(await canPresent())) {
     return null;
   }

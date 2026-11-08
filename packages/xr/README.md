@@ -22,15 +22,16 @@ importing one does not pull in the others: `justdom-xr/emulator`, `justdom-xr/to
 ## Usage
 
 ```js
-const query = new URLSearchParams(location.search);
-if (query.has("emulator")) {
-  const { install } = await import("justdom-xr/emulator");
-  install({ devUI: query.get("emulator") !== "bare" });
-}
+import { installEmulator } from "justdom-xr/offer";
+
+await installEmulator({ touch: {} });
 ```
 
-`install()` puts an emulated Quest 3 in an ordinary browser, with IWER's panels over the page for
-moving the head and the controllers.
+`installEmulator()` puts an emulated Quest 3 in an ordinary browser when the address asks for one:
+`?emulator` with IWER's panels over the page for moving the head and the controllers, or on a phone
+with the touch layer instead, for an app that passes `touch`. `?emulator=bare` leaves the panels
+out, `?emulator=devui` keeps them on a phone too, and `?touch` asks for the touch layer anywhere.
+`offerHeadset` does the same before it loads the scene.
 
 ## Learn more
 

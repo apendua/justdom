@@ -260,4 +260,85 @@ describe("offerHeadset", () => {
       assert.deepEqual(installed, []);
     });
   });
+
+  describe("with ?emulator on a phone", () => {
+    /** @type {unknown[][]} */
+    let installed;
+    beforeEach(() => {
+      platform(["immersive-vr"]);
+      installed = [];
+      Object.assign(globalThis, { installed });
+      Object.defineProperty(globalThis, "matchMedia", {
+        configurable: true,
+        value: (/** @type {string} */ query) => ({ matches: query === "(pointer: coarse)" }),
+      });
+    });
+    afterEach(() => {
+      Object.defineProperty(globalThis, "matchMedia", { configurable: true, value: undefined });
+    });
+
+    it("installs the touch layer for an app that passes touch", async () => {
+      at("?emulator");
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader(), { touch: { pitch: 0 } });
+      assert.deepEqual(installed, [
+        ["emulator", { devUI: false }],
+        ["touch", "headset", { pitch: 0 }],
+      ]);
+    });
+
+    it("installs the panels for an app that does not", async () => {
+      at("?emulator");
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader());
+      assert.deepEqual(installed, [["emulator", { devUI: true }]]);
+    });
+
+    it("installs the panels when ?emulator=devui asks for them", async () => {
+      at("?emulator=devui");
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader(), { touch: {} });
+      assert.deepEqual(installed, [["emulator", { devUI: true }]]);
+    });
+  });
+});
+
+describe("emulatorFor", () => {
+  /**
+   * @param {string} search
+   * @param {{ touch?: boolean, coarse?: boolean }} [page]
+   */
+  const flavor = async (search, { touch = true, coarse = false } = {}) => {
+    const { emulatorFor } = await offerModule();
+    return emulatorFor(new URLSearchParams(search), { touch, coarse });
+  };
+
+  it("is none without a flag, on a phone too", async () => {
+    assert.equal(await flavor("", { coarse: true }), null);
+  });
+
+  it("is the panels for ?emulator on a laptop", async () => {
+    assert.equal(await flavor("?emulator"), "devui");
+  });
+
+  it("is the touch layer for ?emulator on a phone, for an app that passes touch", async () => {
+    assert.equal(await flavor("?emulator", { coarse: true }), "touch");
+    assert.equal(await flavor("?emulator=1", { coarse: true }), "touch");
+    assert.equal(await flavor("?emulator", { coarse: true, touch: false }), "devui");
+  });
+
+  it("is bare for ?emulator=bare, on a phone too", async () => {
+    assert.equal(await flavor("?emulator=bare", { coarse: true }), "bare");
+  });
+
+  it("is the panels for ?emulator=devui, on a phone too", async () => {
+    assert.equal(await flavor("?emulator=devui", { coarse: true }), "devui");
+  });
+
+  it("is the touch layer for ?touch on a laptop, unless the app does not pass touch", async () => {
+    assert.equal(await flavor("?touch"), "touch");
+    assert.equal(await flavor("?touch&emulator=bare"), "touch");
+    assert.equal(await flavor("?touch", { touch: false }), null);
+    assert.equal(await flavor("?touch&emulator", { touch: false }), "devui");
+  });
 });

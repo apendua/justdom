@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "`?emulator` installs the touch layer on a phone for an app that passes `touch` (`?emulator=devui` keeps IWER's panels), and `installEmulator` and `emulatorFor` from `justdom-xr/offer` install the emulator for a page that offers its session another way",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

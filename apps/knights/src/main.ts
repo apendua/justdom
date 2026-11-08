@@ -26,7 +26,7 @@ void root.createNewGame();
 // the very element the game was just mounted into. It is loaded only once a
 // session is known to be possible, so a page that is only ever a page does
 // not fetch three.js.
-offerHeadset(() => import("./xr"))
+offerHeadset(() => import("./xr"), { touch: {} })
   .then((xr) => xr?.offerXR(rootElement))
   .catch((err) => {
     console.error("Could not offer an XR session:", err);

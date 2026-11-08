@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Draw `box-shadow`, outer and inset, up to four layers, in the panel's batch.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

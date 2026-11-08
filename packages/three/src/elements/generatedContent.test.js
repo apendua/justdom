@@ -530,6 +530,22 @@ describe("an element's ::before and ::after in a panel", () => {
     panel.cleanup();
   });
 
+  test("a ::before with only an outline or a box-shadow builds its quad", async () => {
+    pseudoRule(".ringed", "before", '""', "outline-style: solid; outline-width: 2px");
+    pseudoRule(".shadowed", "before", '""', "box-shadow: red 0px 2px 4px");
+    pseudoRule(".bare", "before", '""', "outline-style: none; outline-width: 2px");
+    const panel = generatedPanel(`
+      <div class="ringed" data-rect="0,0,200,40" data-before="0,0,10,16"></div>
+      <div class="shadowed" data-rect="0,40,200,40" data-before="0,0,10,16"></div>
+      <div class="bare" data-rect="0,80,200,40" data-before="0,0,10,16"></div>
+    `);
+    await settle(panel.portal);
+
+    assert.equal(panel.quads().length, 2);
+
+    panel.cleanup();
+  });
+
   test("a positioned ::after is drawn after the children it covers", async () => {
     pseudoRule(".card", "after", '"!"', "position: absolute; background-color: rgb(0, 0, 255)");
     const panel = generatedPanel(`

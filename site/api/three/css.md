@@ -373,6 +373,51 @@ Not followed:
   A page paints a stacking context's outline over its positive `z-index` children.
 - A ring is not a ray target.
 
+## Shadows
+
+A `box-shadow` is drawn layer by layer, each an instance of its own in the panel's batch beside its
+box. An outer shadow is the border box moved by the offsets, grown by the spread, with its radii
+grown with it, and blurred by a Gaussian of half the blur as its sigma, the blur a browser draws. It
+is cut out where its own box is, so a translucent card does not show its shadow through it. An inset
+shadow is the padding box less that shape, moved and shrunk by the spread, so it shades the inside
+of the box from its edges in.
+
+```css
+.card {
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 2px rgb(255, 255, 255),
+    0 6px 12px -2px rgba(20, 30, 60, 0.35);
+}
+```
+
+Followed:
+
+- Every layer, the first in the list on top, up to four; its colour in any CSS colour space,
+  `currentcolor` when it names none, times the box's `opacity`.
+- A blur of 0 is as sharp as a border, so a spread-only ring (`0 0 0 2px`) draws as one.
+- An outer shadow draws under every batched box at its own draw level and over everything the levels
+  before it draw, its parent's box among them, so it falls on what it is over (`OUTER_SHADOW_BIAS`
+  in `boxBatch.js`). An inset one draws over its box's background and border and under its content
+  (`INSET_SHADOW_BIAS`).
+- It is clipped as its box is, and adds no draw call and no draw level.
+
+Not followed:
+
+- **A shadow does not fall on a box at its own draw level.** A page paints a later flow sibling's
+  shadow over an earlier sibling's background; here every shadow at a level draws before every box
+  at it. Siblings a page orders against each other, a positioned one over a flow one say, are at
+  different levels, and there the shadow falls as on a page.
+- Layers past the fourth are dropped.
+- A box drawn on its own rather than in the batch, an `<img>` or a box with a `url()` picture, has
+  no shadow.
+- A shadow is culled with its box: once the box's border box is wholly outside its clip, the shadow
+  is not drawn either, though its blur could still reach inside.
+- The corners of a blurred shadow are an approximation, exact across and sampled down at four rows,
+  and a corner grown by a spread is grown by the spread alone, where CSS shrinks the growth for a
+  radius smaller than the spread.
+- A shadow is not a ray target.
+
 ## Images
 
 An `<img>` in a panel is an ordinary CSS box that happens to have a picture in it: the picture is a

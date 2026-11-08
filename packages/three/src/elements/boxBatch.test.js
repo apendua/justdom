@@ -1,7 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { BOX_BUCKET_BIAS, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
+import {
+  BOX_BUCKET_BIAS,
+  INSET_SHADOW_BIAS,
+  OUTER_SHADOW_BIAS,
+  UNBATCHED_BOX_BIAS,
+} from "./boxBatch.js";
 import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { CARET_ORDER_BIAS } from "./textInput.js";
@@ -106,9 +111,18 @@ const microtasks = () => Promise.resolve();
 
 describe("the draw order within one level", () => {
   test("keeps the rungs of the table at BOX_BUCKET_BIAS in order, under the next level", () => {
-    // Text at 0, then the caret, a picture's box, the batched boxes, and the
-    // next level's text at 1.
-    const rungs = [0, CARET_ORDER_BIAS, UNBATCHED_BOX_BIAS, BOX_BUCKET_BIAS, 1];
+    // Text at 0, then the caret, a picture's box, the batched boxes' outer
+    // shadows, the boxes, their inset shadows, and the next level's text
+    // at 1.
+    const rungs = [
+      0,
+      CARET_ORDER_BIAS,
+      UNBATCHED_BOX_BIAS,
+      OUTER_SHADOW_BIAS,
+      BOX_BUCKET_BIAS,
+      INSET_SHADOW_BIAS,
+      1,
+    ];
     assert.deepEqual(
       [...rungs].sort((a, b) => a - b),
       rungs,
@@ -497,57 +511,83 @@ describe("box batch instance uploads", () => {
   });
 });
 
-describe("outline rings", () => {
-  /**
-   * A panel of boxes at the given orders, the ones named outlined, flushed.
-   *
-   * @param {{ order: number, x: number, outline?: [number, number] }[]} specs
-   * @param {(order: number) => boolean} [isCut]
-   */
-  function outlinedPanel(specs, isCut = () => false) {
-    const container = new THREE.Group();
-    place(container, 0, 0, 0);
-    const draws = paintBatch(container);
-    draws.orderBy(
-      /** @type {import('./layerOrder.js').LayerOrder} */ (/** @type {unknown} */ ({ isCut })),
-    );
-    for (const { order, x, outline } of specs) {
-      const { mesh, uniforms } = makeBox();
-      place(mesh, x, 0, 0);
-      mesh.renderOrder = order;
-      uniforms.uSize.value.set(20, 10);
-      uniforms.uRadii.value.set(1, 2, 3, 4);
-      uniforms.uClip.value.set(-5, -6, 30, 40);
-      if (outline) {
-        uniforms.uOutline.value.set(outline[0], outline[1]);
-        uniforms.uOutlineColor.value.set(1, 0, 0, 0.5);
-      }
-      container.add(mesh);
-      draws.boxes.add(mesh, uniforms);
-    }
-    draws.flush();
-    const meshes = /** @type {THREE.InstancedMesh[]} */ (
-      container.children.filter((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
-    );
-    /**
-     * What each draw lays, in order: the x its matrix carries and whether it
-     * is a ring.
-     */
-    const laid = meshes.map((mesh) => {
-      const sizes = /** @type {THREE.InstancedBufferAttribute} */ (
-        mesh.geometry.getAttribute("aSize")
-      ).array;
-      const matrix = new THREE.Matrix4();
-      return Array.from({ length: mesh.count }, (_, i) => {
-        mesh.getMatrixAt(i, matrix);
-        return `${matrix.elements[12]}${sizes[i * 4 + 3] === -1 ? " ring" : ""}`;
-      });
-    });
-    return { meshes, laid };
-  }
+/**
+ * A box of a decorated panel: its order and x, and the outline and the
+ * shadow layers, topmost first, as (x, y, blur, spread, inset) its numbers
+ * say it has.
+ *
+ * @typedef {object} DecoratedSpec
+ * @property {number} order
+ * @property {number} x
+ * @property {[number, number]} [outline]
+ * @property {[number, number, number, number, boolean][]} [shadows]
+ */
 
+/** How a laid instance reads by `aSize.w`, past the x its matrix carries. */
+const DECORATION_LABELS = new Map([
+  [-1, " ring"],
+  [-2, " shadow"],
+  [-3, " inset"],
+]);
+
+/**
+ * A panel of boxes at the given orders, decorated as named, flushed.
+ *
+ * @param {DecoratedSpec[]} specs
+ * @param {(order: number) => boolean} [isCut]
+ */
+function decoratedPanel(specs, isCut = () => false) {
+  const container = new THREE.Group();
+  place(container, 0, 0, 0);
+  const draws = paintBatch(container);
+  draws.orderBy(
+    /** @type {import('./layerOrder.js').LayerOrder} */ (/** @type {unknown} */ ({ isCut })),
+  );
+  for (const { order, x, outline, shadows } of specs) {
+    const { mesh, uniforms } = makeBox();
+    place(mesh, x, 0, 0);
+    mesh.renderOrder = order;
+    uniforms.uSize.value.set(20, 10);
+    uniforms.uRadii.value.set(1, 2, 3, 4);
+    uniforms.uClip.value.set(-5, -6, 30, 40);
+    uniforms.uBorder.value.set(4, 3, 2, 1);
+    if (outline) {
+      uniforms.uOutline.value.set(outline[0], outline[1]);
+      uniforms.uOutlineColor.value.set(1, 0, 0, 0.5);
+    }
+    uniforms.uShadowCount.value = shadows?.length ?? 0;
+    shadows?.forEach(([sx, sy, blur, spread, inset], i) => {
+      uniforms.uShadows.value[i].set(sx, sy, blur, spread);
+      uniforms.uShadowColors.value[i].set(0, 0, i / 10, 0.25);
+      uniforms.uShadowInset.value[i] = inset ? 1 : 0;
+    });
+    container.add(mesh);
+    draws.boxes.add(mesh, uniforms);
+  }
+  draws.flush();
+  const meshes = /** @type {THREE.InstancedMesh[]} */ (
+    container.children.filter((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+  );
+  /**
+   * What each draw lays, in order: the x its matrix carries and which
+   * decoration it is, if one.
+   */
+  const laid = meshes.map((mesh) => {
+    const sizes = /** @type {THREE.InstancedBufferAttribute} */ (
+      mesh.geometry.getAttribute("aSize")
+    ).array;
+    const matrix = new THREE.Matrix4();
+    return Array.from({ length: mesh.count }, (_, i) => {
+      mesh.getMatrixAt(i, matrix);
+      return `${matrix.elements[12]}${DECORATION_LABELS.get(sizes[i * 4 + 3]) ?? ""}`;
+    });
+  });
+  return { meshes, laid };
+}
+
+describe("outline rings", () => {
   test("an outlined box writes its box and then a ring, an un-outlined one its box", () => {
-    const { meshes, laid } = outlinedPanel([
+    const { meshes, laid } = decoratedPanel([
       { order: 7, x: 1, outline: [3, 2] },
       { order: 7, x: 2 },
     ]);
@@ -568,7 +608,7 @@ describe("outline rings", () => {
   });
 
   test("an outline with no width or no colour draws nothing", () => {
-    const { laid } = outlinedPanel([
+    const { laid } = decoratedPanel([
       { order: 7, x: 1, outline: [0, 2] },
       { order: 7, x: 2 },
     ]);
@@ -576,7 +616,7 @@ describe("outline rings", () => {
   });
 
   test("a layer's rings draw after everything in the layer, and before the next layer", () => {
-    const { laid } = outlinedPanel([
+    const { laid } = decoratedPanel([
       { order: 7, x: 1, outline: [3, 0] },
       { order: 9, x: 2 },
       { order: 12, x: 3, outline: [1, 0] },
@@ -586,7 +626,7 @@ describe("outline rings", () => {
   });
 
   test("a layer cut in pieces keeps its rings in its own draw", () => {
-    const { laid } = outlinedPanel(
+    const { laid } = decoratedPanel(
       [
         { order: 7, x: 1, outline: [3, 0] },
         { order: 9, x: 2 },
@@ -598,7 +638,7 @@ describe("outline rings", () => {
   });
 
   test("a ring is drawn by the batch's shader as a ring around the box", () => {
-    const { meshes } = outlinedPanel([{ order: 7, x: 1, outline: [3, 2] }]);
+    const { meshes } = decoratedPanel([{ order: 7, x: 1, outline: [3, 2] }]);
     const material = /** @type {THREE.ShaderMaterial} */ (meshes[0].material);
     assert.match(material.vertexShader, /if \(aSize\.w < -0\.5\) \{/);
     assert.match(
@@ -609,5 +649,99 @@ describe("outline rings", () => {
       material.fragmentShader,
       /ringCoverage\(vUnit, vSize, vRadii, vBorder\.x, vBorder\.y, vClip, vClipRadii\)/,
     );
+  });
+});
+
+describe("box shadows", () => {
+  test("an outer shadow draws under every box at its level, an inset one over its own box", () => {
+    const { laid } = decoratedPanel([
+      { order: 7, x: 1 },
+      { order: 9, x: 2 },
+      {
+        order: 9,
+        x: 3,
+        shadows: [
+          [0, 4, 8, 0, false],
+          [0, 0, 0, 1, true],
+        ],
+      },
+      { order: 10, x: 4 },
+    ]);
+    // Over the level before, under its own box and the sibling at its
+    // level that comes before it, and the inset over its own box.
+    assert.deepEqual(laid, [["1", "3 shadow", "2", "3", "3 inset", "4"]]);
+  });
+
+  test("the topmost layer draws last, and a box with none draws only itself", () => {
+    const { laid, meshes } = decoratedPanel([
+      {
+        order: 7,
+        x: 1,
+        shadows: [
+          [1, 1, 0, 0, false],
+          [2, 2, 0, 0, false],
+          [3, 3, 0, 0, false],
+        ],
+      },
+      { order: 7, x: 2 },
+    ]);
+    assert.deepEqual(laid, [["1 shadow", "1 shadow", "1 shadow", "1", "2"]]);
+    const borders = Array.from(
+      /** @type {THREE.InstancedBufferAttribute} */ (meshes[0].geometry.getAttribute("aBorder"))
+        .array,
+    );
+    assert.deepEqual(
+      [borders[0], borders[4], borders[8]],
+      [3, 2, 1],
+      "the bottom layer, the last in the list, first",
+    );
+  });
+
+  test("a shadow's lanes: its offsets, blur and spread, its colour, and the box's borders", () => {
+    const { meshes } = decoratedPanel([{ order: 7, x: 1, shadows: [[5, 6, 7, -2, true]] }]);
+    const read = (/** @type {string} */ name) =>
+      Array.from(
+        /** @type {THREE.InstancedBufferAttribute} */ (meshes[0].geometry.getAttribute(name)).array,
+      ).slice(4, 8);
+    assert.deepEqual(read("aSize"), [20, 10, 0, -3]);
+    assert.deepEqual(read("aBorder"), [5, 6, 7, -2]);
+    assert.deepEqual(read("aFillColor"), [0, 0, 0, 0.25]);
+    assert.deepEqual(read("aRadii"), [1, 2, 3, 4]);
+    assert.deepEqual(read("aClip"), [-5, -6, 30, 40]);
+    assert.deepEqual(read("aBorderColor"), [0, 0, 0, 0]);
+    // The box's border widths, which an inset shadow is clipped inside.
+    assert.deepEqual(read("aGradientGeometry"), [4, 3, 2, 1]);
+  });
+
+  test("a layer cut in pieces keeps its shadows in its own draw", () => {
+    const { laid } = decoratedPanel(
+      [
+        { order: 4096, x: 1, shadows: [[0, 4, 8, 0, false]] },
+        { order: 4096 + 9, x: 2 },
+        { order: 2, x: 4 },
+      ],
+      (order) => order >= 4096,
+    );
+    // A layer root's shadow too, though it falls on the layers behind.
+    assert.deepEqual(laid, [["4"], ["1 shadow", "1", "2"]]);
+  });
+
+  test("a shadow is drawn by the batch's shader, grown by its reach and cut out of its box", () => {
+    const { meshes } = decoratedPanel([{ order: 7, x: 1, shadows: [[0, 4, 8, 0, false]] }]);
+    const material = /** @type {THREE.ShaderMaterial} */ (meshes[0].material);
+    assert.match(
+      material.vertexShader,
+      /max\(abs\(aBorder\.x\), abs\(aBorder\.y\)\) \+ max\(aBorder\.w, 0\.0\) \+ 1\.5 \* aBorder\.z/,
+    );
+    assert.match(
+      material.fragmentShader,
+      /outerShadowCoverage\(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii\)/,
+    );
+    assert.match(
+      material.fragmentShader,
+      /insetShadowCoverage\(vUnit, vSize, vRadii, vGradientGeometry, vBorder, vClip, vClipRadii\)/,
+    );
+    // An outer shadow is cut out where its own box is.
+    assert.match(material.fragmentShader, /return shape \* \(1\.0 - own\) \*/);
   });
 });

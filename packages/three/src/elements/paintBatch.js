@@ -13,10 +13,18 @@ import {
 import {
   BOX_BUCKET_BIAS,
   BoxBatch,
+  DECORATION_INSET_SHADOW,
+  DECORATION_OUTER_SHADOW,
+  DECORATION_RING,
   hasOutline,
+  INSET_SHADOW_BIAS,
+  isInsetShadow,
+  OUTER_SHADOW_BIAS,
   setLanes,
+  shadowCount,
   writeBoxInstance,
   writeOutlineInstance,
+  writeShadowInstance,
 } from "./boxBatch.js";
 import { TextBatch } from "./textBatch.js";
 import { isProxy } from "./layerOrder.js";
@@ -99,11 +107,16 @@ const MINIMUM_CAPACITY = 16;
  * row into one integer-valued float (exact far past any row count a page
  * reaches), and `w` the box's opacity (`writeBoxInstance` in `boxBatch.js`).
  *
- * An outline is an instance of its own, a ring around its box, and no lane
- * more: `aSize.w` at -1, an opacity no box has, says so, and its width and
- * offset ride in `aBorder` (`writeOutlineInstance`). Its quad is the unit
- * one grown by the ring's reach on every side, in the box's own unit
- * coordinates, since the box's matrix carries its size.
+ * An outline and each layer of a `box-shadow` are instances of their own,
+ * decorations of their box, and no lane more: `aSize.w` below 0, an opacity
+ * no box has, says so, and which decoration it is (`DECORATION_RING` and
+ * the rest in `boxBatch.js`). A ring's width and offset ride in `aBorder`
+ * (`writeOutlineInstance`), and so do a shadow's offsets, blur and spread
+ * (`writeShadowInstance`). The quad is the unit one grown by what the
+ * decoration reaches past its box on every side, in the box's own unit
+ * coordinates, since the box's matrix carries its size: a ring's offset
+ * and width, an outer shadow's offset, spread and three sigmas of blur, and
+ * nothing for an inset shadow, which stays inside its box.
  */
 const vertexShader = /* glsl */ `
 ${HALF_PLANES_VERTEX_GLSL}
@@ -145,9 +158,15 @@ void main() {
   vLayer = aGradientGeometry.x;
   vec2 local = position.xy;
   if (aSize.w < -0.5) {
-    // A ring. -2 in the slot, which no run or box has.
-    vSlot = -2;
-    float reach = max(aBorder.x + aBorder.y, 0.0);
+    // A decoration: -2 in the slot for a ring, -3 for an outer shadow and
+    // -4 for an inset one, which no run or box has.
+    float kind = floor(-aSize.w + 0.5);
+    vSlot = -1 - int(kind);
+    float reach = kind < 1.5
+      ? max(aBorder.x + aBorder.y, 0.0)
+      : kind < 2.5
+        ? max(abs(aBorder.x), abs(aBorder.y)) + max(aBorder.w, 0.0) + 1.5 * aBorder.z
+        : 0.0;
     vec2 size = max(aSize.xy, vec2(1e-6));
     local = (position.xy * (size + 2.0 * reach) - reach) / size;
     vUnit = local;
@@ -240,6 +259,15 @@ ${sampleRuns}
       discard;
     }
     gl_FragColor = vec4(vBorderColor.rgb, alpha);
+  } else if (vSlot < -2) {
+    float coverage = vSlot == -3
+      ? outerShadowCoverage(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii)
+      : insetShadowCoverage(vUnit, vSize, vRadii, vGradientGeometry, vBorder, vClip, vClipRadii);
+    float alpha = vFillColor.a * coverage;
+    if (alpha < 0.001) {
+      discard;
+    }
+    gl_FragColor = vec4(vFillColor.rgb, alpha);
   } else {
     vec2 coverages = sdfCoverages(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii);
     float fillCoverage = coverages.x;
@@ -483,8 +511,15 @@ export class PaintBatch {
   #boxes = [];
   /** @type {(Member | null)[]} */
   #runs = [];
-  /** Whether the box at an index is drawn as its outline's ring. @type {boolean[]} */
-  #rings = [];
+  /**
+   * Which decoration of its box the box at an index is drawn as, 0 for the
+   * box itself (`DECORATION_RING` and the rest in `boxBatch.js`).
+   *
+   * @type {number[]}
+   */
+  #decorations = [];
+  /** Which layer of its box's `box-shadow` a shadow is. @type {number[]} */
+  #shadowLayers = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
   /** The indices into the above, in the order they draw. @type {number[]} */
@@ -650,7 +685,8 @@ export class PaintBatch {
     this.#orders.length = 0;
     this.#boxes.length = 0;
     this.#runs.length = 0;
-    this.#rings.length = 0;
+    this.#decorations.length = 0;
+    this.#shadowLayers.length = 0;
     this.#breaks.length = 0;
     this.boxes.beginWalk();
     this.runs.beginWalk();
@@ -705,11 +741,9 @@ export class PaintBatch {
     const run = box ? null : this.runs.take(mesh);
     if (box || run) {
       const order = box ? mesh.renderOrder + BOX_BUCKET_BIAS : mesh.renderOrder;
-      this.#take(order, box, run, false, matrix);
-      if (box && hasOutline(box)) {
-        // Over everything else in the box's layer, as a page paints an
-        // outline last in its stacking context.
-        this.#take(bandBase(order) + RING_PLACE, box, null, true, matrix);
+      this.#take(order, box, run, 0, 0, matrix);
+      if (box) {
+        this.#decorate(order, mesh.renderOrder, box, matrix);
       }
     } else if (drawsItself(object)) {
       this.#breaks.push(object.renderOrder);
@@ -721,20 +755,48 @@ export class PaintBatch {
   }
 
   /**
+   * Note the decorations of a box the walk met: its shadows, the bottom
+   * layer first so that the topmost draws last, and its outline.
+   *
+   * @param {number} order The box's own, bias and all.
+   * @param {number} level Its render order, the level it is at.
+   * @param {Record<string, THREE.IUniform>} box
+   * @param {THREE.Matrix4} matrix
+   */
+  #decorate(order, level, box, matrix) {
+    for (let layer = shadowCount(box) - 1; layer >= 0; layer--) {
+      if (isInsetShadow(box, layer)) {
+        // Over the box's background, under its content.
+        this.#take(level + INSET_SHADOW_BIAS, box, null, DECORATION_INSET_SHADOW, layer, matrix);
+      } else {
+        // Under the box, and under every box at its level.
+        this.#take(level + OUTER_SHADOW_BIAS, box, null, DECORATION_OUTER_SHADOW, layer, matrix);
+      }
+    }
+    if (hasOutline(box)) {
+      // Over everything else in the box's layer, as a page paints an
+      // outline last in its stacking context.
+      this.#take(bandBase(order) + RING_PLACE, box, null, DECORATION_RING, 0, matrix);
+    }
+  }
+
+  /**
    * Note an instance the walk met.
    *
    * @param {number} order
    * @param {Record<string, THREE.IUniform> | null} box
    * @param {Member | null} run
-   * @param {boolean} ring
+   * @param {number} decoration Which decoration of `box` it is, 0 for none.
+   * @param {number} shadowLayer Which layer of the box's shadow, for one.
    * @param {THREE.Matrix4} matrix
    */
-  #take(order, box, run, ring, matrix) {
+  #take(order, box, run, decoration, shadowLayer, matrix) {
     const index = this.#orders.length;
     this.#orders.push(order);
     this.#boxes.push(box);
     this.#runs.push(run);
-    this.#rings.push(ring);
+    this.#decorations.push(decoration);
+    this.#shadowLayers.push(shadowLayer);
     if (!this.#matrices[index]) {
       this.#matrices[index] = new THREE.Matrix4();
     }
@@ -766,18 +828,16 @@ export class PaintBatch {
           slot = draw.classes.push(sizeClass) - 1;
         }
         draw.writeRun(index, run, slot);
-      } else if (this.#rings[i]) {
-        writeOutlineInstance(
-          draw.data,
-          index,
-          /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]),
-        );
       } else {
-        writeBoxInstance(
-          draw.data,
-          index,
-          /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]),
-        );
+        const box = /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]);
+        const decoration = this.#decorations[i];
+        if (decoration === DECORATION_RING) {
+          writeOutlineInstance(draw.data, index, box);
+        } else if (decoration !== 0) {
+          writeShadowInstance(draw.data, index, box, this.#shadowLayers[i]);
+        } else {
+          writeBoxInstance(draw.data, index, box);
+        }
       }
     }
     draw.finish(end - start, this.#orders[sorted[start]]);

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { keepProgram } from "./programKeeper.js";
+import { SHADOW_LENGTH, splitShadowLayers } from "./shadows.js";
 
 /**
  * @import {TextLine} from './textLines.js';
@@ -458,12 +459,6 @@ function drawText(context, text, x, y, letterSpacing, wordSpacing) {
  */
 
 /**
- * A length inside a `text-shadow`. Computed values are always absolute, so
- * `px` is the only unit that can turn up and nothing here converts units.
- */
-const SHADOW_LENGTH = /-?\d*\.?\d+px/g;
-
-/**
  * What is allowed to stand as the color of a layer: a hex triplet, a bare
  * identifier (a named color), or a color function with its arguments —
  * `rgb(0, 0, 0)` and `rgb(0 0 0 / 50%)` alike, and the wide-gamut spellings
@@ -474,35 +469,6 @@ const SHADOW_LENGTH = /-?\d*\.?\d+px/g;
  */
 const SHADOW_COLOR =
   /^(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|[a-zA-Z]+|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\((?:[^()]|\([^()]*\))*\))$/;
-
-/**
- * Splits a `text-shadow` into its layers: the commas that separate layers
- * are the ones at nesting depth zero, not the ones inside a color function.
- * `rgb(0, 0, 0) 2px 3px 4px` is a single layer with two commas in it, and
- * splitting on those leaves `rgb(0`, which has no length in it at all.
- *
- * @param {string} textShadow
- * @returns {string[]}
- */
-function splitShadowLayers(textShadow) {
-  /** @type {string[]} */
-  const layers = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < textShadow.length; i++) {
-    const char = textShadow[i];
-    if (char === "(") {
-      depth++;
-    } else if (char === ")") {
-      depth = Math.max(0, depth - 1);
-    } else if (char === "," && depth === 0) {
-      layers.push(textShadow.slice(start, i));
-      start = i + 1;
-    }
-  }
-  layers.push(textShadow.slice(start));
-  return layers;
-}
 
 /**
  * Reads the *first* layer of a `text-shadow`.

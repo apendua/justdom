@@ -17,10 +17,25 @@ import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { getDrawLevel, getRenderBand } from "./elevation.js";
 import { parseCssColor } from "./cssColor.js";
+import { parseBoxShadow } from "./shadows.js";
 import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradient.js";
 
 /**
  * @import {GradientLayout} from './gradient.js';
+ */
+
+/**
+ * One layer of a `box-shadow`, as the panel's batch draws it: its colour
+ * as three draws it, and its alpha with the element's opacity in it.
+ *
+ * @typedef {object} DrawnShadow
+ * @property {THREE.Color} color
+ * @property {number} alpha
+ * @property {number} x
+ * @property {number} y
+ * @property {number} blur
+ * @property {number} spread
+ * @property {boolean} inset
  */
 
 /**
@@ -55,6 +70,7 @@ import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradi
  * @property {string} outlineWidth Empty when `outline-style` is `none`.
  * @property {string} outlineOffset
  * @property {string} outlineColor
+ * @property {string} boxShadow
  * @property {string} textColor
  * @property {number} drawLevel
  * @property {number} band Where the draw level counts from
@@ -85,6 +101,7 @@ import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradi
  * @property {number} outlineOffset
  * @property {THREE.Color} outlineColor
  * @property {number} outlineAlpha
+ * @property {DrawnShadow[]} boxShadows
  * @property {THREE.Color} textColor
  * @property {number} textAlpha
  * @property {number} drawLevel
@@ -376,6 +393,7 @@ export default class VisualProperties {
       outlineWidth: hasOutline ? style.outlineWidth : "",
       outlineOffset: hasOutline ? style.outlineOffset : "",
       outlineColor: hasOutline ? style.outlineColor : "",
+      boxShadow: style.boxShadow || "none",
       textColor: style.color,
       // The element's, also for its `::before` or `::after`, whose quad
       // reads its own level from its stand-in (`generatedContent.js`).
@@ -647,6 +665,27 @@ export default class VisualProperties {
     return parseAlpha(this.#props.outlineColor) * this.#props.opacity;
   }
 
+  /**
+   * The layers of the `box-shadow`, topmost first, at most `MAX_BOX_SHADOWS`
+   * (`shadows.js`).
+   *
+   * @returns {DrawnShadow[]}
+   */
+  get boxShadows() {
+    const { opacity, textColor } = this.#props;
+    return parseBoxShadow(this.#props.boxShadow, textColor).map(
+      ({ color: [r, g, b, alpha], x, y, blur, spread, inset }) => ({
+        color: new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace),
+        alpha: alpha * opacity,
+        x,
+        y,
+        blur,
+        spread,
+        inset,
+      }),
+    );
+  }
+
   get textColor() {
     const [textColor] = parseColor(this.#props.textColor);
     return textColor;
@@ -706,5 +745,6 @@ decorate(VisualProperties.prototype, "outlineWidth", memo());
 decorate(VisualProperties.prototype, "outlineOffset", memo());
 decorate(VisualProperties.prototype, "outlineColor", memo());
 decorate(VisualProperties.prototype, "outlineAlpha", memo());
+decorate(VisualProperties.prototype, "boxShadows", memo());
 decorate(VisualProperties.prototype, "textColor", memo());
 decorate(VisualProperties.prototype, "textAlpha", memo());

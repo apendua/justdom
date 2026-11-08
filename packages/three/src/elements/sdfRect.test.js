@@ -107,6 +107,28 @@ describe("sdf rect", () => {
     assert.deepEqual([uOutline.value.x, uOutline.value.y], [0, 0]);
   });
 
+  test("a box-shadow lands layer by layer, topmost first, the opacity in its alpha", () => {
+    const material = createRectMaterial();
+    writeRectUniforms(
+      material.uniforms,
+      propertiesOf({
+        boxShadow: "rgb(255, 0, 0) 1px 2px 3px 4px inset, rgba(0, 0, 255, 0.5) 0px 4px 8px -2px",
+        opacity: "0.5",
+      }),
+    );
+    const { uShadowCount, uShadows, uShadowColors, uShadowInset } = material.uniforms;
+    assert.equal(uShadowCount.value, 2);
+    const lanes = (/** @type {THREE.Vector4} */ v) => [v.x, v.y, v.z, v.w];
+    assert.deepEqual(lanes(uShadows.value[0]), [1, 2, 3, 4]);
+    assert.deepEqual(lanes(uShadows.value[1]), [0, 4, 8, -2]);
+    assert.deepEqual(lanes(uShadowColors.value[0]), [1, 0, 0, 0.5]);
+    assert.deepEqual(lanes(uShadowColors.value[1]), [0, 0, 1, 0.25]);
+    assert.deepEqual(uShadowInset.value.slice(0, 2), [1, 0]);
+
+    writeRectUniforms(material.uniforms, propertiesOf({ boxShadow: "none" }));
+    assert.equal(uShadowCount.value, 0);
+  });
+
   test("rewriting uniforms allocates no new material state", () => {
     const properties = propertiesOf({ backgroundColor: "rgb(10, 20, 30)" });
     const material = createRectMaterial();

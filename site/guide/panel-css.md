@@ -47,10 +47,11 @@ from `justdom-three/svg`, from the shapes' computed style, so a class on a `<pat
   gradient row at every size.
 - **Write `cursor: pointer` on anything a ray should press**, as a page does for anything clickable.
   It is the rule that makes an element a ray target.
-- **Turn off Safari's text autosizing** with `html { -webkit-text-size-adjust: none; }` on a page
-  laid out wider than a phone's screen. Safari on an iPhone lays the text of such a block out bigger
-  than its computed `font-size`, which is the size a panel draws, so the glyphs no longer fit the
-  lines they were measured on and a revealed run is cut in the wrong places.
+- **Turn off Safari's text autosizing** with `html { -webkit-text-size-adjust: none; }` in the
+  page's own stylesheet, not in anything `stylesheet` or `className` writes, on a page laid out
+  wider than a phone's screen. Safari on an iPhone lays the text of such a block out bigger than its
+  computed `font-size`, which is the size a panel draws, so the glyphs no longer fit the lines they
+  were measured on and a revealed run is cut in the wrong places.
 
 ## Overlays
 

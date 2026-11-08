@@ -559,6 +559,113 @@ describe("the wheel", () => {
   });
 });
 
+describe("a pinch", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {THREE.Group<XREventMap>} */
+  let group;
+  /** @type {() => void} */
+  let stop;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    canvas = pageCanvas();
+    // The test's document knows one pointer, the mouse's, and refuses to
+    // capture any other; a browser captures each finger that is down.
+    canvas.setPointerCapture = () => {};
+    document.body.append(canvas);
+    group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
+    stop = followMouse(group, new THREE.PerspectiveCamera(), canvas);
+  });
+
+  afterEach(() => {
+    stop();
+    canvas.remove();
+    mock.timers.reset();
+  });
+
+  /**
+   * Something 2 m out along the ray, as `drag` leaves what the first finger
+   * picked up, keeping its own matrix.
+   */
+  function held() {
+    const thing = new THREE.Object3D();
+    thing.matrixAutoUpdate = false;
+    thing.position.set(0, 0, -2);
+    thing.updateMatrix();
+    group.add(thing);
+    group.updateMatrixWorld(true);
+    return thing;
+  }
+
+  /**
+   * How far out along the ray it is drawn: its own matrix, since the ray
+   * turns as the first finger moves.
+   *
+   * @param {THREE.Object3D} thing
+   */
+  function reach(thing) {
+    return -thing.matrix.elements[14];
+  }
+
+  /** The first finger down and holding the grip, where the test puts it. */
+  function grip() {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    mock.timers.tick(HOLD_MS);
+  }
+
+  test("spread twice as far, brings what is held to half the distance", () => {
+    grip();
+    const thing = held();
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    assert.ok(Math.abs(reach(thing) - 1) < 1e-9);
+  });
+
+  test("closed, pushes it further off, and the first finger's move counts too", () => {
+    grip();
+    const thing = held();
+    canvas.dispatchEvent(finger("pointerdown", 70, 50, 2));
+    // The first finger slides towards the second: 20 px apart becomes 10.
+    canvas.dispatchEvent(finger("pointermove", 60, 50));
+    assert.ok(Math.abs(reach(thing) - 4) < 1e-9);
+  });
+
+  test("never brings it nearer than the floor", () => {
+    grip();
+    const thing = held();
+    canvas.dispatchEvent(finger("pointerdown", 51, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 100, 50, 2));
+    assert.equal(reach(thing), MIN_REACH);
+  });
+
+  test("ends with the second finger's lift, and the first keeps its press", () => {
+    grip();
+    const thing = held();
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointerup", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 90, 50, 2));
+    assert.equal(reach(thing), 2);
+    assert.equal(group.visible, true);
+  });
+
+  test("does not start while nothing is held", () => {
+    grip();
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    const thing = held();
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    assert.equal(reach(thing), 2);
+  });
+
+  test("does not start before the first finger has pressed", () => {
+    const thing = held();
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    assert.equal(reach(thing), 2);
+  });
+});
+
 test("around is refused without look: orbit", () => {
   // @ts-expect-error -- nothing orbits without look: "orbit".
   mouse({}, { around: { x: 0, y: 0, z: 0 } });

@@ -96,7 +96,8 @@ export const PITCH_LIMIT = 1.4;
  *
  * A finger. It has no hover, so the group is shown from the moment it
  * lands and hidden again when it lifts. One finger drives it at a time:
- * another that lands while the first is down is ignored. What the first
+ * another that lands while the first is down is ignored, unless it starts
+ * a pinch (below). What the first
  * one presses is decided by how it moves after landing, and until that is
  * decided the group stays aimed where it landed:
  *
@@ -134,7 +135,17 @@ export const PITCH_LIMIT = 1.4;
  * rolled back, towards you, it pushes it further off. It moves it by
  * `WHEEL_METRES_PER_PIXEL`, and never nearer than `MIN_REACH`. A `carry`
  * pins what it holds at its own distance and is not among the children, so
- * the wheel leaves it alone. A hand reaches into the room and the
+ * the wheel leaves it alone.
+ *
+ * The pinch, the wheel of a touch screen. A second finger that lands while
+ * the first holds a press and the group holds something starts one; at any
+ * other time a second finger is ignored, as above. While it lasts, a move
+ * of either finger moves what the group holds along the ray by the ratio
+ * of the fingers' spread: spread them twice as far apart and it comes to
+ * half the distance, as a pinch zooms in; close them and it goes further
+ * off, never nearer than `MIN_REACH`. The first finger still aims the
+ * group as it moves. The second finger's lift or cancel ends the pinch and
+ * nothing else; the first's ends the press and the pinch with it. A hand reaches into the room and the
  * mouse cannot, so this is how a thing picked up with the mouse is put
  * down further off or nearer. While the group holds nothing the wheel is
  * the page's, and scrolls it as ever.
@@ -255,11 +266,55 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
    *   x: number,
    *   y: number,
    *   landing: PointerEvent,
+   *   now: { x: number, y: number },
    *   button: "select" | "squeeze" | null,
    *   hold: ReturnType<typeof setTimeout>,
    * } | null}
    */
   let finger = null;
+
+  /**
+   * The second finger of a pinch, while one is under way: where it is, and
+   * how far apart the two fingers were at the last move.
+   *
+   * @type {{ id: number, x: number, y: number, spread: number } | null}
+   */
+  let pinch = null;
+
+  /**
+   * Move everything the group holds along the ray, to the reach `to` gives
+   * for the reach it is at, and never nearer than `MIN_REACH`.
+   *
+   * @param {(reach: number) => number} to
+   */
+  const reachOut = (to) => {
+    for (const child of pointer.children) {
+      // The ray is the group's -Z, so how far out a thing is held is the
+      // negative of its z, and moving it along the ray changes z alone.
+      child.position.z = -Math.max(MIN_REACH, to(-child.position.z));
+      // Into the matrix by hand, for a thing that keeps its own (what a
+      // portal draws does): `drag` writes those directly too.
+      child.updateMatrix();
+      child.updateMatrixWorld(true);
+    }
+  };
+
+  /** How far apart the two fingers of the pinch are, in CSS pixels. */
+  const spread = () =>
+    finger && pinch ? Math.hypot(pinch.x - finger.now.x, pinch.y - finger.now.y) : 0;
+
+  /** Bring the held things nearer by as much as the fingers spread. */
+  const squeezeReach = () => {
+    if (!pinch) {
+      return;
+    }
+    const now = spread();
+    if (now > 0 && pinch.spread > 0) {
+      const ratio = pinch.spread / now;
+      reachOut((reach) => reach * ratio);
+    }
+    pinch.spread = now;
+  };
 
   /** @param {"select" | "squeeze"} button */
   const press = (button, /** @type {PointerEvent} */ event) => {
@@ -279,6 +334,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       finger = null;
     }
     turning = null;
+    pinch = null;
     pointer.visible = false;
   };
 
@@ -289,9 +345,16 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       follow(event);
       return;
     }
+    if (pinch && event.pointerId === pinch.id) {
+      pinch.x = event.clientX;
+      pinch.y = event.clientY;
+      squeezeReach();
+      return;
+    }
     if (!finger || event.pointerId !== finger.id) {
       return;
     }
+    finger.now = { x: event.clientX, y: event.clientY };
     if (finger.button === null) {
       const dx = event.clientX - finger.x;
       const dy = event.clientY - finger.y;
@@ -303,6 +366,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     }
     turn(event);
     aim(event);
+    squeezeReach();
   };
   const onLeave = (/** @type {PointerEvent} */ event) => {
     if (event.pointerType !== "touch") {
@@ -312,6 +376,13 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   /** @param {PointerEvent} event */
   const onDown = (event) => {
     if (event.pointerType === "touch") {
+      if (finger && finger.button !== null && !pinch && pointer.children.length > 0) {
+        // A second finger while the first holds something: a pinch.
+        canvas.setPointerCapture(event.pointerId);
+        pinch = { id: event.pointerId, x: event.clientX, y: event.clientY, spread: 0 };
+        pinch.spread = spread();
+        return;
+      }
       if (finger || !event.isPrimary) {
         return;
       }
@@ -322,6 +393,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
         x: event.clientX,
         y: event.clientY,
         landing: event,
+        now: { x: event.clientX, y: event.clientY },
         button: null,
         hold: setTimeout(() => press("squeeze", event), HOLD_MS),
       };
@@ -339,6 +411,10 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   /** @param {PointerEvent} event */
   const onUp = (event) => {
     if (event.pointerType === "touch") {
+      if (pinch && event.pointerId === pinch.id) {
+        pinch = null;
+        return;
+      }
       if (!finger || event.pointerId !== finger.id) {
         return;
       }
@@ -370,6 +446,10 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   };
   /** @param {PointerEvent} event */
   const onCancel = (event) => {
+    if (pinch && event.pointerId === pinch.id) {
+      pinch = null;
+      return;
+    }
     if (!finger || event.pointerId !== finger.id) {
       return;
     }
@@ -395,16 +475,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
         : event.deltaMode === DOM_DELTA_PAGE
           ? event.deltaY * canvas.getBoundingClientRect().height
           : event.deltaY;
-    for (const child of pointer.children) {
-      // The ray is the group's -Z, so how far out a thing is held is the
-      // negative of its z, and moving it along the ray changes z alone.
-      const reach = Math.max(MIN_REACH, -child.position.z - pixels * WHEEL_METRES_PER_PIXEL);
-      child.position.z = -reach;
-      // Into the matrix by hand, for a thing that keeps its own (what a
-      // portal draws does): `drag` writes those directly too.
-      child.updateMatrix();
-      child.updateMatrixWorld(true);
-    }
+    reachOut((reach) => reach - pixels * WHEEL_METRES_PER_PIXEL);
   };
 
   const touchAction = canvas.style.touchAction;

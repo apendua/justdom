@@ -114,12 +114,12 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
 - The left button is the trigger: a press and release on the canvas are `selectstart`, `selectend`
   and `select`. The right button is the grip, `squeezestart`, `squeezeend` and `squeeze`, and the
   canvas opens no context menu.
-- A finger on a touch screen drives it too, one finger at a time. A finger has no hover, so the ray
-  is there from the moment it lands until it lifts. Lifted within 10 px before 400 ms, it is a tap
-  of the trigger. Moved more than 10 px, it presses the trigger where it landed and drags. Held
-  within 10 px for 400 ms, it presses the grip where it landed and drags. A finger the browser
-  cancels ends its press as a miss that says `lost`, as a hand that went does. The canvas has
-  `touch-action: none` meanwhile, so a drag is not a scroll.
+- A finger on a touch screen drives it too, one finger at a time, save for the two-finger pinch
+  below. A finger has no hover, so the ray is there from the moment it lands until it lifts. Lifted
+  within 10 px before 400 ms, it is a tap of the trigger. Moved more than 10 px, it presses the
+  trigger where it landed and drags. Held within 10 px for 400 ms, it presses the grip where it
+  landed and drags. A finger the browser cancels ends its press as a miss that says `lost`, as a
+  hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll.
 - `pointer: { look: "orbit" }` gives a drag that starts on nothing to the camera, from the left
   button or from a finger: it turns by the angle the screen shows over the drag, and its pitch stops
   short of straight up and down. Without `around` it turns where it stands, so what is under the
@@ -131,6 +131,10 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   the mouse cannot. Rolled forward, towards the screen, it brings the thing nearer, as a wheel zooms
   in; rolled back, towards you, it pushes it further off, 20 cm a notch and never nearer than 20 cm.
   A `carry` keeps its own distance, and while nothing is dragged the wheel scrolls the page as ever.
+- On a touch screen a two-finger pinch does what the wheel does. A second finger that lands while
+  the first is dragging something starts one: spread the two fingers and the thing comes nearer by
+  the same ratio, close them and it goes further off. Lifting the second finger ends the two-finger
+  pinch and leaves the drag to the first.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,

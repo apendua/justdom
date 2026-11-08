@@ -19,7 +19,8 @@ so a session needs the network. `?emulator` installs a headset in the browser (I
 panels) and the **Enter** button appears at the bottom; press it and the emulated session is drawn
 over the page. `?emulator=bare` installs the runtime without the panels. `?touch` installs it with
 `justdom-xr`'s touch layer instead, for a phone: once the session is up, a drag turns the head, a
-tap uncovers a tile and a finger held still for 400 ms flags one.
+tap uncovers a tile, a finger held still for 400 ms flags one and two fingers pinch the view in and
+out.
 
 `node tests/xr-check.mjs` first builds the app for production and fails unless its service worker
 precaches exactly the JS the page loads: the entry chunk and what it imports, and none of the chunks
@@ -29,11 +30,11 @@ fetched, or if any covered tile or any of the card is under something else in a 
 one or a phone's. Then it plays a session on the emulated headset, which takes about a minute: it
 flags a tile with the grip, uncovers tiles with the trigger, deals a new board and restarts it from
 the menu panel, turns the passthrough on and leaves by the ×. Last it loads `?touch` and plays a
-session as a finger would on the touch layer, with a long press that flags a tile, a tap that
-uncovers one and a tap on the × that ends the session. It fails if any of that does not happen or
-the page throws. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints a
-stack for anything the page throws. It drives the browser and the controller through
-`justdom-xr/driver`, which launches the Chromium at
+session as a finger would on the touch layer, with a long press that flags a tile, a pinch that
+zooms in, a tap that uncovers one at that zoom and a tap on the × that ends the session. It fails if
+any of that does not happen or the page throws. `SHOTS=<dir>` also photographs the page and the
+session, and `STACKS=1` prints a stack for anything the page throws. It drives the browser and the
+controller through `justdom-xr/driver`, which launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
 tests or benchmarks, runs it, with the desk's, Euclid's and Knights', from

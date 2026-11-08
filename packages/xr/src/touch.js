@@ -58,6 +58,13 @@ export const HOLD_MS = 400;
 export const STEP_FRAMES = 4;
 
 /**
+ * The narrowest the pinch zooms the view to: the vertical field of view, in
+ * radians. Twenty degrees is between four and five times the headset's own
+ * ninety, close enough to read a small panel from where the player stands.
+ */
+export const MIN_FOVY = (20 * Math.PI) / 180;
+
+/**
  * The head's turn, as a drag and the phone's tilt set it: the yaw about the
  * vertical, the pitch about the head's own x axis and the roll about its
  * line of sight, in that order (`YXZ`). A finger moved across the screen
@@ -274,15 +281,18 @@ const afterStep = (then) => {
 /**
  * The finger on the scene, if one is. It is `undecided` from the touch
  * until it has moved `SLOP_PX` (a `look`), stayed still for `HOLD_MS` (a
- * `grab`) or lifted (a tap). `press` is the grab's, and null for a grab
- * that landed while the controller was busy, which then does nothing.
+ * `grab`) or lifted (a tap), or until a second finger lands while it is
+ * undecided or a look (a `pinch`). `press` is the grab's, and null for a
+ * grab that landed while the controller was busy, which then does nothing.
+ * A finger of a pinch that has ended stays a `pinch`, and does nothing
+ * until it lifts.
  *
  * @typedef {object} Finger
  * @property {number} id
  * @property {number} x
  * @property {number} y
  * @property {number} moved How far it has moved in all, in CSS pixels.
- * @property {"undecided" | "look" | "grab"} kind
+ * @property {"undecided" | "look" | "grab" | "pinch"} kind
  * @property {ReturnType<typeof setTimeout>} timer
  * @property {Press | null} press
  */
@@ -292,7 +302,8 @@ const afterStep = (then) => {
  * `?touch`: a drag turns the head, a tap points the right controller
  * through the tapped spot and pulls its trigger, and a finger held still
  * for `HOLD_MS` closes its grip and keeps the ray under the finger as it
- * moves, until it lifts. The app's `buttons` go along the bottom, and
+ * moves, until it lifts. Two fingers pinch the view in and out. The app's
+ * `buttons` go along the bottom, and
  * **Tilt**, in the top corner, turns the head with the phone as well
  * (`Look`).
  *
@@ -302,15 +313,25 @@ const afterStep = (then) => {
  * `navigator.xr.requestSession`, so call this after `install` and before
  * the page asks for one; `offerHeadset` does both for `?touch`.
  *
- * The rules for the finger, the tap and the grab:
+ * The rules for the finger, the tap, the grab and the pinch:
  *
- * - One finger on the scene drives one thing. A second is ignored while the
- *   first is down, and the buttons never touch the finger's state.
- * - A look never presses anything, and a grab never turns the head.
+ * - One finger on the scene drives one thing, and the buttons never touch
+ *   the finger's state. A second finger that lands while the first is
+ *   undecided or looking starts a pinch, which cancels the first finger's
+ *   tap and grab. Any other second finger, and a third, are ignored.
+ * - A pinch zooms: the vertical field of view goes as the fingers' spread
+ *   goes inversely, between `MIN_FOVY` and the headset's own, which is the
+ *   widest. The pinch ends when either finger lifts, and the one left on
+ *   the screen does nothing until it lifts too. The zoom stays where the
+ *   pinch left it. A tap's and a grab's ray, and a look's turn for each
+ *   pixel, follow the field of view, so they work the same at any zoom.
+ * - A look never presses anything, a grab never turns the head, and a pinch
+ *   does neither.
  * - A tap or a grab that starts while the controller is still busy with
  *   the last one is dropped, not queued.
  * - The session ending hides the layer, lets go of whatever the controller
- *   holds and parks it at once, and forgets the finger.
+ *   holds and parks it at once, forgets the fingers, and zooms back out to
+ *   the headset's own field of view.
  *
  * @param {XRDevice} headset
  * @param {TouchOptions} [options]
@@ -320,6 +341,8 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   // its left eye, half the eyes' distance to the left of the head, and a
   // ray from the head would land that far right of the pixel touched.
   headset.ipd = 0;
+  // The headset's own field of view, the widest a pinch zooms out to.
+  const wide = headset.fovy;
   const look = new Look(pitch);
   const turn = new THREE.Quaternion();
   const direction = new THREE.Vector3();
@@ -333,6 +356,13 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   let press = null;
   /** @type {Finger | null} */
   let finger = null;
+  /**
+   * The second finger of a pinch, while one is under way, and how far it
+   * was from the first at the last move.
+   *
+   * @type {{ id: number, x: number, y: number, spread: number } | null}
+   */
+  let pinch = null;
 
   const head = () => from.set(headset.position.x, headset.position.y, headset.position.z);
 
@@ -487,7 +517,17 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     "position:fixed;inset:0;z-index:1000;touch-action:none;display:none;user-select:none;-webkit-user-select:none";
 
   layer.addEventListener("pointerdown", (event) => {
-    if (event.target !== layer || finger) {
+    if (event.target !== layer) {
+      return;
+    }
+    if (finger) {
+      if (!pinch && (finger.kind === "undecided" || finger.kind === "look")) {
+        clearTimeout(finger.timer);
+        finger.kind = "pinch";
+        const { clientX: x, clientY: y } = event;
+        pinch = { id: event.pointerId, x, y, spread: Math.hypot(x - finger.x, y - finger.y) };
+        layer.setPointerCapture(event.pointerId);
+      }
       return;
     }
     const landed = /** @type {Finger} */ ({
@@ -508,6 +548,21 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     layer.setPointerCapture(event.pointerId);
   });
   layer.addEventListener("pointermove", (event) => {
+    if (pinch && finger && (event.pointerId === pinch.id || event.pointerId === finger.id)) {
+      const moved = event.pointerId === pinch.id ? pinch : finger;
+      moved.x = event.clientX;
+      moved.y = event.clientY;
+      const spread = Math.hypot(pinch.x - finger.x, pinch.y - finger.y);
+      if (spread > 0 && pinch.spread > 0) {
+        headset.fovy = THREE.MathUtils.clamp(
+          (headset.fovy * pinch.spread) / spread,
+          MIN_FOVY,
+          wide,
+        );
+      }
+      pinch.spread = spread;
+      return;
+    }
     if (finger?.id !== event.pointerId) {
       return;
     }
@@ -531,6 +586,16 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   });
   /** @param {PointerEvent} event */
   const lift = (event) => {
+    if (pinch?.id === event.pointerId) {
+      pinch = null;
+      return;
+    }
+    if (finger && pinch && finger.id === event.pointerId) {
+      // The second finger is the one left, and does nothing from here.
+      finger = { ...finger, id: pinch.id };
+      pinch = null;
+      return;
+    }
     if (finger?.id !== event.pointerId) {
       return;
     }
@@ -561,6 +626,8 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       clearTimeout(finger.timer);
       finger = null;
     }
+    pinch = null;
+    headset.fovy = wide;
     if (press) {
       const controller = headset.controllers.right;
       controller?.updateButtonValue("trigger", 0);

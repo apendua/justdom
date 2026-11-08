@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "justdom-xr/touch: two fingers pinch the view in and out, by narrowing the emulated headset's field of view between 20 degrees (MIN_FOVY) and its own; the session's end zooms back out.",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

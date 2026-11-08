@@ -27,8 +27,8 @@
  *
  * Last it loads the page again with `?touch` and plays a session as a
  * finger would on `justdom-xr`'s touch layer: a long press on a covered
- * tile flags it, a tap uncovers another, and a tap on the × ends the
- * session and takes the layer down.
+ * tile flags it, a pinch zooms in, a tap uncovers another, and a tap on the
+ * × ends the session and takes the layer down.
  *
  * The script fails if any of them does not happen, or if the page throws
  * along the way. It is kept out of `npm test` because it needs a browser
@@ -564,12 +564,44 @@ async function main() {
       );
       check((await flags()) === 1, "and it planted a flag");
 
+      // Two fingers 120 px apart spread to 150: a fifth narrower a view,
+      // which still has the menu's × in it. Playwright's mouse is one
+      // pointer, so the two fingers go through the DevTools protocol.
+      const wide = await page.evaluate(() => /** @type {any} */ (window).xrDevice.fovy);
+      const cdp = await page.context().newCDPSession(page);
+      /**
+       * @param {"touchStart" | "touchMove" | "touchEnd"} type
+       * @param {number} spread
+       */
+      const fingers = (type, spread) =>
+        cdp.send("Input.dispatchTouchEvent", {
+          type,
+          touchPoints:
+            type === "touchEnd"
+              ? []
+              : [
+                  { x: 512 - spread / 2, y: 320, id: 1 },
+                  { x: 512 + spread / 2, y: 320, id: 2 },
+                ],
+        });
+      await fingers("touchStart", 120);
+      for (const spread of [130, 140, 150]) {
+        await fingers("touchMove", spread);
+      }
+      await fingers("touchEnd", 0);
+      await frames(page, 10);
+      const zoomed = await page.evaluate(() => /** @type {any} */ (window).xrDevice.fovy);
+      check(
+        Math.abs(zoomed - (wide * 120) / 150) < 0.01,
+        `a pinch zoomed in (field of view ${wide.toFixed(3)} to ${zoomed.toFixed(3)} rad)`,
+      );
+
       const uncoverAt = covered[covered.length - 1];
       const tapAt = await pixelOf(await onBoard(uncoverAt.x, uncoverAt.y));
       const before = await coveredPath();
       await page.mouse.click(tapAt.x, tapAt.y);
       await frames(page, 30);
-      check((await coveredPath()) !== before, "a tap uncovered a tile");
+      check((await coveredPath()) !== before, "and a tap, zoomed in, uncovered a tile");
 
       const closeAt = await pixelOf(await onMenu("×"));
       await page.mouse.click(closeAt.x, closeAt.y);

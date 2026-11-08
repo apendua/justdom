@@ -5,6 +5,7 @@ import * as THREE from "three";
 import {
   HOLD_MS,
   Look,
+  MIN_FOVY,
   PITCH_LIMIT,
   SLOP_PX,
   START_PITCH,
@@ -467,18 +468,6 @@ describe("installTouch", () => {
       assert.deepEqual(headset.controllers.right.buttons, []);
       assert.ok(rightParked());
     });
-
-    it("ignores a second finger", () => {
-      finger("pointerdown", 200, 400);
-      finger("pointerdown", 100, 100, 2);
-      finger("pointermove", 100 + 3 * SLOP_PX, 100, 2);
-      near(headAhead().x, 0);
-      finger("pointerup", 100 + 3 * SLOP_PX, 100, 2);
-      finger("pointerup", 200, 400);
-      frames(STEP_FRAMES);
-      // The first finger's tap.
-      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
-    });
   });
 
   describe("a grab", () => {
@@ -558,6 +547,138 @@ describe("installTouch", () => {
       finger("pointerup", 200, 400);
       frames(3 * STEP_FRAMES);
       assert.equal(headset.controllers.right.buttons.length, 3);
+    });
+  });
+
+  describe("a pinch", () => {
+    beforeEach(async () => {
+      install({ pitch: 0 });
+      await startSession();
+      // The stand-in browser captures only the mouse's pointer, id 1.
+      layer.setPointerCapture = () => {};
+    });
+
+    /** Two fingers down 100 px apart, about the middle of the screen. */
+    const pinchFrom = () => {
+      finger("pointerdown", 150, 400, 1);
+      finger("pointerdown", 250, 400, 2);
+    };
+
+    it("zooms in as the fingers spread, by as much as they spread", () => {
+      pinchFrom();
+      finger("pointermove", 300, 400, 2);
+      // From 100 px apart to 150: two thirds of the field of view.
+      near(headset.fovy, (fovy * 2) / 3);
+      finger("pointermove", 100, 400, 1);
+      // To 200: half.
+      near(headset.fovy, fovy / 2);
+    });
+
+    it("zooms out as they close, to no wider than the headset's own", () => {
+      pinchFrom();
+      finger("pointermove", 350, 400, 2);
+      finger("pointermove", 175, 400, 2);
+      near(headset.fovy, fovy);
+      finger("pointermove", 151, 400, 2);
+      near(headset.fovy, fovy);
+    });
+
+    it("zooms in no narrower than MIN_FOVY", () => {
+      pinchFrom();
+      finger("pointermove", 199, 400, 1);
+      finger("pointermove", 400, 400, 2);
+      finger("pointermove", 0, 400, 1);
+      near(headset.fovy, MIN_FOVY);
+    });
+
+    it("cancels the first finger's tap and grab, and turns nothing", () => {
+      pinchFrom();
+      mock.timers.tick(HOLD_MS);
+      finger("pointermove", 300, 400, 2);
+      finger("pointerup", 300, 400, 2);
+      finger("pointerup", 150, 400, 1);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      assert.ok(rightParked());
+      near(headAhead().x, 0);
+    });
+
+    it("takes over a look", () => {
+      finger("pointerdown", 150, 400, 1);
+      finger("pointermove", 150 + 2 * SLOP_PX, 400, 1);
+      const turned = headAhead();
+      finger("pointerdown", 300, 400, 2);
+      finger("pointermove", 100, 400, 1);
+      near(headAhead().angleTo(turned), 0);
+      assert.ok(headset.fovy < fovy);
+    });
+
+    it("leaves the first finger doing nothing once the second lifts", () => {
+      pinchFrom();
+      finger("pointermove", 300, 400, 2);
+      const zoomed = headset.fovy;
+      finger("pointerup", 300, 400, 2);
+      finger("pointermove", 50, 100, 1);
+      finger("pointerup", 50, 100, 1);
+      frames(4 * STEP_FRAMES);
+      near(headset.fovy, zoomed);
+      near(headAhead().x, 0);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+    });
+
+    it("leaves the second finger doing nothing once the first lifts", () => {
+      pinchFrom();
+      finger("pointerup", 150, 400, 1);
+      finger("pointermove", 400, 100, 2);
+      finger("pointerup", 400, 100, 2);
+      frames(4 * STEP_FRAMES);
+      near(headset.fovy, fovy);
+      near(headAhead().x, 0);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      // And the next finger is a finger again.
+      finger("pointerdown", 200, 400, 3);
+      finger("pointerup", 200, 400, 3);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+    });
+
+    it("ignores a third finger", () => {
+      pinchFrom();
+      finger("pointerdown", 200, 100, 3);
+      finger("pointermove", 200, 0, 3);
+      finger("pointerup", 200, 0, 3);
+      near(headset.fovy, fovy);
+      near(headAhead().y, 0);
+      finger("pointermove", 300, 400, 2);
+      near(headset.fovy, (fovy * 2) / 3);
+    });
+
+    it("does not start during a grab", () => {
+      finger("pointerdown", 150, 400, 1);
+      mock.timers.tick(HOLD_MS);
+      frames(STEP_FRAMES);
+      finger("pointerdown", 250, 400, 2);
+      finger("pointermove", 400, 400, 2);
+      near(headset.fovy, fovy);
+      finger("pointerup", 150, 400, 1);
+      assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "squeeze 0"]);
+    });
+
+    it("keeps a tap on the pixel tapped at any zoom", () => {
+      pinchFrom();
+      finger("pointermove", 350, 400, 2);
+      finger("pointerup", 350, 400, 2);
+      finger("pointerup", 150, 400, 1);
+      finger("pointerdown", 200, 0, 3);
+      finger("pointerup", 200, 0, 3);
+      near(Math.asin(rightRay().y), headset.fovy / 2);
+    });
+
+    it("zooms back out when the session ends", () => {
+      pinchFrom();
+      finger("pointermove", 350, 400, 2);
+      session?.dispatchEvent(new Event("end"));
+      near(headset.fovy, fovy);
     });
   });
 

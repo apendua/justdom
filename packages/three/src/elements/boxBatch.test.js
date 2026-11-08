@@ -496,3 +496,118 @@ describe("box batch instance uploads", () => {
     assert.match(changed[0], /:instanceMatrix$/);
   });
 });
+
+describe("outline rings", () => {
+  /**
+   * A panel of boxes at the given orders, the ones named outlined, flushed.
+   *
+   * @param {{ order: number, x: number, outline?: [number, number] }[]} specs
+   * @param {(order: number) => boolean} [isCut]
+   */
+  function outlinedPanel(specs, isCut = () => false) {
+    const container = new THREE.Group();
+    place(container, 0, 0, 0);
+    const draws = paintBatch(container);
+    draws.orderBy(
+      /** @type {import('./layerOrder.js').LayerOrder} */ (/** @type {unknown} */ ({ isCut })),
+    );
+    for (const { order, x, outline } of specs) {
+      const { mesh, uniforms } = makeBox();
+      place(mesh, x, 0, 0);
+      mesh.renderOrder = order;
+      uniforms.uSize.value.set(20, 10);
+      uniforms.uRadii.value.set(1, 2, 3, 4);
+      uniforms.uClip.value.set(-5, -6, 30, 40);
+      if (outline) {
+        uniforms.uOutline.value.set(outline[0], outline[1]);
+        uniforms.uOutlineColor.value.set(1, 0, 0, 0.5);
+      }
+      container.add(mesh);
+      draws.boxes.add(mesh, uniforms);
+    }
+    draws.flush();
+    const meshes = /** @type {THREE.InstancedMesh[]} */ (
+      container.children.filter((c) => /** @type {THREE.InstancedMesh} */ (c).isInstancedMesh)
+    );
+    /**
+     * What each draw lays, in order: the x its matrix carries and whether it
+     * is a ring.
+     */
+    const laid = meshes.map((mesh) => {
+      const sizes = /** @type {THREE.InstancedBufferAttribute} */ (
+        mesh.geometry.getAttribute("aSize")
+      ).array;
+      const matrix = new THREE.Matrix4();
+      return Array.from({ length: mesh.count }, (_, i) => {
+        mesh.getMatrixAt(i, matrix);
+        return `${matrix.elements[12]}${sizes[i * 4 + 3] === -1 ? " ring" : ""}`;
+      });
+    });
+    return { meshes, laid };
+  }
+
+  test("an outlined box writes its box and then a ring, an un-outlined one its box", () => {
+    const { meshes, laid } = outlinedPanel([
+      { order: 7, x: 1, outline: [3, 2] },
+      { order: 7, x: 2 },
+    ]);
+    assert.deepEqual(laid, [["1", "2", "1 ring"]]);
+    const read = (/** @type {string} */ name) =>
+      Array.from(
+        /** @type {THREE.InstancedBufferAttribute} */ (meshes[0].geometry.getAttribute(name)).array,
+      ).slice(8, 12);
+    // The ring's lanes: the box's size and a -1 where a box has its opacity,
+    // width and offset where the border goes, its colour where the border's
+    // goes, and the box's radii and clip.
+    assert.deepEqual(read("aSize"), [20, 10, 0, -1]);
+    assert.deepEqual(read("aBorder"), [3, 2, 0, 0]);
+    assert.deepEqual(read("aBorderColor"), [1, 0, 0, 0.5]);
+    assert.deepEqual(read("aRadii"), [1, 2, 3, 4]);
+    assert.deepEqual(read("aClip"), [-5, -6, 30, 40]);
+    assert.deepEqual(read("aFillColor"), [0, 0, 0, 0]);
+  });
+
+  test("an outline with no width or no colour draws nothing", () => {
+    const { laid } = outlinedPanel([
+      { order: 7, x: 1, outline: [0, 2] },
+      { order: 7, x: 2 },
+    ]);
+    assert.deepEqual(laid, [["1", "2"]]);
+  });
+
+  test("a layer's rings draw after everything in the layer, and before the next layer", () => {
+    const { laid } = outlinedPanel([
+      { order: 7, x: 1, outline: [3, 0] },
+      { order: 9, x: 2 },
+      { order: 12, x: 3, outline: [1, 0] },
+      { order: 4096 + 2, x: 4 },
+    ]);
+    assert.deepEqual(laid, [["1", "2", "3", "1 ring", "3 ring", "4"]]);
+  });
+
+  test("a layer cut in pieces keeps its rings in its own draw", () => {
+    const { laid } = outlinedPanel(
+      [
+        { order: 7, x: 1, outline: [3, 0] },
+        { order: 9, x: 2 },
+        { order: 4096 + 2, x: 4 },
+      ],
+      (order) => order < 4096,
+    );
+    assert.deepEqual(laid, [["1", "2", "1 ring"], ["4"]]);
+  });
+
+  test("a ring is drawn by the batch's shader as a ring around the box", () => {
+    const { meshes } = outlinedPanel([{ order: 7, x: 1, outline: [3, 2] }]);
+    const material = /** @type {THREE.ShaderMaterial} */ (meshes[0].material);
+    assert.match(material.vertexShader, /if \(aSize\.w < -0\.5\) \{/);
+    assert.match(
+      material.vertexShader,
+      /local = \(position\.xy \* \(size \+ 2\.0 \* reach\) - reach\) \/ size;/,
+    );
+    assert.match(
+      material.fragmentShader,
+      /ringCoverage\(vUnit, vSize, vRadii, vBorder\.x, vBorder\.y, vClip, vClipRadii\)/,
+    );
+  });
+});

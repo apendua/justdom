@@ -83,6 +83,30 @@ describe("sdf rect", () => {
     assert.deepEqual([borderColor.x, borderColor.y, borderColor.z, borderColor.w], [0, 0, 1, 1]);
   });
 
+  test("an outline lands as (width, offset) and its colour, and none as no width", () => {
+    // jsdom keeps the `outline` shorthand to itself, so the longhands.
+    const material = createRectMaterial();
+    writeRectUniforms(
+      material.uniforms,
+      propertiesOf({
+        outlineStyle: "solid",
+        outlineWidth: "3px",
+        outlineOffset: "-2px",
+        outlineColor: "rgba(0, 0, 255, 0.5)",
+      }),
+    );
+    const { uOutline, uOutlineColor } = material.uniforms;
+    assert.deepEqual([uOutline.value.x, uOutline.value.y], [3, -2]);
+    const color = uOutlineColor.value;
+    assert.deepEqual([color.x, color.y, color.z, color.w], [0, 0, 1, 0.5]);
+
+    writeRectUniforms(
+      material.uniforms,
+      propertiesOf({ outlineStyle: "none", outlineWidth: "3px", outlineOffset: "4px" }),
+    );
+    assert.deepEqual([uOutline.value.x, uOutline.value.y], [0, 0]);
+  });
+
   test("rewriting uniforms allocates no new material state", () => {
     const properties = propertiesOf({ backgroundColor: "rgb(10, 20, 30)" });
     const material = createRectMaterial();

@@ -338,6 +338,37 @@ jsdom scenes in `src/test/paintOrderScenes.js` draw, and `bench/paintOrderCount.
 the same for the desk's looks, the showcase, Knights and Euclid under the emulator.
 `bench/paintOrderDraws.browser.mjs` counts the draw calls a frame makes in those apps.
 
+## Outlines
+
+An `outline` is drawn as a ring around its box: `outline-width` wide, `outline-offset` out from the
+border edge (in, for a negative offset), with the box's radii grown by the offset and the width, in
+`outline-color` times the box's `opacity`. It takes no room in the layout, as on a page.
+
+```css
+.field:focus {
+  outline: 2px solid rgb(0, 123, 255);
+  outline-offset: 2px;
+}
+```
+
+Followed:
+
+- A page paints outlines last in their stacking context, over its descendants. A ring here draws
+  after everything else in its box's layer and before the layers over it, in tree order among the
+  layer's rings: an instance of its own in the panel's batch, placed at the end of the layer's band
+  (`RING_PLACE` in `paintBatch.js`), so it costs no draw call.
+- It is clipped as its box is, by the `overflow` of the boxes around it.
+- An `outline-style` of `none` draws nothing, whatever the width, so a browser's computed `3px` for
+  an outline that is not there draws nothing either. The browser's own focus ring, `auto`, is drawn,
+  solid.
+
+Not followed:
+
+- `dashed`, `dotted`, `double`, `groove`, `ridge`, `inset` and `outset` outlines are drawn solid.
+- A box drawn on its own rather than in the batch, an `<img>` or a box with a `url()` picture, has
+  no outline, and nor has an SVG shape.
+- A ring is not a ray target.
+
 ## Images
 
 An `<img>` in a panel is an ordinary CSS box that happens to have a picture in it: the picture is a

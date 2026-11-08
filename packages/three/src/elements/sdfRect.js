@@ -268,13 +268,39 @@ float pictureCoverage(vec2 q, vec4 box) {
   float w = max(fwidth(dist), 1e-4);
   return 1.0 - smoothstep(0.0, 2.0 * w, dist);
 }
-vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
-  vec2 halfSize = 0.5 * size;
-  vec2 p = unit * size - halfSize;
+float clipCoverageOf(vec2 p, vec2 halfSize, vec4 clip, vec4 clipRadii) {
+  vec2 clipHalf = 0.5 * (clip.zw - clip.xy);
+  vec2 clipCenter = 0.5 * (clip.xy + clip.zw) - halfSize;
+  float clipRadius = p.x < clipCenter.x
+    ? (p.y < clipCenter.y ? clipRadii.x : clipRadii.w)
+    : (p.y < clipCenter.y ? clipRadii.y : clipRadii.z);
+  clipRadius = min(clipRadius, min(clipHalf.x, clipHalf.y));
+  return coverageOf(sdRoundedBox(p - clipCenter, max(clipHalf, vec2(0.0)), clipRadius));
+}
+float cornerRadius(vec2 p, vec2 halfSize, vec4 radii) {
   float radius = p.x < 0.0
     ? (p.y < 0.0 ? radii.x : radii.w)
     : (p.y < 0.0 ? radii.y : radii.z);
-  radius = min(radius, min(halfSize.x, halfSize.y));
+  return min(radius, min(halfSize.x, halfSize.y));
+}
+float ringCoverage(vec2 unit, vec2 size, vec4 radii, float width, float offset, vec4 clip, vec4 clipRadii) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
+  float radius = cornerRadius(p, halfSize, radii);
+  vec2 innerHalf = max(halfSize + offset, vec2(0.0));
+  vec2 outerHalf = max(halfSize + offset + width, vec2(0.0));
+  float innerRadius = radius > 0.0 ? clamp(radius + offset, 0.0, min(innerHalf.x, innerHalf.y)) : 0.0;
+  float outerRadius = radius > 0.0
+    ? clamp(radius + offset + width, 0.0, min(outerHalf.x, outerHalf.y))
+    : 0.0;
+  float ring = coverageOf(sdRoundedBox(p, outerHalf, outerRadius)) *
+               (1.0 - coverageOf(sdRoundedBox(p, innerHalf, innerRadius)));
+  return ring * clipCoverageOf(p, halfSize, clip, clipRadii);
+}
+vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
+  float radius = cornerRadius(p, halfSize, radii);
   float outer = sdRoundedBox(p, halfSize, radius);
   vec2 innerHalf = halfSize - 0.5 * vec2(border.w + border.y, border.x + border.z);
   vec2 innerCenter = 0.5 * vec2(border.w - border.y, border.x - border.z);
@@ -283,14 +309,7 @@ vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4
     p.y < 0.0 ? border.x : border.z
   ), 0.0);
   float inner = sdRoundedBox(p - innerCenter, max(innerHalf, vec2(0.0)), innerRadius);
-  vec2 clipHalf = 0.5 * (clip.zw - clip.xy);
-  vec2 clipCenter = 0.5 * (clip.xy + clip.zw) - halfSize;
-  float clipRadius = p.x < clipCenter.x
-    ? (p.y < clipCenter.y ? clipRadii.x : clipRadii.w)
-    : (p.y < clipCenter.y ? clipRadii.y : clipRadii.z);
-  clipRadius = min(clipRadius, min(clipHalf.x, clipHalf.y));
-  float clipped = sdRoundedBox(p - clipCenter, max(clipHalf, vec2(0.0)), clipRadius);
-  float clipCoverage = coverageOf(clipped);
+  float clipCoverage = clipCoverageOf(p, halfSize, clip, clipRadii);
   float coverage = coverageOf(outer) * clipCoverage;
   float fillness = coverageOf(inner) * clipCoverage;
   return vec2(min(fillness, coverage), max(coverage - fillness, 0.0));
@@ -410,6 +429,12 @@ export function createRectUniforms() {
     // has to be a box the element sits well inside of.
     uClip: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
     uClipRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+    // The outline: its width and offset in px, and its colour with the
+    // element's opacity in the alpha. Read by the panel's one batch alone,
+    // which draws the ring as an instance of its own (`paintBatch.js`); a
+    // box that draws itself draws none.
+    uOutline: { value: new THREE.Vector2(0, 0) },
+    uOutlineColor: { value: new THREE.Vector4(0, 0, 0, 0) },
     // No picture until something loads one. Three binds its own empty
     // texture for a null sampler, so the declaration costs an unused unit
     // and nothing else; the branch above is skipped for every box in the
@@ -563,6 +588,12 @@ export function writeRectUniforms(uniforms, properties) {
   uFillColor.value.set(fill.r, fill.g, fill.b, properties.backgroundAlpha);
   const border = properties.borderColor;
   uBorderColor.value.set(border.r, border.g, border.b, properties.borderAlpha);
+  const width = properties.outlineWidth;
+  uniforms.uOutline.value.set(width, width > 0 ? properties.outlineOffset : 0);
+  if (width > 0) {
+    const outline = properties.outlineColor;
+    uniforms.uOutlineColor.value.set(outline.r, outline.g, outline.b, properties.outlineAlpha);
+  }
 }
 
 /**

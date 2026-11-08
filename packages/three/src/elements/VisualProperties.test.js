@@ -191,6 +191,23 @@ describe("VisualProperties colours", () => {
     assert.equal(parseAlpha("color(srgb 1 0 0 / 0.25)"), 0.25);
   });
 
+  test("reads an outline, and none for an outline-style of none", () => {
+    const properties = propertiesOf({
+      outlineStyle: "dashed",
+      outlineWidth: "3px",
+      outlineColor: "rgba(255, 0, 0, 0.5)",
+      outlineOffset: "2px",
+    });
+    assert.equal(properties.outlineWidth, 3);
+    assert.equal(properties.outlineOffset, 2);
+    assert.equal(properties.outlineColor.getHex(), asThreeWouldParse("rgb(255, 0, 0)"));
+    assert.equal(properties.outlineAlpha, 0.5);
+    // A browser computes the width to 3px with no outline at all.
+    const none = propertiesOf({ outlineStyle: "none", outlineWidth: "3px" });
+    assert.equal(none.outlineWidth, 0);
+    assert.equal(propertiesOf({}).outlineWidth, 0);
+  });
+
   test("does not lighten a dark colour", () => {
     // The failure this guards against: taking the channels for linear values
     // turned a near-black card into mid grey, and every panel with it.

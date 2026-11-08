@@ -52,6 +52,9 @@ import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradi
  * @property {string} paddingBottom
  * @property {string} paddingLeft
  * @property {string} borderColor
+ * @property {string} outlineWidth Empty when `outline-style` is `none`.
+ * @property {string} outlineOffset
+ * @property {string} outlineColor
  * @property {string} textColor
  * @property {number} drawLevel
  * @property {number} band Where the draw level counts from
@@ -78,6 +81,10 @@ import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradi
  * @property {GradientLayout | null} backgroundGradient
  * @property {THREE.Color} borderColor
  * @property {number} borderAlpha
+ * @property {number} outlineWidth
+ * @property {number} outlineOffset
+ * @property {THREE.Color} outlineColor
+ * @property {number} outlineAlpha
  * @property {THREE.Color} textColor
  * @property {number} textAlpha
  * @property {number} drawLevel
@@ -331,6 +338,12 @@ export default class VisualProperties {
     // nobody.
     const backgroundImage = style.backgroundImage || "none";
     const hasImage = backgroundImage !== "none";
+    // The same for an outline: a browser computes `outline-width` to its
+    // `medium` 3px whatever the style, so `none` is read from the style, and
+    // only a box that has one reads the rest. jsdom computes no longhand
+    // until one is set, and an empty style is none.
+    const outlineStyle = style.outlineStyle || "none";
+    const hasOutline = outlineStyle !== "none";
     /** @type {RawVisualProperties} */
     const properties = {
       totalWidth: width,
@@ -360,6 +373,9 @@ export default class VisualProperties {
       paddingBottom: hasImage ? style.paddingBottom : "",
       paddingLeft: hasImage ? style.paddingLeft : "",
       borderColor: getDrawnBorderColor(style),
+      outlineWidth: hasOutline ? style.outlineWidth : "",
+      outlineOffset: hasOutline ? style.outlineOffset : "",
+      outlineColor: hasOutline ? style.outlineColor : "",
       textColor: style.color,
       // The element's, also for its `::before` or `::after`, whose quad
       // reads its own level from its stand-in (`generatedContent.js`).
@@ -609,6 +625,28 @@ export default class VisualProperties {
     return parseAlpha(this.#props.borderColor) * this.#props.opacity;
   }
 
+  /**
+   * The outline's width in px, 0 for a box with none. Every style but
+   * `none` is drawn, as a solid line.
+   */
+  get outlineWidth() {
+    return parseFloat(this.#props.outlineWidth) || 0;
+  }
+
+  /** How far outside the border edge the outline starts, in px. */
+  get outlineOffset() {
+    return parseFloat(this.#props.outlineOffset) || 0;
+  }
+
+  get outlineColor() {
+    const [outlineColor] = parseColor(this.#props.outlineColor);
+    return outlineColor;
+  }
+
+  get outlineAlpha() {
+    return parseAlpha(this.#props.outlineColor) * this.#props.opacity;
+  }
+
   get textColor() {
     const [textColor] = parseColor(this.#props.textColor);
     return textColor;
@@ -664,5 +702,9 @@ decorate(VisualProperties.prototype, "backgroundPicture", memo());
 decorate(VisualProperties.prototype, "backgroundPictureUrl", memo());
 decorate(VisualProperties.prototype, "borderColor", memo());
 decorate(VisualProperties.prototype, "borderAlpha", memo());
+decorate(VisualProperties.prototype, "outlineWidth", memo());
+decorate(VisualProperties.prototype, "outlineOffset", memo());
+decorate(VisualProperties.prototype, "outlineColor", memo());
+decorate(VisualProperties.prototype, "outlineAlpha", memo());
 decorate(VisualProperties.prototype, "textColor", memo());
 decorate(VisualProperties.prototype, "textAlpha", memo());

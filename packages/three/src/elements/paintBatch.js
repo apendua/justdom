@@ -3,14 +3,21 @@ import { GRADIENT_GLSL, rectGeometry, SDF_GLSL } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
-import { bandBase } from "./elevation.js";
+import { bandBase, PIECE_BAND } from "./elevation.js";
 import {
   createHalfPlaneUniforms,
   HALF_PLANES_FRAGMENT_GLSL,
   HALF_PLANES_VERTEX_GLSL,
   passHalfPlaneWorld,
 } from "./halfPlanes.js";
-import { BOX_BUCKET_BIAS, BoxBatch, writeBoxInstance } from "./boxBatch.js";
+import {
+  BOX_BUCKET_BIAS,
+  BoxBatch,
+  hasOutline,
+  setLanes,
+  writeBoxInstance,
+  writeOutlineInstance,
+} from "./boxBatch.js";
 import { TextBatch } from "./textBatch.js";
 import { isProxy } from "./layerOrder.js";
 import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
@@ -62,6 +69,15 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  */
 export const ARRAYS_PER_DRAW = 15;
 
+/**
+ * Where in its layer's band an outline's ring draws: after every level of
+ * the layer and everything at it, a quarter step short of the next band, so
+ * that a layer's rings draw over all of the layer and under the layers
+ * after it. In the order the walk met them among themselves, which is tree
+ * order.
+ */
+export const RING_PLACE = PIECE_BAND - BOX_BUCKET_BIAS / 2;
+
 /** How many instances a freshly grown draw has room for. */
 const MINIMUM_CAPACITY = 16;
 
@@ -82,6 +98,12 @@ const MINIMUM_CAPACITY = 16;
  * leave empty: `z` is a header packing the kind, three flags and the ramp
  * row into one integer-valued float (exact far past any row count a page
  * reaches), and `w` the box's opacity (`writeBoxInstance` in `boxBatch.js`).
+ *
+ * An outline is an instance of its own, a ring around its box, and no lane
+ * more: `aSize.w` at -1, an opacity no box has, says so, and its width and
+ * offset ride in `aBorder` (`writeOutlineInstance`). Its quad is the unit
+ * one grown by the ring's reach on every side, in the box's own unit
+ * coordinates, since the box's matrix carries its size.
  */
 const vertexShader = /* glsl */ `
 ${HALF_PLANES_VERTEX_GLSL}
@@ -122,7 +144,16 @@ void main() {
   vGradientTile = aGradientTile;
   vLayer = aGradientGeometry.x;
   vec2 local = position.xy;
-  if (aSize.z < -0.5) {
+  if (aSize.w < -0.5) {
+    // A ring. -2 in the slot, which no run or box has.
+    vSlot = -2;
+    float reach = max(aBorder.x + aBorder.y, 0.0);
+    vec2 size = max(aSize.xy, vec2(1e-6));
+    local = (position.xy * (size + 2.0 * reach) - reach) / size;
+    vUnit = local;
+    vGradient = vec4(0.0);
+    vGradientRamp = vec2(0.0);
+  } else if (aSize.z < -0.5) {
     vSlot = int(floor(-aSize.z - 0.5));
     // A run's quad is the unit one scaled to the run, where a box's
     // instance matrix carries its size.
@@ -202,6 +233,13 @@ ${sampleRuns}
       discard;
     }
     gl_FragColor = vec4(vFillColor.rgb, alpha);
+  } else if (vSlot == -2) {
+    float alpha = vBorderColor.a *
+      ringCoverage(vUnit, vSize, vRadii, vBorder.x, vBorder.y, vClip, vClipRadii);
+    if (alpha < 0.001) {
+      discard;
+    }
+    gl_FragColor = vec4(vBorderColor.rgb, alpha);
   } else {
     vec2 coverages = sdfCoverages(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii);
     float fillCoverage = coverages.x;
@@ -358,15 +396,15 @@ class Draw {
     const layer = /** @type {Slot} */ (run.shown).layer;
     const at = index * 4;
     const { data } = this;
-    setVec4(data.aSize, at, run.width, run.height, -1 - slot, 1);
-    setVec4(data.aFillColor, at, color.r, color.g, color.b, opacity);
-    setVec4(data.aClip, at, clip.x, clip.y, clip.z, clip.w);
-    setVec4(data.aGradientGeometry, at, layer, 0, 0, 0);
-    setVec4(data.aRadii, at, 0, 0, 0, 0);
-    setVec4(data.aBorder, at, 0, 0, 0, 0);
-    setVec4(data.aBorderColor, at, 0, 0, 0, 0);
-    setVec4(data.aClipRadii, at, 0, 0, 0, 0);
-    setVec4(data.aGradientTile, at, 0, 0, 0, 0);
+    setLanes(data.aSize, at, run.width, run.height, -1 - slot, 1);
+    setLanes(data.aFillColor, at, color.r, color.g, color.b, opacity);
+    setLanes(data.aClip, at, clip.x, clip.y, clip.z, clip.w);
+    setLanes(data.aGradientGeometry, at, layer, 0, 0, 0);
+    setLanes(data.aRadii, at, 0, 0, 0, 0);
+    setLanes(data.aBorder, at, 0, 0, 0, 0);
+    setLanes(data.aBorderColor, at, 0, 0, 0, 0);
+    setLanes(data.aClipRadii, at, 0, 0, 0, 0);
+    setLanes(data.aGradientTile, at, 0, 0, 0, 0);
   }
 
   /**
@@ -404,21 +442,6 @@ class Draw {
     this.#disposeMesh();
     this.material.dispose();
   }
-}
-
-/**
- * @param {Float32Array} array
- * @param {number} at
- * @param {number} x
- * @param {number} y
- * @param {number} z
- * @param {number} w
- */
-function setVec4(array, at, x, y, z, w) {
-  array[at] = x;
-  array[at + 1] = y;
-  array[at + 2] = z;
-  array[at + 3] = w;
 }
 
 /**
@@ -460,6 +483,8 @@ export class PaintBatch {
   #boxes = [];
   /** @type {(Member | null)[]} */
   #runs = [];
+  /** Whether the box at an index is drawn as its outline's ring. @type {boolean[]} */
+  #rings = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
   /** The indices into the above, in the order they draw. @type {number[]} */
@@ -625,6 +650,7 @@ export class PaintBatch {
     this.#orders.length = 0;
     this.#boxes.length = 0;
     this.#runs.length = 0;
+    this.#rings.length = 0;
     this.#breaks.length = 0;
     this.boxes.beginWalk();
     this.runs.beginWalk();
@@ -678,14 +704,13 @@ export class PaintBatch {
     const box = this.boxes.take(mesh);
     const run = box ? null : this.runs.take(mesh);
     if (box || run) {
-      const index = this.#orders.length;
-      this.#orders.push(box ? mesh.renderOrder + BOX_BUCKET_BIAS : mesh.renderOrder);
-      this.#boxes.push(box);
-      this.#runs.push(run);
-      if (!this.#matrices[index]) {
-        this.#matrices[index] = new THREE.Matrix4();
+      const order = box ? mesh.renderOrder + BOX_BUCKET_BIAS : mesh.renderOrder;
+      this.#take(order, box, run, false, matrix);
+      if (box && hasOutline(box)) {
+        // Over everything else in the box's layer, as a page paints an
+        // outline last in its stacking context.
+        this.#take(bandBase(order) + RING_PLACE, box, null, true, matrix);
       }
-      this.#matrices[index].copy(matrix);
     } else if (drawsItself(object)) {
       this.#breaks.push(object.renderOrder);
     }
@@ -693,6 +718,27 @@ export class PaintBatch {
     for (let i = 0; i < children.length; i++) {
       this.#walk(children[i], matrix, depth + 1);
     }
+  }
+
+  /**
+   * Note an instance the walk met.
+   *
+   * @param {number} order
+   * @param {Record<string, THREE.IUniform> | null} box
+   * @param {Member | null} run
+   * @param {boolean} ring
+   * @param {THREE.Matrix4} matrix
+   */
+  #take(order, box, run, ring, matrix) {
+    const index = this.#orders.length;
+    this.#orders.push(order);
+    this.#boxes.push(box);
+    this.#runs.push(run);
+    this.#rings.push(ring);
+    if (!this.#matrices[index]) {
+      this.#matrices[index] = new THREE.Matrix4();
+    }
+    this.#matrices[index].copy(matrix);
   }
 
   /**
@@ -720,6 +766,12 @@ export class PaintBatch {
           slot = draw.classes.push(sizeClass) - 1;
         }
         draw.writeRun(index, run, slot);
+      } else if (this.#rings[i]) {
+        writeOutlineInstance(
+          draw.data,
+          index,
+          /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]),
+        );
       } else {
         writeBoxInstance(
           draw.data,

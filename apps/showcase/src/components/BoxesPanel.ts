@@ -52,6 +52,25 @@ const swatchCircle = className`
   border-radius: 50%;
 `;
 
+/**
+ * Outlines are rings outside the border box, with no room in the layout: the
+ * offset one stands clear of its box, the negative one cuts into it, and the
+ * round one follows its radius out.
+ */
+const ringed = className`
+  outline: 3px solid rgb(240, 170, 60);
+`;
+
+const ringedOffset = className`
+  outline: 2px solid rgb(221, 64, 104);
+  outline-offset: 4px;
+`;
+
+const ringedInside = className`
+  outline: 3px solid rgb(255, 255, 255);
+  outline-offset: -8px;
+`;
+
 const fadedStyle = className`
   opacity: 0.6;
 `;
@@ -135,6 +154,16 @@ const BoxesPanel = component((_ctx: WeakKey) => {
           $("div", [set("className", swatchOutlined)]),
           $("div", [set("className", swatchPill)]),
           $("div", [set("className", swatchCircle)]),
+        ),
+      ]),
+      $("p", [set("className", captionStyle), children(text`outline and outline-offset`)]),
+      $("div", [
+        set("className", rowStyle),
+        children(
+          $("div", [set("className", classes(swatchSquare, ringed))]),
+          $("div", [set("className", classes(swatchRounded, ringedOffset))]),
+          $("div", [set("className", classes(swatchRounded, ringedInside))]),
+          $("div", [set("className", classes(swatchCircle, ringedOffset))]),
         ),
       ]),
       $("p", [set("className", captionStyle), children(text`opacity & visibility`)]),

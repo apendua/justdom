@@ -128,6 +128,60 @@ export function writeBoxInstance(data, index, uniforms) {
 }
 
 /**
+ * Whether a box's numbers say it has an outline the batch has to draw.
+ *
+ * @param {Record<string, THREE.IUniform>} uniforms
+ * @returns {boolean}
+ */
+export function hasOutline(uniforms) {
+  return uniforms.uOutline.value.x > 0 && uniforms.uOutlineColor.value.w > 0;
+}
+
+/**
+ * Write a box's outline into the arrays of an instance of its own: a ring
+ * drawn around the box, with the box's matrix, size, radii and clip, which
+ * is all a ring needs and so no lane more than a box has. `aSize.w`, a
+ * box's opacity, is -1, which no box has: that is what says this instance
+ * is a ring (`vertexShader` in `paintBatch.js`). The outline's width and
+ * offset ride in `aBorder`, its colour, opacity folded in, in
+ * `aBorderColor`.
+ *
+ * @param {Record<string, Float32Array>} data
+ * @param {number} index
+ * @param {Record<string, THREE.IUniform>} uniforms The box's numbers.
+ * @returns {void}
+ */
+export function writeOutlineInstance(data, index, uniforms) {
+  const { uSize, uRadii, uOutline, uOutlineColor, uClip, uClipRadii } = uniforms;
+  const at = index * 4;
+  setLanes(data.aSize, at, uSize.value.x, uSize.value.y, 0, -1);
+  writeVec4(data.aRadii, index, uRadii.value);
+  setLanes(data.aBorder, at, uOutline.value.x, uOutline.value.y, 0, 0);
+  writeVec4(data.aBorderColor, index, uOutlineColor.value);
+  setLanes(data.aFillColor, at, 0, 0, 0, 0);
+  writeVec4(data.aClip, index, uClip.value);
+  writeVec4(data.aClipRadii, index, uClipRadii.value);
+  setLanes(data.aGradientGeometry, at, 0, 0, 0, 0);
+  setLanes(data.aGradientTile, at, 0, 0, 0, 0);
+}
+
+/**
+ * @param {Float32Array} array
+ * @param {number} at
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @param {number} w
+ * @returns {void}
+ */
+export function setLanes(array, at, x, y, z, w) {
+  array[at] = x;
+  array[at + 1] = y;
+  array[at + 2] = z;
+  array[at + 3] = w;
+}
+
+/**
  * @param {Float32Array} array
  * @param {number} index
  * @param {THREE.Vector4} value

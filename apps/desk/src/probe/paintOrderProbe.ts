@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { render, createXRButton, children, cursors, $, dom, getScene } from "justdom-three";
 import { inputModels } from "justdom-xr/scene";
+import { installEmulator } from "justdom-xr/offer";
 import { canPresent } from "justdom-xr/session";
 import { effects, effectsOnly, Stream, useEffects } from "justdom-signal";
 import { captureEyes, countLinks, record, type EyeImage, type Run } from "./recorder.js";
@@ -293,10 +294,7 @@ const probeScene = effectsOnly((ctx: WeakKey) => {
 });
 
 async function start(): Promise<void> {
-  if (query.has("emulator")) {
-    const { install } = await import("justdom-xr/emulator");
-    install({ devUI: query.get("emulator") !== "bare" });
-  }
+  await installEmulator();
   if (!(await canPresent())) {
     say("This browser cannot present a session.");
     return;

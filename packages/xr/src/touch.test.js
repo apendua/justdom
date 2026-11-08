@@ -328,6 +328,42 @@ describe("installTouch", () => {
   /** Where the head looks. */
   const headAhead = () => aheadOf(quaternion(headset.quaternion));
 
+  /** Where the right controller's ray points, as the head sees it. */
+  const rayFromHead = () => rightRay().applyQuaternion(quaternion(headset.quaternion).invert());
+
+  /**
+   * A finger moved a pixel off (`x`, `y`) and back, a dozen times: twice
+   * `SLOP_PX` travelled, never more than a pixel from where it started.
+   *
+   * @param {number} x
+   * @param {number} y
+   */
+  function jitter(x, y) {
+    for (let i = 0; i < SLOP_PX; i += 1) {
+      finger("pointermove", x + 1, y);
+      finger("pointermove", x, y);
+    }
+  }
+
+  /**
+   * The phone held as `alpha`, `beta`, turning **Tilt** on first if it is
+   * off.
+   *
+   * @param {number} alpha
+   * @param {number} beta
+   */
+  function tilt(alpha, beta) {
+    const button = [...layer.querySelectorAll("button")].find((b) =>
+      b.textContent?.startsWith("Tilt"),
+    );
+    if (button?.textContent === "Tilt off") {
+      button.click();
+    }
+    window.dispatchEvent(
+      Object.assign(new window.Event("deviceorientation"), { alpha, beta, gamma: 0 }),
+    );
+  }
+
   /** Whether the right controller is parked: under the head, pointing down. */
   const rightParked = () => rightRay().y < -0.99 && headset.controllers.right.position.y < 1.6;
 
@@ -337,6 +373,7 @@ describe("installTouch", () => {
       KeyboardEvent: window.KeyboardEvent,
       innerWidth: viewport.width,
       innerHeight: viewport.height,
+      screen: { orientation: { angle: 0 } },
       requestAnimationFrame: (/** @type {FrameRequestCallback} */ callback) =>
         frameQueue.push(callback),
     });
@@ -439,8 +476,17 @@ describe("installTouch", () => {
       frames(STEP_FRAMES);
       session?.dispatchEvent(new Event("end"));
       frames(3 * STEP_FRAMES);
-      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "squeeze 0"]);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
       assert.ok(rightParked());
+    });
+
+    it("is still a tap after the finger jitters in place past the slop's length", () => {
+      finger("pointerdown", 200, 400);
+      jitter(200, 400);
+      finger("pointerup", 200, 400);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+      near(headAhead().x, 0);
     });
 
     it("is not a tap when the browser cancels the touch", () => {
@@ -497,6 +543,25 @@ describe("installTouch", () => {
       near(rightRay().y, 0);
     });
 
+    it("lifted after jittering in place past the slop's length, is still the grip", () => {
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      jitter(200, 400);
+      finger("pointerup", 200, 400);
+      frames(2 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "squeeze 0"]);
+    });
+
+    it("keeps the ray on the landing point through a tilt", () => {
+      finger("pointerdown", 200, 0);
+      mock.timers.tick(HOLD_MS);
+      tilt(0, 60);
+      tilt(30, 40);
+      assert.ok(Math.abs(headAhead().x) > 0.1, "the tilt turned the head");
+      near(Math.asin(rayFromHead().y), fovy / 2);
+      near(rayFromHead().x, 0);
+    });
+
     it("lifted without moving, is a press of the grip, then parks", () => {
       finger("pointerdown", 200, 400);
       mock.timers.tick(HOLD_MS);
@@ -543,11 +608,11 @@ describe("installTouch", () => {
       session?.dispatchEvent(new Event("end"));
       assert.equal(layer.style.display, "none");
       assert.ok(rightParked());
-      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "squeeze 0"]);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
       // The finger is forgotten: its lift does nothing.
       finger("pointerup", 200, 400);
       frames(3 * STEP_FRAMES);
-      assert.equal(headset.controllers.right.buttons.length, 3);
+      assert.equal(headset.controllers.right.buttons.length, 2);
     });
   });
 
@@ -599,6 +664,36 @@ describe("installTouch", () => {
       near(Math.asin(rightRay().y), fovy / 2);
       near(headAhead().y, 0);
       near(headAhead().x, 0);
+    });
+
+    it("moves the ray under the finger the step after the trigger, before it moves again", () => {
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      finger("pointermove", 200, 0);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+      near(rightRay().y, 0);
+      frames(STEP_FRAMES);
+      near(Math.asin(rightRay().y), fovy / 2);
+    });
+
+    it("keeps the ray under the finger through a tilt", () => {
+      dragFrom();
+      frames(STEP_FRAMES);
+      finger("pointermove", 200, 0);
+      tilt(0, 60);
+      tilt(30, 40);
+      assert.ok(Math.abs(headAhead().x) > 0.1, "the tilt turned the head");
+      near(Math.asin(rayFromHead().y), fovy / 2);
+      near(rayFromHead().x, 0);
+    });
+
+    it("cancelled by the browser before the trigger went down, presses nothing and parks", () => {
+      dragFrom();
+      finger("pointercancel", 200 + 2 * SLOP_PX, 400);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      assert.ok(rightParked());
     });
 
     it("lets the trigger go on the lift, then parks a step later", () => {

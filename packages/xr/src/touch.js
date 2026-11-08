@@ -262,10 +262,12 @@ const afterStep = (then) => {
 
 /**
  * The finger on the scene, if one is. It is `undecided` from the touch
- * until it has moved `SLOP_PX` (a `look`), stayed still for `HOLD_MS` (a
- * `hold`) or lifted (a tap), or until a second finger lands while it is
- * undecided or a look (a `pinch`). A hold becomes a `drag` once it has
- * moved `SLOP_PX` in all, and its lift without that is a long press.
+ * until it is more than `SLOP_PX` from where it landed (a `look`), stayed
+ * within that for `HOLD_MS` (a `hold`) or lifted (a tap), or until a second
+ * finger lands while it is undecided or a look (a `pinch`). A hold becomes
+ * a `drag` once it is more than `SLOP_PX` from where it landed, and its
+ * lift before that is a long press. A finger that jitters in place stays
+ * within the slop however far it has travelled.
  * `press` is the hold's, and null for a hold that came while the controller
  * was busy, which then does nothing. A finger of a pinch that has ended
  * stays a `pinch`, and does nothing until it lifts.
@@ -276,7 +278,6 @@ const afterStep = (then) => {
  * @property {number} y
  * @property {{ x: number, y: number }} landed Where it touched down: where
  *   a hold aims, and so where a drag and a long press press.
- * @property {number} moved How far it has moved in all, in CSS pixels.
  * @property {"undecided" | "look" | "hold" | "drag" | "pinch"} kind
  * @property {ReturnType<typeof setTimeout>} timer
  * @property {Press | null} press
@@ -312,12 +313,13 @@ const afterStep = (then) => {
  *   there, whatever the finger does within `SLOP_PX`, so a small target
  *   under it stays under it; a tilt keeps the ray on that point of the
  *   screen.
- * - A hold that then moves `SLOP_PX` in all, counted from the touch, is a
- *   drag: a step later the trigger goes down where the ray rests, and from
- *   the step after, the ray follows the finger until it lifts or the
- *   browser cancels it, which lets the trigger go and parks the controller
- *   a step later. A drag lifted before its trigger has gone down keeps the
- *   trigger down for a step, so the app sees the press.
+ * - A hold whose finger then gets more than `SLOP_PX` from where it
+ *   landed is a drag: a step later the trigger goes down where the ray
+ *   rests, and from the step after, the ray follows the finger until it
+ *   lifts or the browser cancels it, which lets the trigger go and parks
+ *   the controller a step later. A drag lifted before its trigger has gone
+ *   down keeps the trigger down for a step, so the app sees the press; one
+ *   the browser cancels by then presses nothing and parks.
  * - A hold that lifts without moving is a long press: a step later the
  *   grip goes down where the ray rests, a step after it comes up, and a
  *   step after that the controller parks. A hold the browser cancels
@@ -520,23 +522,44 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   const pressDown = (run, button) => {
     run.button = button;
     step(run, () => {
-      headset.controllers.right?.updateButtonValue(button, 1);
+      // Cancelled by the browser before it went down: `letGo` parks it.
+      if (!run.button) {
+        return;
+      }
+      headset.controllers.right?.updateButtonValue(run.button, 1);
       run.held = true;
-      // A finger that lifted while the button was going down: it stays
-      // down for a step, so the app sees it pressed before it comes up.
       if (run.lifted) {
+        // A finger that lifted while the button was going down: it stays
+        // down for a step, so the app sees it pressed before it comes up.
         step(run, () => release(run));
+      } else {
+        // A drag's trigger, pressed where the ray rested: from the next
+        // step the ray is under the finger, moving or not.
+        step(run, () => {
+          const at = aimedAt(finger);
+          if (at) {
+            aimThrough(at.x, at.y);
+          }
+        });
       }
     });
   };
 
-  /** @param {Press} run */
-  const letGo = (run) => {
+  /**
+   * The finger is off the screen: what its press has down comes up, and a
+   * press with nothing down yet parks, unless it is a lift that a button
+   * is still going down for (`pressDown` sees to that one).
+   *
+   * @param {Press} run
+   * @param {boolean} cancelled Whether the browser cancelled the finger,
+   *   which presses nothing that has not gone down yet.
+   */
+  const letGo = (run, cancelled) => {
     run.lifted = true;
     if (run.held) {
       release(run);
-    } else if (run.button === null) {
-      // A hold that never chose a button: nothing to let go of.
+    } else if (run.button === null || cancelled) {
+      run.button = null;
       done(run);
     }
   };
@@ -573,7 +596,6 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       x: event.clientX,
       y: event.clientY,
       landed: { x: event.clientX, y: event.clientY },
-      moved: 0,
       kind: "undecided",
       press: null,
     });
@@ -606,11 +628,11 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     const dy = event.clientY - finger.y;
     finger.x = event.clientX;
     finger.y = event.clientY;
-    finger.moved += Math.hypot(dx, dy);
-    if (finger.kind === "undecided" && finger.moved > SLOP_PX) {
+    const away = Math.hypot(finger.x - finger.landed.x, finger.y - finger.landed.y) > SLOP_PX;
+    if (finger.kind === "undecided" && away) {
       finger.kind = "look";
       clearTimeout(finger.timer);
-    } else if (finger.kind === "hold" && finger.moved > SLOP_PX) {
+    } else if (finger.kind === "hold" && away) {
       finger.kind = "drag";
       if (finger.press === press && finger.press) {
         pressDown(finger.press, "trigger");
@@ -648,7 +670,7 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
         finger.press.lifted = true;
         pressDown(finger.press, "squeeze");
       } else {
-        letGo(finger.press);
+        letGo(finger.press, event.type === "pointercancel");
       }
     }
     finger = null;
@@ -675,9 +697,9 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     pinch = null;
     headset.fovy = wide;
     if (press) {
-      const controller = headset.controllers.right;
-      controller?.updateButtonValue("trigger", 0);
-      controller?.updateButtonValue("squeeze", 0);
+      if (press.button) {
+        headset.controllers.right?.updateButtonValue(press.button, 0);
+      }
       press = null;
       park();
     }

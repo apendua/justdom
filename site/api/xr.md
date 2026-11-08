@@ -68,21 +68,23 @@ it after `install` and before the page asks for a session. `offerHeadset` does b
 
 A finger on the scene is undecided until it does one of four things:
 
-- **Look.** Moving more than 10 CSS px turns the head: the scene follows the finger, by the angle
-  the screen shows over that many pixels, and the head never tips past 1.4 rad up or down. A look
-  presses nothing.
+- **Look.** Moving more than 10 CSS px from where it landed turns the head: the scene follows the
+  finger, by the angle the screen shows over that many pixels, and the head never tips past 1.4 rad
+  up or down. A look presses nothing.
 - **Tap.** Lifting within 10 px aims the right controller through the tapped pixel, from just behind
   the eye, and pulls its trigger: aim, 4 frames, trigger down, 4 frames, trigger up, 4 frames, then
   the controller is parked again. A tap that lands while the last one is still running is dropped.
 - **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way and
   presses nothing yet. What the finger does next decides the press:
-  - **Drag.** Moving more than 10 px in all, counted from the touch, pulls the trigger 4 frames
-    later where the finger landed. From then on the ray follows the finger, the head stays where it
-    is, and the lift, or the browser's cancel, lets the trigger go and parks the controller 4 frames
-    after. A finger lifted before the trigger went down keeps it down for 4 frames, so the app sees
-    the press. This is what drags a panel's rows, cards and handles, and `drag()`'s things.
-  - **Long press.** Lifting without moving presses the grip: 4 frames, grip down, 4 frames, grip up,
-    4 frames, parked. That is the right button on a panel, a `contextmenu`.
+  - **Drag.** Moving more than 10 px from where it landed pulls the trigger 4 frames later where the
+    finger landed, and a finger that only jitters in place never gets that far. From 4 frames after
+    the trigger the ray follows the finger, the head stays where it is, and the lift, or the
+    browser's cancel, lets the trigger go and parks the controller 4 frames after. A finger lifted
+    before the trigger went down keeps it down for 4 frames, so the app sees the press; one the
+    browser cancels by then presses nothing. This is what drags a panel's rows, cards and handles,
+    and `drag()`'s things.
+  - **Long press.** Lifting within 10 px presses the grip: 4 frames, grip down, 4 frames, grip up, 4
+    frames, parked. That is the right button on a panel, a `contextmenu`.
 
   A hold never turns the head. A hold that starts while a tap is still running is dropped the same
   way: the finger then turns nothing and its lift presses nothing. A hold the browser cancels

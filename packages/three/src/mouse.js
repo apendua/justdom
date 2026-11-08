@@ -97,9 +97,9 @@ export const PITCH_LIMIT = 1.4;
  * A finger. It has no hover, so the group is shown from the moment it
  * lands and hidden again when it lifts. One finger drives it at a time:
  * another that lands while the first is down is ignored, unless it starts
- * a pinch (below). What the first
- * one presses is decided by how it moves after landing, and until that is
- * decided the group stays aimed where it landed:
+ * a pinch (below). What the first one presses is decided by how it moves
+ * after landing, and until that is decided the group stays aimed where it
+ * landed:
  *
  * - moving more than `SLOP_PX` makes it the trigger, pressed where it
  *   landed and then dragged with the finger;
@@ -135,7 +135,10 @@ export const PITCH_LIMIT = 1.4;
  * rolled back, towards you, it pushes it further off. It moves it by
  * `WHEEL_METRES_PER_PIXEL`, and never nearer than `MIN_REACH`. A `carry`
  * pins what it holds at its own distance and is not among the children, so
- * the wheel leaves it alone.
+ * the wheel leaves it alone. A hand reaches into the room and the mouse
+ * cannot, so this is how a thing picked up with the mouse is put down
+ * further off or nearer. While the group holds nothing the wheel is the
+ * page's, and scrolls it as ever.
  *
  * The pinch, the wheel of a touch screen. A second finger that lands while
  * the first holds a press and the group holds something starts one; at any
@@ -145,10 +148,7 @@ export const PITCH_LIMIT = 1.4;
  * half the distance, as a pinch zooms in; close them and it goes further
  * off, never nearer than `MIN_REACH`. The first finger still aims the
  * group as it moves. The second finger's lift or cancel ends the pinch and
- * nothing else; the first's ends the press and the pinch with it. A hand reaches into the room and the
- * mouse cannot, so this is how a thing picked up with the mouse is put
- * down further off or nearer. While the group holds nothing the wheel is
- * the page's, and scrolls it as ever.
+ * nothing else; the first's ends the press and the pinch with it.
  *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.
@@ -304,7 +304,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     finger && pinch ? Math.hypot(pinch.x - finger.now.x, pinch.y - finger.now.y) : 0;
 
   /** Bring the held things nearer by as much as the fingers spread. */
-  const squeezeReach = () => {
+  const pinchReach = () => {
     if (!pinch) {
       return;
     }
@@ -348,7 +348,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     if (pinch && event.pointerId === pinch.id) {
       pinch.x = event.clientX;
       pinch.y = event.clientY;
-      squeezeReach();
+      pinchReach();
       return;
     }
     if (!finger || event.pointerId !== finger.id) {
@@ -366,7 +366,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     }
     turn(event);
     aim(event);
-    squeezeReach();
+    pinchReach();
   };
   const onLeave = (/** @type {PointerEvent} */ event) => {
     if (event.pointerType !== "touch") {

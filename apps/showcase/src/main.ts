@@ -30,6 +30,13 @@ const asked = query.get("panel");
 const textureAsked = query.get("panels") === "texture";
 const panels = textureAsked && canDrawHtmlInCanvas() ? "texture" : "mirror";
 
+/**
+ * `?pointer` lets the mouse and a finger work the panels on the page, with
+ * no session: `render()`'s `pointer` option, with a drag on nothing turning
+ * the camera (`look: "orbit"`). Off by default while it is tried out.
+ */
+const pointer = query.has("pointer") && ({ look: "orbit" } as const);
+
 const initial: PanelId | "all" = asked === "all" ? "all" : (findPanel(asked) ?? PANELS[0]).id;
 
 const onShow = (id: PanelId) => {
@@ -111,7 +118,7 @@ Promise.resolve(
       onShow: id === "all" ? undefined : onShow,
       panels,
     });
-    render(scene).subscribe({
+    render(scene, { pointer }).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },

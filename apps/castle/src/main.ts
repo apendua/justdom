@@ -40,6 +40,10 @@ Promise.resolve(
   })
   .then(() => {
     render(App, {
+      // `?pointer` lets the mouse and a finger play on the page, with no
+      // session, a drag on nothing turning the camera. Off by default while
+      // it is tried out.
+      pointer: query.has("pointer") && { look: "orbit" },
       createControllerModel,
       onBeforeRender: () => {
         stats.begin();

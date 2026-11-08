@@ -1,8 +1,8 @@
-import { describe, test, beforeEach } from "node:test";
+import { describe, test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { followMouse, mouse } from "./mouse.js";
+import { followMouse, HOLD_MS, mouse, SLOP_PX } from "./mouse.js";
 import { CameraContext, RendererContext, runFrame } from "./render.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
@@ -38,7 +38,15 @@ function modelAhead(manager) {
   manager.add(target);
   /** @type {string[]} */
   const events = [];
-  for (const type of /** @type {const} */ (["pointerenter", "select", "selectmissed"])) {
+  for (const type of /** @type {const} */ ([
+    "pointerenter",
+    "selectstart",
+    "select",
+    "selectmissed",
+    "squeezestart",
+    "squeeze",
+    "squeezemissed",
+  ])) {
     target.addEventListener(type, () => events.push(type));
   }
   return events;
@@ -53,7 +61,60 @@ function modelAhead(manager) {
  * @param {number} [clientY]
  */
 function pointer(type, clientX = 50, clientY = 50) {
-  return Object.assign(new Event(type), { clientX, clientY, button: 0 });
+  return Object.assign(new Event(type, { bubbles: true }), { clientX, clientY, button: 0 });
+}
+
+/**
+ * The same with the right button.
+ *
+ * @param {string} type
+ */
+function rightButton(type) {
+  return Object.assign(pointer(type), { button: 2 });
+}
+
+/**
+ * A finger's event: a touch pointer, the first finger down unless `id` says
+ * otherwise.
+ *
+ * @param {string} type
+ * @param {number} [clientX]
+ * @param {number} [clientY]
+ * @param {number} [id]
+ */
+function finger(type, clientX = 50, clientY = 50, id = 1) {
+  return Object.assign(pointer(type, clientX, clientY), {
+    pointerType: "touch",
+    pointerId: id,
+    isPrimary: id === 1,
+  });
+}
+
+/**
+ * A group following `canvas`, registered with a manager that casts on
+ * `loop`, and the events a box straight ahead of it hears.
+ *
+ * @param {HTMLElement} canvas
+ * @param {HTMLElement} view
+ */
+function pointedAt(canvas, view) {
+  const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
+  const stop = followMouse(
+    group,
+    new THREE.PerspectiveCamera(),
+    canvas,
+    /** @type {Window} */ (/** @type {unknown} */ (view)),
+  );
+  const manager = new InteractionManager();
+  const loop = fakeFrameLoop();
+  manager
+    .addController(
+      /** @type {THREE.XRTargetRaySpace} */ (/** @type {unknown} */ (group)),
+      loop.onAnimationFrame,
+    )
+    .subscribe();
+  const events = modelAhead(manager);
+  return { group, stop, loop, events };
 }
 
 describe("the mouse's stand-in controller", () => {
@@ -135,7 +196,139 @@ describe("the mouse's stand-in controller", () => {
     canvas.dispatchEvent(pointer("pointerleave"));
     view.dispatchEvent(pointer("pointerup"));
 
-    assert.deepEqual(events, ["pointerenter", "selectmissed"]);
+    assert.deepEqual(events, ["pointerenter", "selectstart", "selectmissed"]);
+  });
+});
+
+describe("the mouse's right button", () => {
+  test("is the grip: a press and release on a model squeeze it", () => {
+    const canvas = pageCanvas();
+    const view = document.createElement("div");
+    view.append(canvas);
+    const { loop, events } = pointedAt(canvas, view);
+    canvas.dispatchEvent(pointer("pointermove"));
+    loop.run();
+    canvas.dispatchEvent(rightButton("pointerdown"));
+    // Heard on the view, where it bubbles to.
+    canvas.dispatchEvent(rightButton("pointerup"));
+    assert.deepEqual(events, ["pointerenter", "squeezestart", "squeeze"]);
+  });
+
+  test("opens no context menu on the canvas while it follows, and does once it stops", () => {
+    const canvas = pageCanvas();
+    const view = document.createElement("div");
+    const { stop } = pointedAt(canvas, view);
+    const menu = new Event("contextmenu", { cancelable: true });
+    canvas.dispatchEvent(menu);
+    assert.equal(menu.defaultPrevented, true);
+    stop();
+    const after = new Event("contextmenu", { cancelable: true });
+    canvas.dispatchEvent(after);
+    assert.equal(after.defaultPrevented, false);
+  });
+});
+
+describe("a finger on the canvas", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {HTMLElement} */
+  let view;
+  /** @type {ReturnType<typeof pointedAt>} */
+  let at;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    canvas = pageCanvas();
+    view = document.createElement("div");
+    view.append(canvas);
+    at = pointedAt(canvas, view);
+  });
+
+  afterEach(() => {
+    at.stop();
+    mock.timers.reset();
+  });
+
+  test("keeps the browser's pan and zoom off the canvas until it stops", () => {
+    canvas.style.touchAction = "pan-y";
+    const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
+    const stop = followMouse(group, new THREE.PerspectiveCamera(), canvas);
+    assert.equal(canvas.style.touchAction, "none");
+    stop();
+    assert.equal(canvas.style.touchAction, "pan-y");
+  });
+
+  test("taps: lifted where it landed, before the hold, it selects", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    assert.equal(at.group.visible, true);
+    canvas.dispatchEvent(finger("pointerup"));
+    assert.deepEqual(at.events, ["selectstart", "select"]);
+    // No hover on a touch screen: the ray goes with the finger.
+    assert.equal(at.group.visible, false);
+  });
+
+  test("taps when it wanders no further than the slop", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    canvas.dispatchEvent(finger("pointermove", 50 + SLOP_PX, 50));
+    canvas.dispatchEvent(finger("pointerup", 50 + SLOP_PX, 50));
+    assert.deepEqual(at.events, ["selectstart", "select"]);
+  });
+
+  test("held still, grips what it landed on, and lets go when it lifts", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS - 1);
+    assert.deepEqual(at.events, []);
+    mock.timers.tick(1);
+    assert.deepEqual(at.events, ["squeezestart"]);
+    canvas.dispatchEvent(finger("pointerup"));
+    assert.deepEqual(at.events, ["squeezestart", "squeeze"]);
+  });
+
+  test("dragged, presses the trigger where it landed, not where the drag has got to", () => {
+    // Lands on the model, then leaves it for the edge of the canvas: the
+    // press is the model's, and the release off it is a miss.
+    canvas.dispatchEvent(finger("pointerdown"));
+    canvas.dispatchEvent(finger("pointermove", 100, 0));
+    assert.deepEqual(at.events, ["selectstart"]);
+    canvas.dispatchEvent(finger("pointerup", 100, 0));
+    assert.deepEqual(at.events, ["selectstart", "selectmissed"]);
+    // And no hold comes after a drag.
+    mock.timers.tick(HOLD_MS);
+    assert.deepEqual(at.events, ["selectstart", "selectmissed"]);
+  });
+
+  test("dragged from nothing onto the model, presses nothing", () => {
+    canvas.dispatchEvent(finger("pointerdown", 0, 0));
+    canvas.dispatchEvent(finger("pointermove", 50, 50));
+    canvas.dispatchEvent(finger("pointerup", 50, 50));
+    assert.deepEqual(at.events, []);
+  });
+
+  test("ignores a second finger while the first is down", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    canvas.dispatchEvent(finger("pointerdown", 0, 0, 2));
+    canvas.dispatchEvent(finger("pointermove", 0, 0, 2));
+    canvas.dispatchEvent(finger("pointerup", 0, 0, 2));
+    assert.deepEqual(at.events, []);
+    canvas.dispatchEvent(finger("pointerup"));
+    assert.deepEqual(at.events, ["selectstart", "select"]);
+  });
+
+  test("cancelled by the browser mid-grip, lets go as a hand that went", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS);
+    canvas.dispatchEvent(finger("pointercancel"));
+    assert.deepEqual(at.events, ["squeezestart", "squeezemissed"]);
+    assert.equal(at.group.visible, false);
+  });
+
+  test("cancelled before anything was decided, presses nothing, then or later", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    canvas.dispatchEvent(finger("pointercancel"));
+    mock.timers.tick(HOLD_MS);
+    canvas.dispatchEvent(finger("pointerup"));
+    assert.deepEqual(at.events, []);
+    assert.equal(at.group.visible, false);
   });
 });
 

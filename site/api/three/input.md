@@ -89,11 +89,20 @@ controller's current `THREE.Intersection`, for a snapping preview, a measurement
 
 ### Pointing with the mouse
 
-The manager casts only from XR controllers, so a scene that is also a page puts `mouse(ctx)` among
-the scene's children: a group parked at the camera and turned to face the point under the mouse on
-every move over the canvas, registered with the manager as one more controller. A left press and
-release on the canvas are its `selectstart`, `selectend` and `select`, so anything that answers a
-ray answers the mouse, and `cursors(ctx)` puts the hover mark on the page too.
+The manager casts only from XR controllers, so a scene that is also a page stands the mouse in for
+one: a group parked at the camera and turned to face the point under the mouse on every move over
+the canvas, registered with the manager as one more controller. Anything that answers a ray answers
+the mouse, and `cursors(ctx)` puts the hover mark on the page too. `render(fn, { pointer: true })`
+mounts it for the whole scene:
+
+```js
+import { render } from "justdom-three";
+
+render(app, { pointer: true });
+```
+
+A scene can also put `mouse(ctx)` among its children itself, which is the same group. It does one or
+the other, or the page has two mice.
 
 ```js
 import { useEffects } from "justdom-signal";
@@ -102,6 +111,15 @@ import { children, cursors, getScene, mouse } from "justdom-three";
 useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
 ```
 
+- The left button is the trigger: a press and release on the canvas are `selectstart`, `selectend`
+  and `select`. The right button is the grip, `squeezestart`, `squeezeend` and `squeeze`, and the
+  canvas opens no context menu.
+- A finger on a touch screen drives it too, one finger at a time. A finger has no hover, so the ray
+  is there from the moment it lands until it lifts. Lifted within 10 px before 400 ms, it is a tap
+  of the trigger. Moved more than 10 px, it presses the trigger where it landed and drags. Held
+  within 10 px for 400 ms, it presses the grip where it landed and drags. A finger the browser
+  cancels ends its press as a miss that says `lost`, as a hand that went does. The canvas has
+  `touch-action: none` meanwhile, so a drag is not a scroll.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,

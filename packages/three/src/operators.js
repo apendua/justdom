@@ -37,11 +37,14 @@ function teardown(fn) {
 }
 
 /**
+ * Mount each component `child` emits under `parent`, the one before it
+ * coming off first.
+ *
  * @param {Object3D<any>} parent
  * @param {Subscribable<Component>} child
  * @return {Source<never>}
  */
-function addToParent(parent, child) {
+export function addToParent(parent, child) {
   // No `distinctUntilChanged` in front of this: a node-backed child already
   // stops at the value it was holding, and every other one hands back a
   // component object built afresh per emission, which no comparison collapses.

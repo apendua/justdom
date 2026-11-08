@@ -32,14 +32,15 @@ disconnects, as every hand does when a session ends, lets go of whatever it held
 says `lost`.
 
 `cursors(ctx)` puts a mark where each ray meets something interactive, one per hand, gone with the
-hit, and `mouse(ctx)` registers the mouse as one more controller, so a scene that is also a page
-answers clicks on the canvas with the same handlers:
+hit. On a page there is no controller, so `render(fn, { pointer: true })` registers the mouse as one
+more: its left button is the trigger and its right button the grip, a finger's tap or drag on a
+touch screen is the trigger and a finger held still is the grip. A scene that is also a page then
+answers clicks and taps on the canvas with the same handlers:
 
 ```js
-import { useEffects } from "justdom-signal";
-import { children, cursors, getScene, mouse } from "justdom-three";
+import { render } from "justdom-three";
 
-useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx, { color: "#ff0000" }))]);
+render(app, { pointer: true });
 ```
 
 ## Picking things up

@@ -653,7 +653,7 @@ export function parseCssColor(value, currentColor) {
       ? parseCssColor(currentColor)
       : null;
   }
-  if (text in NAMED_COLORS) {
+  if (Object.hasOwn(NAMED_COLORS, text)) {
     return /** @type {RGBA} */ ([...NAMED_COLORS[text]]);
   }
   if (text.startsWith("#")) {
@@ -705,8 +705,7 @@ function parseHex(hex) {
 function channelsOf(name, channels) {
   if (name === "color") {
     const [space, ...values] = channels;
-    const source = RGB_SPACES[space];
-    if (!source || values.length !== 3) {
+    if (!Object.hasOwn(RGB_SPACES, space) || values.length !== 3) {
       return null;
     }
     const coords = /** @type {Triple} */ (values.map((token) => component(token, 1)));

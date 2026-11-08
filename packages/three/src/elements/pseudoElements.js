@@ -276,9 +276,8 @@ function boxEqual(a, b) {
  * @returns {boolean}
  */
 export function paintsBox(style) {
-  const background = style.backgroundColor || "transparent";
   return (
-    (background !== "transparent" && parseAlpha(background) > 0) ||
+    parseAlpha(style.backgroundColor || "transparent") > 0 ||
     (style.backgroundImage || "none") !== "none" ||
     parseAlpha(getDrawnBorderColor(style)) > 0
   );

@@ -100,6 +100,17 @@ describe("parseCssColor", () => {
     assert.deepEqual(parseCssColor("color(srgb 0.5 0 0.5 / 0.25)"), [0.5, 0, 0.5, 0.25]);
   });
 
+  test("a name an object inherits is not a colour or a space", () => {
+    for (const text of [
+      "constructor",
+      "toString",
+      "color(constructor 1 0 0)",
+      "color(__proto__ 1 0 0)",
+    ]) {
+      assert.equal(parseCssColor(text), null, text);
+    }
+  });
+
   test("what is not a colour is null", () => {
     for (const text of [
       "10px",

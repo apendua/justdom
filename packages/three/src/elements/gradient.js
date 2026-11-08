@@ -1545,9 +1545,9 @@ class RampAtlas {
     const texture = new THREE.DataTexture(data, RAMP_WIDTH, height, THREE.RGBAFormat);
     // The bytes are sRGB, as CSS colours are, and deliberately not declared
     // so: the shader composites the layer in sRGB, as CSS does, and wants the
-    // bytes as they are — and filtering between texels then interpolates in
-    // sRGB too, which is what a gradient's stops ask for. See
-    // `GRADIENT_GLSL`.
+    // bytes as they are. The ramp is baked in the space the gradient mixes
+    // in (`colorAt`), so filtering between two neighbouring texels, in sRGB,
+    // only bridges a 1/256 step of it. See `GRADIENT_GLSL`.
     texture.colorSpace = THREE.NoColorSpace;
     texture.magFilter = THREE.LinearFilter;
     texture.minFilter = THREE.LinearFilter;

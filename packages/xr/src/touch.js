@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "justdom-three";
+import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "justdom-three/limits";
 
 // The page's pointer and the touch layer go by the same limits: how far up
 // or down a drag tips the view, how far a finger may wander and still tap,
@@ -302,8 +302,10 @@ const afterStep = (then) => {
  *   pinch during a grab cannot move the held thing, as the page's pointer
  *   does, since the thing hangs off the controller and only moving the
  *   controller into the view would move it.
- * - A pinch zooms: the vertical field of view goes as the fingers' spread
- *   goes inversely, between `MIN_FOVY` and the headset's own, which is the
+ * - A pinch zooms as the page's pointer does: spread the fingers twice as
+ *   far apart and what is on the screen is drawn twice as large (the
+ *   tangent of half the vertical field of view goes inversely with the
+ *   spread), between `MIN_FOVY` and the headset's own, which is the
  *   widest. The pinch ends when either finger lifts, and the one left on
  *   the screen does nothing until it lifts too. The zoom stays where the
  *   pinch left it. A tap's and a grab's ray, and a look's turn for each
@@ -537,11 +539,8 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       moved.y = event.clientY;
       const spread = Math.hypot(pinch.x - finger.x, pinch.y - finger.y);
       if (spread > 0 && pinch.spread > 0) {
-        headset.fovy = THREE.MathUtils.clamp(
-          (headset.fovy * pinch.spread) / spread,
-          MIN_FOVY,
-          wide,
-        );
+        const tan = (Math.tan(headset.fovy / 2) * pinch.spread) / spread;
+        headset.fovy = THREE.MathUtils.clamp(2 * Math.atan(tan), MIN_FOVY, wide);
       }
       pinch.spread = spread;
       return;

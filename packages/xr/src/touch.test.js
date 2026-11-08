@@ -564,14 +564,21 @@ describe("installTouch", () => {
       finger("pointerdown", 250, 400, 2);
     };
 
+    /**
+     * The field of view that draws the headset's own view `times` as large.
+     *
+     * @param {number} times
+     */
+    const magnified = (times) => 2 * Math.atan(Math.tan(fovy / 2) / times);
+
     it("zooms in as the fingers spread, by as much as they spread", () => {
       pinchFrom();
       finger("pointermove", 300, 400, 2);
-      // From 100 px apart to 150: two thirds of the field of view.
-      near(headset.fovy, (fovy * 2) / 3);
+      // From 100 px apart to 150: drawn one and a half times as large.
+      near(headset.fovy, magnified(1.5));
       finger("pointermove", 100, 400, 1);
-      // To 200: half.
-      near(headset.fovy, fovy / 2);
+      // To 200: twice as large, which at 90 degrees is not half the angle.
+      near(headset.fovy, magnified(2));
     });
 
     it("zooms out as they close, to no wider than the headset's own", () => {
@@ -650,7 +657,7 @@ describe("installTouch", () => {
       near(headset.fovy, fovy);
       near(headAhead().y, 0);
       finger("pointermove", 300, 400, 2);
-      near(headset.fovy, (fovy * 2) / 3);
+      near(headset.fovy, magnified(1.5));
     });
 
     it("does not start during a grab", () => {

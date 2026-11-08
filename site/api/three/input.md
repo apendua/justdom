@@ -134,15 +134,17 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
 - On a touch screen a two-finger pinch moves what is held, or zooms when nothing is. A second finger
   that lands while the first is dragging something does what the wheel does: spread the two fingers
   and the thing comes nearer by the same ratio, close them and it goes further off. A second finger
-  that lands while nothing is held, and the first has not yet pressed or is turning the camera,
-  zooms a perspective camera instead: spread the fingers twice as far apart and the scene is drawn
-  twice as large, never wider than the camera's own view and never narrower than a vertical field of
-  view of 20° (`MIN_FOVY`). The zoom cancels the first finger's tap and grip and stops its turn, and
-  the finger left after the zoom does nothing until it lifts. Lifting either finger ends the pinch;
+  that lands while nothing is held, and the first has pressed nothing (it has not yet pressed, or
+  its press began on nothing, turning the camera or not), zooms a perspective camera instead: spread
+  the fingers twice as far apart and the scene is drawn twice as large, never wider than the
+  camera's own view and never narrower than a vertical field of view of 20° (`MIN_FOVY`). The zoom
+  cancels the first finger's tap and grip and stops its turn, and the finger left after the zoom
+  does nothing until it lifts, a new second finger included. Lifting either finger ends the pinch;
   lifting the first also ends its press. The zoom stays until the pointer stops (a session starting,
   or the scene going), which puts the camera's `zoom` back. A second finger at any other time, and a
   third, are ignored.
-- `HOLD_MS` (400), `SLOP_PX` (10), `PITCH_LIMIT` (1.4 rad) and `MIN_FOVY` are exported, and
+- `HOLD_MS` (400), `SLOP_PX` (10), `PITCH_LIMIT` (1.4 rad) and `MIN_FOVY` are exported, from
+  `justdom-three` and on their own from `justdom-three/limits`, which imports nothing, and
   `justdom-xr/touch` goes by the same ones.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever

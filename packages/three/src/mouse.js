@@ -3,6 +3,7 @@ import { effects } from "justdom-signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
+import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
 
 /**
  * @import { XREventMap } from './core.js';
@@ -19,18 +20,6 @@ const DOM_DELTA_PAGE = 2;
 const _euler = new THREE.Euler();
 const _around = new THREE.Vector3();
 const _forward = new THREE.Vector3();
-
-/**
- * How long a finger has to stay still on the canvas before its press is the
- * grip's rather than the trigger's, in milliseconds.
- */
-export const HOLD_MS = 400;
-
-/**
- * How far a finger may wander, in CSS pixels, and still be a tap or a hold.
- * Further, and it is a drag with the trigger.
- */
-export const SLOP_PX = 10;
 
 /**
  * How far one pixel of the wheel moves a held thing along the ray, in
@@ -50,21 +39,6 @@ export const MIN_REACH = 0.2;
  *
  * @typedef {Pick<Window, "addEventListener" | "removeEventListener">} MouseView
  */
-
-/**
- * How far the camera may pitch up or down while a drag turns it, in
- * radians: short of straight up and straight down, where yaw stops meaning
- * anything.
- */
-export const PITCH_LIMIT = 1.4;
-
-/**
- * The narrowest a pinch zooms the view to: the vertical field of view, in
- * radians. Twenty degrees is two and a half times narrower than a page's
- * usual fifty and four and a half times narrower than a headset's ninety,
- * close enough to read a small panel from where the camera stands.
- */
-export const MIN_FOVY = (20 * Math.PI) / 180;
 
 /**
  * What a drag that starts on nothing does: `"orbit"` turns the camera about
@@ -160,10 +134,14 @@ export const MIN_FOVY = (20 * Math.PI) / 180;
  *   never nearer than `MIN_REACH`. The first finger still aims the group as
  *   it moves.
  * - A second finger that lands while the group holds nothing, and the first
- *   is undecided or turning the camera, starts a zoom, if the camera is a
- *   perspective one. The first finger's tap and hold are cancelled and its
- *   turn stops, the group is hidden, and from then on that finger aims,
- *   turns and presses nothing until it lifts. While the zoom lasts, the
+ *   has pressed nothing (it is undecided, or its press began on nothing, as
+ *   `pointsAtNothing` says, whether or not it turns the camera), starts a
+ *   zoom, if the camera is a perspective one. A press that began on a
+ *   thing, a button or a slider, refuses it. The first finger's tap and
+ *   hold are cancelled and its turn stops, the group is hidden, and from
+ *   then on that finger aims, turns and presses nothing until it lifts, and
+ *   starts no pinch: a second finger that lands after the zoom ended is
+ *   ignored. While the zoom lasts, the
  *   camera's `zoom` goes as the fingers' spread: spread them twice as far
  *   apart and what is on the screen is drawn twice as large. It never
  *   zooms out past the camera's `zoom` as this started, nor in past a
@@ -227,13 +205,20 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   let turning = null;
 
   /**
+   * Whether the pointer is on nothing, as a press begins: never, for a
+   * caller that cannot tell.
+   */
+  const onNothing = () => options.pointsAtNothing?.() ?? false;
+
+  /**
    * Make the drag about to begin the camera's, if `look` asks for that and
-   * the pointer is on nothing.
+   * the press began on nothing.
    *
    * @param {PointerEvent} event
+   * @param {boolean} nothing
    */
-  const startTurning = (event) => {
-    if (options.look !== "orbit" || !options.pointsAtNothing?.()) {
+  const startTurning = (event, nothing) => {
+    if (options.look !== "orbit" || !nothing) {
       return;
     }
     _euler.setFromQuaternion(camera.quaternion, "YXZ");
@@ -286,8 +271,9 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
 
   /**
    * The finger that drives the group, from its landing to its lift.
-   * `button` is null while what it presses is undecided. `zoomed` says a
-   * zoom has started on it, after which it drives nothing.
+   * `button` is null while what it presses is undecided, and `onNothing`
+   * says whether its press began on nothing. `zoomed` says a zoom has
+   * started on it, after which it drives nothing.
    *
    * @type {{
    *   id: number,
@@ -297,6 +283,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
    *   now: { x: number, y: number },
    *   button: "select" | "squeeze" | null,
    *   hold: ReturnType<typeof setTimeout>,
+   *   onNothing: boolean,
    *   zoomed: boolean,
    * } | null}
    */
@@ -304,10 +291,16 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
 
   /**
    * The second finger of a pinch, while one is under way: where it is, how
-   * far apart the two fingers were at the last move, and whether the pinch
-   * zooms or moves what is held.
+   * far apart the two fingers were at the last move, and the camera it
+   * zooms, or null for a pinch that moves what is held.
    *
-   * @type {{ id: number, x: number, y: number, spread: number, zoom: boolean } | null}
+   * @type {{
+   *   id: number,
+   *   x: number,
+   *   y: number,
+   *   spread: number,
+   *   zoom: THREE.PerspectiveCamera | null,
+   * } | null}
    */
   let pinch = null;
 
@@ -363,7 +356,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     if (now > 0 && pinch.spread > 0) {
       const ratio = pinch.spread / now;
       if (pinch.zoom) {
-        zoomTo(THREE.MathUtils.clamp((lens?.zoom ?? 1) / ratio, wideZoom, maxZoom));
+        zoomTo(THREE.MathUtils.clamp(pinch.zoom.zoom / ratio, wideZoom, maxZoom));
       } else {
         reachOut((reach) => reach * ratio);
       }
@@ -376,8 +369,9 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     if (finger) {
       clearTimeout(finger.hold);
       finger.button = button;
+      finger.onNothing = onNothing();
       if (button === "select") {
-        startTurning(event);
+        startTurning(event, finger.onNothing);
       }
       send(`${button}start`);
     }
@@ -435,10 +429,10 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   /** @param {PointerEvent} event */
   const onDown = (event) => {
     if (event.pointerType === "touch") {
-      if (finger && !pinch) {
+      if (finger && !pinch && !finger.zoomed) {
         const holding = pointer.children.length > 0;
         const reach = holding && finger.button !== null;
-        const zoom = !holding && lens !== null && (finger.button === null || turning !== null);
+        const zoom = !holding && (finger.button === null || finger.onNothing) ? lens : null;
         if (reach || zoom) {
           canvas.setPointerCapture(event.pointerId);
           pinch = { id: event.pointerId, x: event.clientX, y: event.clientY, spread: 0, zoom };
@@ -465,6 +459,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
         now: { x: event.clientX, y: event.clientY },
         button: null,
         hold: setTimeout(() => press("squeeze", event), HOLD_MS),
+        onNothing: false,
         zoomed: false,
       };
       return;
@@ -473,7 +468,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     if (button) {
       follow(event);
       if (button === "select") {
-        startTurning(event);
+        startTurning(event, onNothing());
       }
       send(`${button}start`);
     }

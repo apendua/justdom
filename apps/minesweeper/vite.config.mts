@@ -46,13 +46,15 @@ export default defineConfig({
         // it) only where a session can be opened, `emulator` only behind
         // `?emulator` and `touch` only behind `?touch`; a headset fetches
         // them when it first asks. `touch` imports three.js too, which
-        // splits three's core into a chunk the two share.
+        // splits three's core into a chunk the two share, and the limits
+        // it shares with `justdom-three`'s pointer into another.
         globIgnores: [
           "**/xr-*.js",
           "**/three.module-*.js",
           "**/three.core-*.js",
           "**/emulator-*.js",
           "**/touch-*.js",
+          "**/limits-*.js",
         ],
       },
     }),

@@ -26,6 +26,10 @@
       "types": "./lib-types/index.d.ts",
       "import": "./src/index.js"
     },
+    "./limits": {
+      "types": "./lib-types/limits.d.ts",
+      "import": "./src/limits.js"
+    },
     "./page": {
       "types": "./lib-types/page.d.ts",
       "import": "./src/page.js"

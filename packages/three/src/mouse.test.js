@@ -2,16 +2,8 @@ import { describe, test, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import {
-  followMouse,
-  HOLD_MS,
-  MIN_FOVY,
-  MIN_REACH,
-  mouse,
-  PITCH_LIMIT,
-  SLOP_PX,
-  WHEEL_METRES_PER_PIXEL,
-} from "./mouse.js";
+import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
+import { followMouse, MIN_REACH, mouse, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
 import { CameraContext, RendererContext, runFrame } from "./render.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
@@ -593,6 +585,8 @@ describe("a pinch", () => {
   let stop;
   /** @type {string[]} What the group has sent. */
   let sent;
+  /** Whether the pointer is on nothing, as `pointsAtNothing` says. */
+  let nothing = false;
 
   beforeEach(() => {
     mock.timers.enable({ apis: ["setTimeout"] });
@@ -612,7 +606,8 @@ describe("a pinch", () => {
       group.addEventListener(type, () => sent.push(type));
     }
     camera = new THREE.PerspectiveCamera();
-    stop = followMouse(group, camera, canvas);
+    nothing = false;
+    stop = followMouse(group, camera, canvas, window, { pointsAtNothing: () => nothing });
   });
 
   afterEach(() => {
@@ -762,6 +757,46 @@ describe("a pinch", () => {
     canvas.dispatchEvent(finger("pointerup", 50, 50));
     assert.deepEqual(sent, ["selectstart", "select"]);
   });
+
+  test("zooms out of a press on nothing, without look: orbit", () => {
+    nothing = true;
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointermove", 30, 50));
+    canvas.dispatchEvent(finger("pointerdown", 50, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 70, 50, 2));
+    assert.ok(Math.abs(camera.zoom - 2) < 1e-9);
+    assert.equal(group.visible, false);
+  });
+
+  test("does not zoom out of a press on something", () => {
+    canvas.dispatchEvent(finger("pointerdown", 50, 50));
+    canvas.dispatchEvent(finger("pointermove", 30, 50));
+    canvas.dispatchEvent(finger("pointerdown", 50, 50, 2));
+    canvas.dispatchEvent(finger("pointermove", 60, 50, 2));
+    assert.equal(camera.zoom, 1);
+    assert.equal(group.visible, true);
+  });
+
+  for (const [how, first] of /** @type {const} */ ([
+    ["an undecided finger", () => {}],
+    [
+      "a press on nothing",
+      () => {
+        nothing = true;
+        canvas.dispatchEvent(finger("pointermove", 30, 50));
+      },
+    ],
+  ])) {
+    test(`after a zoom out of ${how}, a new second finger starts nothing`, () => {
+      canvas.dispatchEvent(finger("pointerdown", 50, 50));
+      first();
+      canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+      canvas.dispatchEvent(finger("pointerup", 60, 50, 2));
+      canvas.dispatchEvent(finger("pointerdown", 60, 50, 3));
+      canvas.dispatchEvent(finger("pointermove", 90, 50, 3));
+      assert.equal(camera.zoom, 1);
+    });
+  }
 
   test("the zoom stays until the pointer stops, which puts it back", () => {
     canvas.dispatchEvent(finger("pointerdown", 50, 50));

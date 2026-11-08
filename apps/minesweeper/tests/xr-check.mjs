@@ -564,9 +564,9 @@ async function main() {
       );
       check((await flags()) === 1, "and it planted a flag");
 
-      // Two fingers 120 px apart spread to 150: a fifth narrower a view,
-      // which still has the menu's × in it. Playwright's mouse is one
-      // pointer, so the two fingers go through the DevTools protocol.
+      // Two fingers 120 px apart spread to 150: the view drawn a quarter
+      // larger, which still has the menu's × in it. Playwright's mouse is
+      // one pointer, so the two fingers go through the DevTools protocol.
       const wide = await page.evaluate(() => /** @type {any} */ (window).xrDevice.fovy);
       const cdp = await page.context().newCDPSession(page);
       /**
@@ -592,7 +592,7 @@ async function main() {
       await frames(page, 10);
       const zoomed = await page.evaluate(() => /** @type {any} */ (window).xrDevice.fovy);
       check(
-        Math.abs(zoomed - (wide * 120) / 150) < 0.01,
+        Math.abs(zoomed - 2 * Math.atan((Math.tan(wide / 2) * 120) / 150)) < 0.01,
         `a pinch zoomed in (field of view ${wide.toFixed(3)} to ${zoomed.toFixed(3)} rad)`,
       );
 

@@ -80,13 +80,14 @@ A finger on the scene is undecided until it does one of four things:
   still closing keeps it closed for 4 frames, so the app sees it held. A grab never turns the head.
   A grab that starts while a tap is still running is dropped the same way: the finger then turns
   nothing and its lift presses nothing.
-- **Pinch.** A second finger that lands while the first is undecided or looking zooms the view: the
-  vertical field of view goes inversely with the fingers' spread, so spreading them twice as far
-  apart halves it, between 20° (`MIN_FOVY`, the narrowest `justdom-three`'s pointer zooms to as
-  well) and the headset's own 90°. A pinch cancels the first finger's tap and grab, and turns
-  nothing. It ends when either finger lifts, and the one left does nothing until it lifts too. The
-  zoom stays where the pinch left it. A tap's and a grab's ray, and a look's turn for each pixel,
-  follow the field of view, so they work the same at any zoom.
+- **Pinch.** A second finger that lands while the first is undecided or looking zooms the view as
+  the page's pointer does: spreading the fingers twice as far apart draws the view twice as large
+  (the tangent of half the vertical field of view goes inversely with the spread), between 20°
+  (`MIN_FOVY`, the narrowest `justdom-three`'s pointer zooms to as well) and the headset's own 90°.
+  A pinch cancels the first finger's tap and grab, and turns nothing. It ends when either finger
+  lifts, and the one left does nothing until it lifts too. The zoom stays where the pinch left it. A
+  tap's and a grab's ray, and a look's turn for each pixel, follow the field of view, so they work
+  the same at any zoom.
 
 A second finger is ignored while the first is grabbing, and a third always is. Unlike the page's
 pointer, the layer cannot move a held thing nearer or further with a pinch: the thing hangs off the

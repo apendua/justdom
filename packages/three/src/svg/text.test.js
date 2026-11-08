@@ -285,6 +285,16 @@ describe("svg text", () => {
     s.teardown();
   });
 
+  test("a transform attribute is off too where the text is measured", () => {
+    // WebKit falls back to the attribute under `transform: none`.
+    const text = svg("text", { x: "10", y: "20", fill: "red", transform: "translate(5, 0)" });
+    text.append("Hi");
+    const s = scene([text], text);
+    assert.deepEqual(s.transforms, ["none"], "measured untransformed");
+    assert.equal(text.getAttribute("transform"), "translate(5, 0)", "the text keeps its own");
+    s.teardown();
+  });
+
   test("a percentage is of the viewport the text is in", () => {
     const text = svg("text", { x: "50%", y: "10", fill: "red" }, ["A"]);
     const s = scene([text], text);

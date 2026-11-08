@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "SVG text with a transform attribute is measured in its own user space in Safari too, where small text such as the minesweeper's counts was drawn off its place",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

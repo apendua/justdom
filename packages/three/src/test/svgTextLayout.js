@@ -19,9 +19,11 @@ const FONT_SIZE = 4;
  * (1000, 500), as an off-screen one would, so a run is read relative to it,
  * in CSS pixels: its `width` over its `viewBox`'s per unit. As a browser
  * does, the line's ascent and descent are rounded to whole pixels at that
- * size. Every range read also records the `transform` of the `<text>` it
- * measured in, and every range made is kept with the node it points into
- * now. Every measuring `<svg>` read records its size and where it is parked.
+ * size. Every range read also records the transform of the `<text>` it
+ * measured in, as WebKit takes it: the `transform` style, or the attribute
+ * where the style is `none` or unset. Every range made is kept with the node
+ * it points into now. Every measuring `<svg>` read records its size and
+ * where it is parked.
  *
  * @returns {{
  *   transforms: string[],
@@ -83,7 +85,12 @@ export function installSvgTextLayout() {
         getBoundingClientRect: () => {
           const parent = /** @type {Element} */ (container?.parentNode);
           const text = /** @type {SVGElement} */ (parent.closest("text"));
-          transforms.push(text.style.getPropertyValue("transform"));
+          // The transform the run is laid out under, by WebKit's rule: the
+          // style's, and where that is `none` or unset, the attribute's.
+          const styled = text.style.getPropertyValue("transform");
+          transforms.push(
+            styled && styled !== "none" ? styled : (text.getAttribute("transform") ?? "none"),
+          );
           const host = /** @type {Element} */ (text.parentNode);
           const viewBoxWidth = Number(host.getAttribute("viewBox")?.split(" ")[2]);
           const scale = Number(host.getAttribute("width")) / viewBoxWidth;

@@ -3979,6 +3979,13 @@ function copyStillStyle(element, clone, computed = window.getComputedStyle(eleme
     }
   }
   clone.style.cssText = declarations.join("; ");
+  // WebKit reads `transform: none` on an SVG element, an inline
+  // `!important` one included, as no CSS transform, and falls back to the
+  // `transform` attribute. There a minesweeper count, a `<text>` under
+  // `translate(…) scale(20)`, was laid out twenty times too big.
+  if (isSvgElement(clone)) {
+    clone.removeAttribute("transform");
+  }
 }
 
 /**

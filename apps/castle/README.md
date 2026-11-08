@@ -25,8 +25,9 @@ session the game plays on the page too: the mouse or a finger works it through `
   for a phone: a drag turns the head, a tap pulls the trigger where it lands, a finger held still
   for 400 ms and then moved drags with the trigger, held and lifted presses the grip, and two
   fingers pinch the view in and out. The grip only ever clicks there, so pulling a copy off a placed
-  brick, which holds the grip, needs a controller. On a phone `?emulator` does the same, and
-  `?emulator=devui` keeps the DevUI.
+  brick, which holds the grip, takes a controller in a session. On the page, outside one, the right
+  mouse button holds the grip, and so does a finger held still. On a phone `?emulator` does the same
+  as `?touch`, and `?emulator=devui` keeps the DevUI.
 
 The emulator is a dynamic import in its own chunk and replaces `navigator.xr`, so do not use it on a
 real headset.

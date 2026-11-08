@@ -499,37 +499,52 @@ describe("the wheel", () => {
     return event;
   }
 
-  /** Something held 2 m out along the ray, a little off it, as `drag` leaves it. */
+  /**
+   * Something held 2 m out along the ray, a little off it, as `drag` leaves
+   * it: keeping its own matrix, as what a portal draws does.
+   */
   function held() {
     const thing = new THREE.Object3D();
+    thing.matrixAutoUpdate = false;
     thing.position.set(0.1, 0, -2);
+    thing.updateMatrix();
     group.add(thing);
+    group.updateMatrixWorld(true);
     return thing;
   }
 
-  test("pushes what the group holds further along the ray when turned away", () => {
+  /**
+   * Where the scene draws it, along the ray.
+   *
+   * @param {THREE.Object3D} thing
+   */
+  function drawnZ(thing) {
+    return thing.matrixWorld.elements[14];
+  }
+
+  test("rolled back, towards you, pushes what the group holds further along the ray", () => {
     const thing = held();
     const event = wheel(-100);
-    assert.ok(Math.abs(thing.position.z - (-2 - 100 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
+    assert.ok(Math.abs(drawnZ(thing) - (-2 - 100 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
     // Along the ray: the offset from it stays.
-    assert.equal(thing.position.x, 0.1);
+    assert.equal(thing.matrixWorld.elements[12], 0.1);
     // And the page does not scroll as well.
     assert.equal(event.defaultPrevented, true);
   });
 
-  test("brings it nearer when turned towards the screen, never nearer than the floor", () => {
+  test("rolled forward, towards the screen, brings it nearer, never nearer than the floor", () => {
     const thing = held();
     wheel(100);
-    assert.ok(Math.abs(thing.position.z - (-2 + 100 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
+    assert.ok(Math.abs(drawnZ(thing) - (-2 + 100 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
     wheel(100_000);
-    assert.equal(thing.position.z, -MIN_REACH);
+    assert.equal(drawnZ(thing), -MIN_REACH);
   });
 
   test("counts a wheel that scrolls by lines in lines", () => {
     const thing = held();
     // DOM_DELTA_LINE.
     wheel(-1, 1);
-    assert.ok(Math.abs(thing.position.z - (-2 - 16 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
+    assert.ok(Math.abs(drawnZ(thing) - (-2 - 16 * WHEEL_METRES_PER_PIXEL)) < 1e-9);
   });
 
   test("is the page's while the group holds nothing", () => {
@@ -540,7 +555,7 @@ describe("the wheel", () => {
     const thing = held();
     stop();
     assert.equal(wheel(-100).defaultPrevented, false);
-    assert.equal(thing.position.z, -2);
+    assert.equal(drawnZ(thing), -2);
   });
 });
 

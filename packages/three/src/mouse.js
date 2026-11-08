@@ -129,9 +129,12 @@ export const PITCH_LIMIT = 1.4;
  * nothing, so nothing hears it. The drag ends with the press.
  *
  * The wheel. What the group holds (`drag` puts what it picks up among the
- * group's children) the wheel moves along the ray: towards the screen
- * brings it nearer, away pushes it further, by `WHEEL_METRES_PER_PIXEL`,
- * and never nearer than `MIN_REACH`. A hand reaches into the room and the
+ * group's children) the wheel moves along the ray: rolled forward, towards
+ * the screen (`deltaY > 0`), it brings it nearer, as a wheel zooms in;
+ * rolled back, towards you, it pushes it further off. It moves it by
+ * `WHEEL_METRES_PER_PIXEL`, and never nearer than `MIN_REACH`. A `carry`
+ * pins what it holds at its own distance and is not among the children, so
+ * the wheel leaves it alone. A hand reaches into the room and the
  * mouse cannot, so this is how a thing picked up with the mouse is put
  * down further off or nearer. While the group holds nothing the wheel is
  * the page's, and scrolls it as ever.
@@ -397,6 +400,9 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       // negative of its z, and moving it along the ray changes z alone.
       const reach = Math.max(MIN_REACH, -child.position.z - pixels * WHEEL_METRES_PER_PIXEL);
       child.position.z = -reach;
+      // Into the matrix by hand, for a thing that keeps its own (what a
+      // portal draws does): `drag` writes those directly too.
+      child.updateMatrix();
       child.updateMatrixWorld(true);
     }
   };

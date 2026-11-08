@@ -250,12 +250,14 @@ describe("a finger on the canvas", () => {
   });
 
   test("keeps the browser's pan and zoom off the canvas until it stops", () => {
-    canvas.style.touchAction = "pan-y";
+    // A canvas of its own, which nothing else is following.
+    const own = pageCanvas();
+    own.style.touchAction = "pan-y";
     const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
-    const stop = followMouse(group, new THREE.PerspectiveCamera(), canvas);
-    assert.equal(canvas.style.touchAction, "none");
+    const stop = followMouse(group, new THREE.PerspectiveCamera(), own);
+    assert.equal(own.style.touchAction, "none");
     stop();
-    assert.equal(canvas.style.touchAction, "pan-y");
+    assert.equal(own.style.touchAction, "pan-y");
   });
 
   test("taps: lifted where it landed, before the hold, it selects", () => {

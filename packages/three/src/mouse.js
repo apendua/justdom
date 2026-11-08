@@ -62,7 +62,10 @@ export const SLOP_PX = 10;
  * go: the group sends `disconnected`, which the manager turns into a miss
  * that says `lost`. While this runs the canvas has `touch-action: none`, so
  * the browser does not take a drag for a scroll or a zoom, and the finger is
- * captured, so it stays the canvas's when it slides off.
+ * captured, so it stays the canvas's when it slides off. The context menu
+ * kept off the canvas matters to the finger as well: Android raises one on
+ * a long press and, left to open, cancels the touch, which would end every
+ * hold as it became a grip.
  *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.

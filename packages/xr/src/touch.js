@@ -59,8 +59,9 @@ export const STEP_FRAMES = 4;
 
 /**
  * The narrowest the pinch zooms the view to: the vertical field of view, in
- * radians. Twenty degrees is between four and five times the headset's own
- * ninety, close enough to read a small panel from where the player stands.
+ * radians. Twenty degrees is four and a half times narrower than the
+ * headset's own ninety, close enough to read a small panel from where the
+ * player stands.
  */
 export const MIN_FOVY = (20 * Math.PI) / 180;
 
@@ -303,9 +304,8 @@ const afterStep = (then) => {
  * through the tapped spot and pulls its trigger, and a finger held still
  * for `HOLD_MS` closes its grip and keeps the ray under the finger as it
  * moves, until it lifts. Two fingers pinch the view in and out. The app's
- * `buttons` go along the bottom, and
- * **Tilt**, in the top corner, turns the head with the phone as well
- * (`Look`).
+ * `buttons` go along the bottom, and **Tilt**, in the top corner, turns the
+ * head with the phone as well (`Look`).
  *
  * The layer is up only while a session is, so the page's own buttons, the
  * one that starts the session among them, are tapped as they always are.

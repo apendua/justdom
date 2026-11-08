@@ -673,6 +673,9 @@ importers:
         specifier: workspace:*
         version: link:../three
     devDependencies:
+      '@apendua/jsdom-env':
+        specifier: workspace:*
+        version: link:../jsdom-env
       '@types/node':
         specifier: ^24.7.0
         version: 24.19.2

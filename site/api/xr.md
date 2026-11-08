@@ -1,22 +1,24 @@
 # justdom-xr
 
 What every app with a headset session repeats, kept in one place: the emulated headset behind
-`?emulator`, the offer of a session to a page that can have one, `justdom-three`'s theming mode
-behind `?theming` and its outlines mode behind `?outlines`, whether the platform can present at all,
-the session a page reads for the controls that only make sense in a headset, and what a scene draws
-round the panels: the backdrop, and the controller and hand models.
+`?emulator`, the phone's touch layer over it behind `?touch`, the offer of a session to a page that
+can have one, `justdom-three`'s theming mode behind `?theming` and its outlines mode behind
+`?outlines`, whether the platform can present at all, the session a page reads for the controls that
+only make sense in a headset, and what a scene draws round the panels: the backdrop, and the
+controller and hand models.
 
 ```
 npm install justdom-xr justdom-three justdom-signal three
 ```
 
 `three` is a peer dependency; `justdom-three`, `justdom-signal` and the emulator's `iwer` and
-`@iwer/devui` are dependencies. The package has five entries for a page and no index, so that an app
+`@iwer/devui` are dependencies. The package has six entries for a page and no index, so that an app
 importing one does not pull in the others. The emulator brings IWER and its dev UI with it, over
-half a megabyte, and is meant to be imported lazily; the offer and the session import nothing from
-three.js, so a page can load them before it knows whether it will ever make a scene; the scene entry
-and theming import three.js and `justdom-three`, and belong in the chunk that makes the scene. A
-sixth entry, the driver, is for the apps' check scripts and runs in Node.
+half a megabyte, and is meant to be imported lazily, as is the touch layer; the offer and the
+session import nothing from three.js, so a page can load them before it knows whether it will ever
+make a scene; the scene entry and theming import three.js and `justdom-three`, and belong in the
+chunk that makes the scene. A seventh entry, the driver, is for the apps' check scripts and runs in
+Node.
 
 ## `justdom-xr/emulator`
 
@@ -47,25 +49,83 @@ Import it lazily, as above, so that it lands in a chunk of its own, named `emula
 service worker that precaches the app should leave that chunk out; `minesweeper` and `todo` do it
 with `globIgnores: ["**/emulator-*.js"]`.
 
+## `justdom-xr/touch`
+
+```ts
+import { install } from "justdom-xr/emulator";
+import { installTouch } from "justdom-xr/touch";
+
+installTouch(install({ devUI: false }), {
+  buttons: [{ label: "Throw", code: "Space" }],
+});
+```
+
+`installTouch(headset, options)` puts a phone's touch screen in front of the emulated headset, so a
+headset app can be played on a phone. It puts a layer over the page while a session is up, and only
+then, so the page's own buttons, the one that starts the session among them, are tapped as they
+always are. It learns of the session by wrapping the emulated `navigator.xr.requestSession`, so call
+it after `install` and before the page asks for a session. `offerHeadset` does both for `?touch`.
+
+A finger on the scene is undecided until it does one of three things:
+
+- **Look.** Moving more than 10 CSS px turns the head: the scene follows the finger, by the angle
+  the screen shows over that many pixels, and the head never tips past 1.4 rad up or down. A look
+  presses nothing.
+- **Tap.** Lifting within 10 px aims the right controller through the tapped pixel, from just behind
+  the eye, and pulls its trigger: aim, 4 frames, trigger down, 4 frames, trigger up, 4 frames, then
+  the controller is parked again. A tap that lands while the last one is still running is dropped.
+- **Grab.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way and
+  closes its grip 4 frames later. The ray then follows the finger, the head stays where it is, and
+  the lift opens the grip and parks the controller 4 frames after. A finger lifted while the grip is
+  still closing keeps it closed for 4 frames, so the app sees it held. A grab never turns the head.
+
+A second finger is ignored while the first is down. Parked, both controllers sit under the head,
+turned with it, pointing at the floor, so neither model nor ray is in the view. `install` sets `ipd`
+to 0, so the session is drawn from the head and a ray from the head lands on the pixel touched. The
+session ending hides the layer, lets go of the trigger and the grip, parks the controllers at once
+and forgets the finger.
+
+**Tilt**, in the top corner, turns the head with the phone as well, as a window onto the room, and
+the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a page
+the phone's orientation only once a tap has asked for it.
+
+| Option    | Default | What it does                                                                                                                                                                                                   |
+| --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `buttons` | none    | The app's desk keys, as a row of buttons along the bottom: `{ label, code, hold }`. A touch sends `keydown` and `keyup` for `code`, the `KeyboardEvent.code`, at once, or with `hold` the `keyup` on the lift. |
+| `pitch`   | `-0.45` | Where the head looks when the layer starts, in radians above the horizon. The default looks down at a table in front of the player.                                                                            |
+
+The buttons go through the desk's own keys rather than calling into the app, so a touch does what
+the key does. An app whose every control is a panel or a thing in the scene passes none.
+
+The touch layer imports three.js, which splits three's core into a chunk of its own,
+`three.core-<hash>.js`, shared with the scene's chunk. A service worker that precaches the app
+should leave both out with the emulator's: `minesweeper` and `todo` add `"**/touch-*.js"` and
+`"**/three.core-*.js"` to their `globIgnores`.
+
 ## `justdom-xr/offer`
 
 ```ts
 import { offerHeadset } from "justdom-xr/offer";
 
-offerHeadset(() => import("./xr")).then((xr) => xr?.offerXR(board, menu));
+offerHeadset(() => import("./xr"), { touch: { pitch: -0.15 } }).then((xr) =>
+  xr?.offerXR(board, menu),
+);
 ```
 
-`offerHeadset(scene)` offers the page a headset if it can have one. It installs the emulator first
-behind `?emulator` (`?emulator=bare` for no dev UI), asks `canPresent()`, and only then calls
-`scene`, a dynamic import of the module that makes the renderer and the scene, and resolves to that
-module, or to null on a platform that cannot present. Nothing here imports three.js, so on a laptop
-the page is the page and the scene's chunk, with three.js in it, is never fetched.
+`offerHeadset(scene, options)` offers the page a headset if it can have one. It installs the
+emulator first behind `?emulator` (`?emulator=bare` for no dev UI), or behind `?touch` without its
+dev UI and with the touch layer over it, `options.touch` being `installTouch`'s options. An app that
+passes no `touch` ignores `?touch`, since its controls have not been tried on a phone. Then it asks
+`canPresent()`, and only then calls `scene`, a dynamic import of the module that makes the renderer
+and the scene, and resolves to that module, or to null on a platform that cannot present. Nothing
+here imports three.js, so on a laptop the page is the page and the scene's chunk, with three.js in
+it, is never fetched.
 
-If the emulator's chunk or the scene's cannot be fetched because the page came from a service
-worker's precache and a deploy has replaced the chunks it names, the page reloads once a newer
-worker has taken it over, and at once if one already has. A page whose worker has not been replaced
-has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid, Knights and
-the todo app offer their sessions this way.
+If the emulator's chunk, the touch layer's or the scene's cannot be fetched because the page came
+from a service worker's precache and a deploy has replaced the chunks it names, the page reloads
+once a newer worker has taken it over, and at once if one already has. A page whose worker has not
+been replaced has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid,
+Knights and the todo app offer their sessions this way.
 
 ## `justdom-xr/scene`
 
@@ -165,8 +225,10 @@ names. Minesweeper's, the desk's, Euclid's and Knights' checks use it, by hand.
 ## Tests
 
 `npm test` in the package, or `rush build --to justdom-xr`, runs `node --test` over `src`: the
-session's rules, `canPresent` against a stubbed `navigator.xr`, the offer against a stubbed platform
-and service worker, the controller and hand models' addresses against a stubbed `fetch`,
+session's rules, `canPresent` against a stubbed `navigator.xr`, the offer against a stubbed
+platform, service worker and emulator, the touch layer's look, tap, grab and buttons against a
+stand-in headset under jsdom, the controller and hand models' addresses against a stubbed `fetch`,
 `clientRect` against a stand-in `ResizeObserver`, the clear-state shadow against a stand-in WebGL
 context, and which queries `followThemingQuery` and `followOutlinesQuery` take. `install` itself
-needs a browser, and is exercised by the apps' own check scripts, as is the driver.
+needs a browser, and is exercised by the apps' own check scripts, as is the driver. Minesweeper's
+also plays a session through `?touch`, with a long press, a tap and a tap on the ×.

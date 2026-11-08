@@ -4,13 +4,33 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 // The emulator's chunk, gone after a deploy: a copy of `offer.js` loaded
 // with `gone` in its query cannot import `./emulator.js`, as a page whose
-// precache names a chunk the server no longer has cannot. A hook, since
-// the import is `offer.js`'s own and the test cannot hand it another.
+// precache names a chunk the server no longer has cannot. One loaded with
+// `stand-ins` gets an emulator and a touch layer that only write down how
+// they were installed, in `globalThis.installed`, since neither runs
+// outside a browser. A hook, since the imports are `offer.js`'s own and
+// the test cannot hand it others.
 register(
   `data:text/javascript,${encodeURIComponent(`
+    const standIns = {
+      "./emulator.js":
+        "export function install(options) {" +
+        "  globalThis.installed.push(['emulator', options]);" +
+        "  return 'headset';" +
+        "}",
+      "./touch.js":
+        "export function installTouch(headset, options) {" +
+        "  globalThis.installed.push(['touch', headset, options]);" +
+        "}",
+    };
     export async function resolve(specifier, context, next) {
       if (specifier === "./emulator.js" && context.parentURL?.includes("gone")) {
         throw new Error("Failed to fetch dynamically imported module");
+      }
+      if (specifier in standIns && context.parentURL?.includes("stand-ins")) {
+        return {
+          url: "data:text/javascript," + encodeURIComponent(standIns[specifier]),
+          shortCircuit: true,
+        };
       }
       return next(specifier, context);
     }
@@ -65,9 +85,10 @@ let loads = 0;
 /**
  * A fresh copy of the module, as a page loads it: it reads the worker that
  * served the page as it loads, and remembers a reload it has asked for.
- * With `gone`, the copy cannot import the emulator (see the hook above).
+ * With `gone`, the copy cannot import the emulator, and with `stand-ins`
+ * it imports the stand-ins (see the hook above).
  *
- * @param {"gone"} [emulator]
+ * @param {"gone" | "stand-ins"} [emulator]
  * @returns {Promise<typeof import("./offer.js")>}
  */
 const offerModule = (emulator) =>
@@ -194,6 +215,49 @@ describe("offerHeadset", () => {
       replace({});
       await settle();
       assert.equal(reloads, 1);
+    });
+  });
+  describe("with ?touch", () => {
+    /** @type {unknown[][]} */
+    let installed;
+    beforeEach(() => {
+      platform(["immersive-vr"]);
+      installed = [];
+      Object.assign(globalThis, { installed });
+    });
+
+    it("installs the emulator without its panels, and the touch layer on it", async () => {
+      at("?touch");
+      const touch = { buttons: [{ label: "Throw", code: "Space" }], pitch: 0 };
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader(), { touch });
+      assert.deepEqual(installed, [
+        ["emulator", { devUI: false }],
+        ["touch", "headset", touch],
+      ]);
+    });
+
+    it("installs it over ?emulator's panels", async () => {
+      at("?emulator&touch");
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader(), { touch: {} });
+      assert.deepEqual(installed, [
+        ["emulator", { devUI: false }],
+        ["touch", "headset", {}],
+      ]);
+    });
+
+    it("installs nothing for an app that has not asked for it", async () => {
+      at("?touch");
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader());
+      assert.deepEqual(installed, []);
+    });
+
+    it("installs nothing without the flag", async () => {
+      const { offerHeadset } = await offerModule("stand-ins");
+      await offerHeadset(sceneLoader(), { touch: {} });
+      assert.deepEqual(installed, []);
     });
   });
 });

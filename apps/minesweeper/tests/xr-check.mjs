@@ -25,6 +25,11 @@
  * - Passthrough takes the backdrop down;
  * - the × ends the session.
  *
+ * Last it loads the page again with `?touch` and plays a session as a
+ * finger would on `justdom-xr`'s touch layer: a long press on a covered
+ * tile flags it, a tap uncovers another, and a tap on the × ends the
+ * session and takes the layer down.
+ *
  * The script fails if any of them does not happen, or if the page throws
  * along the way. It is kept out of `npm test` because it needs a browser
  * and takes about half a minute under SwiftShader;
@@ -478,6 +483,114 @@ async function main() {
       () => !document.querySelector("#board[data-xr-portal], #menu[data-xr-portal]"),
     );
     check(ended, "the × ended the session and took the panels down");
+
+    console.log("\n== on a phone, through ?touch");
+    {
+      // The same page again, with the touch layer over the emulated
+      // headset, played as a finger plays it: the mouse's pointer events
+      // stand in for a finger's, which the layer cannot tell apart.
+      await page.goto(`${url}?touch`, { waitUntil: "load" });
+      await page.waitForSelector("#board svg path");
+      await page.click("#ARButton, #VRButton");
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#board[data-xr-portal]") &&
+          document.querySelector("#menu[data-xr-portal]") &&
+          !document.querySelector("[data-xr-loading]"),
+      );
+      await frames(page, 30);
+      const touchHead = await headPosition(page);
+      await page.evaluate(() => {
+        /** @type {any} */ const w = window;
+        w.__heard = [];
+        document.querySelector("#board")?.addEventListener("contextmenu", (event) => {
+          const { clientX, clientY } = /** @type {MouseEvent} */ (event);
+          w.__heard.push({ type: event.type, clientX, clientY });
+        });
+      });
+
+      /**
+       * The pixel of the page the session draws a point of the scene at,
+       * from where the head is and how it is turned: the inverse of
+       * `tapDirection` in `justdom-xr/touch`.
+       *
+       * @param {[number, number, number]} point
+       */
+      const pixelOf = (point) =>
+        page.evaluate(
+          ([p, h]) => {
+            const device = /** @type {any} */ (window).xrDevice;
+            const { x, y, z, w } = device.quaternion;
+            const v = [0, 1, 2].map(
+              (i) => p[i] + h[i] - [device.position.x, device.position.y, device.position.z][i],
+            );
+            // Into the head's own space: turned back by the head's turn.
+            const q = [-x, -y, -z];
+            const cross = (/** @type {number[]} */ a, /** @type {number[]} */ b) => [
+              a[1] * b[2] - a[2] * b[1],
+              a[2] * b[0] - a[0] * b[2],
+              a[0] * b[1] - a[1] * b[0],
+            ];
+            const t = cross(q, v).map((c) => 2 * c);
+            const u = cross(q, t);
+            const [hx, hy, hz] = v.map((c, i) => c + w * t[i] + u[i]);
+            const rect = (device.appCanvas ?? document.documentElement).getBoundingClientRect();
+            const tan = Math.tan(device.fovy / 2);
+            const ndcX = hx / -hz / (tan * (rect.width / rect.height));
+            const ndcY = hy / -hz / tan;
+            return {
+              x: rect.left + ((ndcX + 1) / 2) * rect.width,
+              y: rect.top + ((1 - ndcY) / 2) * rect.height,
+            };
+          },
+          [point, touchHead],
+        );
+
+      const covered = await coveredPoints();
+      if (covered.length < 2) throw new Error("no covered tiles to touch");
+      const flagAt = await pixelOf(await onBoard(covered[0].x, covered[0].y));
+      console.log("  flag at:", JSON.stringify(flagAt));
+      await page.mouse.move(flagAt.x, flagAt.y);
+      await page.mouse.down();
+      // Past the 400 ms a finger has to stay still to close the grip.
+      await page.waitForTimeout(600);
+      await frames(page, 10);
+      await page.mouse.up();
+      await frames(page, 10);
+      const heard = await page.evaluate(() => /** @type {any} */ (window).__heard);
+      check(
+        heard.length === 1 && heard[0].type === "contextmenu",
+        `a long press was heard as one contextmenu (${JSON.stringify(heard)})`,
+      );
+      check((await flags()) === 1, "and it planted a flag");
+
+      const uncoverAt = covered[covered.length - 1];
+      const tapAt = await pixelOf(await onBoard(uncoverAt.x, uncoverAt.y));
+      const before = await coveredPath();
+      await page.mouse.click(tapAt.x, tapAt.y);
+      await frames(page, 30);
+      check((await coveredPath()) !== before, "a tap uncovered a tile");
+
+      const closeAt = await pixelOf(await onMenu("×"));
+      await page.mouse.click(closeAt.x, closeAt.y);
+      await frames(page, 30);
+      check(
+        await page.evaluate(
+          () => !document.querySelector("#board[data-xr-portal], #menu[data-xr-portal]"),
+        ),
+        "a tap on the × ended the session",
+      );
+      check(
+        await page.evaluate(() =>
+          [...document.querySelectorAll("body > div")].every(
+            (div) =>
+              /** @type {HTMLElement} */ (div).style.zIndex !== "1000" ||
+              /** @type {HTMLElement} */ (div).style.display === "none",
+          ),
+        ),
+        "and took the touch layer down with it",
+      );
+    }
     check(errors.length === 0, `the page threw nothing (${errors.length} errors)`);
   } finally {
     await closeAll(browser, server);

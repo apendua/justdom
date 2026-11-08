@@ -29,8 +29,10 @@ for (const [element, tree] of [
 // And the headset, offered to a page that can open one: the scene mirrors
 // the very elements the game was just mounted into. It is loaded only once
 // a session is known to be possible, so a page that is only ever a page
-// does not fetch three.js.
-offerHeadset(() => import("./xr"))
+// does not fetch three.js. `?touch` plays it on a phone's screen: a tap
+// uncovers a tile and a long press flags one, and the head starts looking
+// a little down, at the board.
+offerHeadset(() => import("./xr"), { touch: { pitch: -0.15 } })
   .then((xr) => xr?.offerXR(board, menu))
   .catch((err) => {
     console.error("Could not offer an XR session:", err);

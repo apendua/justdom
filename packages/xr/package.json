@@ -1,7 +1,7 @@
 {
   "name": "justdom-xr",
   "version": "0.3.0",
-  "description": "What every headset app repeats: the emulated headset behind ?emulator, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
+  "description": "What every headset app repeats: the emulated headset behind ?emulator and the phone's touch layer behind ?touch, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apendua/justdom.git",
@@ -31,6 +31,10 @@
       "types": "./lib-types/theming.d.ts",
       "import": "./src/theming.js"
     },
+    "./touch": {
+      "types": "./lib-types/touch.d.ts",
+      "import": "./src/touch.js"
+    },
     "./driver": "./driver/index.mjs"
   },
   "files": [
@@ -53,6 +57,7 @@
     "justdom-three": "workspace:*"
   },
   "devDependencies": {
+    "@apendua/jsdom-env": "workspace:*",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@types/webxr": "^0.5.24",

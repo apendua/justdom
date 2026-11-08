@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Add justdom-xr/touch: a phone's touch layer over the emulated headset (look, tap, and a 400 ms still press that holds the grip), installed by offerHeadset behind ?touch for an app that passes { touch }. The touch chunk imports three.js, which splits out a three.core chunk; a precaching service worker should ignore touch-*.js and three.core-*.js.",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

@@ -20,17 +20,36 @@ const servedBy = navigator.serviceWorker?.controller ?? null;
  * runtime without the panels that drive it, for a harness photographing the
  * scene or driving it from a script.
  *
- * If either chunk cannot be fetched because the page came from a service
- * worker's precache and a deploy has replaced the chunks it names, the page
- * reloads once the new worker has taken it over (see `fetched`).
+ * `?touch` installs the headset without its panels too, and puts a phone's
+ * touch screen in front of it (`installTouch` in `justdom-xr/touch`), for
+ * an app that passes `touch`: the app's buttons, if any, and where the
+ * head starts. An app that passes nothing ignores the flag, since its
+ * controls have not been tried on a phone. The touch layer is a chunk of
+ * its own, as the emulator is, loaded only for `?touch`.
+ *
+ * If any of these chunks cannot be fetched because the page came from a
+ * service worker's precache and a deploy has replaced the chunks it names,
+ * the page reloads once the new worker has taken it over (see `fetched`).
  *
  * @template T
  * @param {() => Promise<T>} scene
+ * @param {{ touch?: import("./touch.js").TouchOptions }} [options]
  * @returns {Promise<T | null>}
  */
-export async function offerHeadset(scene) {
+export async function offerHeadset(scene, { touch } = {}) {
   const query = new URLSearchParams(location.search);
-  if (query.has("emulator")) {
+  const touchOptions = query.has("touch") ? touch : undefined;
+  if (touchOptions) {
+    try {
+      const [{ install }, { installTouch }] = await Promise.all([
+        fetched(import("./emulator.js")),
+        fetched(import("./touch.js")),
+      ]);
+      installTouch(install({ devUI: false }), touchOptions);
+    } catch (err) {
+      console.error("Could not install the XR emulator's touch mode:", err);
+    }
+  } else if (query.has("emulator")) {
     try {
       const { install } = await fetched(import("./emulator.js"));
       install({ devUI: query.get("emulator") !== "bare" });
@@ -46,12 +65,12 @@ export async function offerHeadset(scene) {
 
 /**
  * A chunk the page imports lazily, which its service worker does not
- * precache: the emulator and the scene. A page the worker serves after a
- * deploy names them by hashes the new deployment no longer has, so the
- * import fails. The new worker takes the page over as it activates
- * (`autoUpdate`), and reloading then gets the page that names the chunks
- * the server has. A page whose worker has not been replaced has no newer
- * page to reload into, so it waits rather than loops.
+ * precache: the emulator, the touch layer and the scene. A page the
+ * worker serves after a deploy names them by hashes the new deployment no
+ * longer has, so the import fails. The new worker takes the page over as
+ * it activates (`autoUpdate`), and reloading then gets the page that names
+ * the chunks the server has. A page whose worker has not been replaced has
+ * no newer page to reload into, so it waits rather than loops.
  *
  * @template T
  * @param {Promise<T>} chunk

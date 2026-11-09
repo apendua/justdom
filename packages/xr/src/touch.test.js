@@ -436,6 +436,22 @@ describe("installTouch", () => {
     assert.equal(layer.style.display, "none");
   });
 
+  it("keeps a long press on it from selecting the page or opening a menu", async () => {
+    install();
+    await startSession();
+    const touch = new Event("touchstart", { bubbles: true, cancelable: true });
+    layer.dispatchEvent(touch);
+    assert.equal(touch.defaultPrevented, true);
+    const menu = new Event("contextmenu", { bubbles: true, cancelable: true });
+    layer.dispatchEvent(menu);
+    assert.equal(menu.defaultPrevented, true);
+    // Its buttons still get their clicks.
+    const exit = [...layer.querySelectorAll("button")].find((b) => b.textContent === "Exit");
+    const onButton = new Event("touchstart", { bubbles: true, cancelable: true });
+    exit?.dispatchEvent(onButton);
+    assert.equal(onButton.defaultPrevented, false);
+  });
+
   it("stays down for an inline session", async () => {
     install();
     await navigator.xr?.requestSession("inline");

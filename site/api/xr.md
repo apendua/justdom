@@ -76,8 +76,9 @@ A finger on the scene is undecided until it does one of four things:
   the controller is parked again. A tap that lands while the last one is still running is dropped.
 - **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way,
   presses nothing yet, and buzzes the phone for 15 ms (`HOLD_BUZZ_MS`), as a phone does for a long
-  press. Safari on iOS has no `navigator.vibrate`, so it does not buzz there. What the finger does
-  next decides the press:
+  press. Safari on iOS has no `navigator.vibrate`, so it does not buzz there. The layer cancels the
+  browser's own long press, so a hold selects none of the page and opens no menu. What the finger
+  does next decides the press:
   - **Drag.** Moving more than 10 px from where it landed pulls the trigger 4 frames later where the
     finger landed, and a finger that only jitters in place never gets that far. From 4 frames after
     the trigger the ray follows the finger, the head stays where it is, and the lift, or the

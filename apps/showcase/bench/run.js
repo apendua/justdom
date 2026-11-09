@@ -18,10 +18,11 @@
  *   node bench/run.js                          # working tree only
  *   node bench/run.js --against origin/develop # A/B against a revision
  *   node bench/run.js --against develop --repeat 4 --scenario scroll,burst
+ *   node bench/run.js --against origin/develop --json out.json  # + every round
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
@@ -50,6 +51,7 @@ function parse(args) {
     burst: Number(flags.burst ?? 100),
     only: flags.scenario ? flags.scenario.split(",") : null,
     styleReads: flags["style-reads"] === "true",
+    json: flags.json ?? null,
   };
 }
 
@@ -422,4 +424,29 @@ for (const scenario of list) {
       }
     }
   }
+}
+
+// Every round of every side, unreduced, for a reader that wants to say more
+// than the medians above can: `report.js` turns two sides of it into the
+// comment the Benchmarks workflow posts on a pull request. Counts are kept
+// round by round so that a count which varied between rounds shows up as one,
+// rather than as the median of a disagreement.
+if (options.json) {
+  writeFileSync(
+    options.json,
+    `${JSON.stringify(
+      {
+        app: options.app,
+        repeat: options.repeat,
+        scenarios: list.map((scenario) => ({
+          name: scenario.name,
+          what: scenario.what,
+          bursts: scenario.burstAt?.length ?? 0,
+        })),
+        sides: sides.map((side) => ({ label: side.label, runs: collected.get(side.label) ?? [] })),
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }

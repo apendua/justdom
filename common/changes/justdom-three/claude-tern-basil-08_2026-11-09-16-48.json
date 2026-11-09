@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "render(): pointer is on by default, for the mouse and a pen, with fingers left to the page (touch: false). pointer: true takes fingers too; pointer: false mounts no mouse.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

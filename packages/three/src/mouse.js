@@ -538,9 +538,10 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       // A mouse is never cancelled. A pen is, where the canvas's
       // `touch-action` lets the browser take its drag for a scroll, as it
       // does under `touch: false`: no release is coming, so it ends as a
-      // hand that went, and stops any turn it began.
-      turning = null;
-      pointer.visible = false;
+      // hand that went, and stops any turn it began. `disconnected` ends
+      // every press the group holds, a finger's among them, so the finger
+      // is let go here too and its lift is not heard.
+      lift();
       send("disconnected");
       return;
     }

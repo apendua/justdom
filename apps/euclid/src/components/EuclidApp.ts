@@ -1,4 +1,5 @@
-import { $, children, className, set } from "justdom-core";
+import { $, attr, children, className, set } from "justdom-core";
+import { xrSession } from "justdom-xr/session";
 import type AppStore from "../store/App";
 import Canvas, { type CanvasOptions } from "./Canvas";
 import Editor from "./Editor";
@@ -10,7 +11,6 @@ const editorPaneStyle = className`
   flex-direction: column;
   box-sizing: border-box;
   height: 100%;
-  border-right: 1px solid #e0dbcd;
 `;
 
 const editorBodyStyle = className`
@@ -38,3 +38,12 @@ const EuclidApp = (store: AppStore, canvas: CanvasOptions) => ({
 });
 
 export default EuclidApp;
+
+/**
+ * The page's `data-code`, `"shown"` while it shows the program, which on a
+ * phone it does only on demand (see `index.css`). A session always shows
+ * it, because a panel mirrors the element where the page lays it out, and
+ * an element the page does not show has no size to mirror.
+ */
+export const codeShown = (store: AppStore) =>
+  attr("data-code", () => (store.codeShown.get() || xrSession.get() ? "shown" : undefined));

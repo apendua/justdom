@@ -80,6 +80,12 @@ export default class AppStore {
   readonly editorSelection = Signal.of<EditorSelection | null>(null);
   readonly exampleName = Signal.of<string>(EXAMPLES[0].name);
   readonly canUndo = Signal.of<boolean>(false);
+  /**
+   * Whether a phone shows the program, above the drawing. A wider page always
+   * shows it, beside the drawing, and so does a session, which mirrors it
+   * into a panel of its own.
+   */
+  readonly codeShown = Signal.of<boolean>(false);
 
   #history: string[] = [];
   #selectionSeq = 0;

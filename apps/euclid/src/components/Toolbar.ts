@@ -35,12 +35,28 @@ const toolbarStyle = className`
   flex-wrap: wrap;
 `;
 
-const titleStyle = className`
-  font-family: Georgia, 'Times New Roman', serif;
-  font-style: italic;
-  font-size: 18px;
-  margin-right: 12px;
-  color: #f3efe4;
+/*
+ * A phone has the width of the tools and little more, so the bar drops the
+ * title, which the page's own title already says, and moves the hint to a
+ * line of its own at the bottom. The breakpoint is the page's, in
+ * `index.css`, which below it shows the program only on demand.
+ */
+const PHONE = "(max-width: 600px)";
+
+const titleStyle = stylesheet`
+  .${CLASS_NAME} {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-size: 18px;
+    margin-right: 12px;
+    color: #f3efe4;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      display: none;
+    }
+  }
 `;
 
 const buttonStyle = className`
@@ -74,8 +90,30 @@ const groupStyle = className`
   align-items: center;
 `;
 
-const spacerStyle = className`
-  flex: 1;
+const spacerStyle = stylesheet`
+  .${CLASS_NAME} {
+    flex: 1;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      order: 1;
+      flex-basis: 100%;
+    }
+  }
+`;
+
+/** Shows and hides the program; there only on a phone. */
+const codeToggleStyle = stylesheet`
+  .${CLASS_NAME} {
+    display: none;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      display: inline-block;
+    }
+  }
 `;
 
 const hintStyle = className`
@@ -222,12 +260,18 @@ const ZOOM_STEP = 1.25;
 const inSession = (render: () => Subscribable<Mountable>) =>
   list(() => (xrSession.get() ? [true] : []), render);
 
+/** What only the page has, taken down while a session runs. */
+const outOfSession = (render: () => Subscribable<Mountable>) =>
+  list(() => (xrSession.get() ? [] : [true]), render);
+
 /**
  * The toolbar: the tools, undo, the view, what the active tool wants next
  * and the bundled constructions. It is ordinary DOM across the top of the
  * page, and a headset session mirrors this very bar into a panel of its own
  * over the drawing.
  *
+ * The Code button, which shows and hides the program on a phone, is not
+ * there in a session, which always shows the program in a panel of its own.
  * Two things are there only in a session, mounted when the scene says there
  * is one: the passthrough switch, pressable only in a session that can
  * show the room, and the × at the end of the bar, which ends the session.
@@ -298,6 +342,21 @@ const Toolbar = component((store: AppStore) => {
             on("click", () => store.fitView()),
             children(text`Fit view`),
           ]),
+          outOfSession(() =>
+            $("span", [
+              set("className", codeToggleStyle),
+              children(
+                $("button", [
+                  set("className", buttonStyle),
+                  set({ type: "button" }),
+                  attr("aria-pressed", () => String(store.codeShown.get())),
+                  attr("data-active", () => (store.codeShown.get() ? "true" : undefined)),
+                  on("click", () => store.codeShown.set(!store.codeShown.get())),
+                  children(text`Code`),
+                ]),
+              ),
+            ]),
+          ),
         ),
       ]),
       $("span", [

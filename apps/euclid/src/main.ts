@@ -1,7 +1,7 @@
 import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import "./index.css";
-import EuclidApp from "./components/EuclidApp";
+import EuclidApp, { codeShown } from "./components/EuclidApp";
 import { offerHeadset } from "justdom-xr/offer";
 import AppStore from "./store/App";
 
@@ -45,6 +45,13 @@ for (const [element, tree] of [
     },
   });
 }
+
+// Whether a phone shows the program: on demand, and always in a session.
+just(document.body, [codeShown(store)]).subscribe({
+  error: (err) => {
+    console.error("Error mounting the app:", err);
+  },
+});
 
 // Frame the initial example once the layout has settled.
 requestAnimationFrame(() => {

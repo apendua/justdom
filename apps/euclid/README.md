@@ -30,6 +30,14 @@ edit. Objects mentioned in `draw` statements are inked; everything else renders 
 construction lines. These are dashed, as is the preview of a line or circle in progress, unless the
 page's address has `?dashes=off`, which draws them solid.
 
+## On a phone
+
+A page 600 pixels wide or narrower shows the drawing alone, under a toolbar that drops the title and
+puts the hint on a line of its own. The toolbar's **Code** button shows the program between the two,
+with the drawing below it, and hides it again. A session always shows the program, since its panel
+mirrors the program where the page lays it out, so the page lays it out for as long as one runs and
+the Code button is gone until it ends.
+
 ## Running it
 
 ```
@@ -69,7 +77,7 @@ tests or benchmarks, runs it, with minesweeper's, the desk's and Knights', from
 | `src/components/EuclidApp.ts` | The three trees over one store.                                                                                                                                                                                                              |
 | `src/components/Canvas.ts`    | The drawing: one `<svg>`, driven by pointer events, which finds what was pressed from where it was pressed.                                                                                                                                  |
 | `src/components/Editor.ts`    | The program: a transparent `<textarea>` over a highlighted copy of the code, which also grounds the selected statement.                                                                                                                      |
-| `src/components/Toolbar.ts`   | The tools, undo, zoom, the hint, the construction picker, and the × and Passthrough a session adds.                                                                                                                                          |
+| `src/components/Toolbar.ts`   | The tools, undo, zoom, the hint, the construction picker, the Code button a phone adds, and the × and Passthrough a session adds.                                                                                                            |
 | `src/store/App.ts`            | The state: the code, what it evaluates to, the tool in progress and the view.                                                                                                                                                                |
 | `src/xr.ts`                   | The session: makes the renderer with `justdom-three`'s SVG plugin and the controller and hand models from `justdom-xr`'s `inputModels()`, and the Enter button.                                                                              |
 | `src/components/Scene.ts`     | The scene: the three panels, a backdrop, lights, the cursors and the frame rate.                                                                                                                                                             |

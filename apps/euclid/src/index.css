@@ -31,3 +31,32 @@ body {
 #canvas {
   min-height: 0;
 }
+
+#editor {
+  border-right: 1px solid #e0dbcd;
+}
+
+/*
+ * A phone is too narrow for the two side by side, so it shows the drawing
+ * alone, and the program above it only when the toolbar's Code button asks
+ * for it, or a session is running (`data-code`, set in `main.ts`).
+ */
+@media (max-width: 600px) {
+  body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #editor {
+    display: none;
+    border-right: none;
+    border-bottom: 1px solid #e0dbcd;
+  }
+
+  body[data-code="shown"] {
+    grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  body[data-code="shown"] #editor {
+    display: block;
+  }
+}

@@ -74,8 +74,10 @@ A finger on the scene is undecided until it does one of four things:
 - **Tap.** Lifting within 10 px aims the right controller through the tapped pixel, from just behind
   the eye, and pulls its trigger: aim, 4 frames, trigger down, 4 frames, trigger up, 4 frames, then
   the controller is parked again. A tap that lands while the last one is still running is dropped.
-- **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way and
-  presses nothing yet. What the finger does next decides the press:
+- **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way,
+  presses nothing yet, and buzzes the phone for 15 ms (`HOLD_BUZZ_MS`), as a phone does for a long
+  press. Safari on iOS has no `navigator.vibrate`, so it does not buzz there. What the finger does
+  next decides the press:
   - **Drag.** Moving more than 10 px from where it landed pulls the trigger 4 frames later where the
     finger landed, and a finger that only jitters in place never gets that far. From 4 frames after
     the trigger the ray follows the finger, the head stays where it is, and the lift, or the
@@ -112,6 +114,9 @@ zooms back out to the headset's own field of view.
 **Tilt**, in the top corner, turns the head with the phone as well, as a window onto the room, and
 the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a page
 the phone's orientation only once a tap has asked for it.
+
+**Exit**, in the top left corner, ends the session. The layer covers the whole screen while a
+session is up, the page's own button for ending it included.
 
 | Option    | Default | What it does                                                                                                                                                                                                   |
 | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

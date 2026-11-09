@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { setupJsdom } from "@apendua/jsdom-env";
 import * as THREE from "three";
 import {
+  HOLD_BUZZ_MS,
   HOLD_MS,
   Look,
   MIN_FOVY,
@@ -383,7 +384,13 @@ describe("installTouch", () => {
       configurable: true,
       value: {
         requestSession: async (/** @type {XRSessionMode} */ mode) => {
-          session = Object.assign(new window.EventTarget(), { mode });
+          const opened = Object.assign(new window.EventTarget(), {
+            mode,
+            end: async () => {
+              opened.dispatchEvent(new window.Event("end"));
+            },
+          });
+          session = opened;
           return session;
         },
       },
@@ -413,6 +420,19 @@ describe("installTouch", () => {
     await startSession();
     assert.equal(layer.style.display, "block");
     session?.dispatchEvent(new Event("end"));
+    assert.equal(layer.style.display, "none");
+  });
+
+  it("ends the session with Exit, whose own button the layer covers", async () => {
+    install();
+    await startSession();
+    const exit = [...layer.querySelectorAll("button")].find((b) => b.textContent === "Exit");
+    assert.ok(exit);
+    exit.click();
+    assert.equal(layer.style.display, "none");
+    // The next session gets its own Exit.
+    await startSession();
+    exit.click();
     assert.equal(layer.style.display, "none");
   });
 
@@ -520,6 +540,48 @@ describe("installTouch", () => {
     beforeEach(async () => {
       install({ pitch: 0 });
       await startSession();
+    });
+
+    it("buzzes the phone once, as it becomes a hold, and not for a tap or a look", () => {
+      /** @type {unknown[]} */
+      const buzzes = [];
+      Object.defineProperty(navigator, "vibrate", {
+        configurable: true,
+        value: (/** @type {number} */ ms) => buzzes.push(ms),
+      });
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(3 * STEP_FRAMES);
+      finger("pointerdown", 200, 400);
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
+      mock.timers.tick(HOLD_MS);
+      finger("pointerup", 200 + 2 * SLOP_PX, 400);
+      assert.deepEqual(buzzes, []);
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS - 1);
+      assert.deepEqual(buzzes, []);
+      mock.timers.tick(1);
+      assert.deepEqual(buzzes, [HOLD_BUZZ_MS]);
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
+      finger("pointerup", 200 + 2 * SLOP_PX, 400);
+      assert.deepEqual(buzzes, [HOLD_BUZZ_MS]);
+      delete (/** @type {any} */ (navigator).vibrate);
+    });
+
+    it("does not buzz for a hold dropped while the controller is busy", () => {
+      /** @type {unknown[]} */
+      const buzzes = [];
+      Object.defineProperty(navigator, "vibrate", {
+        configurable: true,
+        value: (/** @type {number} */ ms) => buzzes.push(ms),
+      });
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(1);
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      assert.deepEqual(buzzes, []);
+      delete (/** @type {any} */ (navigator).vibrate);
     });
 
     it("waits for the finger to stay still, then aims and presses nothing", () => {
@@ -921,7 +983,7 @@ describe("installTouch", () => {
     install();
     assert.deepEqual(
       [...layer.querySelectorAll("button")].map((b) => b.textContent),
-      ["Tilt off"],
+      ["Tilt off", "Exit"],
     );
   });
 });

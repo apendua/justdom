@@ -46,6 +46,14 @@ export const START_PITCH = -0.45;
 export const STEP_FRAMES = 4;
 
 /**
+ * How long the phone buzzes, in milliseconds, when a finger held still
+ * becomes a hold: the short tick a phone gives a long press, so the player
+ * knows the next move drags. A browser without `navigator.vibrate`, Safari
+ * on iOS among them, gives none.
+ */
+export const HOLD_BUZZ_MS = 15;
+
+/**
  * The head's turn, as a drag and the phone's tilt set it: the yaw about the
  * vertical, the pitch about the head's own x axis and the roll about its
  * line of sight, in that order (`YXZ`). A finger moved across the screen
@@ -290,8 +298,9 @@ const afterStep = (then) => {
  * `HOLD_MS` and then moved drags with the trigger from where it landed,
  * and one held and lifted without moving is a press of the grip. Two
  * fingers pinch the view in and out. The app's
- * `buttons` go along the bottom, and **Tilt**, in the top corner, turns the
- * head with the phone as well (`Look`).
+ * `buttons` go along the bottom, **Tilt**, in the top right corner, turns
+ * the head with the phone as well (`Look`), and **Exit**, in the top left,
+ * ends the session, since the layer covers the page's own button for it.
  *
  * The layer is up only while a session is, so the page's own buttons, the
  * one that starts the session among them, are tapped as they always are.
@@ -603,6 +612,9 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       if (finger === landed && landed.kind === "undecided") {
         landed.kind = "hold";
         landed.press = hold(landed.landed.x, landed.landed.y);
+        if (landed.press) {
+          navigator.vibrate?.(HOLD_BUZZ_MS);
+        }
       }
     }, HOLD_MS);
     finger = landed;
@@ -681,7 +693,12 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   if (buttons.length) {
     layer.append(buttonBar(buttons));
   }
-  layer.append(tiltButton(look, applyLook));
+  /** @type {XRSession | null} */
+  let session = null;
+  layer.append(
+    tiltButton(look, applyLook),
+    exitButton(() => session?.end()),
+  );
   document.body.append(layer);
 
   const started = () => {
@@ -712,12 +729,20 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   if (xr) {
     const request = xr.requestSession.bind(xr);
     xr.requestSession = async (mode, init) => {
-      const session = await request(mode, init);
+      const opened = await request(mode, init);
       if (mode !== "inline") {
+        session = opened;
         started();
-        session.addEventListener("end", ended, { once: true });
+        opened.addEventListener(
+          "end",
+          () => {
+            session = null;
+            ended();
+          },
+          { once: true },
+        );
       }
-      return session;
+      return opened;
     };
   }
 }
@@ -759,6 +784,35 @@ function buttonBar(buttons) {
 }
 
 /**
+ * A button in a top corner of the layer, clear of the notch.
+ *
+ * @param {"left" | "right"} side
+ * @returns {HTMLButtonElement}
+ */
+function cornerButton(side) {
+  const button = document.createElement("button");
+  button.style.cssText =
+    `position:absolute;top:calc(12px + env(safe-area-inset-top));${side}:16px;min-height:44px;` +
+    "padding:0 16px;border-radius:12px;border:1px solid #fff8;background:#0008;color:#fff;" +
+    "font:600 16px system-ui,sans-serif;touch-action:manipulation";
+  return button;
+}
+
+/**
+ * **Exit**: ends the session. The page's own button for that is under the
+ * layer, which covers the whole screen while a session is up.
+ *
+ * @param {() => void} exit
+ * @returns {HTMLButtonElement}
+ */
+function exitButton(exit) {
+  const button = cornerButton("left");
+  button.textContent = "Exit";
+  button.addEventListener("click", exit);
+  return button;
+}
+
+/**
  * The button that turns tilt on and off, and the listener it puts on the
  * window for the phone's readings while it is on. Off to start with: iOS
  * hands a page the readings only once a tap has asked for them, and a phone
@@ -770,11 +824,7 @@ function buttonBar(buttons) {
  * @returns {HTMLButtonElement}
  */
 function tiltButton(look, applyLook) {
-  const button = document.createElement("button");
-  button.style.cssText =
-    "position:absolute;top:calc(12px + env(safe-area-inset-top));right:16px;min-height:44px;" +
-    "padding:0 16px;border-radius:12px;border:1px solid #fff8;background:#0008;color:#fff;" +
-    "font:600 16px system-ui,sans-serif;touch-action:manipulation";
+  const button = cornerButton("right");
   const phone = new THREE.Quaternion();
   let on = false;
   const show = () => {

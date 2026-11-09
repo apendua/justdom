@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Measure a line, and each character of a revealed run, from the client rects that have a width, so text after a line break stays on its own line in WebKit",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

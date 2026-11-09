@@ -19,7 +19,7 @@ npm run bench:against            # A/B against origin/develop
 node bench/run.js --against origin/develop --repeat 4 --scenario scroll,burst
 node bench/run.js --scenario burst          # one scenario
 node bench/run.js --app showcase         # a different app
-node bench/run.js --rounds 40               # a longer list (20 → ~825 elements)
+node bench/run.js --rounds 40               # a longer list (20 → ~1,030 elements)
 node bench/run.js --burst 300               # bigger mount bursts
 node bench/run.js --style-reads             # + computed-style property reads
 ```
@@ -143,15 +143,32 @@ before times:
 
 Counts are identical run to run, so a change of one is a real change and no amount of noise can
 manufacture or hide it. Times are there to catch the case where the count falls and the frame gets
-slower anyway.
+slower anyway. The one exception is `mount`'s `getBoundingClientRect`, which moves by a percent or
+two between rounds of the same code: how a burst's mount is split across frames depends on how long
+each frame took.
+
+They are identical only because the setup takes three things out of the measurement, and each of
+them once made the counts differ between rounds:
+
+- **The frame rate readout.** Every app shows one, and its number moves with the frame rate. Each
+  move cost rect reads, glyphs and a texture, as many as the rate happened to change during a run.
+  The setup switches it off through `window.__diagnostics`, which an app has to expose; `todo` and
+  `showcase` do.
+- **An empty "Add".** The todo app adds what its field holds and nothing when it is empty, so the
+  setup types into the field before each press. Pressing a bare "Add", or the div beside the button
+  that also reads "Add", left every scenario measuring the app's six starting items.
+- **The tail of the setup.** A long list goes on mounting, and then rasterizing its rows' text a row
+  or so a frame, well after the last item arrives. The setup waits for thirty frames in a row with
+  no rect read and no glyph, and the runner waits the same way before its coherence check.
 
 Two caveats on the counters:
 
 - `--style-reads` wraps every computed style in a proxy. It tells the truth about _how many_
   properties were read and lies about _how long_ it took, so use it to compare counts and leave it
   off when frame gaps are the point.
-- `fillText` has a floor of roughly one per frame that is nothing to do with the mirror: the
-  emulator's dev UI draws its own overlay. Read changes, not absolutes.
+- `fillText` used to show a floor of a glyph or two a frame, put down to the emulator's overlay. It
+  was the frame rate readout and the rows still rasterizing after the setup; with both out of the
+  way, `idle` reads zero on every counter.
 
 ## The scenarios, and why these five
 

@@ -74,8 +74,11 @@ const PRELUDE = `
     const step = () => (left-- > 0 ? requestAnimationFrame(step) : resolve());
     requestAnimationFrame(step);
   });
+  // A button before anything else that reads the same: the todo app has a
+  // div whose text is also "Add", and a click on that reaches no handler.
   const byText = (text) =>
-    [...document.querySelectorAll("button, div")].find((el) => el.textContent === text);
+    [...document.querySelectorAll("button")].find((el) => el.textContent === text) ??
+    [...document.querySelectorAll("div")].find((el) => el.textContent === text);
   const scroller = () =>
     [...document.querySelectorAll("div")].find(
       (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflow === "hidden",
@@ -85,6 +88,40 @@ const PRELUDE = `
   // rendered, so the real scroll event does arrive — dispatching one too
   // would make this scenario two invalidations a frame when its whole job is
   // to be one, and quietly turn the floor into a coalescing case.
+  // The app's frame rate readout, switched off. Its number moves with the
+  // frame rate, and every move costs a measured rect, a rasterized glyph and
+  // a texture, as many times as the rate happened to change during a run —
+  // which is what made the counts differ between rounds of the same code.
+  // An app that exposes no controls (one that predates them) keeps its
+  // readout, and its counts carry that noise.
+  const hideDiagnostics = () => globalThis.__diagnostics?.visible.set(false);
+  // One item added. A bulk button adds ten at a press; a plain "Add" adds
+  // whatever the field holds and nothing at all when it is empty, so the
+  // field is filled first — clicking it bare added no item, and every
+  // scenario measured the app's starting list.
+  const pressAdd = (adder, input) => {
+    if (input) {
+      globalThis.__added = (globalThis.__added ?? 0) + 1;
+      input.value = \`bench item \${globalThis.__added}\`;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  };
+  // Frames until the mirror has gone quiet: thirty in a row without a
+  // layout read or a glyph drawn. A long list keeps mounting for many frames
+  // after the last item arrives, and rasterizes its rows' text a row or so a
+  // frame after that, so a scenario that starts early measures the tail of
+  // the setup, as much of it as the timing let through.
+  const settle = async () => {
+    let reads = -1;
+    for (let round = 0; round < 60; round += 1) {
+      const counters = globalThis.__bench?.counters;
+      const now = counters ? counters.getBoundingClientRect + counters.fillText : 0;
+      if (now === reads) return;
+      reads = now;
+      await frames(30);
+    }
+  };
   const scrollStep = () => {
     const el = globalThis.__scroller;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight) el.scrollTop = 0;
@@ -99,6 +136,7 @@ const PRELUDE = `
  */
 const SETUP_LONG_LIST = `
   ${PRELUDE}
+  hideDiagnostics();
   await frames(30);
   // How the list gets long is the app's business, and the app changes:
   // the todo app had a bulk button, then gained a keyboard and lost it. A
@@ -112,17 +150,19 @@ const SETUP_LONG_LIST = `
     throw new Error("no way to add items: expected an \\"Add 10 items\\" or \\"Add\\" control");
   }
   const perPress = bulk ? 10 : 1;
+  const input = bulk ? null : document.querySelector('input[type="text"]');
   const target = ROUNDS * 10;
   for (let added = 0; added < target; added += perPress) {
-    adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    pressAdd(adder, input);
     // A bulk press moves enough to be worth settling between; a single add
     // does not, and two hundred of them would take a quarter of a minute.
     if (bulk) await frames(2);
   }
-  await frames(30);
+  await settle();
   globalThis.__scroller = scroller();
   if (!globalThis.__scroller) throw new Error("nothing to scroll");
   globalThis.__adder = adder;
+  globalThis.__input = input;
   globalThis.__rows = globalThis.__scroller.querySelectorAll("*").length;
 `;
 
@@ -133,6 +173,7 @@ const SETUP_LONG_LIST = `
  */
 const SETUP_SHORT_LIST = `
   ${PRELUDE}
+  hideDiagnostics();
   await frames(30);
   const bulk = byText("Add 10 items");
   const add = byText("Add");
@@ -141,13 +182,15 @@ const SETUP_SHORT_LIST = `
     throw new Error("no way to add items: expected an \\"Add 10 items\\" or \\"Add\\" control");
   }
   globalThis.__perPress = bulk ? 10 : 1;
+  const input = bulk ? null : document.querySelector('input[type="text"]');
   for (let added = 0; added < 20; added += globalThis.__perPress) {
-    adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    pressAdd(adder, input);
   }
-  await frames(30);
+  await settle();
   globalThis.__scroller = scroller();
   if (!globalThis.__scroller) throw new Error("nothing to scroll");
   globalThis.__adder = adder;
+  globalThis.__input = input;
   globalThis.__rows = globalThis.__scroller.querySelectorAll("*").length;
 `;
 
@@ -201,10 +244,9 @@ export function scenarios(rounds = 20, burst = 100) {
       // mounted, and this is where that would show.
       step: `${PRELUDE} return (i) => {
         if (i < ${BURST_FIRST} || (i - ${BURST_FIRST}) % ${BURST_EVERY} !== 0) return;
-        const adder = globalThis.__adder;
         const presses = Math.max(1, Math.round(${burst} / globalThis.__perPress));
         for (let k = 0; k < presses; k++) {
-          adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          pressAdd(globalThis.__adder, globalThis.__input);
         }
       }`,
     },
@@ -254,8 +296,7 @@ export function scenarios(rounds = 20, burst = 100) {
         // Every fourth frame, so the frames between it show the cost settling
         // rather than one long smear.
         if (i % 4) return;
-        const bulk = globalThis.__adder;
-        bulk.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        pressAdd(globalThis.__adder, globalThis.__input);
       }`,
     },
     {

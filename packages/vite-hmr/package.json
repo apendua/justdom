@@ -1,6 +1,6 @@
 {
   "name": "justdom-vite-hmr",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "A Vite plugin that preserves justdom-signal component state across hot module reloads",
   "keywords": [
     "vite",

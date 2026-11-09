@@ -1,6 +1,36 @@
 # Change Log - justdom-three
 
-This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+This log was last generated on Mon, 09 Nov 2026 22:53:55 GMT and should not be manually modified.
+
+## 0.33.0
+Mon, 09 Nov 2026 22:53:55 GMT
+
+### Minor changes
+
+- render() takes a pointer option that mounts the mouse as a controller between sessions; the mouse's right button is the grip, and a finger on a touch screen taps, drags and holds
+- mouse(ctx): a canvas has one mouse, the one mounted last. Others on the canvas stand by until it unmounts, so a scene's own mouse beside render's pointer no longer gives the page two.
+- Colours in any CSS colour space draw as the colour they name, and gradients mix in the space they ask for
+- Draw `box-shadow`, outer and inset, up to four layers, in the panel's batch.
+- render()'s pointer option and mouse(ctx) take look: "orbit", which turns the camera on a drag that starts on nothing
+- A two-finger pinch on a touch screen moves what the first finger drags along the ray, as the wheel does for the mouse
+- PointerOptions gains touch. With touch: false, mouse(ctx) and render's pointer leave fingers to the page: the canvas keeps its own touch-action and a finger's events pass by. Left out, as before, they are taken.
+- A two-finger pinch with nothing held zooms a perspective camera, down to a 20° view (`MIN_FOVY`); `HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT` and `MIN_FOVY` are exported, and on their own from `justdom-three/limits`
+- Add canDrawHtmlInCanvas and htmlTextureMaterial, for a scene that shows an element the browser draws with HTML-in-Canvas
+- Draw an `outline` as a ring around its box, `outline-offset` from its border edge, over everything else in the box's layer.
+- The mouse's wheel moves what it holds along the ray, so a thing picked up with drag can be put down further off or nearer
+- render(): pointer is on by default, for the mouse and a pen, with fingers left to the page (touch: false). pointer: true takes fingers too; pointer: false mounts no mouse. render() mounts its mouse before the app's tree, so a mouse(ctx) the app mounts drives instead.
+- mouse(ctx): a long press on the canvas no longer selects the page. While a finger is down no selection may start, and the canvas has user-select: none whenever the mouse runs on it.
+
+### Patches
+
+- A picture with a border no longer shows a light line between the two
+- SVG text with a transform attribute is measured in its own user space in Safari too, where small text such as the minesweeper's counts was drawn off its place
+- A repeated background picture no longer draws a line of its average colour along the seams between its tiles
+- Build a list item's index node on its first read instead of for every item
+- Read an SVG element's transform attribute where the computed style leaves it out, as WebKit's does
+- Measure a line, and each character of a revealed run, from the client rects that have a width, so text after a line break stays on its own line in WebKit
+- Lay out the XR button's no-WebXR link border-box, so it is as wide as its width says
+- A border-radius on an <svg> root that hides its overflow now rounds the corners its shapes are clipped to, as the browser does
 
 ## 0.32.0
 Thu, 05 Nov 2026 23:28:58 GMT

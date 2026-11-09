@@ -28,9 +28,9 @@ run it first:
   packages, made from `rush.json`. A README link to another package becomes a link to that package's
   page. Any other relative link goes to the file on GitHub, and the script lists the links to files
   that are not in the repository.
-- `demos/` holds the list of demos, with each one's title and first paragraph from its README. A
-  demo that depends on `justdom-xr` also gets a link that opens it in a new tab under `?emulator`,
-  with an emulated headset to play it with.
+- `demos/` holds the list of demos, Desk first and then by title, with each one's title and first
+  paragraph from its README. A demo that depends on `justdom-xr` also gets a link that opens it in a
+  new tab under `?emulator`, with an emulated headset to play it with.
 
 The demos are this package's `workspace:*` dependencies under `apps/`, so Rush builds them before
 the site, and `scripts/copy-demos.mjs` copies each app's `dist` into `dist/demos/<app>/` after

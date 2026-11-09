@@ -154,8 +154,9 @@ export function demoLinks(demo, recorded) {
 }
 
 /**
- * The order of the demos page: Desk, the demo the landing page shows too,
- * leads, and the rest follow by title.
+ * The order of the demos page: Desk leads, and the rest follow by title.
+ * Desk is also the demo the landing page shows, in theme/HomeMirror.vue, so
+ * a change to one is a change to the other.
  *
  * @param {{ slug: string, title: string }} a
  * @param {{ slug: string, title: string }} b

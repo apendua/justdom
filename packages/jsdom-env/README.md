@@ -21,7 +21,10 @@ the window knows of is the mouse's, whose id is 1, so capturing or releasing any
 
 `canvas` is a dependency although nothing here imports it. It is jsdom's optional peer, and without
 it `HTMLCanvasElement.getContext("2d")` returns `null`. justdom-three measures text through that
-context, so 73 of its tests fail when `canvas` is missing.
+context, so 73 of its tests fail when `canvas` is missing. `canvas` installs a prebuilt binary from
+a GitHub release and builds from source when that download fails, which needs cairo, pango and the
+image libraries. CI installs them first with `.github/actions/canvas-libraries`; on a machine of
+your own, install the same packages that action names.
 
 ## Usage
 

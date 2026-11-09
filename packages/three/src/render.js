@@ -555,6 +555,31 @@ export function frames(ctx) {
  */
 
 /**
+ * What `render` mounts on its scene: the mouse its `pointer` option asks for
+ * (`renderPointer`), then the app's tree. The mouse goes first so that it is
+ * the oldest on the canvas: the one mounted last drives, so a `mouse(ctx)`
+ * the app mounts of its own, as it starts or later, drives with its own
+ * options. Returns the subscriptions that hold both up, mouse first.
+ *
+ * @param {THREE.Scene} scene
+ * @param {WeakKey} ctx
+ * @param {(ctx: WeakKey) => Subscribable<unknown>} fn
+ * @param {RenderOptions["pointer"]} option
+ * @returns {{ unsubscribe(): void }[]}
+ */
+export function mountScene(scene, ctx, fn, option) {
+  const pointer = renderPointer(option);
+  return [
+    ...(pointer ? [addToParent(scene, mouse(ctx, pointer)).subscribe({})] : []),
+    // Subscribing is mounting. A root produces nothing — everything it
+    // builds it mounts on the way through — so nothing is read off this; the
+    // subscription is what holds the tree up, and dropping it takes the tree
+    // down with the renderer.
+    fn(ctx).subscribe({}),
+  ];
+}
+
+/**
  * @param {(ctx: WeakKey) => Subscribable<unknown>} fn Builds the tree, which is
  *   mounted rather than read: the scene is `render`'s, and this decorates it.
  *   `effectsOnly` is what a root that produces nothing is wrapped in.
@@ -718,14 +743,8 @@ export function render(fn, options = {}) {
       scene.add(controller, grip, hand);
     }
 
-    // Subscribing is mounting. A root produces nothing — everything it builds
-    // it mounts on the way through — so nothing is read off this; the
-    // subscription is what holds the tree up, and dropping it takes the tree
-    // down with the renderer.
-    subscriber.add(fn(ctx).subscribe({}));
-    const pointer = renderPointer(options.pointer);
-    if (pointer) {
-      subscriber.add(addToParent(scene, mouse(ctx, pointer)).subscribe({}));
+    for (const mounted of mountScene(scene, ctx, fn, options.pointer)) {
+      subscriber.add(mounted);
     }
 
     let previousFrameTime = 0;

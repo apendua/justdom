@@ -108,8 +108,9 @@ render(app, { pointer: false }); // no mouse
 A scene can also put `mouse(ctx)` among its children itself, which is the same group. A canvas has
 one mouse, the one mounted on it last: every other `mouse(ctx)` on that canvas stands by, registered
 with nothing and listening to nothing, until the ones mounted after it unmount. So a scene that
-mounts its own beside `render(app, { pointer: true })` does not give the page two mice: its own
-drives, with its options, for as long as it is mounted.
+mounts its own beside the one `render(app)` mounts does not give the page two mice: `render()`
+mounts its own before the scene's tree, so the scene's drives, with its options, for as long as it
+is mounted.
 
 ```js
 import { useEffects } from "justdom-signal";

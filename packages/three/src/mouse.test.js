@@ -4,7 +4,8 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
 import { followMouse, MIN_REACH, mouse, renderPointer, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
-import { CameraContext, RendererContext, runFrame } from "./render.js";
+import { CameraContext, mountScene, RendererContext, runFrame } from "./render.js";
+import { addToParent } from "./operators.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
 
@@ -1026,5 +1027,25 @@ describe("render()'s pointer option", () => {
     const orbit = /** @type {const} */ ({ look: "orbit" });
     assert.equal(renderPointer(orbit), orbit);
     assert.equal(renderPointer(false), null);
+  });
+
+  test("a mouse the app mounts drives over render()'s, with its own options", () => {
+    const canvas = pageCanvas();
+    canvas.style.touchAction = "pan-y";
+    const count = countPointerDown(canvas);
+    const { ctx } = pageContext(canvas);
+    const scene = new THREE.Scene();
+    // The app's tree: its own mouse, which takes fingers where render()'s
+    // default leaves them, so the canvas's touch-action says which drives.
+    const app = (/** @type {WeakKey} */ ctx) => addToParent(scene, mouse(ctx, { look: "orbit" }));
+    const mounted = mountScene(scene, ctx, app, undefined);
+    assert.equal(scene.children.length, 2);
+    assert.equal(count.listeners, 1);
+    assert.equal(canvas.style.touchAction, "none");
+    for (const subscription of mounted) {
+      subscription.unsubscribe();
+    }
+    assert.equal(count.listeners, 0);
+    assert.equal(canvas.style.touchAction, "pan-y");
   });
 });

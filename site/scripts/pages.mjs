@@ -153,6 +153,18 @@ export function demoLinks(demo, recorded) {
   ];
 }
 
+/**
+ * The order of the demos page: Desk, the demo the landing page shows too,
+ * leads, and the rest follow by title.
+ *
+ * @param {{ slug: string, title: string }} a
+ * @param {{ slug: string, title: string }} b
+ */
+export function demoOrder(a, b) {
+  const lead = (/** @type {{ slug: string }} */ demo) => (demo.slug === "desk" ? 0 : 1);
+  return lead(a) - lead(b) || a.title.localeCompare(b.title);
+}
+
 /** @param {string} path relative to the root */
 function lookup(path) {
   const full = join(root, path);
@@ -238,7 +250,7 @@ function main() {
         headset: "justdom-xr" in dependencies,
       };
     })
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort(demoOrder);
 
   const demosDir = join(site, "demos");
   rmSync(demosDir, { recursive: true, force: true });

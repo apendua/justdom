@@ -1,0 +1,16 @@
+name: Install canvas's build libraries
+description: >-
+  The libraries `canvas` (jsdom-env's) compiles against when it cannot
+  download its prebuilt binary, which `rush install` then falls back to.
+runs:
+  using: composite
+  steps:
+    # `canvas` installs with `prebuild-install || node-gyp rebuild`. Its
+    # prebuilt binary comes from a GitHub release, and when that download
+    # fails (it answered 504 on 2026-11-09) the build from source needs
+    # cairo, pango and the image libraries, which the runner image lacks.
+    - shell: bash
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y -q --no-install-recommends \
+          libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev

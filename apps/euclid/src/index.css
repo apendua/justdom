@@ -39,7 +39,8 @@ body {
 /*
  * A phone is too narrow for the two side by side, so it shows the drawing
  * alone, and the program above it only when the toolbar's Code button asks
- * for it, or a session is running (`data-code`, set in `main.ts`).
+ * for it, or a session is running (`data-code`, from `programLaidOut` in
+ * `components/EuclidApp.ts`).
  */
 @media (max-width: 600px) {
   body {

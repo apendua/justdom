@@ -253,16 +253,11 @@ const TOOLS: ToolButton[] = [
 /** How much one press of a zoom button zooms. */
 const ZOOM_STEP = 1.25;
 
-/**
- * What only a session has, mounted while there is one and taken down when
- * it ends.
- */
-const inSession = (render: () => Subscribable<Mountable>) =>
-  list(() => (xrSession.get() ? [true] : []), render);
+/** What `render` makes, mounted while `when` holds and taken down after. */
+const whenever = (when: () => boolean, render: () => Subscribable<Mountable>) =>
+  list(() => (when() ? [true] : []), render);
 
-/** What only the page has, taken down while a session runs. */
-const outOfSession = (render: () => Subscribable<Mountable>) =>
-  list(() => (xrSession.get() ? [] : [true]), render);
+const inSession = () => xrSession.get() !== null;
 
 /**
  * The toolbar: the tools, undo, the view, what the active tool wants next
@@ -342,20 +337,22 @@ const Toolbar = component((store: AppStore) => {
             on("click", () => store.fitView()),
             children(text`Fit view`),
           ]),
-          outOfSession(() =>
-            $("span", [
-              set("className", codeToggleStyle),
-              children(
-                $("button", [
-                  set("className", buttonStyle),
-                  set({ type: "button" }),
-                  attr("aria-pressed", () => String(store.codeShown.get())),
-                  attr("data-active", () => (store.codeShown.get() ? "true" : undefined)),
-                  on("click", () => store.codeShown.set(!store.codeShown.get())),
-                  children(text`Code`),
-                ]),
-              ),
-            ]),
+          whenever(
+            () => !inSession(),
+            () =>
+              $("span", [
+                set("className", codeToggleStyle),
+                children(
+                  $("button", [
+                    set("className", buttonStyle),
+                    set({ type: "button" }),
+                    attr("aria-pressed", () => String(store.codeShown.get())),
+                    attr("data-active", () => (store.codeShown.get() ? "true" : undefined)),
+                    on("click", () => store.codeShown.set(!store.codeShown.get())),
+                    children(text`Code`),
+                  ]),
+                ),
+              ]),
           ),
         ),
       ]),
@@ -369,7 +366,7 @@ const Toolbar = component((store: AppStore) => {
         selected: () => store.exampleName.get(),
         onSelect: (name) => store.loadExample(name),
       }),
-      inSession(() =>
+      whenever(inSession, () =>
         $("button", [
           set("className", buttonStyle),
           set({
@@ -383,7 +380,7 @@ const Toolbar = component((store: AppStore) => {
           children(text`Passthrough`),
         ]),
       ),
-      inSession(() =>
+      whenever(inSession, () =>
         $("button", [
           set("className", closeStyle),
           set({ type: "button", title: "Leave the headset" }),

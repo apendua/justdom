@@ -45,5 +45,5 @@ export default EuclidApp;
  * it, because a panel mirrors the element where the page lays it out, and
  * an element the page does not show has no size to mirror.
  */
-export const codeShown = (store: AppStore) =>
+export const programLaidOut = (store: AppStore) =>
   attr("data-code", () => (store.codeShown.get() || xrSession.get() ? "shown" : undefined));

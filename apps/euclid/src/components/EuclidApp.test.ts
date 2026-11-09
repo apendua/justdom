@@ -3,7 +3,7 @@ import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import { xrSession } from "justdom-xr/session";
 import AppStore from "../store/App";
-import { codeShown } from "./EuclidApp";
+import { programLaidOut } from "./EuclidApp";
 import Toolbar from "./Toolbar";
 
 afterEach(() => {
@@ -67,7 +67,7 @@ describe("the page's data-code", () => {
   it("says the program is shown when asked for, and in a session", () => {
     const store = new AppStore();
     const page = document.createElement("div");
-    const subscription = just(page, [codeShown(store)]).subscribe({});
+    const subscription = just(page, [programLaidOut(store)]).subscribe({});
     expect(page.hasAttribute("data-code")).toBe(false);
     store.codeShown.set(true);
     expect(page.getAttribute("data-code")).toBe("shown");

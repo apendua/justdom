@@ -588,12 +588,13 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   // A long press is also how a phone starts selecting text, and on a layer
   // with none it selects the page; on Android it raises a context menu
   // too, which cancels the finger and would end every hold as it became a
-  // grip. A touch that lands on the layer itself, not on one of its
-  // buttons, whose clicks it would swallow, has no default to keep.
+  // grip. Only a touch on a button keeps its default, since cancelling
+  // it would swallow the click; one anywhere else, the button bar's
+  // padding and gaps included, has none to keep.
   layer.addEventListener(
     "touchstart",
     (event) => {
-      if (event.target === layer) {
+      if (!(event.target instanceof Element && event.target.closest("button"))) {
         event.preventDefault();
       }
     },

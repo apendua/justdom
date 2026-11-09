@@ -875,7 +875,7 @@ describe("mouse(ctx)", () => {
     subscription.unsubscribe();
   });
 
-  test("a second mouse on the canvas stands by while the first drives it", () => {
+  test("the mouse mounted last drives the canvas, and the one before takes over when it goes", () => {
     const canvas = pageCanvas();
     const count = countPointerDown(canvas);
     const { ctx } = pageContext(canvas);
@@ -885,34 +885,37 @@ describe("mouse(ctx)", () => {
     const second = mouse(InteractionContext.set(ctx, InteractionContext.get(ctx))).subscribe(
       (component) => component.addTo(scene),
     );
-    const [driver, standby] = scene.children;
+    const [older, newer] = scene.children;
     assert.equal(count.listeners, 1);
 
     canvas.dispatchEvent(pointer("pointermove", 10, 10));
-    assert.notDeepEqual(driver?.quaternion.toArray(), [0, 0, 0, 1]);
-    assert.deepEqual(standby?.quaternion.toArray(), [0, 0, 0, 1]);
-
-    first.unsubscribe();
-    // The standby took over.
-    assert.equal(count.listeners, 1);
-    canvas.dispatchEvent(pointer("pointermove", 90, 90));
-    assert.notDeepEqual(standby?.quaternion.toArray(), [0, 0, 0, 1]);
+    assert.notDeepEqual(newer?.quaternion.toArray(), [0, 0, 0, 1]);
+    assert.deepEqual(older?.quaternion.toArray(), [0, 0, 0, 1]);
 
     second.unsubscribe();
+    // The older one took over.
+    assert.equal(count.listeners, 1);
+    canvas.dispatchEvent(pointer("pointermove", 90, 90));
+    assert.notDeepEqual(older?.quaternion.toArray(), [0, 0, 0, 1]);
+
+    first.unsubscribe();
     assert.equal(count.listeners, 0);
   });
 
-  test("a standby that unmounts first leaves the driver driving", () => {
+  test("a mouse that stands by and unmounts leaves the one driving alone", () => {
     const canvas = pageCanvas();
     const count = countPointerDown(canvas);
     const { ctx } = pageContext(canvas);
     const scene = new THREE.Scene();
     const first = mouse(ctx).subscribe((component) => component.addTo(scene));
     const second = mouse(ctx).subscribe((component) => component.addTo(scene));
-    assert.equal(count.listeners, 1);
-    second.unsubscribe();
+    const newer = scene.children[1];
     assert.equal(count.listeners, 1);
     first.unsubscribe();
+    assert.equal(count.listeners, 1);
+    canvas.dispatchEvent(pointer("pointermove", 10, 10));
+    assert.notDeepEqual(newer?.quaternion.toArray(), [0, 0, 0, 1]);
+    second.unsubscribe();
     assert.equal(count.listeners, 0);
   });
 

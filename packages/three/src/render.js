@@ -542,8 +542,8 @@ export function frames(ctx) {
  *   for 400 ms the grip; `followMouse` has the rules. Off by default,
  *   which leaves the canvas to the app. An object is on, and says what a
  *   drag that starts on nothing does: `{ look: "orbit" }` turns the camera.
- *   A `mouse(ctx)` the scene mounts on top stands by until this one
- *   unmounts, since a canvas has one mouse.
+ *   A `mouse(ctx)` the scene mounts of its own drives instead of this one
+ *   while it is mounted, since a canvas has one mouse.
  * @property {import('./elements/panelOptions.js').PanelOptions} [panelOptions]
  *   What every panel in this scene starts from — the keyboard its fields are
  *   typed with, most of all — with each panel's own options laid over it.

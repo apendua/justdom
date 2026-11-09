@@ -618,14 +618,14 @@ function buttonOf(event) {
  * for the turn `look: "orbit"` gives it: nothing but a mouse move re-aims
  * the ray, and that turn is made by a mouse move.
  *
- * One canvas has one mouse. Every `mouse(ctx)` mounted on a canvas joins a
- * queue for it, in the order they mount, and only the first in the queue
- * drives the canvas: it is the one registered with the manager and the one
- * listening to the canvas. The rest stand by, registered with nothing and
- * listening to nothing. When the first unmounts, the next in the queue takes
- * over with its own options. So a scene that `render(fn, { pointer: true })`
- * already gives a mouse can mount another without the page getting two:
- * the second waits for the first to go, and its options apply only then.
+ * One canvas has one mouse: the one mounted on it last. It is the one
+ * registered with the manager and the one listening to the canvas. Every
+ * other `mouse(ctx)` on that canvas stands by, registered with nothing and
+ * listening to nothing, and when the one driving unmounts, the one mounted
+ * before it takes over again with its own options. So a scene can mount its
+ * own beside the one `render(fn, { pointer })` gives it, whenever it
+ * likes, and its own drives, with its options, for as long as it is
+ * mounted.
  *
  * `options` says what a drag that starts on nothing does (`PointerOptions`);
  * by default nothing.
@@ -637,15 +637,15 @@ export function mouse(ctx, options = {}) {
   const pointer = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
   pointer.name = "mouse";
   return $(pointer, [
-    // Joining the queue reads nothing, so it is undone only on unmount.
+    // Joining the stack reads nothing, so it is undone only on unmount.
     effects(() => {
-      const queue = queueFor(RendererContext.get(ctx).domElement);
-      queue.set([...queue.peek(), pointer]);
-      return () => queue.set(queue.peek().filter((other) => other !== pointer));
+      const mounted = miceOn(RendererContext.get(ctx).domElement);
+      mounted.set([...mounted.peek(), pointer]);
+      return () => mounted.set(mounted.peek().filter((other) => other !== pointer));
     }),
     effects(() => {
       const renderer = RendererContext.get(ctx);
-      if (queueFor(renderer.domElement).get()[0] !== pointer || getXRSession(ctx)) {
+      if (miceOn(renderer.domElement).get().at(-1) !== pointer || getXRSession(ctx)) {
         return;
       }
       const camera = getCamera(ctx);
@@ -676,21 +676,21 @@ export function mouse(ctx, options = {}) {
 }
 
 /**
- * The mice mounted on each canvas, in the order they mounted. The first
+ * The mice mounted on each canvas, in the order they mounted. The last
  * drives the canvas (`mouse`).
  *
  * @type {WeakMap<HTMLCanvasElement, Signal<THREE.Group[]>>}
  */
-const queues = new WeakMap();
+const mice = new WeakMap();
 
 /**
  * @param {HTMLCanvasElement} canvas
  */
-function queueFor(canvas) {
-  let queue = queues.get(canvas);
-  if (!queue) {
-    queue = Signal.of(/** @type {THREE.Group[]} */ ([]));
-    queues.set(canvas, queue);
+function miceOn(canvas) {
+  let mounted = mice.get(canvas);
+  if (!mounted) {
+    mounted = Signal.of(/** @type {THREE.Group[]} */ ([]));
+    mice.set(canvas, mounted);
   }
-  return queue;
+  return mounted;
 }

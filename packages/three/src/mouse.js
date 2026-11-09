@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { effects } from "justdom-signal";
+import { effects, Signal } from "justdom-signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
@@ -618,8 +618,14 @@ function buttonOf(event) {
  * for the turn `look: "orbit"` gives it: nothing but a mouse move re-aims
  * the ray, and that turn is made by a mouse move.
  *
- * `render(fn, { pointer: true })` mounts one for the whole scene. A scene
- * rendered that way does not mount another, or the page has two mice.
+ * One canvas has one mouse. Every `mouse(ctx)` mounted on a canvas joins a
+ * queue for it, in the order they mount, and only the first in the queue
+ * drives the canvas: it is the one registered with the manager and the one
+ * listening to the canvas. The rest stand by, registered with nothing and
+ * listening to nothing. When the first unmounts, the next in the queue takes
+ * over with its own options. So a scene that `render(fn, { pointer: true })`
+ * already gives a mouse can mount another without the page getting two:
+ * the second waits for the first to go, and its options apply only then.
  *
  * `options` says what a drag that starts on nothing does (`PointerOptions`);
  * by default nothing.
@@ -631,11 +637,17 @@ export function mouse(ctx, options = {}) {
   const pointer = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
   pointer.name = "mouse";
   return $(pointer, [
+    // Joining the queue reads nothing, so it is undone only on unmount.
     effects(() => {
-      if (getXRSession(ctx)) {
+      const queue = queueFor(RendererContext.get(ctx).domElement);
+      queue.set([...queue.peek(), pointer]);
+      return () => queue.set(queue.peek().filter((other) => other !== pointer));
+    }),
+    effects(() => {
+      const renderer = RendererContext.get(ctx);
+      if (queueFor(renderer.domElement).get()[0] !== pointer || getXRSession(ctx)) {
         return;
       }
-      const renderer = RendererContext.get(ctx);
       const camera = getCamera(ctx);
       const manager = InteractionContext.get(ctx);
       // The manager casts in the late phase, as it does for a controller
@@ -661,4 +673,24 @@ export function mouse(ctx, options = {}) {
       };
     }),
   ]);
+}
+
+/**
+ * The mice mounted on each canvas, in the order they mounted. The first
+ * drives the canvas (`mouse`).
+ *
+ * @type {WeakMap<HTMLCanvasElement, Signal<THREE.Group[]>>}
+ */
+const queues = new WeakMap();
+
+/**
+ * @param {HTMLCanvasElement} canvas
+ */
+function queueFor(canvas) {
+  let queue = queues.get(canvas);
+  if (!queue) {
+    queue = Signal.of(/** @type {THREE.Group[]} */ ([]));
+    queues.set(canvas, queue);
+  }
+  return queue;
 }

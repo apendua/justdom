@@ -101,8 +101,12 @@ import { render } from "justdom-three";
 render(app, { pointer: true });
 ```
 
-A scene can also put `mouse(ctx)` among its children itself, which is the same group. It does one or
-the other, or the page has two mice.
+A scene can also put `mouse(ctx)` among its children itself, which is the same group. A canvas has
+one mouse: the first `mouse(ctx)` mounted on it drives it, and any mounted after stand by,
+registered with nothing and listening to nothing, until those before them unmount. Then the next
+takes over with its own options. So a scene that mounts its own beside
+`render(app, { pointer: true })` does not give the page two mice; its options apply once the first
+one goes.
 
 ```js
 import { useEffects } from "justdom-signal";

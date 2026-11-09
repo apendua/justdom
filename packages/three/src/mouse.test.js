@@ -816,19 +816,49 @@ test("around is refused without look: orbit", () => {
   mouse({}, { around: { x: 0, y: 0, z: 0 } });
 });
 
+/**
+ * A context with what `mouse(ctx)` reads off one: a renderer with no session
+ * drawing to `canvas`, a camera and an interaction manager.
+ *
+ * @param {HTMLElement} canvas
+ */
+function pageContext(canvas) {
+  const manager = new InteractionManager();
+  const xr = Object.assign(document.createElement("div"), { getSession: () => null });
+  const renderer = /** @type {THREE.WebGLRenderer} */ (
+    /** @type {unknown} */ ({ domElement: canvas, xr })
+  );
+  const ctx = RendererContext.set(
+    CameraContext.set(InteractionContext.set({}, manager), new THREE.PerspectiveCamera()),
+    renderer,
+  );
+  return { ctx, manager, renderer };
+}
+
+/**
+ * How many `pointerdown` listeners `canvas` has, counted from here on.
+ *
+ * @param {HTMLElement} canvas
+ */
+function countPointerDown(canvas) {
+  const count = { listeners: 0 };
+  const add = canvas.addEventListener.bind(canvas);
+  const remove = canvas.removeEventListener.bind(canvas);
+  canvas.addEventListener = (/** @type {Parameters<typeof add>} */ ...args) => {
+    count.listeners += args[0] === "pointerdown" ? 1 : 0;
+    add(...args);
+  };
+  canvas.removeEventListener = (/** @type {Parameters<typeof remove>} */ ...args) => {
+    count.listeners -= args[0] === "pointerdown" ? 1 : 0;
+    remove(...args);
+  };
+  return count;
+}
+
 describe("mouse(ctx)", () => {
   test("casts in the late phase, after what moves the scene in useFrame", () => {
-    const manager = new InteractionManager();
     const canvas = pageCanvas();
-    // A renderer with no session, which is all `mouse` reads of one.
-    const xr = Object.assign(document.createElement("div"), { getSession: () => null });
-    const renderer = /** @type {THREE.WebGLRenderer} */ (
-      /** @type {unknown} */ ({ domElement: canvas, xr })
-    );
-    const ctx = RendererContext.set(
-      CameraContext.set(InteractionContext.set({}, manager), new THREE.PerspectiveCamera()),
-      renderer,
-    );
+    const { ctx, manager, renderer } = pageContext(canvas);
     const events = modelAhead(manager);
     const scene = new THREE.Scene();
     const subscription = mouse(ctx).subscribe((component) => {
@@ -843,5 +873,63 @@ describe("mouse(ctx)", () => {
     runFrame(renderer, 0, /** @type {XRFrame} */ (/** @type {unknown} */ ({})));
     assert.deepEqual(events, []);
     subscription.unsubscribe();
+  });
+
+  test("a second mouse on the canvas stands by while the first drives it", () => {
+    const canvas = pageCanvas();
+    const count = countPointerDown(canvas);
+    const { ctx } = pageContext(canvas);
+    const scene = new THREE.Scene();
+    const first = mouse(ctx).subscribe((component) => component.addTo(scene));
+    // Another context on the same canvas, as a child scene would have.
+    const second = mouse(InteractionContext.set(ctx, InteractionContext.get(ctx))).subscribe(
+      (component) => component.addTo(scene),
+    );
+    const [driver, standby] = scene.children;
+    assert.equal(count.listeners, 1);
+
+    canvas.dispatchEvent(pointer("pointermove", 10, 10));
+    assert.notDeepEqual(driver?.quaternion.toArray(), [0, 0, 0, 1]);
+    assert.deepEqual(standby?.quaternion.toArray(), [0, 0, 0, 1]);
+
+    first.unsubscribe();
+    // The standby took over.
+    assert.equal(count.listeners, 1);
+    canvas.dispatchEvent(pointer("pointermove", 90, 90));
+    assert.notDeepEqual(standby?.quaternion.toArray(), [0, 0, 0, 1]);
+
+    second.unsubscribe();
+    assert.equal(count.listeners, 0);
+  });
+
+  test("a standby that unmounts first leaves the driver driving", () => {
+    const canvas = pageCanvas();
+    const count = countPointerDown(canvas);
+    const { ctx } = pageContext(canvas);
+    const scene = new THREE.Scene();
+    const first = mouse(ctx).subscribe((component) => component.addTo(scene));
+    const second = mouse(ctx).subscribe((component) => component.addTo(scene));
+    assert.equal(count.listeners, 1);
+    second.unsubscribe();
+    assert.equal(count.listeners, 1);
+    first.unsubscribe();
+    assert.equal(count.listeners, 0);
+  });
+
+  test("each canvas has a mouse of its own", () => {
+    const one = pageCanvas();
+    const other = pageCanvas();
+    const counts = [countPointerDown(one), countPointerDown(other)];
+    const scene = new THREE.Scene();
+    const subscriptions = [one, other].map((canvas) =>
+      mouse(pageContext(canvas).ctx).subscribe((component) => component.addTo(scene)),
+    );
+    assert.deepEqual(
+      counts.map((count) => count.listeners),
+      [1, 1],
+    );
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
   });
 });

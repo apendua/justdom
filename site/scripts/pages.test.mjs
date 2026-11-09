@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { demoLinks, readmeSummary, repositoryUrl, rewriteLinks } from "./pages.mjs";
+import { demoLinks, demoOrder, readmeSummary, repositoryUrl, rewriteLinks } from "./pages.mjs";
 
 const pages = new Map([
   ["packages/signal", "/packages/signal"],
@@ -123,4 +123,17 @@ test("a demo with only a headset clip shows that one alone", () => {
   assert.match(clip, /castle\.headset\.mp4/);
   assert.doesNotMatch(clip, /castle\.mp4/);
   assert.match(links, /^<a href="\/demos\/castle\/" target="_self">Open the demo/);
+});
+
+test("Desk leads the demos and the rest follow by title", () => {
+  const demos = [
+    { slug: "todo", title: "Todo App" },
+    { slug: "desk", title: "Desk" },
+    { slug: "castle", title: "Castle" },
+    { slug: "euclid", title: "Euclid" },
+  ];
+  assert.deepEqual(
+    demos.sort(demoOrder).map((demo) => demo.slug),
+    ["desk", "castle", "euclid", "todo"],
+  );
 });

@@ -27,6 +27,21 @@ export default defineConfig({
         "}",
       ].join("\n"),
     ],
+    [
+      "style",
+      {},
+      // The default theme shows a heading's "#" permalink while the heading
+      // is hovered. A touch screen keeps the hover where the last tap was, so
+      // the "#" stayed on whichever heading the next page put under the
+      // finger: on a phone, the landing page's Demos button lands on the
+      // demos page's first heading. Where nothing can hover, the "#" shows
+      // only while it has the focus.
+      [
+        "@media (hover: none) {",
+        "  .vp-doc :is(h1, h2, h3, h4, h5, h6):hover .header-anchor:not(:focus) { opacity: 0; }",
+        "}",
+      ].join("\n"),
+    ],
   ],
   themeConfig: {
     nav: [

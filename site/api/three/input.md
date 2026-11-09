@@ -127,7 +127,8 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   within 10 px before 400 ms, it is a tap of the trigger. Moved more than 10 px, it presses the
   trigger where it landed and drags. Held within 10 px for 400 ms, it presses the grip where it
   landed and drags. A finger the browser cancels ends its press as a miss that says `lost`, as a
-  hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll.
+  hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll, and
+  no selection may start while a finger is down, so a long press grips without selecting the page.
 - `pointer: { touch: false }` leaves fingers to the page, for a canvas the page scrolls past: the
   canvas keeps its own `touch-action`, a finger on it scrolls and zooms the page, and a long press
   opens the browser's menu where the browser says the menu came from a finger (Safari does not, and

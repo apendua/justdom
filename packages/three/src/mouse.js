@@ -108,7 +108,13 @@ export const MIN_REACH = 0.2;
  * captured, so it stays the canvas's when it slides off. The context menu
  * kept off the canvas matters to the finger as well: Android raises one on
  * a long press and, left to open, cancels the touch, which would end every
- * hold as it became a grip. All of this is for `touch` on, the default;
+ * hold as it became a grip. A long press is also how a phone starts
+ * selecting text, and on a canvas with nothing to select it selects the
+ * whole page, so while a finger is down no selection may start (the
+ * `selectstart` the page hears is cancelled), and the canvas itself is
+ * unselectable and raises no callout (`user-select` and
+ * `-webkit-touch-callout` are `none`, put back on stop). All of this is
+ * for `touch` on, the default;
  * with `touch: false` none of it happens, and a finger is the page's.
  *
  * The camera. With `look: "orbit"`, a press of the trigger that begins on
@@ -604,9 +610,24 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     up: /** @type {EventListener} */ (unlessTouch(onUp)),
   };
 
-  const touchAction = canvas.style.touchAction;
+  /** @param {Event} event */
+  const onSelectStart = (event) => {
+    if (finger) {
+      event.preventDefault();
+    }
+  };
+
+  // What the canvas had of the styles a finger needs, to put back on stop.
+  // Set as properties: a browser that does not know one (Chrome and
+  // `webkitTouchCallout`) keeps it as an inert one.
+  const style = /** @type {Record<string, string>} */ (/** @type {unknown} */ (canvas.style));
+  const touchStyles = ["touchAction", "userSelect", "webkitUserSelect", "webkitTouchCallout"];
+  const hadStyles = touchStyles.map((name) => style[name]);
   if (takesTouch) {
-    canvas.style.touchAction = "none";
+    for (const name of touchStyles) {
+      style[name] = "none";
+    }
+    view.addEventListener("selectstart", onSelectStart);
   }
   canvas.addEventListener("pointermove", listeners.move);
   canvas.addEventListener("pointerleave", listeners.leave);
@@ -624,7 +645,10 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     canvas.removeEventListener("contextmenu", listeners.contextMenu);
     canvas.removeEventListener("wheel", onWheel);
     view.removeEventListener("pointerup", listeners.up);
-    canvas.style.touchAction = touchAction;
+    view.removeEventListener("selectstart", onSelectStart);
+    touchStyles.forEach((name, i) => {
+      style[name] = /** @type {string} */ (hadStyles[i]);
+    });
     lift();
     zoomTo(wideZoom);
   };

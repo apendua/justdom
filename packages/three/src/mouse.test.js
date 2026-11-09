@@ -257,11 +257,34 @@ describe("a finger on the canvas", () => {
     // A canvas of its own, which nothing else is following.
     const own = pageCanvas();
     own.style.touchAction = "pan-y";
+    own.style.userSelect = "text";
     const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
     const stop = followMouse(group, new THREE.PerspectiveCamera(), own);
     assert.equal(own.style.touchAction, "none");
+    // Nothing to select on a canvas, and no callout for a long press.
+    assert.equal(own.style.userSelect, "none");
+    assert.equal(
+      /** @type {Record<string, string>} */ (/** @type {unknown} */ (own.style)).webkitTouchCallout,
+      "none",
+    );
     stop();
     assert.equal(own.style.touchAction, "pan-y");
+    assert.equal(own.style.userSelect, "text");
+  });
+
+  test("lets no selection start while it is down, so a long press does not select the page", () => {
+    const before = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(before);
+    assert.equal(before.defaultPrevented, false);
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS);
+    const held = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(held);
+    assert.equal(held.defaultPrevented, true);
+    canvas.dispatchEvent(finger("pointerup"));
+    const after = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(after);
+    assert.equal(after.defaultPrevented, false);
   });
 
   test("taps: lifted where it landed, before the hold, it selects", () => {
@@ -390,6 +413,15 @@ describe("a finger, with touch: false", () => {
 
   test("leaves the canvas its own touch-action, so the page still scrolls under it", () => {
     assert.equal(canvas.style.touchAction, "pan-y");
+    assert.equal(canvas.style.userSelect, "");
+  });
+
+  test("lets a long press select, as the page's own", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS);
+    const held = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(held);
+    assert.equal(held.defaultPrevented, false);
   });
 
   test("taps, holds and drags nothing: the finger is the page's", () => {

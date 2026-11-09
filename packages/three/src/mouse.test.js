@@ -877,6 +877,7 @@ describe("mouse(ctx)", () => {
 
   test("the mouse mounted last drives the canvas, and the one before takes over when it goes", () => {
     const canvas = pageCanvas();
+    canvas.style.touchAction = "pan-y";
     const count = countPointerDown(canvas);
     const { ctx } = pageContext(canvas);
     const scene = new THREE.Scene();
@@ -893,13 +894,16 @@ describe("mouse(ctx)", () => {
     assert.deepEqual(older?.quaternion.toArray(), [0, 0, 0, 1]);
 
     second.unsubscribe();
-    // The older one took over.
+    // The older one took over, and took the canvas's touch with it.
     assert.equal(count.listeners, 1);
+    assert.equal(canvas.style.touchAction, "none");
     canvas.dispatchEvent(pointer("pointermove", 90, 90));
     assert.notDeepEqual(older?.quaternion.toArray(), [0, 0, 0, 1]);
 
     first.unsubscribe();
     assert.equal(count.listeners, 0);
+    // The page's own, through every handover.
+    assert.equal(canvas.style.touchAction, "pan-y");
   });
 
   test("a mouse that stands by and unmounts leaves the one driving alone", () => {
@@ -910,11 +914,12 @@ describe("mouse(ctx)", () => {
     const first = mouse(ctx).subscribe((component) => component.addTo(scene));
     const second = mouse(ctx).subscribe((component) => component.addTo(scene));
     const newer = scene.children[1];
-    assert.equal(count.listeners, 1);
-    first.unsubscribe();
-    assert.equal(count.listeners, 1);
     canvas.dispatchEvent(pointer("pointermove", 10, 10));
-    assert.notDeepEqual(newer?.quaternion.toArray(), [0, 0, 0, 1]);
+    assert.equal(newer?.visible, true);
+    first.unsubscribe();
+    // Not stopped and started again, which would hide it until the next move.
+    assert.equal(newer?.visible, true);
+    assert.equal(count.listeners, 1);
     second.unsubscribe();
     assert.equal(count.listeners, 0);
   });

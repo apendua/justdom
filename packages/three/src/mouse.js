@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { effects, Signal } from "justdom-signal";
+import { Derived, effects, Signal } from "justdom-signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
@@ -637,15 +637,9 @@ export function mouse(ctx, options = {}) {
   const pointer = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
   pointer.name = "mouse";
   return $(pointer, [
-    // Joining the stack reads nothing, so it is undone only on unmount.
-    effects(() => {
-      const mounted = miceOn(RendererContext.get(ctx).domElement);
-      mounted.set([...mounted.peek(), pointer]);
-      return () => mounted.set(mounted.peek().filter((other) => other !== pointer));
-    }),
     effects(() => {
       const renderer = RendererContext.get(ctx);
-      if (miceOn(renderer.domElement).get().at(-1) !== pointer || getXRSession(ctx)) {
+      if (miceOn(renderer.domElement).driver.get() !== pointer || getXRSession(ctx)) {
         return;
       }
       const camera = getCamera(ctx);
@@ -672,25 +666,39 @@ export function mouse(ctx, options = {}) {
         registration.unsubscribe();
       };
     }),
+    // Joining the stack reads nothing, so it is undone only on unmount. It
+    // comes after the driving above, so that a handover always stops one
+    // mouse before it starts the next: on mount this one is not driving yet
+    // when it joins, and on unmount it has stopped before it leaves.
+    effects(() => {
+      const { mounted } = miceOn(RendererContext.get(ctx).domElement);
+      mounted.set([...mounted.peek(), pointer]);
+      return () => mounted.set(mounted.peek().filter((other) => other !== pointer));
+    }),
   ]);
 }
 
 /**
- * The mice mounted on each canvas, in the order they mounted. The last
- * drives the canvas (`mouse`).
+ * The mice mounted on each canvas, in the order they mounted, and the one
+ * of them that drives the canvas (`mouse`): the last. A mouse reads only
+ * `driver`, so another joining or leaving behind it does not stop it and
+ * start it again, which would let go of a press and put back the zoom.
  *
- * @type {WeakMap<HTMLCanvasElement, Signal<THREE.Group[]>>}
+ * @typedef {{ mounted: Signal<THREE.Group[]>, driver: Derived<THREE.Group | undefined> }} Mice
+ * @type {WeakMap<HTMLCanvasElement, Mice>}
  */
 const mice = new WeakMap();
 
 /**
  * @param {HTMLCanvasElement} canvas
+ * @returns {Mice}
  */
 function miceOn(canvas) {
-  let mounted = mice.get(canvas);
-  if (!mounted) {
-    mounted = Signal.of(/** @type {THREE.Group[]} */ ([]));
-    mice.set(canvas, mounted);
+  let found = mice.get(canvas);
+  if (!found) {
+    const mounted = Signal.of(/** @type {THREE.Group[]} */ ([]));
+    found = { mounted, driver: Derived.of(() => mounted.get().at(-1)) };
+    mice.set(canvas, found);
   }
-  return mounted;
+  return found;
 }

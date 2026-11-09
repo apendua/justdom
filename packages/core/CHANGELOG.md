@@ -1,6 +1,14 @@
 # Change Log - justdom-core
 
-This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+This log was last generated on Mon, 09 Nov 2026 22:53:55 GMT and should not be manually modified.
+
+## 0.6.0
+Mon, 09 Nov 2026 22:53:55 GMT
+
+### Minor changes
+
+- A keyed list now moves only the items outside the longest run that kept their order, and takes the items that left out of the document before it moves anything: swapping two of 1,000 rows moves two instead of 997, and removing a row moves none of the others.
+- Cut what each rendered element holds in memory: lazy node collections and teardown lists, no Derived per element in $, inert mounting effects released, getter writes without a Derived, and a thinner children()
 
 ## 0.5.0
 Thu, 05 Nov 2026 23:28:58 GMT

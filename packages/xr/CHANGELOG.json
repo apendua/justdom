@@ -2,6 +2,44 @@
   "name": "justdom-xr",
   "entries": [
     {
+      "version": "0.4.0",
+      "tag": "justdom-xr_v0.4.0",
+      "date": "Mon, 09 Nov 2026 22:53:55 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "The touch layer has an Exit button, since it covers the page's own, and buzzes the phone when a finger becomes a hold."
+          },
+          {
+            "comment": "justdom-xr/touch: two fingers pinch the view in and out, by narrowing the emulated headset's field of view between 20 degrees (MIN_FOVY) and its own; the session's end zooms back out."
+          },
+          {
+            "comment": "Touch layer: a long press no longer selects the page or opens a context menu; the layer cancels the browser's own long press."
+          },
+          {
+            "comment": "`?emulator` installs the touch layer on a phone for an app that passes `touch` (`?emulator=devui` keeps IWER's panels), and `installEmulator` and `emulatorFor` from `justdom-xr/offer` install the emulator for a page that offers its session another way"
+          },
+          {
+            "comment": "The touch layer's pinch zooms as the page's pointer does (twice the spread draws the view twice as large), and it takes `HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT` and `MIN_FOVY` from `justdom-three/limits` instead of keeping its own copies, and re-exports them"
+          },
+          {
+            "comment": "A finger held still on the touch layer and then moved drags with the trigger from where it landed, so panel rows, cards and `drag()` things can be dragged on a phone; held and lifted without moving it presses the grip, as the hold did before"
+          },
+          {
+            "comment": "Add justdom-xr/touch: a phone's touch layer over the emulated headset (look, tap, and a 400 ms still press that holds the grip), installed by offerHeadset behind ?touch for an app that passes { touch }. The touch chunk imports three.js, which splits out a three.core chunk; a precaching service worker should ignore touch-*.js and three.core-*.js."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.3.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.33.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.3.0",
       "tag": "justdom-xr_v0.3.0",
       "date": "Thu, 05 Nov 2026 23:28:58 GMT",

@@ -2,6 +2,99 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.33.0",
+      "tag": "justdom-three_v0.33.0",
+      "date": "Mon, 09 Nov 2026 22:53:55 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "A picture with a border no longer shows a light line between the two"
+          },
+          {
+            "comment": "SVG text with a transform attribute is measured in its own user space in Safari too, where small text such as the minesweeper's counts was drawn off its place"
+          },
+          {
+            "comment": "A repeated background picture no longer draws a line of its average colour along the seams between its tiles"
+          },
+          {
+            "comment": "Build a list item's index node on its first read instead of for every item"
+          },
+          {
+            "comment": "Read an SVG element's transform attribute where the computed style leaves it out, as WebKit's does"
+          },
+          {
+            "comment": "Measure a line, and each character of a revealed run, from the client rects that have a width, so text after a line break stays on its own line in WebKit"
+          },
+          {
+            "comment": "Lay out the XR button's no-WebXR link border-box, so it is as wide as its width says"
+          },
+          {
+            "comment": "A border-radius on an <svg> root that hides its overflow now rounds the corners its shapes are clipped to, as the browser does"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "render() takes a pointer option that mounts the mouse as a controller between sessions; the mouse's right button is the grip, and a finger on a touch screen taps, drags and holds"
+          },
+          {
+            "comment": "mouse(ctx): a canvas has one mouse, the one mounted last. Others on the canvas stand by until it unmounts, so a scene's own mouse beside render's pointer no longer gives the page two."
+          },
+          {
+            "comment": "Colours in any CSS colour space draw as the colour they name, and gradients mix in the space they ask for"
+          },
+          {
+            "comment": "Draw `box-shadow`, outer and inset, up to four layers, in the panel's batch."
+          },
+          {
+            "comment": "render()'s pointer option and mouse(ctx) take look: \"orbit\", which turns the camera on a drag that starts on nothing"
+          },
+          {
+            "comment": "A two-finger pinch on a touch screen moves what the first finger drags along the ray, as the wheel does for the mouse"
+          },
+          {
+            "comment": "PointerOptions gains touch. With touch: false, mouse(ctx) and render's pointer leave fingers to the page: the canvas keeps its own touch-action and a finger's events pass by. Left out, as before, they are taken."
+          },
+          {
+            "comment": "A two-finger pinch with nothing held zooms a perspective camera, down to a 20° view (`MIN_FOVY`); `HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT` and `MIN_FOVY` are exported, and on their own from `justdom-three/limits`"
+          },
+          {
+            "comment": "Add canDrawHtmlInCanvas and htmlTextureMaterial, for a scene that shows an element the browser draws with HTML-in-Canvas"
+          },
+          {
+            "comment": "Draw an `outline` as a ring around its box, `outline-offset` from its border edge, over everything else in the box's layer."
+          },
+          {
+            "comment": "The mouse's wheel moves what it holds along the ray, so a thing picked up with drag can be put down further off or nearer"
+          },
+          {
+            "comment": "render(): pointer is on by default, for the mouse and a pen, with fingers left to the page (touch: false). pointer: true takes fingers too; pointer: false mounts no mouse. render() mounts its mouse before the app's tree, so a mouse(ctx) the app mounts drives instead."
+          },
+          {
+            "comment": "mouse(ctx): a long press on the canvas no longer selects the page. While a finger is down no selection may start, and the canvas has user-select: none whenever the mouse runs on it."
+          }
+        ],
+        "none": [
+          {
+            "comment": "The paint-order benches open the showcase under ?panel=all, so they count every panel of its deck again."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.6.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.3.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.4`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.3.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.32.0",
       "tag": "justdom-three_v0.32.0",
       "date": "Thu, 05 Nov 2026 23:28:58 GMT",

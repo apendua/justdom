@@ -1,6 +1,6 @@
 {
   "name": "justdom-core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Reactive, non-VDOM DOM renderer built on justdom-signal, with SSR and hydration support",
   "keywords": [
     "dom",

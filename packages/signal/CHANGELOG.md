@@ -1,6 +1,13 @@
 # Change Log - justdom-signal
 
-This log was last generated on Thu, 05 Nov 2026 23:28:58 GMT and should not be manually modified.
+This log was last generated on Mon, 09 Nov 2026 22:53:55 GMT and should not be manually modified.
+
+## 1.3.0
+Mon, 09 Nov 2026 22:53:55 GMT
+
+### Minor changes
+
+- Cut what each rendered element holds in memory: lazy node collections and teardown lists, no Derived per element in $, inert mounting effects released, getter writes without a Derived, and a thinner children()
 
 ## 1.2.0
 Thu, 05 Nov 2026 23:28:58 GMT

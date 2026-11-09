@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The touch layer's pinch zooms as the page's pointer does (twice the spread draws the view twice as large), and it takes `HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT` and `MIN_FOVY` from `justdom-three/limits` instead of keeping its own copies, and re-exports them",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

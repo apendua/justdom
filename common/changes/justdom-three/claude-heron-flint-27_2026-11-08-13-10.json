@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "render() takes a pointer option that mounts the mouse as a controller between sessions; the mouse's right button is the grip, and a finger on a touch screen taps, drags and holds",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

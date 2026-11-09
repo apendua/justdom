@@ -45,9 +45,19 @@ export default defineConfig({
         // Workbox's default glob takes every built chunk, and a worker that
         // precaches the headset's chunks downloads them on every visit,
         // headset or not. `offerHeadset` imports `xr` (and three.js with
-        // it) only where a session can be opened, and `emulator` only behind
-        // `?emulator`; a headset fetches them when it first asks.
-        globIgnores: ["**/xr-*.js", "**/three.module-*.js", "**/emulator-*.js"],
+        // it) only where a session can be opened, `emulator` only behind
+        // `?emulator` and `touch` only behind `?touch`; a headset fetches
+        // them when it first asks. `touch` imports three.js too, which
+        // splits three's core into a chunk the two share, and the limits
+        // it shares with `justdom-three`'s pointer into another.
+        globIgnores: [
+          "**/xr-*.js",
+          "**/three.module-*.js",
+          "**/three.core-*.js",
+          "**/emulator-*.js",
+          "**/touch-*.js",
+          "**/limits-*.js",
+        ],
       },
     }),
   ],

@@ -1,4 +1,5 @@
 import { render, createXRButton, canDrawHtmlInCanvas, type PortalPlugin } from "justdom-three";
+import { installEmulator } from "justdom-xr/offer";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import createScene from "./components/Scene";
 import { PANELS, findPanel, loadPlugins, stepFrom, type PanelId } from "./components/registry";
@@ -29,6 +30,13 @@ const asked = query.get("panel");
  */
 const textureAsked = query.get("panels") === "texture";
 const panels = textureAsked && canDrawHtmlInCanvas() ? "texture" : "mirror";
+
+/**
+ * The mouse and a finger work the panels on the page, with no session:
+ * `render()`'s `pointer` option, with a drag on nothing turning the camera
+ * (`look: "orbit"`).
+ */
+const pointer = { look: "orbit" } as const;
 
 const initial: PanelId | "all" = asked === "all" ? "all" : (findPanel(asked) ?? PANELS[0]).id;
 
@@ -87,22 +95,15 @@ const opening: Promise<{
 );
 
 // Available in production builds too, so the deployed demo can be exercised
-// from an ordinary browser. The import is dynamic, so the emulator and its dev
-// UI stay in a separate chunk that is only fetched when it is asked for.
+// from an ordinary browser, and on a phone through the touch layer
+// (`installEmulator` in `justdom-xr/offer` says which flag gives which). The
+// emulator and the touch layer are chunks of their own, fetched only when
+// asked for, and a failed fetch is logged rather than thrown.
 //
 // `?emulator=bare` installs the runtime without the dev UI: everything that
 // makes the demo drivable by hand is also something that would be in the
 // frame of a photograph of the scene, which is what the visual test takes.
-Promise.resolve(
-  query.has("emulator")
-    ? import("justdom-xr/emulator").then(({ install }) =>
-        install({ devUI: query.get("emulator") !== "bare" }),
-      )
-    : undefined,
-)
-  .catch((err) => {
-    console.error("Could not install the XR emulator:", err);
-  })
+installEmulator({ touch: { pitch: 0 } })
   .then(() => opening)
   .then(({ id, plugins }) => {
     const scene = createScene({
@@ -111,7 +112,7 @@ Promise.resolve(
       onShow: id === "all" ? undefined : onShow,
       panels,
     });
-    render(scene).subscribe({
+    render(scene, { pointer }).subscribe({
       next: (renderer) => {
         createXRButton(renderer, {
           ar: { optionalFeatures: ["hand-tracking"] },

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A finger held still on the touch layer and then moved drags with the trigger from where it landed, so panel rows, cards and `drag()` things can be dragged on a phone; held and lifted without moving it presses the grip, as the hold did before",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

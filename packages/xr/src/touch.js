@@ -1,0 +1,880 @@
+import * as THREE from "three";
+import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "justdom-three/limits";
+
+// The page's pointer and the touch layer go by the same limits: how far up
+// or down a drag tips the view, how far a finger may wander and still tap,
+// how long it holds still before it presses, and how far in a pinch zooms. They are
+// `justdom-three`'s, and here as well for whoever reads them off the layer.
+export { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX };
+
+/** @typedef {import("iwer").XRDevice} XRDevice */
+
+/**
+ * A button along the bottom of the screen, standing in for one of the
+ * desk's keys.
+ *
+ * @typedef {object} TouchButton
+ * @property {string} label What the button says.
+ * @property {string} code The `KeyboardEvent.code` it sends.
+ * @property {boolean} [hold] Whether the key stays down while the finger
+ *   does, as a held trigger: `keydown` on the touch and `keyup` on the
+ *   lift. Without it a touch sends both at once.
+ */
+
+/**
+ * @typedef {object} TouchOptions
+ * @property {TouchButton[]} [buttons] The app's desk keys, as buttons. None
+ *   leaves the look, the tap, the long press and the drag, which is all an app needs whose
+ *   every control is a panel or a thing in the scene.
+ * @property {number} [pitch] Where the head looks as the layer comes up, in
+ *   radians above the horizon: `START_PITCH`, down at a table, unless the
+ *   app's scene is somewhere else.
+ */
+
+/**
+ * Where the head looks when the session starts, unless the app says
+ * otherwise: down at a table in front of the player. The emulator's own
+ * rest pose looks at the horizon.
+ */
+export const START_PITCH = -0.45;
+
+/**
+ * Frames to wait between each step of a press: aim, button down, button
+ * up, park. A panel takes a ray's hover on one frame and the press on a
+ * later one, as `aimAt` and `press` in `justdom-xr/driver` wait for.
+ */
+export const STEP_FRAMES = 4;
+
+/**
+ * How long the phone buzzes, in milliseconds, when a finger held still
+ * becomes a hold: the short tick a phone gives a long press, so the player
+ * knows the next move drags. A browser without `navigator.vibrate`, Safari
+ * on iOS among them, gives none.
+ */
+export const HOLD_BUZZ_MS = 15;
+
+/**
+ * The head's turn, as a drag and the phone's tilt set it: the yaw about the
+ * vertical, the pitch about the head's own x axis and the roll about its
+ * line of sight, in that order (`YXZ`). A finger moved across the screen
+ * moves the scene under it by as much: the drag turns the head by the angle
+ * the screen shows over that many pixels.
+ *
+ * Without tilt, `yaw` and `pitch` are the head's turn and the head never
+ * rolls. With tilt, the head is the phone's own turn plus `yaw`, `pitch`
+ * and `roll`, so it turns, tips and rolls as the phone does, and the phone
+ * is a window onto the room. The rules, for each input:
+ *
+ * - `tilt` with a reading while tilt is off turns it on. That first reading
+ *   moves nothing: `yaw`, `pitch` and `roll` take the phone's turn off
+ *   themselves, so the head looks where it did, however the phone is held,
+ *   and only the phone's movement from there turns it. Later readings set
+ *   the turn.
+ * - `drag` adds to `yaw` and `pitch` with tilt on or off, so the finger
+ *   still turns the head past where the arm will reach.
+ * - `untilt` turns tilt off and folds the last reading's yaw and pitch back
+ *   into `yaw` and `pitch`, so the head stays where it was, less the roll
+ *   since tilt went on, which goes back to nought.
+ * - The head's pitch, the phone's and the drag's together, never passes
+ *   `PITCH_LIMIT` either way. A drag stops at the limit for the last
+ *   reading, so `pitch` never winds up past what the screen shows; a phone
+ *   tipped past it holds the view at the limit.
+ */
+export class Look {
+  yaw = 0;
+
+  /** The roll the drag never sets: the first reading's, taken off. */
+  #roll = 0;
+
+  /** @type {THREE.Euler | null} The phone's last reading, while tilt is on. */
+  #device = null;
+
+  /** @param {number} [pitch] Where the head starts, in radians. */
+  constructor(pitch = START_PITCH) {
+    this.pitch = pitch;
+  }
+
+  /**
+   * A finger moved by `dx`, `dy` CSS pixels on a screen that shows
+   * `radiansPerPixel` of the view in each one. Right turns the head left,
+   * so the scene follows the finger, and down tips it up.
+   *
+   * @param {number} dx
+   * @param {number} dy
+   * @param {number} radiansPerPixel
+   */
+  drag(dx, dy, radiansPerPixel) {
+    const tipped = this.#device?.x ?? 0;
+    this.yaw += dx * radiansPerPixel;
+    this.pitch = THREE.MathUtils.clamp(
+      this.pitch + dy * radiansPerPixel,
+      -PITCH_LIMIT - tipped,
+      PITCH_LIMIT - tipped,
+    );
+  }
+
+  /**
+   * The phone's turn, from `deviceQuaternion`: a new reading.
+   *
+   * @param {THREE.Quaternion} phone
+   */
+  tilt(phone) {
+    if (!this.#device) {
+      this.#device = new THREE.Euler(0, 0, 0, "YXZ").setFromQuaternion(phone);
+      this.yaw -= this.#device.y;
+      this.pitch -= this.#device.x;
+      this.#roll = -this.#device.z;
+      return;
+    }
+    this.#device.setFromQuaternion(phone);
+  }
+
+  /** Tilt off, with the head left where the last reading had it. */
+  untilt() {
+    if (this.#device) {
+      this.yaw += this.#device.y;
+      this.pitch = THREE.MathUtils.clamp(this.pitch + this.#device.x, -PITCH_LIMIT, PITCH_LIMIT);
+      this.#roll = 0;
+      this.#device = null;
+    }
+  }
+
+  /** The head's yaw: which way it faces across the floor. */
+  heading() {
+    return this.yaw + (this.#device?.y ?? 0);
+  }
+
+  /**
+   * The turn as a quaternion, written into `out`.
+   *
+   * @param {THREE.Quaternion} out
+   * @returns {THREE.Quaternion}
+   */
+  quaternion(out) {
+    const device = this.#device;
+    const pitch = THREE.MathUtils.clamp(this.pitch + (device?.x ?? 0), -PITCH_LIMIT, PITCH_LIMIT);
+    return out.setFromEuler(
+      scratchEuler.set(pitch, this.heading(), this.#roll + (device?.z ?? 0), "YXZ"),
+    );
+  }
+}
+
+const scratchEuler = new THREE.Euler();
+
+/** A quarter turn back about x: a camera looks out of the phone's back. */
+const outOfTheBack = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+const screenTurn = new THREE.Quaternion();
+const zAxis = new THREE.Vector3(0, 0, 1);
+
+/**
+ * The turn of a camera looking out of the back of a phone, from a
+ * `deviceorientation` reading in degrees and the screen's angle
+ * (`screen.orientation.angle`, also in degrees). The reading is the phone's
+ * frame in the earth's (`alpha` about the vertical, then `beta` about the
+ * phone's x, then `gamma` about its y); a camera looks down its own -z, so a
+ * phone lying flat, face up, looks at the floor, and one held upright looks
+ * at the horizon. A screen turned sideways turns the camera back by its
+ * angle, so the top of the picture is the top of the screen. `alpha`'s zero
+ * is wherever the phone's browser put it, which `Look.tilt` takes off.
+ * Written into `out`.
+ *
+ * @param {number} alpha
+ * @param {number} beta
+ * @param {number} gamma
+ * @param {number} screenAngle
+ * @param {THREE.Quaternion} out
+ * @returns {THREE.Quaternion}
+ */
+export function deviceQuaternion(alpha, beta, gamma, screenAngle, out) {
+  const toRadians = THREE.MathUtils.DEG2RAD;
+  out.setFromEuler(
+    scratchEuler.set(beta * toRadians, alpha * toRadians, -gamma * toRadians, "YXZ"),
+  );
+  out.multiply(outOfTheBack);
+  return out.multiply(screenTurn.setFromAxisAngle(zAxis, -screenAngle * toRadians));
+}
+
+/**
+ * The part of the page the session is drawn on.
+ *
+ * @typedef {Pick<DOMRect, "left" | "top" | "width" | "height">} Viewport
+ */
+
+/**
+ * The direction, in the head's own space, through the point (`x`, `y`) of
+ * the page, for a view drawn on `viewport` with the vertical field of view
+ * `fovy`: the ray from the eye through the touched pixel. IWER draws a
+ * session with `fovy` over the canvas's height and the canvas's aspect, so
+ * this is the inverse of its projection. Written into `out`, which comes
+ * back unit length.
+ *
+ * @param {number} x
+ * @param {number} y
+ * @param {Viewport} viewport
+ * @param {number} fovy
+ * @param {THREE.Vector3} out
+ * @returns {THREE.Vector3}
+ */
+export function tapDirection(x, y, viewport, fovy, out) {
+  const ndcX = ((x - viewport.left) / viewport.width) * 2 - 1;
+  const ndcY = 1 - ((y - viewport.top) / viewport.height) * 2;
+  const tan = Math.tan(fovy / 2);
+  const aspect = viewport.width / viewport.height;
+  return out.set(ndcX * tan * aspect, ndcY * tan, -1).normalize();
+}
+
+/**
+ * Whether the page has to ask for the phone's orientation, and how: iOS
+ * Safari keeps `deviceorientation` events from a page until it calls
+ * `DeviceOrientationEvent.requestPermission` from a tap and the player
+ * allows it. Chromium has the method too and answers from the site's
+ * sensor permissions without asking. A browser without it sends the events
+ * as they come.
+ *
+ * @typedef {{ requestPermission?: () => Promise<"granted" | "denied"> }} OrientationPermission
+ */
+
+/**
+ * A key pressed or let go on the desk's keyboard, as the app hears it. The
+ * buttons go through the desk's own keys rather than calling into the app,
+ * so a touch does what the key does and nothing else.
+ *
+ * @param {"keydown" | "keyup"} type
+ * @param {string} code
+ */
+const sendKey = (type, code) => {
+  window.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
+};
+
+/**
+ * Call `then` once `STEP_FRAMES` animation frames have passed.
+ *
+ * @param {() => void} then
+ */
+const afterStep = (then) => {
+  let count = STEP_FRAMES;
+  const tick = () => (count-- > 0 ? requestAnimationFrame(tick) : then());
+  tick();
+};
+
+/**
+ * What the right controller is doing for the finger, while it is aimed
+ * rather than parked: a tap running its steps, a held finger's aim with no
+ * button chosen yet (`button` null), a long press's grip, or a drag's
+ * trigger. `held` says the button has gone down, and `lifted` that the
+ * finger has come up, so a drag lifted before its trigger goes down lets go
+ * as soon as it has.
+ *
+ * @typedef {{ button: "trigger" | "squeeze" | null, held: boolean, lifted: boolean }} Press
+ */
+
+/**
+ * The finger on the scene, if one is. It is `undecided` from the touch
+ * until it is more than `SLOP_PX` from where it landed (a `look`), stayed
+ * within that for `HOLD_MS` (a `hold`) or lifted (a tap), or until a second
+ * finger lands while it is undecided or a look (a `pinch`). A hold becomes
+ * a `drag` once it is more than `SLOP_PX` from where it landed, and its
+ * lift before that is a long press. A finger that jitters in place stays
+ * within the slop however far it has travelled.
+ * `press` is the hold's, and null for a hold that came while the controller
+ * was busy, which then does nothing. A finger of a pinch that has ended
+ * stays a `pinch`, and does nothing until it lifts.
+ *
+ * @typedef {object} Finger
+ * @property {number} id
+ * @property {number} x
+ * @property {number} y
+ * @property {{ x: number, y: number }} landed Where it touched down: where
+ *   a hold aims, and so where a drag and a long press press.
+ * @property {"undecided" | "look" | "hold" | "drag" | "pinch"} kind
+ * @property {ReturnType<typeof setTimeout>} timer
+ * @property {Press | null} press
+ */
+
+/**
+ * Put a phone's touch screen in front of the emulated headset, for
+ * `?touch`: a drag turns the head, a tap points the right controller
+ * through the tapped spot and pulls its trigger, a finger held still for
+ * `HOLD_MS` and then moved drags with the trigger from where it landed,
+ * and one held and lifted without moving is a press of the grip. Two
+ * fingers pinch the view in and out. The app's
+ * `buttons` go along the bottom, **Tilt**, in the top right corner, turns
+ * the head with the phone as well (`Look`), and **Exit**, in the top left,
+ * ends the session, since the layer covers the page's own button for it.
+ *
+ * The layer is up only while a session is, so the page's own buttons, the
+ * one that starts the session among them, are tapped as they always are.
+ * It learns of the session by wrapping the emulated
+ * `navigator.xr.requestSession`, so call this after `install` and before
+ * the page asks for one; `offerHeadset` does both for `?touch`.
+ *
+ * The rules for the finger, the tap, the hold, the drag and the pinch:
+ *
+ * - One finger on the scene drives one thing, and the buttons never touch
+ *   the finger's state. A second finger that lands while the first is
+ *   undecided or looking starts a pinch, which cancels the first finger's
+ *   tap and hold. Any other second finger, and a third, are ignored: a
+ *   pinch during a drag cannot move the dragged thing, as the page's
+ *   pointer does, since the thing hangs off the controller and only moving
+ *   the controller into the view would move it.
+ * - A hold aims the right controller through the point the finger landed
+ *   on, from just behind the eye, and presses nothing yet. The ray rests
+ *   there, whatever the finger does within `SLOP_PX`, so a small target
+ *   under it stays under it; a tilt keeps the ray on that point of the
+ *   screen.
+ * - A hold whose finger then gets more than `SLOP_PX` from where it
+ *   landed is a drag: a step later the trigger goes down where the ray
+ *   rests, and from the step after, the ray follows the finger until it
+ *   lifts or the browser cancels it, which lets the trigger go and parks
+ *   the controller a step later. A drag lifted before its trigger has gone
+ *   down keeps the trigger down for a step, so the app sees the press; one
+ *   the browser cancels by then presses nothing and parks.
+ * - A hold that lifts without moving is a long press: a step later the
+ *   grip goes down where the ray rests, a step after it comes up, and a
+ *   step after that the controller parks. A hold the browser cancels
+ *   presses nothing and parks.
+ * - A pinch zooms as the page's pointer does: spread the fingers twice as
+ *   far apart and what is on the screen is drawn twice as large (the
+ *   tangent of half the vertical field of view goes inversely with the
+ *   spread), between `MIN_FOVY` and the headset's own, which is the
+ *   widest. The pinch ends when either finger lifts, and the one left on
+ *   the screen does nothing until it lifts too. The zoom stays where the
+ *   pinch left it. A tap's and a hold's ray, and a look's turn for each
+ *   pixel, follow the field of view, so they work the same at any zoom.
+ * - A look never presses anything, a hold and a drag never turn the head,
+ *   and a pinch does neither.
+ * - A tap or a hold that starts while the controller is still busy with
+ *   the last press is dropped, not queued.
+ * - The session ending hides the layer, lets go of whatever the controller
+ *   holds and parks it at once, forgets the fingers, and zooms back out to
+ *   the headset's own field of view.
+ *
+ * @param {XRDevice} headset
+ * @param {TouchOptions} [options]
+ */
+export function installTouch(headset, { buttons = [], pitch } = {}) {
+  // One eye, at the head. IWER draws a session that is not in stereo from
+  // its left eye, half the eyes' distance to the left of the head, and a
+  // ray from the head would land that far right of the pixel touched.
+  headset.ipd = 0;
+  // The headset's own field of view, the widest a pinch zooms out to.
+  const wide = headset.fovy;
+  const look = new Look(pitch);
+  const turn = new THREE.Quaternion();
+  const direction = new THREE.Vector3();
+  const from = new THREE.Vector3();
+  const to = new THREE.Vector3();
+  const aim = new THREE.Matrix4();
+  const up = new THREE.Vector3(0, 1, 0);
+  const down = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+
+  /** @type {Press | null} What the right controller is aimed for. */
+  let press = null;
+  /** @type {Finger | null} */
+  let finger = null;
+  /**
+   * The second finger of a pinch, while one is under way, and how far it
+   * was from the first at the last move.
+   *
+   * @type {{ id: number, x: number, y: number, spread: number } | null}
+   */
+  let pinch = null;
+
+  const head = () => from.set(headset.position.x, headset.position.y, headset.position.z);
+
+  /**
+   * Both controllers under the head and pointing at the floor, turned with
+   * it, so neither model nor ray is ever in the view. The right one is left
+   * where it is while a press has it aimed.
+   */
+  const park = () => {
+    for (const side of /** @type {const} */ (["left", "right"])) {
+      const controller = headset.controllers[side];
+      if (!controller || (side === "right" && press)) {
+        continue;
+      }
+      head();
+      direction.set(side === "left" ? -0.3 : 0.3, -0.7, 0.25).applyAxisAngle(up, look.heading());
+      from.add(direction);
+      controller.position.set(from.x, from.y, from.z);
+      turn.setFromAxisAngle(up, look.heading()).multiply(down);
+      controller.quaternion.set(turn.x, turn.y, turn.z, turn.w);
+    }
+  };
+
+  /** @returns {Viewport} */
+  const viewport = () =>
+    headset.appCanvas?.getBoundingClientRect() ?? {
+      left: 0,
+      top: 0,
+      width: innerWidth,
+      height: innerHeight,
+    };
+
+  /**
+   * The right controller just behind the eye with its ray through the point
+   * (`x`, `y`) of the page, so the ray runs through that pixel and the
+   * model is behind the near plane, out of the view.
+   *
+   * @param {number} x
+   * @param {number} y
+   */
+  const aimThrough = (x, y) => {
+    const controller = headset.controllers.right;
+    if (!controller) {
+      return;
+    }
+    tapDirection(x, y, viewport(), headset.fovy, direction).applyQuaternion(look.quaternion(turn));
+    head().addScaledVector(direction, -0.1);
+    aim.lookAt(from, to.copy(from).add(direction), up);
+    turn.setFromRotationMatrix(aim);
+    controller.position.set(from.x, from.y, from.z);
+    controller.quaternion.set(turn.x, turn.y, turn.z, turn.w);
+  };
+
+  /**
+   * Where on the screen the ray should run for the finger, if the finger
+   * has the controller: a drag's under the finger once its trigger is
+   * down, and before that, as for a hold, where the finger landed.
+   *
+   * @param {Finger | null} on
+   * @returns {{ x: number, y: number } | null}
+   */
+  const aimedAt = (on) => {
+    if (!on?.press || on.press !== press || (on.kind !== "hold" && on.kind !== "drag")) {
+      return null;
+    }
+    return on.kind === "drag" && on.press.held ? on : on.landed;
+  };
+
+  /**
+   * The head turned as `look` has it, the controllers parked, and a hold's
+   * or a drag's ray put back where it runs on the screen, which a tilt
+   * would otherwise move it off.
+   */
+  const applyLook = () => {
+    look.quaternion(turn);
+    headset.quaternion.set(turn.x, turn.y, turn.z, turn.w);
+    park();
+    const at = aimedAt(finger);
+    if (at) {
+      aimThrough(at.x, at.y);
+    }
+  };
+  applyLook();
+
+  /**
+   * One step of `run` later, unless the session has ended or the
+   * controller has moved on to another press since.
+   *
+   * @param {Press} run
+   * @param {() => void} then
+   */
+  const step = (run, then) => afterStep(() => press === run && then());
+
+  /** @param {Press} run */
+  const done = (run) =>
+    step(run, () => {
+      press = null;
+      park();
+    });
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  const tap = (x, y) => {
+    const controller = headset.controllers.right;
+    if (press || !controller) {
+      return;
+    }
+    /** @type {Press} */
+    const run = { button: "trigger", held: false, lifted: true };
+    press = run;
+    aimThrough(x, y);
+    step(run, () => {
+      controller.updateButtonValue("trigger", 1);
+      step(run, () => {
+        controller.updateButtonValue("trigger", 0);
+        done(run);
+      });
+    });
+  };
+
+  /**
+   * Aim the right controller through (`x`, `y`) for a hold, with no button
+   * chosen yet, unless it is busy.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @returns {Press | null}
+   */
+  const hold = (x, y) => {
+    if (press || !headset.controllers.right) {
+      return null;
+    }
+    /** @type {Press} */
+    const run = { button: null, held: false, lifted: false };
+    press = run;
+    aimThrough(x, y);
+    return run;
+  };
+
+  /**
+   * Put `button` down a step from now, where the ray rests: the trigger
+   * for a drag, which stays down until the finger lets go, or the grip for
+   * a long press, which comes up a step later.
+   *
+   * @param {Press} run
+   * @param {"trigger" | "squeeze"} button
+   */
+  const pressDown = (run, button) => {
+    run.button = button;
+    step(run, () => {
+      // Cancelled by the browser before it went down: `letGo` parks it.
+      if (!run.button) {
+        return;
+      }
+      headset.controllers.right?.updateButtonValue(run.button, 1);
+      run.held = true;
+      if (run.lifted) {
+        // A finger that lifted while the button was going down: it stays
+        // down for a step, so the app sees it pressed before it comes up.
+        step(run, () => release(run));
+      } else {
+        // A drag's trigger, pressed where the ray rested: from the next
+        // step the ray is under the finger, moving or not.
+        step(run, () => {
+          const at = aimedAt(finger);
+          if (at) {
+            aimThrough(at.x, at.y);
+          }
+        });
+      }
+    });
+  };
+
+  /**
+   * The finger is off the screen: what its press has down comes up, and a
+   * press with nothing down yet parks, unless it is a lift that a button
+   * is still going down for (`pressDown` sees to that one).
+   *
+   * @param {Press} run
+   * @param {boolean} cancelled Whether the browser cancelled the finger,
+   *   which presses nothing that has not gone down yet.
+   */
+  const letGo = (run, cancelled) => {
+    run.lifted = true;
+    if (run.held) {
+      release(run);
+    } else if (run.button === null || cancelled) {
+      run.button = null;
+      done(run);
+    }
+  };
+
+  /** @param {Press} run */
+  const release = (run) => {
+    if (press === run && run.button) {
+      headset.controllers.right?.updateButtonValue(run.button, 0);
+      done(run);
+    }
+  };
+
+  const layer = document.createElement("div");
+  // Over IWER's canvas, which it stands at 999.
+  layer.style.cssText =
+    "position:fixed;inset:0;z-index:1000;touch-action:none;display:none;user-select:none;-webkit-user-select:none";
+
+  layer.addEventListener("pointerdown", (event) => {
+    if (event.target !== layer) {
+      return;
+    }
+    if (finger) {
+      if (!pinch && (finger.kind === "undecided" || finger.kind === "look")) {
+        clearTimeout(finger.timer);
+        finger.kind = "pinch";
+        const { clientX: x, clientY: y } = event;
+        pinch = { id: event.pointerId, x, y, spread: Math.hypot(x - finger.x, y - finger.y) };
+        layer.setPointerCapture(event.pointerId);
+      }
+      return;
+    }
+    const landed = /** @type {Finger} */ ({
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      landed: { x: event.clientX, y: event.clientY },
+      kind: "undecided",
+      press: null,
+    });
+    landed.timer = setTimeout(() => {
+      if (finger === landed && landed.kind === "undecided") {
+        landed.kind = "hold";
+        landed.press = hold(landed.landed.x, landed.landed.y);
+        if (landed.press) {
+          navigator.vibrate?.(HOLD_BUZZ_MS);
+        }
+      }
+    }, HOLD_MS);
+    finger = landed;
+    layer.setPointerCapture(event.pointerId);
+  });
+  layer.addEventListener("pointermove", (event) => {
+    if (pinch && finger && (event.pointerId === pinch.id || event.pointerId === finger.id)) {
+      const moved = event.pointerId === pinch.id ? pinch : finger;
+      moved.x = event.clientX;
+      moved.y = event.clientY;
+      const spread = Math.hypot(pinch.x - finger.x, pinch.y - finger.y);
+      if (spread > 0 && pinch.spread > 0) {
+        const tan = (Math.tan(headset.fovy / 2) * pinch.spread) / spread;
+        headset.fovy = THREE.MathUtils.clamp(2 * Math.atan(tan), MIN_FOVY, wide);
+      }
+      pinch.spread = spread;
+      return;
+    }
+    if (finger?.id !== event.pointerId) {
+      return;
+    }
+    const dx = event.clientX - finger.x;
+    const dy = event.clientY - finger.y;
+    finger.x = event.clientX;
+    finger.y = event.clientY;
+    const away = Math.hypot(finger.x - finger.landed.x, finger.y - finger.landed.y) > SLOP_PX;
+    if (finger.kind === "undecided" && away) {
+      finger.kind = "look";
+      clearTimeout(finger.timer);
+    } else if (finger.kind === "hold" && away) {
+      finger.kind = "drag";
+      if (finger.press === press && finger.press) {
+        pressDown(finger.press, "trigger");
+      }
+      return;
+    }
+    if (finger.kind === "look") {
+      look.drag(dx, dy, headset.fovy / viewport().height);
+      applyLook();
+    } else if (finger.kind === "drag" && finger.press?.held && finger.press === press) {
+      aimThrough(finger.x, finger.y);
+    }
+  });
+  /** @param {PointerEvent} event */
+  const lift = (event) => {
+    if (pinch?.id === event.pointerId) {
+      pinch = null;
+      return;
+    }
+    if (finger && pinch && finger.id === event.pointerId) {
+      // The second finger is the one left, and does nothing from here.
+      finger = { ...finger, id: pinch.id };
+      pinch = null;
+      return;
+    }
+    if (finger?.id !== event.pointerId) {
+      return;
+    }
+    clearTimeout(finger.timer);
+    if (finger.kind === "undecided" && event.type === "pointerup") {
+      tap(event.clientX, event.clientY);
+    } else if (finger.press && finger.press === press) {
+      if (finger.kind === "hold" && event.type === "pointerup") {
+        // A long press: the grip, down and up.
+        finger.press.lifted = true;
+        pressDown(finger.press, "squeeze");
+      } else {
+        letGo(finger.press, event.type === "pointercancel");
+      }
+    }
+    finger = null;
+  };
+  layer.addEventListener("pointerup", lift);
+  layer.addEventListener("pointercancel", lift);
+
+  if (buttons.length) {
+    layer.append(buttonBar(buttons));
+  }
+  /** @type {XRSession | null} */
+  let session = null;
+  layer.append(
+    tiltButton(look, applyLook),
+    exitButton(() => session?.end()),
+  );
+  document.body.append(layer);
+
+  const started = () => {
+    applyLook();
+    layer.style.display = "block";
+  };
+  const ended = () => {
+    layer.style.display = "none";
+    if (finger) {
+      clearTimeout(finger.timer);
+      finger = null;
+    }
+    pinch = null;
+    headset.fovy = wide;
+    if (press) {
+      if (press.button) {
+        headset.controllers.right?.updateButtonValue(press.button, 0);
+      }
+      press = null;
+      park();
+    }
+  };
+
+  // IWER's `navigator.xr`, which `install` put there and nothing else
+  // holds: the one place every session the page opens comes from, whatever
+  // opens it.
+  const xr = navigator.xr;
+  if (xr) {
+    const request = xr.requestSession.bind(xr);
+    xr.requestSession = async (mode, init) => {
+      const opened = await request(mode, init);
+      if (mode !== "inline") {
+        session = opened;
+        started();
+        opened.addEventListener(
+          "end",
+          () => {
+            session = null;
+            ended();
+          },
+          { once: true },
+        );
+      }
+      return opened;
+    };
+  }
+}
+
+/**
+ * The app's buttons, in a row along the bottom of the screen.
+ *
+ * @param {TouchButton[]} buttons
+ * @returns {HTMLDivElement}
+ */
+function buttonBar(buttons) {
+  const bar = document.createElement("div");
+  bar.style.cssText =
+    "position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;justify-content:center;" +
+    "padding:12px 16px calc(12px + env(safe-area-inset-bottom))";
+  for (const { label, code, hold = false } of buttons) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.style.cssText =
+      "flex:1;max-width:120px;min-height:56px;border-radius:12px;border:1px solid #fff8;" +
+      "background:#0008;color:#fff;font:600 16px system-ui,sans-serif;touch-action:none";
+    // Down on the touch, up on the lift, so a held button is a held key.
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      sendKey("keydown", code);
+      if (!hold) {
+        sendKey("keyup", code);
+      }
+    });
+    if (hold) {
+      const release = () => sendKey("keyup", code);
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointercancel", release);
+    }
+    bar.append(button);
+  }
+  return bar;
+}
+
+/**
+ * A button in a top corner of the layer, clear of the notch.
+ *
+ * @param {"left" | "right"} side
+ * @returns {HTMLButtonElement}
+ */
+function cornerButton(side) {
+  const button = document.createElement("button");
+  button.style.cssText =
+    `position:absolute;top:calc(12px + env(safe-area-inset-top));${side}:16px;min-height:44px;` +
+    "padding:0 16px;border-radius:12px;border:1px solid #fff8;background:#0008;color:#fff;" +
+    "font:600 16px system-ui,sans-serif;touch-action:manipulation";
+  return button;
+}
+
+/**
+ * **Exit**: ends the session. The page's own button for that is under the
+ * layer, which covers the whole screen while a session is up.
+ *
+ * @param {() => void} exit
+ * @returns {HTMLButtonElement}
+ */
+function exitButton(exit) {
+  const button = cornerButton("left");
+  button.textContent = "Exit";
+  button.addEventListener("click", exit);
+  return button;
+}
+
+/**
+ * The button that turns tilt on and off, and the listener it puts on the
+ * window for the phone's readings while it is on. Off to start with: iOS
+ * hands a page the readings only once a tap has asked for them, and a phone
+ * that turns the view before the player asks is a surprise everywhere else.
+ * A refusal leaves the button saying so, and the next tap asks again.
+ *
+ * @param {Look} look
+ * @param {() => void} applyLook
+ * @returns {HTMLButtonElement}
+ */
+function tiltButton(look, applyLook) {
+  const button = cornerButton("right");
+  const phone = new THREE.Quaternion();
+  let on = false;
+  const show = () => {
+    button.textContent = on ? "Tilt on" : "Tilt off";
+    button.setAttribute("aria-pressed", String(on));
+  };
+  show();
+
+  /** @param {DeviceOrientationEvent} event */
+  const read = (event) => {
+    const { alpha, beta, gamma } = event;
+    // A browser with the event and no sensor sends nulls.
+    if (alpha === null || beta === null || gamma === null) {
+      return;
+    }
+    look.tilt(deviceQuaternion(alpha, beta, gamma, screen.orientation?.angle ?? 0, phone));
+    applyLook();
+  };
+  const start = () => {
+    on = true;
+    window.addEventListener("deviceorientation", read);
+    show();
+  };
+  const stop = () => {
+    on = false;
+    window.removeEventListener("deviceorientation", read);
+    look.untilt();
+    applyLook();
+    show();
+  };
+  const refused = () => {
+    button.textContent = "Tilt refused";
+  };
+
+  // A click, not a pointerdown: iOS counts a click as the tap a permission
+  // request has to come from.
+  button.addEventListener("click", () => {
+    if (on) {
+      stop();
+      return;
+    }
+    const orientation = /** @type {OrientationPermission | undefined} */ (
+      window.DeviceOrientationEvent
+    );
+    const ask = orientation?.requestPermission;
+    if (!ask) {
+      start();
+      return;
+    }
+    ask.call(orientation).then((answer) => (answer === "granted" ? start() : refused()), refused);
+  });
+  return button;
+}

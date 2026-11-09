@@ -27,7 +27,11 @@ so a session needs the network. `node tests/drag-check.mjs` builds the app for p
 fails unless its service worker precaches exactly the JS the page loads. `?emulator` installs a
 headset in the browser (IWER, with its dev panels) and the **Enter VR** button appears at the
 bottom; press it and the emulated session is drawn over the page, driven from the panels.
-`?emulator=bare` installs the runtime without the panels, for a harness photographing the scene.
+`?emulator=bare` installs the runtime without the panels, for a harness photographing the scene. On
+a phone `?emulator` installs `justdom-xr`'s touch layer instead of the panels (`?emulator=devui`
+keeps them), and `?touch` installs it anywhere: once the session is up, a drag turns the head, a tap
+presses what it lands on, a finger held still for 400 ms and then moved drags it, held and lifted is
+a long press, and two fingers pinch the view in and out.
 
 ## How it is put together
 

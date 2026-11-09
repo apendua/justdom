@@ -1,4 +1,5 @@
 import { render, createXRButton } from "justdom-three";
+import { installEmulator } from "justdom-xr/offer";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import Stats from "stats.js";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
@@ -24,34 +25,28 @@ if (import.meta.env.DEV) {
 }
 
 // Available in production builds too, so the deployed game can be exercised
-// from an ordinary browser. The import is dynamic, so the emulator and its dev
-// UI stay in a separate chunk that is only fetched when it is asked for. If
-// that fetch fails there is no reason to withhold the game, so mounting
-// carries on regardless.
-Promise.resolve(
-  query.has("emulator")
-    ? import("justdom-xr/emulator").then(({ install }) =>
-        install({ devUI: query.get("emulator") !== "bare" }),
-      )
-    : undefined,
-)
-  .catch((err) => {
-    console.error("Could not install the XR emulator:", err);
-  })
-  .then(() => {
-    render(App, {
-      createControllerModel,
-      onBeforeRender: () => {
-        stats.begin();
-      },
-      onAfterRender: () => {
-        stats.end();
-      },
-    }).subscribe({
-      next: (renderer) => {
-        createXRButton(renderer).then((button) => {
-          root.replaceChildren(renderer.domElement, button);
-        });
-      },
-    });
+// from an ordinary browser, and on a phone through the touch layer
+// (`installEmulator` in `justdom-xr/offer` says which flag gives which). The
+// emulator and the touch layer are chunks of their own, fetched only when
+// asked for. If that fetch fails there is no reason to withhold the game:
+// `installEmulator` logs it and mounting carries on regardless.
+installEmulator({ touch: {} }).then(() => {
+  render(App, {
+    // The mouse and a finger play on the page, with no session, a drag on
+    // nothing turning the camera.
+    pointer: { look: "orbit" },
+    createControllerModel,
+    onBeforeRender: () => {
+      stats.begin();
+    },
+    onAfterRender: () => {
+      stats.end();
+    },
+  }).subscribe({
+    next: (renderer) => {
+      createXRButton(renderer).then((button) => {
+        root.replaceChildren(renderer.domElement, button);
+      });
+    },
   });
+});

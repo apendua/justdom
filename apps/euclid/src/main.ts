@@ -55,7 +55,7 @@ requestAnimationFrame(() => {
 // the very elements the app was just mounted into. It is loaded only once a
 // session is known to be possible, so a page that is only ever a page does
 // not fetch three.js.
-offerHeadset(() => import("./xr"))
+offerHeadset(() => import("./xr"), { touch: { pitch: 0 } })
   .then((xr) => xr?.offerXR({ toolbar, editor, canvas }))
   .catch((err) => {
     console.error("Could not offer an XR session:", err);

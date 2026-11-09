@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A two-finger pinch on a touch screen moves what the first finger drags along the ray, as the wheel does for the mouse",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

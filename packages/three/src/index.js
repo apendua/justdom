@@ -23,6 +23,7 @@ export {
 export { place, placeAndScale } from "./elements/place.js";
 export { cursors, pointers } from "./pointers.js";
 export { mouse, followMouse } from "./mouse.js";
+export { HOLD_MS, SLOP_PX, PITCH_LIMIT, MIN_FOVY } from "./limits.js";
 export { dom } from "./dom.js";
 export { createBakery } from "./bakery.js";
 export { drag } from "./drag.js";
@@ -194,6 +195,10 @@ export {
 
 /**
  * @typedef {import('./mouse.js').MouseView} MouseView
+ */
+
+/**
+ * @typedef {import('./mouse.js').PointerOptions} PointerOptions
  */
 
 /**

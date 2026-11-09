@@ -89,11 +89,20 @@ controller's current `THREE.Intersection`, for a snapping preview, a measurement
 
 ### Pointing with the mouse
 
-The manager casts only from XR controllers, so a scene that is also a page puts `mouse(ctx)` among
-the scene's children: a group parked at the camera and turned to face the point under the mouse on
-every move over the canvas, registered with the manager as one more controller. A left press and
-release on the canvas are its `selectstart`, `selectend` and `select`, so anything that answers a
-ray answers the mouse, and `cursors(ctx)` puts the hover mark on the page too.
+The manager casts only from XR controllers, so a scene that is also a page stands the mouse in for
+one: a group parked at the camera and turned to face the point under the mouse on every move over
+the canvas, registered with the manager as one more controller. Anything that answers a ray answers
+the mouse, and `cursors(ctx)` puts the hover mark on the page too. `render(fn, { pointer: true })`
+mounts it for the whole scene:
+
+```js
+import { render } from "justdom-three";
+
+render(app, { pointer: true });
+```
+
+A scene can also put `mouse(ctx)` among its children itself, which is the same group. It does one or
+the other, or the page has two mice.
 
 ```js
 import { useEffects } from "justdom-signal";
@@ -102,13 +111,50 @@ import { children, cursors, getScene, mouse } from "justdom-three";
 useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
 ```
 
+- The left button is the trigger: a press and release on the canvas are `selectstart`, `selectend`
+  and `select`. The right button is the grip, `squeezestart`, `squeezeend` and `squeeze`, and the
+  canvas opens no context menu.
+- A finger on a touch screen drives it too, one finger at a time, save for the two-finger pinch
+  below. A finger has no hover, so the ray is there from the moment it lands until it lifts. Lifted
+  within 10 px before 400 ms, it is a tap of the trigger. Moved more than 10 px, it presses the
+  trigger where it landed and drags. Held within 10 px for 400 ms, it presses the grip where it
+  landed and drags. A finger the browser cancels ends its press as a miss that says `lost`, as a
+  hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll.
+- `pointer: { look: "orbit" }` gives a drag that starts on nothing to the camera, from the left
+  button or from a finger: it turns by the angle the screen shows over the drag, and its pitch stops
+  short of straight up and down. Without `around` it turns where it stands, so what is under the
+  pointer stays under it. With `around: { x, y, z }` it swings about that point at the distance it
+  was, the other way, so what is at the point follows the pointer, as an orbit does. `around` is
+  only taken beside `look: "orbit"`. `mouse(ctx, { look: "orbit" })` is the same for a scene that
+  mounts it itself. Without `look`, a drag on nothing does nothing.
+- The wheel moves what the pointer holds with `drag` along the ray: a hand reaches into the room and
+  the mouse cannot. Rolled forward, towards the screen, it brings the thing nearer, as a wheel zooms
+  in; rolled back, towards you, it pushes it further off, 20 cm a notch and never nearer than 20 cm.
+  A `carry` keeps its own distance, and while nothing is dragged the wheel scrolls the page as ever.
+- On a touch screen a two-finger pinch moves what is held, or zooms when nothing is. A second finger
+  that lands while the first is dragging something does what the wheel does: spread the two fingers
+  and the thing comes nearer by the same ratio, close them and it goes further off. A second finger
+  that lands while nothing is held, and the first has pressed nothing (it has not yet pressed, or
+  its trigger began on nothing, turning the camera or not), zooms a perspective camera instead:
+  spread the fingers twice as far apart and the scene is drawn twice as large, never wider than the
+  camera's own view and never narrower than a vertical field of view of 20° (`MIN_FOVY`). A grip
+  refuses it, on something or on nothing, as a grab does on `justdom-xr`'s touch layer. The zoom
+  cancels the first finger's tap and grip and stops its turn, and the finger left after the zoom
+  does nothing until it lifts, a new second finger included. Lifting either finger ends the pinch;
+  lifting the first also ends its press. The zoom stays until the pointer stops (a session starting,
+  or the scene going), which puts the camera's `zoom` back. A second finger at any other time, and a
+  third, are ignored.
+- `HOLD_MS` (400), `SLOP_PX` (10), `PITCH_LIMIT` (1.4 rad) and `MIN_FOVY` are exported, from
+  `justdom-three` and on their own from `justdom-three/limits`, which imports nothing, and
+  `justdom-xr/touch` goes by the same ones.
 - It writes its pose as its own, so it hangs straight off the scene.
 - It is hidden, and so points at nothing, until the mouse first moves onto the canvas and whenever
   the mouse is anywhere else; a release heard off the canvas, such as one over the page's own panel,
   is a miss.
 - It stands down while a session is presenting, since a click on the canvas then is not a click in
   the room.
-- Nothing but a mouse move re-aims it, so the camera is expected to stand still between sessions.
+- Nothing but a mouse move re-aims it, so the camera is expected to stand still between sessions,
+  but for the turn `look: "orbit"` makes, which a mouse move makes.
 
 `followMouse(pointer, camera, canvas)` is the part that keeps a group on the mouse, for a test or
 for a scene that registers the group itself.

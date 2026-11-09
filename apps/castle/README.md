@@ -12,13 +12,22 @@ cd apps/castle && npm run dev
 ```
 
 Open the printed `https://` URL in a headset browser and press **Start AR** (passthrough). On a
-headset without passthrough the button falls back to plain VR instead of refusing to work.
+headset without passthrough the button falls back to plain VR instead of refusing to work. Outside a
+session the game plays on the page too: the mouse or a finger works it through `render()`'s
+`pointer` option, and a drag on nothing turns the camera.
 
 - `?emulator` — installs the [iwer](https://github.com/meta-quest/immersive-web-emulation-runtime)
   Quest 3 emulator with its DevUI, which fakes a headset and two controllers in an ordinary browser.
 - `?emulator=bare` — the same without the DevUI, and with the `XRDevice` exposed as
   `window.xrDevice` so a script can drive the headset and controllers directly. The DevUI writes a
   pose of its own every frame and would otherwise fight whatever the script is doing.
+- `?touch` — the emulator without the DevUI and with `justdom-xr`'s touch layer over the session,
+  for a phone: a drag turns the head, a tap pulls the trigger where it lands, a finger held still
+  for 400 ms and then moved drags with the trigger, held and lifted presses the grip, and two
+  fingers pinch the view in and out. The grip only ever clicks there, so pulling a copy off a placed
+  brick, which holds the grip, takes a controller in a session. On the page, outside one, the right
+  mouse button holds the grip, and so does a finger held still. On a phone `?emulator` does the same
+  as `?touch`, and `?emulator=devui` keeps the DevUI.
 
 The emulator is a dynamic import in its own chunk and replaces `navigator.xr`, so do not use it on a
 real headset.

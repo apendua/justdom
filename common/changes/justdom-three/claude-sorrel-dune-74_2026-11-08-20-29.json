@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A two-finger pinch with nothing held zooms a perspective camera, down to a 20\u00b0 view (`MIN_FOVY`); `HOLD_MS`, `SLOP_PX`, `PITCH_LIMIT` and `MIN_FOVY` are exported, and on their own from `justdom-three/limits`",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

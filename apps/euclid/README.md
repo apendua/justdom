@@ -42,6 +42,10 @@ On a laptop the page is the page and nothing else: no session can be opened, so 
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
 (IWER, with its dev panels) and the **Enter** button appears at the bottom; press it and the
 emulated session is drawn over the page. `?emulator=bare` installs the runtime without the panels.
+On a phone `?emulator` installs `justdom-xr`'s touch layer instead of the panels (`?emulator=devui`
+keeps them), and `?touch` installs it anywhere: once the session is up, a drag turns the head, a tap
+presses what it lands on, a finger held still for 400 ms and then moved drags it, held and lifted is
+a long press, and two fingers pinch the view in and out.
 
 `node tests/xr-check.mjs` first builds the app for production and fails if any chunk the page loads
 carries three.js. It then loads the page alone in headless Chromium, which can present nothing, and

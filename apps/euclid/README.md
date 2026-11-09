@@ -36,7 +36,8 @@ A page 600 pixels wide or narrower shows the drawing alone, under a toolbar that
 puts the hint on a line of its own. The toolbar's **Code** button shows the program between the two,
 with the drawing below it, and hides it again. A session always shows the program, since its panel
 mirrors the program where the page lays it out, so the page lays it out for as long as one runs and
-the Code button is gone until it ends.
+the Code button is gone until it ends. The × that ends a session sits in the toolbar's top right
+corner on a phone, beside the tools, rather than at the end of the wrapped bar.
 
 ## Running it
 

@@ -25,16 +25,6 @@ import type { Tool } from "../store/App";
  * pressable by the ray.
  */
 
-const toolbarStyle = className`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #26231e;
-  color: #e8e4d8;
-  flex-wrap: wrap;
-`;
-
 /*
  * A phone has the width of the tools and little more, so the bar drops the
  * title, which the page's own title already says, and moves the hint to a
@@ -42,6 +32,27 @@ const toolbarStyle = className`
  * `index.css`, which below it shows the program only on demand.
  */
 const PHONE = "(max-width: 600px)";
+
+const toolbarStyle = stylesheet`
+  .${CLASS_NAME} {
+    /* What the × is placed against on a phone. */
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #26231e;
+    color: #e8e4d8;
+    flex-wrap: wrap;
+  }
+
+  /* Room for the ×, which a phone puts in the top right corner. */
+  @media ${PHONE} {
+    .${CLASS_NAME}[data-session] {
+      padding-right: 54px;
+    }
+  }
+`;
 
 const titleStyle = stylesheet`
   .${CLASS_NAME} {
@@ -86,6 +97,7 @@ const buttonStyle = className`
 
 const groupStyle = className`
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
 `;
@@ -121,21 +133,36 @@ const hintStyle = className`
   color: #97907f;
 `;
 
-/** Ends the session; there only while there is one. */
-const closeStyle = className`
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid #4a453c;
-  border-radius: 15px;
-  background: #33302a;
-  color: #d8d3c5;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  &:hover {
+/**
+ * Ends the session; there only while there is one. At the end of the bar,
+ * except on a phone, where the bar wraps and the end of it is the start of
+ * a row of its own, so it sits in the top right corner, beside the tools.
+ */
+const closeStyle = stylesheet`
+  .${CLASS_NAME} {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #4a453c;
+    border-radius: 15px;
+    background: #33302a;
+    color: #d8d3c5;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .${CLASS_NAME}:hover {
     background: #b91c1c;
     color: #ffffff;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      position: absolute;
+      top: 6px;
+      right: 12px;
+    }
   }
 `;
 
@@ -284,6 +311,7 @@ const Toolbar = component((store: AppStore) => {
 
   return $("div", [
     set("className", toolbarStyle),
+    attr("data-session", () => (inSession() ? "" : undefined)),
     children(
       $("span", [set("className", titleStyle), children(text`Euclid`)]),
       $("span", [

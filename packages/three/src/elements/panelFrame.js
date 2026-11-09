@@ -461,7 +461,48 @@ export function measureClientRects(range, frame) {
 }
 
 /**
- * @param {DOMRectReadOnly} rect
+ * Where a run of text on one line is drawn, divided as `measureClientRect`
+ * divides: the union of the range's client rects that have a width.
+ *
+ * Not the range's bounding rect. WebKit reports the start of a range that
+ * begins right after a line break as a zero-width rect at the end of the
+ * line before, as well as the glyphs' own rect, so the bounding rect of a
+ * line's first character, or of the whole line, reached up into the line
+ * above: a character was put on the wrong line and a reveal's edge on it
+ * spanned the line before. A run with no width at all, a newline or a
+ * collapsed space, gives its last rect, which is on the line it ends, or an
+ * empty one when it has none.
+ *
+ * @param {Range} range
+ * @param {PanelFrame} frame
+ * @returns {FramedRect}
+ */
+export function measureRunRect(range, frame) {
+  const rects = range.getClientRects();
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (let index = 0; index < rects.length; index++) {
+    const rect = rects[index];
+    if (rect.width > 0) {
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.right);
+      bottom = Math.max(bottom, rect.bottom);
+    }
+  }
+  if (left <= right) {
+    return divide({ left, top, right, bottom, width: right - left, height: bottom - top }, frame);
+  }
+  return divide(rects.length ? rects[rects.length - 1] : EMPTY_RECT, frame);
+}
+
+/** What a range with no client rects measures, as a bounding rect would. */
+const EMPTY_RECT = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+
+/**
+ * @param {Pick<DOMRectReadOnly, "left" | "top" | "right" | "bottom" | "width" | "height">} rect
  * @param {PanelFrame} frame
  * @returns {FramedRect}
  */

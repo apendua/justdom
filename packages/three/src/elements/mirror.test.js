@@ -3723,10 +3723,16 @@ describe("character edges", () => {
   }
 
   /**
-   * @param {{ onRect?: () => void }} [options]
+   * @param {object} [options]
+   * @param {() => void} [options.onRect] Called on every rect read.
+   * @param {(index: number) => { left: number, right: number, top: number, bottom: number }} [options.glyph]
+   *   Where the character at an index is laid out; `charRect` by default.
+   * @param {(index: number) => boolean} [options.afterBreak] Whether a range
+   *   starting at this index also reports, as WebKit does after a line
+   *   break, a zero-width rect at the end of the glyph before it.
    * @returns {() => void}
    */
-  function installRange({ onRect } = {}) {
+  function installRange({ onRect, glyph = charRect, afterBreak = () => false } = {}) {
     const original = document.createRange;
     resetMeasuringRangeForTests();
     document.createRange = () => {
@@ -3739,8 +3745,8 @@ describe("character edges", () => {
         /** @type {Map<number, { left: number, top: number, right: number, bottom: number, width: number, height: number }>} */
         const byLine = new Map();
         for (let index = start; index < end; index++) {
-          const rect = charRect(index);
-          const line = Math.floor(index / COLUMNS);
+          const rect = glyph(index);
+          const line = rect.top;
           const found = byLine.get(line);
           if (!found) {
             byLine.set(line, {
@@ -3754,7 +3760,15 @@ describe("character edges", () => {
           found.right = Math.max(found.right, rect.right);
           found.width = found.right - found.left;
         }
-        return [...byLine.values()];
+        const glyphs = [...byLine.values()];
+        if (start > 0 && afterBreak(start)) {
+          const before = glyph(start - 1);
+          return [
+            { ...before, left: before.right, width: 0, height: before.bottom - before.top },
+            ...glyphs,
+          ];
+        }
+        return glyphs;
       };
       return /** @type {Range} */ (
         /** @type {unknown} */ ({
@@ -3794,7 +3808,10 @@ describe("character edges", () => {
               height: bottom - top,
             });
           },
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ (rects())),
+          getClientRects: () => {
+            onRect?.();
+            return /** @type {DOMRectList} */ (/** @type {unknown} */ (rects()));
+          },
         })
       );
     };
@@ -3870,6 +3887,61 @@ describe("character edges", () => {
     assert.ok(layout.reveal);
     assert.equal(layout.reveal.lines.length, 1);
     assert.deepEqual([...(layout.reveal.lines[0].edges ?? [])], [0, CHAR, 2 * CHAR, 3 * CHAR]);
+  });
+
+  test("a range that starts after a line break is not stretched up to the line before", () => {
+    // `ab\ncd` under `pre-wrap`, as WebKit reports it: a range that starts
+    // right after the newline also has a zero-width rect at the end of the
+    // line before, so its bounding rect reaches up into that line. Read that
+    // way, `cd` was drawn a line too high and `c`'s edge spanned `ab`.
+    const content = "ab\ncd";
+    /** @param {number} index */
+    const glyph = (index) => {
+      const line = index < 3 ? 0 : 1;
+      const column = index < 3 ? index : index - 3;
+      const width = content[index] === "\n" ? 0 : CHAR;
+      return {
+        left: column * CHAR,
+        right: column * CHAR + width,
+        top: line * LINE,
+        bottom: (line + 1) * LINE,
+      };
+    };
+    const restore = installRange({
+      glyph,
+      afterBreak: (index) => content[index - 1] === "\n",
+    });
+    const parent = document.createElement("pre");
+    parent.style.whiteSpace = "pre-wrap";
+    const node = document.createTextNode(content);
+    parent.appendChild(node);
+    document.body.appendChild(parent);
+    const mirror = createMirror();
+    mirror.adopt(parent);
+    mirror.adopt(node);
+    const stop = trackCharacterEdges(node);
+    try {
+      const layout = getTextLayout(node);
+      assert.deepEqual(
+        layout.lines.map((line) => [line.text, line.top, line.height]),
+        [
+          ["ab", 0, LINE],
+          ["cd", LINE, LINE],
+        ],
+      );
+      assert.ok(layout.reveal);
+      assert.deepEqual(
+        layout.reveal.lines.map((line) => [line.top, [...(line.edges ?? [])]]),
+        [
+          [0, [0, CHAR, 2 * CHAR]],
+          [LINE, [0, CHAR, 2 * CHAR]],
+        ],
+      );
+    } finally {
+      stop();
+      parent.remove();
+      restore();
+    }
   });
 
   test("tracking is per node, and is given back", () => {

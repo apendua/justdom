@@ -97,14 +97,16 @@ function finger(type, clientX = 50, clientY = 50, id = 1) {
  *
  * @param {HTMLElement} canvas
  * @param {HTMLElement} view
+ * @param {import('./mouse.js').FollowOptions} [options]
  */
-function pointedAt(canvas, view) {
+function pointedAt(canvas, view, options) {
   const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
   const stop = followMouse(
     group,
     new THREE.PerspectiveCamera(),
     canvas,
     /** @type {Window} */ (/** @type {unknown} */ (view)),
+    options,
   );
   const manager = new InteractionManager();
   const loop = fakeFrameLoop();
@@ -364,6 +366,61 @@ const PER_PIXEL = THREE.MathUtils.degToRad(50) / 100;
 function heading(camera) {
   return new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
 }
+
+describe("a finger, with touch: false", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {ReturnType<typeof pointedAt>} */
+  let at;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    canvas = pageCanvas();
+    canvas.style.touchAction = "pan-y";
+    const view = document.createElement("div");
+    view.append(canvas);
+    at = pointedAt(canvas, view, { touch: false });
+  });
+
+  afterEach(() => {
+    at.stop();
+    mock.timers.reset();
+  });
+
+  test("leaves the canvas its own touch-action, so the page still scrolls under it", () => {
+    assert.equal(canvas.style.touchAction, "pan-y");
+  });
+
+  test("taps, holds and drags nothing: the finger is the page's", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    assert.equal(at.group.visible, false);
+    canvas.dispatchEvent(finger("pointerup"));
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS);
+    canvas.dispatchEvent(finger("pointermove", 100, 0));
+    canvas.dispatchEvent(finger("pointerup", 100, 0));
+    assert.deepEqual(at.events, []);
+  });
+
+  test("lets a long press open its menu, and still keeps the mouse's off", () => {
+    const fromFinger = Object.assign(new Event("contextmenu", { cancelable: true }), {
+      pointerType: "touch",
+    });
+    canvas.dispatchEvent(fromFinger);
+    assert.equal(fromFinger.defaultPrevented, false);
+    const fromMouse = new Event("contextmenu", { cancelable: true });
+    canvas.dispatchEvent(fromMouse);
+    assert.equal(fromMouse.defaultPrevented, true);
+  });
+
+  test("leaves the mouse working", () => {
+    canvas.dispatchEvent(pointer("pointermove"));
+    at.loop.run();
+    canvas.dispatchEvent(pointer("pointerdown"));
+    canvas.dispatchEvent(pointer("pointerup"));
+    assert.deepEqual(at.events, ["pointerenter", "selectstart", "select"]);
+  });
+});
 
 describe("a drag on nothing, with look: orbit", () => {
   /** @type {HTMLElement} */

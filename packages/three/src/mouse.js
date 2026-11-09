@@ -48,7 +48,13 @@ export const MIN_REACH = 0.2;
  * `around` is only taken beside `look: "orbit"`, since without it nothing
  * orbits.
  *
- * @typedef {{ look?: undefined } | { look: "orbit", around?: THREE.Vector3Like }} PointerOptions
+ * `touch: false` leaves fingers to the page: the canvas keeps its own
+ * `touch-action`, so a finger on it scrolls and zooms the page as it would
+ * without this, and every pointer event a finger makes, and the context
+ * menu a long press raises, passes by untouched. The mouse and a pen work
+ * as ever. By default fingers are taken, as `followMouse` says.
+ *
+ * @typedef {({ look?: undefined } | { look: "orbit", around?: THREE.Vector3Like }) & { touch?: boolean }} PointerOptions
  *   `around` is the point the camera orbits, in the scene's coordinates.
  */
 
@@ -98,7 +104,8 @@ export const MIN_REACH = 0.2;
  * captured, so it stays the canvas's when it slides off. The context menu
  * kept off the canvas matters to the finger as well: Android raises one on
  * a long press and, left to open, cancels the touch, which would end every
- * hold as it became a grip.
+ * hold as it became a grip. All of this is for `touch` on, the default;
+ * with `touch: false` none of it happens, and a finger is the page's.
  *
  * The camera. With `look: "orbit"`, a press of the trigger that begins on
  * nothing (`pointsAtNothing`), from the left button or from a finger,
@@ -555,24 +562,53 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     reachOut((reach) => reach - pixels * WHEEL_METRES_PER_PIXEL);
   };
 
+  const takesTouch = options.touch ?? true;
+  /**
+   * The listener itself, or with `touch: false` one that lets a finger's
+   * events by. A context menu is a `PointerEvent` where the browser says
+   * which pointer raised it; where it does not, it is kept off as a mouse's.
+   *
+   * @template {Event} E
+   * @param {(event: E) => void} listener
+   * @returns {(event: E) => void}
+   */
+  const unlessTouch = (listener) =>
+    takesTouch
+      ? listener
+      : (event) => {
+          if (/** @type {Partial<PointerEvent>} */ (event).pointerType !== "touch") {
+            listener(event);
+          }
+        };
+  const listeners = {
+    move: unlessTouch(onMove),
+    leave: unlessTouch(onLeave),
+    down: unlessTouch(onDown),
+    cancel: unlessTouch(onCancel),
+    contextMenu: unlessTouch(onContextMenu),
+    up: /** @type {EventListener} */ (unlessTouch(onUp)),
+  };
+
   const touchAction = canvas.style.touchAction;
-  canvas.style.touchAction = "none";
-  canvas.addEventListener("pointermove", onMove);
-  canvas.addEventListener("pointerleave", onLeave);
-  canvas.addEventListener("pointerdown", onDown);
-  canvas.addEventListener("pointercancel", onCancel);
-  canvas.addEventListener("contextmenu", onContextMenu);
+  if (takesTouch) {
+    canvas.style.touchAction = "none";
+  }
+  canvas.addEventListener("pointermove", listeners.move);
+  canvas.addEventListener("pointerleave", listeners.leave);
+  canvas.addEventListener("pointerdown", listeners.down);
+  canvas.addEventListener("pointercancel", listeners.cancel);
+  canvas.addEventListener("contextmenu", listeners.contextMenu);
   canvas.addEventListener("wheel", onWheel, { passive: false });
-  view.addEventListener("pointerup", /** @type {EventListener} */ (onUp));
+  view.addEventListener("pointerup", listeners.up);
 
   return () => {
-    canvas.removeEventListener("pointermove", onMove);
-    canvas.removeEventListener("pointerleave", onLeave);
-    canvas.removeEventListener("pointerdown", onDown);
-    canvas.removeEventListener("pointercancel", onCancel);
-    canvas.removeEventListener("contextmenu", onContextMenu);
+    canvas.removeEventListener("pointermove", listeners.move);
+    canvas.removeEventListener("pointerleave", listeners.leave);
+    canvas.removeEventListener("pointerdown", listeners.down);
+    canvas.removeEventListener("pointercancel", listeners.cancel);
+    canvas.removeEventListener("contextmenu", listeners.contextMenu);
     canvas.removeEventListener("wheel", onWheel);
-    view.removeEventListener("pointerup", /** @type {EventListener} */ (onUp));
+    view.removeEventListener("pointerup", listeners.up);
     canvas.style.touchAction = touchAction;
     lift();
     zoomTo(wideZoom);

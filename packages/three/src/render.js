@@ -541,7 +541,8 @@ export function frames(ctx) {
  *   tap or drag are the trigger, the right button and a finger held still
  *   for 400 ms the grip; `followMouse` has the rules. Off by default,
  *   which leaves the canvas to the app. An object is on, and says what a
- *   drag that starts on nothing does: `{ look: "orbit" }` turns the camera.
+ *   drag that starts on nothing does: `{ look: "orbit" }` turns the camera,
+ *   and whether fingers are taken: `{ touch: false }` leaves them to the page.
  *   A `mouse(ctx)` the scene mounts of its own drives instead of this one
  *   while it is mounted, since a canvas has one mouse.
  * @property {import('./elements/panelOptions.js').PanelOptions} [panelOptions]

@@ -21,6 +21,12 @@ const FIELD_ASPECT_RATIO = 22 / 30;
 /**
  * The whole page. It is a stacking context of its own, so that the backdrop,
  * a layer under the rest, stays inside it rather than going under the body.
+ *
+ * As tall as the screen shows, `100dvh`, as Euclid's page is. On a phone
+ * `100vh` is the height with the browser's bars hidden, so the page ran
+ * under them: the toolbar went below the bottom bar, and in a session the
+ * canvas, which justdom-three sizes to `innerHeight`, left a strip of the
+ * page showing beneath it. `100vh` stays for a browser without `dvh`.
  */
 const container = stylesheet`
   .${CLASS_NAME} {
@@ -29,6 +35,7 @@ const container = stylesheet`
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
   }
 
   .${CLASS_NAME} svg {

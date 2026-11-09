@@ -1,6 +1,5 @@
 import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "justdom-core";
 import { component } from "justdom-signal";
-import { xrSession } from "justdom-xr/session";
 import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
 import type { GameMode } from "../store/Root";
@@ -8,7 +7,7 @@ import { narrow } from "../viewport";
 import ActionItem from "./ActionItem";
 import branch from "./branch";
 import { menuItem, menuItems } from "./styles";
-import { LeaveItem, PassthroughItem, modeName, mountedWhile } from "./toolbarItems";
+import { LeaveItem, PassthroughItem, inSession, modeName, mountedWhile } from "./toolbarItems";
 
 interface ToolbarProps {
   game: Game | null;
@@ -92,6 +91,7 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
     ]);
 
   const wide = () => !narrow.get();
+  const wideSession = () => wide() && inSession();
 
   return $("div", [
     set("className", consoleBar),
@@ -142,11 +142,8 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
           mountedWhile(wide, () =>
             $("li", [set("className", menuItem), attr({ "data-disabled": "" }), children(text`⚙`)]),
           ),
-          mountedWhile(() => wide() && xrSession.get() !== null, PassthroughItem),
-          mountedWhile(
-            () => wide() && xrSession.get() !== null,
-            () => LeaveItem("×"),
-          ),
+          mountedWhile(wideSession, PassthroughItem),
+          mountedWhile(wideSession, () => LeaveItem("×")),
         ),
       ]),
     ),

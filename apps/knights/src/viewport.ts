@@ -7,7 +7,10 @@ import { Signal } from "justdom-signal";
  */
 const NARROW = "(max-width: 600px)";
 
-const query = window.matchMedia(NARROW);
+// Read through `globalThis`, as `justdom-xr/offer` does, so that a test
+// under jsdom, which has no `matchMedia`, can import the toolbar and get a
+// wide page.
+const query = globalThis.matchMedia?.(NARROW);
 
 /**
  * Whether the page is narrow, kept up as the window is resized or the phone
@@ -16,8 +19,8 @@ const query = window.matchMedia(NARROW);
  * panel measures the toolbar again when its children change, and not when
  * one of them is hidden.
  */
-export const narrow = Signal.of(query.matches);
+export const narrow = Signal.of(query?.matches ?? false);
 
-query.addEventListener("change", (event) => {
+query?.addEventListener("change", (event) => {
   narrow.set(event.matches);
 });

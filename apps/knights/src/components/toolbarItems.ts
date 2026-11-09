@@ -29,13 +29,21 @@ export const PassthroughItem = () =>
     children(text`Passthrough`),
   ]);
 
-/** The item that ends the session, read as `caption`. */
-export const LeaveItem = (caption: string) =>
+/** Whether a headset session is running. */
+export const inSession = () => xrSession.get() !== null;
+
+/**
+ * The item that ends the session: the × at the end of the toolbar, with a
+ * title to say what it does, or a line in the menu that says it itself and
+ * closes the menu with `onLeave`, so the player is back on the board.
+ */
+export const LeaveItem = (caption: "×" | "Leave the headset", onLeave?: () => void) =>
   $("li", [
     set("className", menuItem),
-    attr({ title: "Leave the headset" }),
+    attr({ title: caption === "×" ? "Leave the headset" : undefined }),
     on("click", () => {
       void xrSession.get()?.end();
+      onLeave?.();
     }),
     children(text`${caption}`),
   ]);

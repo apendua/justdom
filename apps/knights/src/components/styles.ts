@@ -45,8 +45,14 @@ export const menuItem = stylesheet`
     background: #777;
   }
 
+  /*
+   * A label that fills the bar gives way first when the bar is short of room,
+   * cutting its caption rather than pushing the bar past the page's edge.
+   */
   .${CLASS_NAME}[data-fill] {
     flex-grow: 1;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .${CLASS_NAME}[data-inverted] {

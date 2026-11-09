@@ -125,8 +125,10 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll.
 - `pointer: { touch: false }` leaves fingers to the page, for a canvas the page scrolls past: the
   canvas keeps its own `touch-action`, a finger on it scrolls and zooms the page, and a long press
-  opens the browser's menu. The mouse and a pen work as before. `mouse(ctx, { touch: false })` is
-  the same for a scene that mounts it itself.
+  opens the browser's menu where the browser says the menu came from a finger (Safari does not, and
+  its menu stays shut). The mouse works as before. A pen does too, but a pen's drag the page's
+  `touch-action` gives the browser to scroll is cancelled, and its press ends as a miss that says
+  `lost`. `mouse(ctx, { touch: false })` is the same for a scene that mounts it itself.
 - `pointer: { look: "orbit" }` gives a drag that starts on nothing to the camera, from the left
   button or from a finger: it turns by the angle the screen shows over the drag, and its pitch stops
   short of straight up and down. Without `around` it turns where it stands, so what is under the

@@ -51,8 +51,12 @@ export const MIN_REACH = 0.2;
  * `touch: false` leaves fingers to the page: the canvas keeps its own
  * `touch-action`, so a finger on it scrolls and zooms the page as it would
  * without this, and every pointer event a finger makes, and the context
- * menu a long press raises, passes by untouched. The mouse and a pen work
- * as ever. By default fingers are taken, as `followMouse` says.
+ * menu a long press raises, passes by untouched. The mouse works as ever,
+ * and so does a pen, but for one thing: the canvas's `touch-action` governs
+ * a pen too, so where it lets the browser pan, a pen's drag can be taken
+ * for a scroll. The browser then cancels the pen, and its press ends as a
+ * hand that went, a miss that says `lost`. By default fingers are taken, as
+ * `followMouse` says.
  *
  * @typedef {({ look?: undefined } | { look: "orbit", around?: THREE.Vector3Like }) & { touch?: boolean }} PointerOptions
  *   `around` is the point the camera orbits, in the scene's coordinates.
@@ -530,6 +534,16 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   };
   /** @param {PointerEvent} event */
   const onCancel = (event) => {
+    if (event.pointerType !== "touch") {
+      // A mouse is never cancelled. A pen is, where the canvas's
+      // `touch-action` lets the browser take its drag for a scroll, as it
+      // does under `touch: false`: no release is coming, so it ends as a
+      // hand that went, and stops any turn it began.
+      turning = null;
+      pointer.visible = false;
+      send("disconnected");
+      return;
+    }
     if (pinch && event.pointerId === pinch.id) {
       pinch = null;
       return;

@@ -408,9 +408,26 @@ describe("a finger, with touch: false", () => {
     });
     canvas.dispatchEvent(fromFinger);
     assert.equal(fromFinger.defaultPrevented, false);
-    const fromMouse = new Event("contextmenu", { cancelable: true });
+    const fromMouse = Object.assign(new Event("contextmenu", { cancelable: true }), {
+      pointerType: "mouse",
+    });
     canvas.dispatchEvent(fromMouse);
     assert.equal(fromMouse.defaultPrevented, true);
+    // Safari's is a `MouseEvent`, which says nothing of the pointer.
+    const unsaid = new Event("contextmenu", { cancelable: true });
+    canvas.dispatchEvent(unsaid);
+    assert.equal(unsaid.defaultPrevented, true);
+  });
+
+  test("ends a pen's press that the browser cancels for a scroll, as a hand that went", () => {
+    const pen = (/** @type {string} */ type) =>
+      Object.assign(pointer(type), { pointerType: "pen", pointerId: 7 });
+    canvas.dispatchEvent(pen("pointermove"));
+    at.loop.run();
+    canvas.dispatchEvent(pen("pointerdown"));
+    canvas.dispatchEvent(pen("pointercancel"));
+    assert.deepEqual(at.events, ["pointerenter", "selectstart", "selectmissed"]);
+    assert.equal(at.group.visible, false);
   });
 
   test("leaves the mouse working", () => {

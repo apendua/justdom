@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "mouse(ctx): a canvas has one mouse. The first mouse(ctx) mounted on a canvas drives it and later ones stand by until it unmounts, so mounting one beside render's pointer no longer gives the page two.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

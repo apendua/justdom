@@ -76,6 +76,11 @@ jobs:
           key: playwright-${{ runner.os }}-${{
             hashFiles('./common/config/rush/pnpm-lock.yaml') }}
 
+      # Once for both sides' installs, and before develop is checked out:
+      # the action is read from the tree, and develop may not have it yet.
+      - name: Install canvas's build libraries
+        uses: ./.github/actions/canvas-libraries
+
       # develop first, from a checkout of its own. The draw bench measures the
       # tree it sits in and has no A/B of its own; its counts do not vary run
       # to run, so measuring the two sides one after the other loses nothing.

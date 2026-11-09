@@ -29,6 +29,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Install canvas's build libraries
+        uses: ./.github/actions/canvas-libraries
       - name: Rush install
         run: node common/scripts/install-run-rush.js install
       - name: Build the site and the demos

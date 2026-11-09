@@ -50,6 +50,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Install canvas's build libraries
+        uses: ./.github/actions/canvas-libraries
       - name: Rush install
         run: node common/scripts/install-run-rush.js install
       - name: Apply the pending change files

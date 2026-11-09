@@ -631,6 +631,26 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
 }
 
 /**
+ * The options `render()` mounts its mouse with, from its `pointer` option,
+ * or `null` for no mouse. Left out, it is on with fingers left to the page
+ * (`touch: false`), so a page that never asked for a pointer gets the mouse
+ * and keeps its scrolling over the canvas. `true` is on with fingers taken,
+ * an object is on as it says, and `false` is off.
+ *
+ * @param {boolean | PointerOptions | undefined} option
+ * @returns {PointerOptions | null}
+ */
+export function renderPointer(option) {
+  if (option === undefined) {
+    return { touch: false };
+  }
+  if (option === true) {
+    return {};
+  }
+  return option || null;
+}
+
+/**
  * Which of a controller's buttons a mouse button is: the left the trigger,
  * the right the grip, any other none.
  *

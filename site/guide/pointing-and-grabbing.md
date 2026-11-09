@@ -32,10 +32,11 @@ disconnects, as every hand does when a session ends, lets go of whatever it held
 says `lost`.
 
 `cursors(ctx)` puts a mark where each ray meets something interactive, one per hand, gone with the
-hit. On a page there is no controller, so `render(fn, { pointer: true })` registers the mouse as one
-more: its left button is the trigger and its right button the grip, a finger's tap or drag on a
-touch screen is the trigger and a finger held still is the grip. A scene that is also a page then
-answers clicks and taps on the canvas with the same handlers:
+hit. On a page there is no controller, so `render(fn)` registers the mouse as one more: its left
+button is the trigger and its right button the grip. With `pointer: true` a finger drives it too: a
+tap or drag on a touch screen is the trigger and a finger held still is the grip; by default fingers
+are left to the page, so it scrolls. A scene that is also a page then answers clicks and taps on the
+canvas with the same handlers:
 
 ```js
 import { render } from "justdom-three";

@@ -30,7 +30,7 @@ import {
 } from "./elements/keyboardSlot.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
-import { mouse } from "./mouse.js";
+import { mouse, renderPointer } from "./mouse.js";
 import { addToParent } from "./operators.js";
 
 /**
@@ -539,10 +539,13 @@ export function frames(ctx) {
  *   `mouse(ctx)` under the scene, so everything that answers a ray answers
  *   a click, a tap or a drag on the canvas. The left button and a finger's
  *   tap or drag are the trigger, the right button and a finger held still
- *   for 400 ms the grip; `followMouse` has the rules. Off by default,
- *   which leaves the canvas to the app. An object is on, and says what a
- *   drag that starts on nothing does: `{ look: "orbit" }` turns the camera,
- *   and whether fingers are taken: `{ touch: false }` leaves them to the page.
+ *   for 400 ms the grip; `followMouse` has the rules. Left out, it is on
+ *   for the mouse and a pen with fingers left to the page, so a page
+ *   scrolls past the canvas as it always did. `true` takes fingers too,
+ *   and `false` leaves the whole canvas to the app (`renderPointer`). An
+ *   object is on, takes fingers unless it says `touch: false`, and says
+ *   what a drag that starts on nothing does: `{ look: "orbit" }` turns the
+ *   camera.
  *   A `mouse(ctx)` the scene mounts of its own drives instead of this one
  *   while it is mounted, since a canvas has one mouse.
  * @property {import('./elements/panelOptions.js').PanelOptions} [panelOptions]
@@ -720,8 +723,8 @@ export function render(fn, options = {}) {
     // subscription is what holds the tree up, and dropping it takes the tree
     // down with the renderer.
     subscriber.add(fn(ctx).subscribe({}));
-    if (options.pointer) {
-      const pointer = options.pointer === true ? {} : options.pointer;
+    const pointer = renderPointer(options.pointer);
+    if (pointer) {
       subscriber.add(addToParent(scene, mouse(ctx, pointer)).subscribe({}));
     }
 

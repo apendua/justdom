@@ -92,13 +92,17 @@ controller's current `THREE.Intersection`, for a snapping preview, a measurement
 The manager casts only from XR controllers, so a scene that is also a page stands the mouse in for
 one: a group parked at the camera and turned to face the point under the mouse on every move over
 the canvas, registered with the manager as one more controller. Anything that answers a ray answers
-the mouse, and `cursors(ctx)` puts the hover mark on the page too. `render(fn, { pointer: true })`
-mounts it for the whole scene:
+the mouse, and `cursors(ctx)` puts the hover mark on the page too. `render(fn)` mounts it for the
+whole scene by default, for the mouse and a pen, and leaves fingers to the page, so a page scrolls
+past its canvas as it always did. `pointer: true` takes fingers too, and `pointer: false` mounts no
+mouse at all, which leaves the canvas to the app:
 
 ```js
 import { render } from "justdom-three";
 
-render(app, { pointer: true });
+render(app); // the mouse and a pen
+render(app, { pointer: true }); // fingers too
+render(app, { pointer: false }); // no mouse
 ```
 
 A scene can also put `mouse(ctx)` among its children itself, which is the same group. A canvas has

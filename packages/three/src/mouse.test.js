@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
-import { followMouse, MIN_REACH, mouse, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
+import { followMouse, MIN_REACH, mouse, renderPointer, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
 import { CameraContext, RendererContext, runFrame } from "./render.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
@@ -1013,5 +1013,18 @@ describe("mouse(ctx)", () => {
     for (const subscription of subscriptions) {
       subscription.unsubscribe();
     }
+  });
+});
+
+describe("render()'s pointer option", () => {
+  test("left out, mounts the mouse and leaves fingers to the page", () => {
+    assert.deepEqual(renderPointer(undefined), { touch: false });
+  });
+
+  test("true takes fingers too, an object is as it says, and false is no mouse", () => {
+    assert.deepEqual(renderPointer(true), {});
+    const orbit = /** @type {const} */ ({ look: "orbit" });
+    assert.equal(renderPointer(orbit), orbit);
+    assert.equal(renderPointer(false), null);
   });
 });

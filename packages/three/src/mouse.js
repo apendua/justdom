@@ -111,9 +111,7 @@ export const MIN_REACH = 0.2;
  * hold as it became a grip. A long press is also how a phone starts
  * selecting text, and on a canvas with nothing to select it selects the
  * whole page, so while a finger is down no selection may start (the
- * `selectstart` the page hears is cancelled), and the canvas itself is
- * unselectable and raises no callout (`user-select` and
- * `-webkit-touch-callout` are `none`, put back on stop). All of this is
+ * `selectstart` the page hears is cancelled). All of this is
  * for `touch` on, the default;
  * with `touch: false` none of it happens, and a finger is the page's.
  *
@@ -173,13 +171,18 @@ export const MIN_REACH = 0.2;
  *   puts the camera's `zoom` back. A turn and a ray follow the zoom, so
  *   both work the same at any zoom.
  *
+ * The canvas. It has nothing to select, so while this runs it has
+ * `user-select: none`, with `touch` or without: a long press on it, or a
+ * mouse's drag that starts on it, selects none of the page.
+ *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.
  *
  * Returns the way to stop, which leaves the group hidden: the state it
  * starts in, so a later start (the one after a session ends) begins
  * pointing at nothing until the mouse moves onto the canvas again. The
- * canvas gets back the `touch-action` it had, and the camera its `zoom`.
+ * canvas gets back the `touch-action` and `user-select` it had, and the
+ * camera its `zoom`.
  *
  * @param {THREE.Object3D<XREventMap>} pointer
  * @param {THREE.Camera} camera
@@ -617,16 +620,18 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     }
   };
 
-  // What the canvas had of the styles a finger needs, to put back on stop.
-  // Set as properties: a browser that does not know one (Chrome and
-  // `webkitTouchCallout`) keeps it as an inert one.
-  const style = /** @type {Record<string, string>} */ (/** @type {unknown} */ (canvas.style));
-  const touchStyles = ["touchAction", "userSelect", "webkitUserSelect", "webkitTouchCallout"];
-  const hadStyles = touchStyles.map((name) => style[name]);
+  // What the canvas had of the styles set here, to put back on stop. A
+  // canvas has nothing to select, fingers or not, so it is unselectable
+  // whenever this runs: a mouse's drag from it selects none of the page
+  // either. Only the finger's `touch-action` waits for `touch`.
+  const { style } = canvas;
+  /** @type {("touchAction" | "userSelect" | "webkitUserSelect")[]} */
+  const ownStyles = ["touchAction", "userSelect", "webkitUserSelect"];
+  const hadStyles = ownStyles.map((name) => style[name]);
+  style.userSelect = "none";
+  style.webkitUserSelect = "none";
   if (takesTouch) {
-    for (const name of touchStyles) {
-      style[name] = "none";
-    }
+    style.touchAction = "none";
     view.addEventListener("selectstart", onSelectStart);
   }
   canvas.addEventListener("pointermove", listeners.move);
@@ -646,8 +651,8 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     canvas.removeEventListener("wheel", onWheel);
     view.removeEventListener("pointerup", listeners.up);
     view.removeEventListener("selectstart", onSelectStart);
-    touchStyles.forEach((name, i) => {
-      style[name] = /** @type {string} */ (hadStyles[i]);
+    ownStyles.forEach((name, i) => {
+      style[name] = hadStyles[i] ?? "";
     });
     lift();
     zoomTo(wideZoom);

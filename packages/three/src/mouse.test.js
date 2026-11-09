@@ -261,12 +261,8 @@ describe("a finger on the canvas", () => {
     const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
     const stop = followMouse(group, new THREE.PerspectiveCamera(), own);
     assert.equal(own.style.touchAction, "none");
-    // Nothing to select on a canvas, and no callout for a long press.
+    // Nothing to select on a canvas.
     assert.equal(own.style.userSelect, "none");
-    assert.equal(
-      /** @type {Record<string, string>} */ (/** @type {unknown} */ (own.style)).webkitTouchCallout,
-      "none",
-    );
     stop();
     assert.equal(own.style.touchAction, "pan-y");
     assert.equal(own.style.userSelect, "text");
@@ -413,15 +409,12 @@ describe("a finger, with touch: false", () => {
 
   test("leaves the canvas its own touch-action, so the page still scrolls under it", () => {
     assert.equal(canvas.style.touchAction, "pan-y");
-    assert.equal(canvas.style.userSelect, "");
   });
 
-  test("lets a long press select, as the page's own", () => {
-    canvas.dispatchEvent(finger("pointerdown"));
-    mock.timers.tick(HOLD_MS);
-    const held = new Event("selectstart", { bubbles: true, cancelable: true });
-    canvas.dispatchEvent(held);
-    assert.equal(held.defaultPrevented, false);
+  test("still makes the canvas unselectable, so a long press on it selects nothing", () => {
+    assert.equal(canvas.style.userSelect, "none");
+    at.stop();
+    assert.equal(canvas.style.userSelect, "");
   });
 
   test("taps, holds and drags nothing: the finger is the page's", () => {

@@ -1,7 +1,7 @@
 {
   "changes": [
     {
-      "comment": "mouse(ctx): a long press on the canvas no longer selects the page. While a finger is down no selection may start, and the canvas has user-select and -webkit-touch-callout none while it takes fingers.",
+      "comment": "mouse(ctx): a long press on the canvas no longer selects the page. While a finger is down no selection may start, and the canvas has user-select: none whenever the mouse runs on it.",
       "type": "minor",
       "packageName": "justdom-three"
     }

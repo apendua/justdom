@@ -19,7 +19,7 @@ npm run bench:against            # A/B against origin/develop
 node bench/run.js --against origin/develop --repeat 4 --scenario scroll,burst
 node bench/run.js --scenario burst          # one scenario
 node bench/run.js --app showcase         # a different app
-node bench/run.js --rounds 40               # a longer list (20 → ~1,030 elements)
+node bench/run.js --rounds 40               # a longer list (~2,030 elements, 1,031 at the default 20)
 node bench/run.js --burst 300               # bigger mount bursts
 node bench/run.js --style-reads             # + computed-style property reads
 ```
@@ -153,10 +153,12 @@ them once made the counts differ between rounds:
 - **The frame rate readout.** Every app shows one, and its number moves with the frame rate. Each
   move cost rect reads, glyphs and a texture, as many as the rate happened to change during a run.
   The setup switches it off through `window.__diagnostics`, which an app has to expose; `todo` and
-  `showcase` do.
+  `showcase` do. Against a revision whose app does not, that side's readout keeps changing, so both
+  waits below run to their caps, about a minute each a scenario.
 - **An empty "Add".** The todo app adds what its field holds and nothing when it is empty, so the
-  setup types into the field before each press. Pressing a bare "Add", or the div beside the button
-  that also reads "Add", left every scenario measuring the app's six starting items.
+  setup types into the field before each press. Pressing a bare "Add", or the div around the field
+  and the button, whose text is the button's, left every scenario measuring the app's six starting
+  items. The setup now fails when the presses add fewer elements than items.
 - **The tail of the setup.** A long list goes on mounting, and then rasterizing its rows' text a row
   or so a frame, well after the last item arrives. The setup waits for thirty frames in a row with
   no rect read and no glyph, and the runner waits the same way before its coherence check.

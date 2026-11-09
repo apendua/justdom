@@ -83,17 +83,14 @@ const PRELUDE = `
     [...document.querySelectorAll("div")].find(
       (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflow === "hidden",
     );
-  // Writing scrollTop and letting the browser announce it, rather than
-  // announcing it here as well. Under the emulator the page is still being
-  // rendered, so the real scroll event does arrive — dispatching one too
-  // would make this scenario two invalidations a frame when its whole job is
-  // to be one, and quietly turn the floor into a coalescing case.
   // The app's frame rate readout, switched off. Its number moves with the
   // frame rate, and every move costs a measured rect, a rasterized glyph and
   // a texture, as many times as the rate happened to change during a run —
   // which is what made the counts differ between rounds of the same code.
   // An app that exposes no controls (one that predates them) keeps its
-  // readout, and its counts carry that noise.
+  // readout, and its counts carry that noise; the readout also changes
+  // within every window settle() and the runner wait on, so both run to
+  // their caps, about a minute each a scenario.
   const hideDiagnostics = () => globalThis.__diagnostics?.visible.set(false);
   // One item added. A bulk button adds ten at a press; a plain "Add" adds
   // whatever the field holds and nothing at all when it is empty, so the
@@ -106,6 +103,15 @@ const PRELUDE = `
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }
     adder.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  };
+  // Fails the run when the presses added fewer elements than items. A press
+  // that reaches nothing is silent, and the suite once measured an app's
+  // starting list for every scenario without saying so.
+  const grew = (before, items) => {
+    const added = document.querySelectorAll("*").length - before;
+    if (added < items) {
+      throw new Error(\`\${items} items pressed, \${added} elements added: the presses reached nothing\`);
+    }
   };
   // Frames until the mirror has gone quiet: thirty in a row without a
   // layout read or a glyph drawn. A long list keeps mounting for many frames
@@ -122,6 +128,11 @@ const PRELUDE = `
       await frames(30);
     }
   };
+  // Writing scrollTop and letting the browser announce it, rather than
+  // announcing it here as well. Under the emulator the page is still being
+  // rendered, so the real scroll event does arrive — dispatching one too
+  // would make this scenario two invalidations a frame when its whole job is
+  // to be one, and quietly turn the floor into a coalescing case.
   const scrollStep = () => {
     const el = globalThis.__scroller;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight) el.scrollTop = 0;
@@ -152,6 +163,7 @@ const SETUP_LONG_LIST = `
   const perPress = bulk ? 10 : 1;
   const input = bulk ? null : document.querySelector('input[type="text"]');
   const target = ROUNDS * 10;
+  const before = document.querySelectorAll("*").length;
   for (let added = 0; added < target; added += perPress) {
     pressAdd(adder, input);
     // A bulk press moves enough to be worth settling between; a single add
@@ -159,6 +171,7 @@ const SETUP_LONG_LIST = `
     if (bulk) await frames(2);
   }
   await settle();
+  grew(before, target);
   globalThis.__scroller = scroller();
   if (!globalThis.__scroller) throw new Error("nothing to scroll");
   globalThis.__adder = adder;
@@ -183,10 +196,12 @@ const SETUP_SHORT_LIST = `
   }
   globalThis.__perPress = bulk ? 10 : 1;
   const input = bulk ? null : document.querySelector('input[type="text"]');
+  const before = document.querySelectorAll("*").length;
   for (let added = 0; added < 20; added += globalThis.__perPress) {
     pressAdd(adder, input);
   }
   await settle();
+  grew(before, 20);
   globalThis.__scroller = scroller();
   if (!globalThis.__scroller) throw new Error("nothing to scroll");
   globalThis.__adder = adder;

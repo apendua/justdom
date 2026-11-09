@@ -92,17 +92,25 @@ controller's current `THREE.Intersection`, for a snapping preview, a measurement
 The manager casts only from XR controllers, so a scene that is also a page stands the mouse in for
 one: a group parked at the camera and turned to face the point under the mouse on every move over
 the canvas, registered with the manager as one more controller. Anything that answers a ray answers
-the mouse, and `cursors(ctx)` puts the hover mark on the page too. `render(fn, { pointer: true })`
-mounts it for the whole scene:
+the mouse, and `cursors(ctx)` puts the hover mark on the page too. `render(fn)` mounts it for the
+whole scene by default, for the mouse and a pen, and leaves fingers to the page, so a page scrolls
+past its canvas as it always did. `pointer: true` takes fingers too, and `pointer: false` mounts no
+mouse at all, which leaves the canvas to the app:
 
 ```js
 import { render } from "justdom-three";
 
-render(app, { pointer: true });
+render(app); // the mouse and a pen
+render(app, { pointer: true }); // fingers too
+render(app, { pointer: false }); // no mouse
 ```
 
-A scene can also put `mouse(ctx)` among its children itself, which is the same group. It does one or
-the other, or the page has two mice.
+A scene can also put `mouse(ctx)` among its children itself, which is the same group. A canvas has
+one mouse, the one mounted on it last: every other `mouse(ctx)` on that canvas stands by, registered
+with nothing and listening to nothing, until the ones mounted after it unmount. So a scene that
+mounts its own beside the one `render(app)` mounts does not give the page two mice: `render()`
+mounts its own before the scene's tree, so the scene's drives, with its options, for as long as it
+is mounted.
 
 ```js
 import { useEffects } from "justdom-signal";
@@ -119,7 +127,14 @@ useEffects(getScene(ctx), [children(mouse(ctx), cursors(ctx))]);
   within 10 px before 400 ms, it is a tap of the trigger. Moved more than 10 px, it presses the
   trigger where it landed and drags. Held within 10 px for 400 ms, it presses the grip where it
   landed and drags. A finger the browser cancels ends its press as a miss that says `lost`, as a
-  hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll.
+  hand that went does. The canvas has `touch-action: none` meanwhile, so a drag is not a scroll, and
+  no selection may start while a finger is down, so a long press grips without selecting the page.
+- `pointer: { touch: false }` leaves fingers to the page, for a canvas the page scrolls past: the
+  canvas keeps its own `touch-action`, a finger on it scrolls and zooms the page, and a long press
+  opens the browser's menu where the browser says the menu came from a finger (Safari does not, and
+  its menu stays shut). The mouse works as before. A pen does too, but a pen's drag the page's
+  `touch-action` gives the browser to scroll is cancelled, and its press ends as a miss that says
+  `lost`. `mouse(ctx, { touch: false })` is the same for a scene that mounts it itself.
 - `pointer: { look: "orbit" }` gives a drag that starts on nothing to the camera, from the left
   button or from a finger: it turns by the angle the screen shows over the drag, and its pitch stops
   short of straight up and down. Without `around` it turns where it stands, so what is under the

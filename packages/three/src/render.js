@@ -30,7 +30,7 @@ import {
 } from "./elements/keyboardSlot.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
-import { mouse } from "./mouse.js";
+import { mouse, renderPointer } from "./mouse.js";
 import { addToParent } from "./operators.js";
 
 /**
@@ -539,15 +539,45 @@ export function frames(ctx) {
  *   `mouse(ctx)` under the scene, so everything that answers a ray answers
  *   a click, a tap or a drag on the canvas. The left button and a finger's
  *   tap or drag are the trigger, the right button and a finger held still
- *   for 400 ms the grip; `followMouse` has the rules. Off by default,
- *   which leaves the canvas to the app. An object is on, and says what a
- *   drag that starts on nothing does: `{ look: "orbit" }` turns the camera.
- *   A scene with it on does not mount `mouse(ctx)` of its own.
+ *   for 400 ms the grip; `followMouse` has the rules. Left out, it is on
+ *   for the mouse and a pen with fingers left to the page, so a page
+ *   scrolls past the canvas as it always did. `true` takes fingers too,
+ *   and `false` leaves the whole canvas to the app (`renderPointer`). An
+ *   object is on, takes fingers unless it says `touch: false`, and says
+ *   what a drag that starts on nothing does: `{ look: "orbit" }` turns the
+ *   camera.
+ *   A `mouse(ctx)` the scene mounts of its own drives instead of this one
+ *   while it is mounted, since a canvas has one mouse.
  * @property {import('./elements/panelOptions.js').PanelOptions} [panelOptions]
  *   What every panel in this scene starts from — the keyboard its fields are
  *   typed with, most of all — with each panel's own options laid over it.
  *   A part of the scene narrows it with `withPanelOptions`. None by default.
  */
+
+/**
+ * What `render` mounts on its scene: the mouse its `pointer` option asks for
+ * (`renderPointer`), then the app's tree. The mouse goes first so that it is
+ * the oldest on the canvas: the one mounted last drives, so a `mouse(ctx)`
+ * the app mounts of its own, as it starts or later, drives with its own
+ * options. Returns the subscriptions that hold both up, mouse first.
+ *
+ * @param {THREE.Scene} scene
+ * @param {WeakKey} ctx
+ * @param {(ctx: WeakKey) => Subscribable<unknown>} fn
+ * @param {RenderOptions["pointer"]} option
+ * @returns {{ unsubscribe(): void }[]}
+ */
+export function mountScene(scene, ctx, fn, option) {
+  const pointer = renderPointer(option);
+  return [
+    ...(pointer ? [addToParent(scene, mouse(ctx, pointer)).subscribe({})] : []),
+    // Subscribing is mounting. A root produces nothing — everything it
+    // builds it mounts on the way through — so nothing is read off this; the
+    // subscription is what holds the tree up, and dropping it takes the tree
+    // down with the renderer.
+    fn(ctx).subscribe({}),
+  ];
+}
 
 /**
  * @param {(ctx: WeakKey) => Subscribable<unknown>} fn Builds the tree, which is
@@ -713,14 +743,8 @@ export function render(fn, options = {}) {
       scene.add(controller, grip, hand);
     }
 
-    // Subscribing is mounting. A root produces nothing — everything it builds
-    // it mounts on the way through — so nothing is read off this; the
-    // subscription is what holds the tree up, and dropping it takes the tree
-    // down with the renderer.
-    subscriber.add(fn(ctx).subscribe({}));
-    if (options.pointer) {
-      const pointer = options.pointer === true ? {} : options.pointer;
-      subscriber.add(addToParent(scene, mouse(ctx, pointer)).subscribe({}));
+    for (const mounted of mountScene(scene, ctx, fn, options.pointer)) {
+      subscriber.add(mounted);
     }
 
     let previousFrameTime = 0;

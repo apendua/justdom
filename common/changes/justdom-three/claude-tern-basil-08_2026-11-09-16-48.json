@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three",
+      "comment": "render(): pointer is on by default, for the mouse and a pen, with fingers left to the page (touch: false). pointer: true takes fingers too; pointer: false mounts no mouse. render() mounts its mouse before the app's tree, so a mouse(ctx) the app mounts drives instead.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

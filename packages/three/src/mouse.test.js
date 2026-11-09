@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
-import { followMouse, MIN_REACH, mouse, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
-import { CameraContext, RendererContext, runFrame } from "./render.js";
+import { followMouse, MIN_REACH, mouse, renderPointer, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
+import { CameraContext, mountScene, RendererContext, runFrame } from "./render.js";
+import { addToParent } from "./operators.js";
 import { clientRect } from "./test/clientRect.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
 
@@ -97,14 +98,16 @@ function finger(type, clientX = 50, clientY = 50, id = 1) {
  *
  * @param {HTMLElement} canvas
  * @param {HTMLElement} view
+ * @param {import('./mouse.js').FollowOptions} [options]
  */
-function pointedAt(canvas, view) {
+function pointedAt(canvas, view, options) {
   const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
   const stop = followMouse(
     group,
     new THREE.PerspectiveCamera(),
     canvas,
     /** @type {Window} */ (/** @type {unknown} */ (view)),
+    options,
   );
   const manager = new InteractionManager();
   const loop = fakeFrameLoop();
@@ -254,11 +257,30 @@ describe("a finger on the canvas", () => {
     // A canvas of its own, which nothing else is following.
     const own = pageCanvas();
     own.style.touchAction = "pan-y";
+    own.style.userSelect = "text";
     const group = /** @type {THREE.Group<XREventMap>} */ (new THREE.Group());
     const stop = followMouse(group, new THREE.PerspectiveCamera(), own);
     assert.equal(own.style.touchAction, "none");
+    // Nothing to select on a canvas.
+    assert.equal(own.style.userSelect, "none");
     stop();
     assert.equal(own.style.touchAction, "pan-y");
+    assert.equal(own.style.userSelect, "text");
+  });
+
+  test("lets no selection start while it is down, so a long press does not select the page", () => {
+    const before = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(before);
+    assert.equal(before.defaultPrevented, false);
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS);
+    const held = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(held);
+    assert.equal(held.defaultPrevented, true);
+    canvas.dispatchEvent(finger("pointerup"));
+    const after = new Event("selectstart", { bubbles: true, cancelable: true });
+    canvas.dispatchEvent(after);
+    assert.equal(after.defaultPrevented, false);
   });
 
   test("taps: lifted where it landed, before the hold, it selects", () => {
@@ -364,6 +386,84 @@ const PER_PIXEL = THREE.MathUtils.degToRad(50) / 100;
 function heading(camera) {
   return new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
 }
+
+describe("a finger, with touch: false", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {ReturnType<typeof pointedAt>} */
+  let at;
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    canvas = pageCanvas();
+    canvas.style.touchAction = "pan-y";
+    const view = document.createElement("div");
+    view.append(canvas);
+    at = pointedAt(canvas, view, { touch: false });
+  });
+
+  afterEach(() => {
+    at.stop();
+    mock.timers.reset();
+  });
+
+  test("leaves the canvas its own touch-action, so the page still scrolls under it", () => {
+    assert.equal(canvas.style.touchAction, "pan-y");
+  });
+
+  test("still makes the canvas unselectable, so a long press on it selects nothing", () => {
+    assert.equal(canvas.style.userSelect, "none");
+    at.stop();
+    assert.equal(canvas.style.userSelect, "");
+  });
+
+  test("taps, holds and drags nothing: the finger is the page's", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    assert.equal(at.group.visible, false);
+    canvas.dispatchEvent(finger("pointerup"));
+    canvas.dispatchEvent(finger("pointerdown"));
+    mock.timers.tick(HOLD_MS);
+    canvas.dispatchEvent(finger("pointermove", 100, 0));
+    canvas.dispatchEvent(finger("pointerup", 100, 0));
+    assert.deepEqual(at.events, []);
+  });
+
+  test("lets a long press open its menu, and still keeps the mouse's off", () => {
+    const fromFinger = Object.assign(new Event("contextmenu", { cancelable: true }), {
+      pointerType: "touch",
+    });
+    canvas.dispatchEvent(fromFinger);
+    assert.equal(fromFinger.defaultPrevented, false);
+    const fromMouse = Object.assign(new Event("contextmenu", { cancelable: true }), {
+      pointerType: "mouse",
+    });
+    canvas.dispatchEvent(fromMouse);
+    assert.equal(fromMouse.defaultPrevented, true);
+    // Safari's is a `MouseEvent`, which says nothing of the pointer.
+    const unsaid = new Event("contextmenu", { cancelable: true });
+    canvas.dispatchEvent(unsaid);
+    assert.equal(unsaid.defaultPrevented, true);
+  });
+
+  test("ends a pen's press that the browser cancels for a scroll, as a hand that went", () => {
+    const pen = (/** @type {string} */ type) =>
+      Object.assign(pointer(type), { pointerType: "pen", pointerId: 7 });
+    canvas.dispatchEvent(pen("pointermove"));
+    at.loop.run();
+    canvas.dispatchEvent(pen("pointerdown"));
+    canvas.dispatchEvent(pen("pointercancel"));
+    assert.deepEqual(at.events, ["pointerenter", "selectstart", "selectmissed"]);
+    assert.equal(at.group.visible, false);
+  });
+
+  test("leaves the mouse working", () => {
+    canvas.dispatchEvent(pointer("pointermove"));
+    at.loop.run();
+    canvas.dispatchEvent(pointer("pointerdown"));
+    canvas.dispatchEvent(pointer("pointerup"));
+    assert.deepEqual(at.events, ["pointerenter", "selectstart", "select"]);
+  });
+});
 
 describe("a drag on nothing, with look: orbit", () => {
   /** @type {HTMLElement} */
@@ -816,19 +916,49 @@ test("around is refused without look: orbit", () => {
   mouse({}, { around: { x: 0, y: 0, z: 0 } });
 });
 
+/**
+ * A context with what `mouse(ctx)` reads off one: a renderer with no session
+ * drawing to `canvas`, a camera and an interaction manager.
+ *
+ * @param {HTMLElement} canvas
+ */
+function pageContext(canvas) {
+  const manager = new InteractionManager();
+  const xr = Object.assign(document.createElement("div"), { getSession: () => null });
+  const renderer = /** @type {THREE.WebGLRenderer} */ (
+    /** @type {unknown} */ ({ domElement: canvas, xr })
+  );
+  const ctx = RendererContext.set(
+    CameraContext.set(InteractionContext.set({}, manager), new THREE.PerspectiveCamera()),
+    renderer,
+  );
+  return { ctx, manager, renderer };
+}
+
+/**
+ * How many `pointerdown` listeners `canvas` has, counted from here on.
+ *
+ * @param {HTMLElement} canvas
+ */
+function countPointerDown(canvas) {
+  const count = { listeners: 0 };
+  const add = canvas.addEventListener.bind(canvas);
+  const remove = canvas.removeEventListener.bind(canvas);
+  canvas.addEventListener = (/** @type {Parameters<typeof add>} */ ...args) => {
+    count.listeners += args[0] === "pointerdown" ? 1 : 0;
+    add(...args);
+  };
+  canvas.removeEventListener = (/** @type {Parameters<typeof remove>} */ ...args) => {
+    count.listeners -= args[0] === "pointerdown" ? 1 : 0;
+    remove(...args);
+  };
+  return count;
+}
+
 describe("mouse(ctx)", () => {
   test("casts in the late phase, after what moves the scene in useFrame", () => {
-    const manager = new InteractionManager();
     const canvas = pageCanvas();
-    // A renderer with no session, which is all `mouse` reads of one.
-    const xr = Object.assign(document.createElement("div"), { getSession: () => null });
-    const renderer = /** @type {THREE.WebGLRenderer} */ (
-      /** @type {unknown} */ ({ domElement: canvas, xr })
-    );
-    const ctx = RendererContext.set(
-      CameraContext.set(InteractionContext.set({}, manager), new THREE.PerspectiveCamera()),
-      renderer,
-    );
+    const { ctx, manager, renderer } = pageContext(canvas);
     const events = modelAhead(manager);
     const scene = new THREE.Scene();
     const subscription = mouse(ctx).subscribe((component) => {
@@ -843,5 +973,104 @@ describe("mouse(ctx)", () => {
     runFrame(renderer, 0, /** @type {XRFrame} */ (/** @type {unknown} */ ({})));
     assert.deepEqual(events, []);
     subscription.unsubscribe();
+  });
+
+  test("the mouse mounted last drives the canvas, and the one before takes over when it goes", () => {
+    const canvas = pageCanvas();
+    canvas.style.touchAction = "pan-y";
+    const count = countPointerDown(canvas);
+    const { ctx } = pageContext(canvas);
+    const scene = new THREE.Scene();
+    const first = mouse(ctx).subscribe((component) => component.addTo(scene));
+    // Another context on the same canvas, as a child scene would have.
+    const second = mouse(InteractionContext.set(ctx, InteractionContext.get(ctx))).subscribe(
+      (component) => component.addTo(scene),
+    );
+    const [older, newer] = scene.children;
+    assert.equal(count.listeners, 1);
+
+    canvas.dispatchEvent(pointer("pointermove", 10, 10));
+    assert.notDeepEqual(newer?.quaternion.toArray(), [0, 0, 0, 1]);
+    assert.deepEqual(older?.quaternion.toArray(), [0, 0, 0, 1]);
+
+    second.unsubscribe();
+    // The older one took over, and took the canvas's touch with it.
+    assert.equal(count.listeners, 1);
+    assert.equal(canvas.style.touchAction, "none");
+    canvas.dispatchEvent(pointer("pointermove", 90, 90));
+    assert.notDeepEqual(older?.quaternion.toArray(), [0, 0, 0, 1]);
+
+    first.unsubscribe();
+    assert.equal(count.listeners, 0);
+    // The page's own, through every handover.
+    assert.equal(canvas.style.touchAction, "pan-y");
+  });
+
+  test("a mouse that stands by and unmounts leaves the one driving alone", () => {
+    const canvas = pageCanvas();
+    const count = countPointerDown(canvas);
+    const { ctx } = pageContext(canvas);
+    const scene = new THREE.Scene();
+    const first = mouse(ctx).subscribe((component) => component.addTo(scene));
+    const second = mouse(ctx).subscribe((component) => component.addTo(scene));
+    const newer = scene.children[1];
+    canvas.dispatchEvent(pointer("pointermove", 10, 10));
+    assert.equal(newer?.visible, true);
+    first.unsubscribe();
+    // Not stopped and started again, which would hide it until the next move.
+    assert.equal(newer?.visible, true);
+    assert.equal(count.listeners, 1);
+    second.unsubscribe();
+    assert.equal(count.listeners, 0);
+  });
+
+  test("each canvas has a mouse of its own", () => {
+    const one = pageCanvas();
+    const other = pageCanvas();
+    const counts = [countPointerDown(one), countPointerDown(other)];
+    const scene = new THREE.Scene();
+    const subscriptions = [one, other].map((canvas) =>
+      mouse(pageContext(canvas).ctx).subscribe((component) => component.addTo(scene)),
+    );
+    assert.deepEqual(
+      counts.map((count) => count.listeners),
+      [1, 1],
+    );
+    for (const subscription of subscriptions) {
+      subscription.unsubscribe();
+    }
+  });
+});
+
+describe("render()'s pointer option", () => {
+  test("left out, mounts the mouse and leaves fingers to the page", () => {
+    assert.deepEqual(renderPointer(undefined), { touch: false });
+  });
+
+  test("true takes fingers too, an object is as it says, and false is no mouse", () => {
+    assert.deepEqual(renderPointer(true), {});
+    const orbit = /** @type {const} */ ({ look: "orbit" });
+    assert.equal(renderPointer(orbit), orbit);
+    assert.equal(renderPointer(false), null);
+  });
+
+  test("a mouse the app mounts drives over render()'s, with its own options", () => {
+    const canvas = pageCanvas();
+    canvas.style.touchAction = "pan-y";
+    const count = countPointerDown(canvas);
+    const { ctx } = pageContext(canvas);
+    const scene = new THREE.Scene();
+    // The app's tree: its own mouse, which takes fingers where render()'s
+    // default leaves them, so the canvas's touch-action says which drives.
+    const app = (/** @type {WeakKey} */ ctx) => addToParent(scene, mouse(ctx, { look: "orbit" }));
+    const mounted = mountScene(scene, ctx, app, undefined);
+    assert.equal(scene.children.length, 2);
+    assert.equal(count.listeners, 1);
+    assert.equal(canvas.style.touchAction, "none");
+    for (const subscription of mounted) {
+      subscription.unsubscribe();
+    }
+    assert.equal(count.listeners, 0);
+    assert.equal(canvas.style.touchAction, "pan-y");
   });
 });

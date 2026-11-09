@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { effects } from "justdom-signal";
+import { Derived, effects, Signal } from "justdom-signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
@@ -48,7 +48,17 @@ export const MIN_REACH = 0.2;
  * `around` is only taken beside `look: "orbit"`, since without it nothing
  * orbits.
  *
- * @typedef {{ look?: undefined } | { look: "orbit", around?: THREE.Vector3Like }} PointerOptions
+ * `touch: false` leaves fingers to the page: the canvas keeps its own
+ * `touch-action`, so a finger on it scrolls and zooms the page as it would
+ * without this, and every pointer event a finger makes, and the context
+ * menu a long press raises, passes by untouched. The mouse works as ever,
+ * and so does a pen, but for one thing: the canvas's `touch-action` governs
+ * a pen too, so where it lets the browser pan, a pen's drag can be taken
+ * for a scroll. The browser then cancels the pen, and its press ends as a
+ * hand that went, a miss that says `lost`. By default fingers are taken, as
+ * `followMouse` says.
+ *
+ * @typedef {({ look?: undefined } | { look: "orbit", around?: THREE.Vector3Like }) & { touch?: boolean }} PointerOptions
  *   `around` is the point the camera orbits, in the scene's coordinates.
  */
 
@@ -98,7 +108,12 @@ export const MIN_REACH = 0.2;
  * captured, so it stays the canvas's when it slides off. The context menu
  * kept off the canvas matters to the finger as well: Android raises one on
  * a long press and, left to open, cancels the touch, which would end every
- * hold as it became a grip.
+ * hold as it became a grip. A long press is also how a phone starts
+ * selecting text, and on a canvas with nothing to select it selects the
+ * whole page, so while a finger is down no selection may start (the
+ * `selectstart` the page hears is cancelled). All of this is
+ * for `touch` on, the default;
+ * with `touch: false` none of it happens, and a finger is the page's.
  *
  * The camera. With `look: "orbit"`, a press of the trigger that begins on
  * nothing (`pointsAtNothing`), from the left button or from a finger,
@@ -156,13 +171,18 @@ export const MIN_REACH = 0.2;
  *   puts the camera's `zoom` back. A turn and a ray follow the zoom, so
  *   both work the same at any zoom.
  *
+ * The canvas. It has nothing to select, so while this runs it has
+ * `user-select: none`, with `touch` or without: a long press on it, or a
+ * mouse's drag that starts on it, selects none of the page.
+ *
  * The pose is written as the group's own, so the group has to hang straight
  * off the scene.
  *
  * Returns the way to stop, which leaves the group hidden: the state it
  * starts in, so a later start (the one after a session ends) begins
  * pointing at nothing until the mouse moves onto the canvas again. The
- * canvas gets back the `touch-action` it had, and the camera its `zoom`.
+ * canvas gets back the `touch-action` and `user-select` it had, and the
+ * camera its `zoom`.
  *
  * @param {THREE.Object3D<XREventMap>} pointer
  * @param {THREE.Camera} camera
@@ -523,6 +543,17 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   };
   /** @param {PointerEvent} event */
   const onCancel = (event) => {
+    if (event.pointerType !== "touch") {
+      // A mouse is never cancelled. A pen is, where the canvas's
+      // `touch-action` lets the browser take its drag for a scroll, as it
+      // does under `touch: false`: no release is coming, so it ends as a
+      // hand that went, and stops any turn it began. `disconnected` ends
+      // every press the group holds, a finger's among them, so the finger
+      // is let go here too and its lift is not heard.
+      lift();
+      send("disconnected");
+      return;
+    }
     if (pinch && event.pointerId === pinch.id) {
       pinch = null;
       return;
@@ -555,28 +586,97 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     reachOut((reach) => reach - pixels * WHEEL_METRES_PER_PIXEL);
   };
 
-  const touchAction = canvas.style.touchAction;
-  canvas.style.touchAction = "none";
-  canvas.addEventListener("pointermove", onMove);
-  canvas.addEventListener("pointerleave", onLeave);
-  canvas.addEventListener("pointerdown", onDown);
-  canvas.addEventListener("pointercancel", onCancel);
-  canvas.addEventListener("contextmenu", onContextMenu);
+  const takesTouch = options.touch ?? true;
+  /**
+   * The listener itself, or with `touch: false` one that lets a finger's
+   * events by. A context menu is a `PointerEvent` where the browser says
+   * which pointer raised it; where it does not, it is kept off as a mouse's.
+   *
+   * @template {Event} E
+   * @param {(event: E) => void} listener
+   * @returns {(event: E) => void}
+   */
+  const unlessTouch = (listener) =>
+    takesTouch
+      ? listener
+      : (event) => {
+          if (/** @type {Partial<PointerEvent>} */ (event).pointerType !== "touch") {
+            listener(event);
+          }
+        };
+  const listeners = {
+    move: unlessTouch(onMove),
+    leave: unlessTouch(onLeave),
+    down: unlessTouch(onDown),
+    cancel: unlessTouch(onCancel),
+    contextMenu: unlessTouch(onContextMenu),
+    up: /** @type {EventListener} */ (unlessTouch(onUp)),
+  };
+
+  /** @param {Event} event */
+  const onSelectStart = (event) => {
+    if (finger) {
+      event.preventDefault();
+    }
+  };
+
+  // What the canvas had of the styles set here, to put back on stop. A
+  // canvas has nothing to select, fingers or not, so it is unselectable
+  // whenever this runs: a mouse's drag from it selects none of the page
+  // either. Only the finger's `touch-action` waits for `touch`.
+  const { style } = canvas;
+  /** @type {("touchAction" | "userSelect" | "webkitUserSelect")[]} */
+  const ownStyles = ["touchAction", "userSelect", "webkitUserSelect"];
+  const hadStyles = ownStyles.map((name) => style[name]);
+  style.userSelect = "none";
+  style.webkitUserSelect = "none";
+  if (takesTouch) {
+    style.touchAction = "none";
+    view.addEventListener("selectstart", onSelectStart);
+  }
+  canvas.addEventListener("pointermove", listeners.move);
+  canvas.addEventListener("pointerleave", listeners.leave);
+  canvas.addEventListener("pointerdown", listeners.down);
+  canvas.addEventListener("pointercancel", listeners.cancel);
+  canvas.addEventListener("contextmenu", listeners.contextMenu);
   canvas.addEventListener("wheel", onWheel, { passive: false });
-  view.addEventListener("pointerup", /** @type {EventListener} */ (onUp));
+  view.addEventListener("pointerup", listeners.up);
 
   return () => {
-    canvas.removeEventListener("pointermove", onMove);
-    canvas.removeEventListener("pointerleave", onLeave);
-    canvas.removeEventListener("pointerdown", onDown);
-    canvas.removeEventListener("pointercancel", onCancel);
-    canvas.removeEventListener("contextmenu", onContextMenu);
+    canvas.removeEventListener("pointermove", listeners.move);
+    canvas.removeEventListener("pointerleave", listeners.leave);
+    canvas.removeEventListener("pointerdown", listeners.down);
+    canvas.removeEventListener("pointercancel", listeners.cancel);
+    canvas.removeEventListener("contextmenu", listeners.contextMenu);
     canvas.removeEventListener("wheel", onWheel);
-    view.removeEventListener("pointerup", /** @type {EventListener} */ (onUp));
-    canvas.style.touchAction = touchAction;
+    view.removeEventListener("pointerup", listeners.up);
+    view.removeEventListener("selectstart", onSelectStart);
+    ownStyles.forEach((name, i) => {
+      style[name] = hadStyles[i] ?? "";
+    });
     lift();
     zoomTo(wideZoom);
   };
+}
+
+/**
+ * The options `render()` mounts its mouse with, from its `pointer` option,
+ * or `null` for no mouse. Left out, it is on with fingers left to the page
+ * (`touch: false`), so a page that never asked for a pointer gets the mouse
+ * and keeps its scrolling over the canvas. `true` is on with fingers taken,
+ * an object is on as it says, and `false` is off.
+ *
+ * @param {boolean | PointerOptions | undefined} option
+ * @returns {PointerOptions | null}
+ */
+export function renderPointer(option) {
+  if (option === undefined) {
+    return { touch: false };
+  }
+  if (option === true) {
+    return {};
+  }
+  return option || null;
 }
 
 /**
@@ -618,8 +718,14 @@ function buttonOf(event) {
  * for the turn `look: "orbit"` gives it: nothing but a mouse move re-aims
  * the ray, and that turn is made by a mouse move.
  *
- * `render(fn, { pointer: true })` mounts one for the whole scene. A scene
- * rendered that way does not mount another, or the page has two mice.
+ * One canvas has one mouse: the one mounted on it last. It is the one
+ * registered with the manager and the one listening to the canvas. Every
+ * other `mouse(ctx)` on that canvas stands by, registered with nothing and
+ * listening to nothing, and when the one driving unmounts, the one mounted
+ * before it takes over again with its own options. So a scene can mount its
+ * own beside the one `render(fn, { pointer })` gives it, whenever it
+ * likes, and its own drives, with its options, for as long as it is
+ * mounted.
  *
  * `options` says what a drag that starts on nothing does (`PointerOptions`);
  * by default nothing.
@@ -632,10 +738,10 @@ export function mouse(ctx, options = {}) {
   pointer.name = "mouse";
   return $(pointer, [
     effects(() => {
-      if (getXRSession(ctx)) {
+      const renderer = RendererContext.get(ctx);
+      if (miceOn(renderer.domElement).driver.get() !== pointer || getXRSession(ctx)) {
         return;
       }
-      const renderer = RendererContext.get(ctx);
       const camera = getCamera(ctx);
       const manager = InteractionContext.get(ctx);
       // The manager casts in the late phase, as it does for a controller
@@ -660,5 +766,39 @@ export function mouse(ctx, options = {}) {
         registration.unsubscribe();
       };
     }),
+    // Joining the stack reads nothing, so it is undone only on unmount. It
+    // comes after the driving above, so that a handover always stops one
+    // mouse before it starts the next: on mount this one is not driving yet
+    // when it joins, and on unmount it has stopped before it leaves.
+    effects(() => {
+      const { mounted } = miceOn(RendererContext.get(ctx).domElement);
+      mounted.set([...mounted.peek(), pointer]);
+      return () => mounted.set(mounted.peek().filter((other) => other !== pointer));
+    }),
   ]);
+}
+
+/**
+ * The mice mounted on each canvas, in the order they mounted, and the one
+ * of them that drives the canvas (`mouse`): the last. A mouse reads only
+ * `driver`, so another joining or leaving behind it does not stop it and
+ * start it again, which would let go of a press and put back the zoom.
+ *
+ * @typedef {{ mounted: Signal<THREE.Group[]>, driver: Derived<THREE.Group | undefined> }} Mice
+ * @type {WeakMap<HTMLCanvasElement, Mice>}
+ */
+const mice = new WeakMap();
+
+/**
+ * @param {HTMLCanvasElement} canvas
+ * @returns {Mice}
+ */
+function miceOn(canvas) {
+  let found = mice.get(canvas);
+  if (!found) {
+    const mounted = Signal.of(/** @type {THREE.Group[]} */ ([]));
+    found = { mounted, driver: Derived.of(() => mounted.get().at(-1)) };
+    mice.set(canvas, found);
+  }
+  return found;
 }

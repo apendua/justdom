@@ -1,11 +1,15 @@
 import { $, CLASS_NAME, attr, children, on, renderText, set, stylesheet, text } from "justdom-core";
 import { component } from "justdom-signal";
+import { xrSession } from "justdom-xr/session";
 import { HOTSEAT, VERSUS_COMPUTER, type GameMode } from "../store/Root";
+import { narrow } from "../viewport";
 import ActionItem from "./ActionItem";
 import { menuItem, modal, modalFill } from "./styles";
+import { LeaveItem, PassthroughItem, modeName, mountedWhile } from "./toolbarItems";
 
 interface MenuModalProps {
   isVisible: boolean;
+  mode: GameMode;
   onClose?: () => void;
   onCreateNewGame?: (mode: GameMode) => Promise<unknown>;
 }
@@ -18,7 +22,7 @@ const backdrop = stylesheet`
 
 const menuList = stylesheet`
   .${CLASS_NAME} {
-    --menu-item-size: 5vw;
+    --menu-item-size: max(40px, 5vw);
     --menu-item-border: 1px solid white;
     flex-grow: 0;
     /* One item under another, each the width of the list. An item is an
@@ -28,6 +32,7 @@ const menuList = stylesheet`
     flex-direction: column;
     list-style: none;
     width: 50vw;
+    min-width: min(320px, calc(100vw - 32px));
     margin: auto;
     padding: 0;
   }
@@ -36,6 +41,10 @@ const menuList = stylesheet`
 /**
  * The full screen menu behind the hamburger button, and the only place the two
  * ways of playing are chosen.
+ *
+ * On a narrow page it also holds what the toolbar has no room for: the way
+ * the battle is being played and, in a headset session, the passthrough
+ * switch and the way out.
  */
 const MenuModal = component((ctx: WeakKey, props: MenuModalProps) => {
   const newGame = (title: string, mode: GameMode) =>
@@ -55,6 +64,20 @@ const MenuModal = component((ctx: WeakKey, props: MenuModalProps) => {
         children(
           newGame("New Game vs Computer", VERSUS_COMPUTER),
           newGame("New Game — Hotseat", HOTSEAT),
+          mountedWhile(
+            () => narrow.get(),
+            () =>
+              $("li", [
+                set("className", menuItem),
+                attr({ "data-readonly": "" }),
+                children(text`Playing ${() => modeName(props.mode)}`),
+              ]),
+          ),
+          mountedWhile(() => narrow.get() && xrSession.get() !== null, PassthroughItem),
+          mountedWhile(
+            () => narrow.get() && xrSession.get() !== null,
+            () => LeaveItem("Leave the headset"),
+          ),
           $("li", [
             set("className", menuItem),
             on("click", () => props.onClose?.()),

@@ -1,23 +1,14 @@
-import {
-  $,
-  CLASS_NAME,
-  attr,
-  children,
-  list,
-  on,
-  set,
-  stylesheet,
-  text,
-  type Mountable,
-} from "justdom-core";
-import { component, type Subscribable } from "justdom-signal";
-import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
+import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "justdom-core";
+import { component } from "justdom-signal";
+import { xrSession } from "justdom-xr/session";
 import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
-import { VERSUS_COMPUTER, type GameMode } from "../store/Root";
+import type { GameMode } from "../store/Root";
+import { narrow } from "../viewport";
 import ActionItem from "./ActionItem";
 import branch from "./branch";
 import { menuItem, menuItems } from "./styles";
+import { LeaveItem, PassthroughItem, modeName, mountedWhile } from "./toolbarItems";
 
 interface ToolbarProps {
   game: Game | null;
@@ -26,10 +17,19 @@ interface ToolbarProps {
   onCreateNewGame?: () => Promise<unknown>;
 }
 
+/**
+ * On a narrow page the buttons are a fixed size and closer together, since
+ * a phone held upright is tall enough to make them as wide as the screen.
+ */
 const consoleBar = stylesheet`
   .${CLASS_NAME} {
     width: 100%;
     background: rgba(0, 0, 0, 0.5);
+  }
+
+  .${CLASS_NAME}[data-narrow] {
+    --menu-item-size: 40px;
+    --menu-item-padding: 0.4;
   }
 `;
 
@@ -54,14 +54,6 @@ function mainSlot(game: Game | null): "create" | "over" | "skip" | "waiting" | "
 }
 
 /**
- * What only a session has, mounted while there is one and taken down when
- * it ends. Not hidden and shown: a panel measures the toolbar again when
- * its children change, and not when one of them is hidden.
- */
-const inSession = (render: () => Subscribable<Mountable>) =>
-  list(() => (xrSession.get() ? [true] : []), render);
-
-/**
  * The bar along the bottom of the screen: the menu, a note on how the battle is
  * going, and the button that hands the turn over.
  *
@@ -69,6 +61,10 @@ const inSession = (render: () => Subscribable<Mountable>) =>
  * says there is one: the passthrough switch, pressable only in a session
  * that can show the room, and the × at the end of the bar, which ends the
  * session.
+ *
+ * On a narrow page the bar keeps only ☰, the main button and the round. The
+ * way of playing and the two session items move into the menu behind ☰,
+ * and the ⚙, which does nothing yet, is left out.
  */
 const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
   const handleMainButton = () => {
@@ -95,8 +91,11 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
       children(text`${caption}`),
     ]);
 
+  const wide = () => !narrow.get();
+
   return $("div", [
     set("className", consoleBar),
+    attr("data-narrow", () => (narrow.get() ? "" : undefined)),
     children(
       $("ul", [
         set("className", menuItems),
@@ -106,7 +105,7 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
             on("click", () => props.onMenuOpen?.()),
             children(text`☰`),
           ]),
-          label(() => (props.mode === VERSUS_COMPUTER ? "vs Computer" : "Hotseat")),
+          mountedWhile(wide, () => label(() => modeName(props.mode))),
           branch(
             () => mainSlot(props.game),
             (key) => {
@@ -140,29 +139,13 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
             },
           ),
           label(() => (props.game ? `Round ${props.game.currentRound + 1}` : "")),
-          $("li", [set("className", menuItem), attr({ "data-disabled": "" }), children(text`⚙`)]),
-          inSession(() =>
-            $("li", [
-              set("className", menuItem),
-              attr("data-disabled", () => (canPassThrough() ? undefined : "")),
-              attr("data-inverted", () => (passthrough.get() && canPassThrough() ? "" : undefined)),
-              on("click", () => {
-                if (canPassThrough()) {
-                  passthrough.set(!passthrough.get());
-                }
-              }),
-              children(text`Passthrough`),
-            ]),
+          mountedWhile(wide, () =>
+            $("li", [set("className", menuItem), attr({ "data-disabled": "" }), children(text`⚙`)]),
           ),
-          inSession(() =>
-            $("li", [
-              set("className", menuItem),
-              attr({ title: "Leave the headset" }),
-              on("click", () => {
-                void xrSession.get()?.end();
-              }),
-              children(text`×`),
-            ]),
+          mountedWhile(() => wide() && xrSession.get() !== null, PassthroughItem),
+          mountedWhile(
+            () => wide() && xrSession.get() !== null,
+            () => LeaveItem("×"),
           ),
         ),
       ]),

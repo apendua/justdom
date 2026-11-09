@@ -162,6 +162,9 @@ const Game = component((ctx: WeakKey) => {
         get isVisible() {
           return state.isMenuVisible;
         },
+        get mode() {
+          return root.mode;
+        },
         onClose: () => setMenuVisible(false),
         onCreateNewGame: (mode) => root.createNewGame(mode),
       }),

@@ -65,9 +65,10 @@ const textStyle = className`
 // justdom-three draws a checkbox in a portal itself — the box from these
 // declarations, the tick in whatever `color` says — so the native look is of
 // no use to it, and `appearance: none` is what the flat build needs anyway to
-// be dressed the same way. The same DOM is the page and the panel, so the
-// ticked state is written out for both: `:checked` for the page, and
-// `[data-xr-checked]`, which is what a portal has to hang the rule on.
+// be dressed the same way. The same DOM is the page and the panel, and
+// `:checked` alone would serve both: the portal writes `data-xr-checked` on a
+// ticked box, and that write is what makes the panel read its style again.
+// The rule names both all the same, which is harmless.
 const checkboxStyle = stylesheet`
   .${CLASS_NAME} {
     appearance: none;

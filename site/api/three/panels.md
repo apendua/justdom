@@ -699,8 +699,7 @@ tick is drawn in the scene, in the element's own `color`:
   color: white; /* the tick */
 }
 
-.done:checked,
-.done[data-xr-checked] {
+.done:checked {
   background: #007bff;
   border-color: #007bff;
 }
@@ -711,9 +710,10 @@ tick is drawn in the scene, in the element's own `color`:
 - A checkbox is a ray target without asking; `cursor: pointer` is still worth writing for the page,
   and a disabled checkbox is not pointable however it is dressed.
 - The ticked state is written back onto the element as `data-xr-checked`, since `:checked` changes
-  no attribute. It carries the presentational contract `data-xr-hover` does — a ticked box may
-  change colour, not size — but not hover's other restriction: `input[data-xr-checked] + .label`
-  works and is the form to reach for.
+  no attribute and the write is what makes the panel read the box's style again. So `:checked` works
+  as written, and `[data-xr-checked]` is there for a rule meant for the scene alone. Both carry the
+  presentational contract `data-xr-hover` does — a ticked box may change colour, not size — but not
+  hover's other restriction: `input:checked + .label` works.
 - The DOM stays the thing that is true. A ray's click is a click, so the browser toggles and fires
   `change`, and an app reads `checked` and listens for `change` as on a page, `set("checked", …)`
   from the other direction included: the portal hears an assignment through an accessor of its own

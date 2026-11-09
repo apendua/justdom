@@ -12,6 +12,9 @@
  * the scene places it by (`src/placement.ts`). First, the page alone, with
  * no emulator, must not fetch the headset scene, and a click on a field
  * the stack can reach, with no move before it, must send the stack there.
+ * On a page the size of a phone held upright, the toolbar must be three
+ * items on one line, with the way of playing moved into the menu, and it
+ * must take that back when the phone is turned sideways.
  * Then, in a session, in order:
  *
  * - the ray over a field the white stack can reach previews the route
@@ -196,6 +199,49 @@ async function main() {
       const moved = await toolbarSays(plain, "Skip");
       check(moved, "a click with no move before it sends the stack");
       await plain.close();
+    }
+
+    console.log("\n== a phone held upright");
+    {
+      const phone = await browser.newPage({ viewport: { width: 375, height: 667 } });
+      await phone.goto(url, { waitUntil: "load" });
+      await phone.waitForSelector("#root svg polygon");
+      /** What the toolbar shows, and where, while the menu is closed. */
+      const toolbar = () =>
+        phone.evaluate(() =>
+          [...document.querySelectorAll("#root li")]
+            .filter((li) => !li.closest("[hidden]"))
+            .map((li) => ({ text: li.textContent, ...li.getBoundingClientRect().toJSON() })),
+        );
+      const narrow = await toolbar();
+      check(
+        narrow.length === 3 &&
+          narrow.every((item) => item.top === narrow[0].top && item.right <= 375),
+        "the toolbar is three items on one line, inside the screen",
+      );
+      const menu = await phone.evaluate(() =>
+        [...document.querySelectorAll("#root [hidden] li")].map((li) => li.textContent),
+      );
+      check(menu.includes("Playing vs Computer"), "the way of playing is in the menu");
+      // Turned sideways: the bar takes its items back, mounted again.
+      await phone.setViewportSize({ width: 667, height: 375 });
+      await phone.waitForFunction(() =>
+        [...document.querySelectorAll("#root li")].some(
+          (li) => li.textContent === "vs Computer" && !li.closest("[hidden]"),
+        ),
+      );
+      check(
+        !(await phone.evaluate(() =>
+          [...document.querySelectorAll("#root li")].some(
+            (li) => li.textContent === "Playing vs Computer",
+          ),
+        )),
+        "turned sideways, the way of playing is back in the toolbar",
+      );
+      if (SHOTS) {
+        await phone.screenshot({ path: join(SHOTS, "phone.png") });
+      }
+      await phone.close();
     }
 
     const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });

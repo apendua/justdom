@@ -16,6 +16,15 @@ back, with whatever it has left.
 **Continue** hands the turn over without moving. While a move is playing out the same button reads
 **Skip** and cuts the animation short — including the computer's.
 
+On a page narrower than 600 px, the breakpoint Minesweeper uses too, a phone held upright, the
+toolbar keeps only ☰, **Continue** and the round. The way of playing moves into the menu behind ☰,
+and in a headset session so do Passthrough and the way out, which the menu calls **Leave the
+headset**. `src/viewport.ts` holds the breakpoint as a signal, so the items are mounted and taken
+down as the page crosses it rather than hidden: a panel measures the toolbar again when its children
+change, and not when one of them is hidden. The toolbar's buttons scale with the page's height, but
+no further than lets them fit across a tablet held upright, and never get shorter than 32 px, so
+they stay a fingertip tall on a phone held sideways.
+
 ## In a headset
 
 On a headset the game is the very same DOM. The page keeps it, and `justdom-three` mirrors the whole
@@ -26,7 +35,8 @@ the mouse preview the route and send the stack along it. The menu behind ☰ ope
 battlefield in the panel as it does on the page.
 
 Two controls are there only in a session: Passthrough, which takes down the dark sphere the session
-is set against and shows the room, and the × at the end of the toolbar, which ends the session.
+is set against and shows the room, and the × at the end of the toolbar, which ends the session. On a
+narrow page both are in the menu behind ☰ instead.
 
 On a laptop the page is the page and nothing else. No session can be opened, so no button is shown,
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
@@ -62,13 +72,15 @@ move can be the other hand's, and a tap on a touchscreen comes with no move at a
 `node tests/xr-check.mjs` loads the page alone in headless Chromium, which can present nothing, and
 fails if the headset scene is fetched, if the menu behind ☰ does not stack its items one under
 another, or if a click on a field the white stack can reach, with no move before it, does not send
-the stack there. Then it loads the page with the emulator and fails if the Enter button covers the
-toolbar. Then it plays on the emulated headset, which takes about a minute: it points the ray at a
-field the white stack can reach and checks that the route is drawn, pulls the trigger and checks
-that the click reached the board at that place and the turn passed on, then turns the passthrough on
-and leaves by the ×. `SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints
-a stack for anything the page throws. It drives the browser and the controller through
-`justdom-xr/driver`, which launches the Chromium at
+the stack there. It loads the page again at a phone's size and fails if the toolbar is not three
+items on one line inside the screen, with the way of playing in the menu, or if turning the page
+sideways does not put that back in the toolbar. Then it loads the page with the emulator and fails
+if the Enter button covers the toolbar. Then it plays on the emulated headset, which takes about a
+minute: it points the ray at a field the white stack can reach and checks that the route is drawn,
+pulls the trigger and checks that the click reached the board at that place and the turn passed on,
+then turns the passthrough on and leaves by the ×. `SHOTS=<dir>` also photographs the page and the
+session, and `STACKS=1` prints a stack for anything the page throws. It drives the browser and the
+controller through `justdom-xr/driver`, which launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
 tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from

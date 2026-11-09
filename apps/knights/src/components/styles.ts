@@ -7,9 +7,11 @@ import { CLASS_NAME, stylesheet } from "justdom-core";
  * so a component only ever sets one class and toggles an attribute — which is
  * something the dom package can bind to a signal directly.
  *
- * Two custom properties let the toolbar and the menu size their buttons
- * differently: the toolbar scales with the viewport height, the full screen
- * menu with its width.
+ * Custom properties let the toolbar and the menu size their buttons
+ * differently: the toolbar scales with the viewport height, but no wider than
+ * lets its five items fit across the page and no lower than a fingertip, and
+ * the full screen menu scales with its width. A narrow toolbar
+ * fixes the size and draws the padding in with `--menu-item-padding`.
  *
  * The rules are written for `:hover` alone: in a headset session,
  * justdom-three rewrites them to answer its ray as well (`data-xr-hover`).
@@ -23,26 +25,34 @@ export const menuItem = stylesheet`
       rgba(0, 0, 0, 0.2) 10px,
       rgba(0, 0, 0, 0.2) 20px
     );
+    --size: var(--menu-item-size, max(32px, min(5vh, 6vw)));
     flex-grow: 0;
     display: inline-block;
+    white-space: nowrap;
     cursor: pointer;
     background: rgba(0, 0, 0, 1);
     border: var(--menu-item-border, 3px solid #333);
     color: white;
     text-align: center;
     font-family: monospace;
-    line-height: var(--menu-item-size, 5vh);
-    font-size: calc(var(--menu-item-size, 5vh) * 0.4);
-    margin: calc(var(--menu-item-size, 5vh) * 0.2);
-    padding: 0 calc(var(--menu-item-size, 5vh) * 0.6);
+    line-height: var(--size);
+    font-size: calc(var(--size) * 0.4);
+    margin: calc(var(--size) * 0.2);
+    padding: 0 calc(var(--size) * var(--menu-item-padding, 0.6));
   }
 
   .${CLASS_NAME}:hover {
     background: #777;
   }
 
+  /*
+   * A label that fills the bar gives way first when the bar is short of room,
+   * cutting its caption rather than pushing the bar past the page's edge.
+   */
   .${CLASS_NAME}[data-fill] {
     flex-grow: 1;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .${CLASS_NAME}[data-inverted] {

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "PointerOptions gains touch. With touch: false, mouse(ctx) and render's pointer leave fingers to the page: the canvas keeps its own touch-action and a finger's events pass by. The default still takes them.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

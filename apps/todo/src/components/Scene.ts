@@ -1,9 +1,16 @@
 import * as THREE from "three";
 import { children, cursors, $, dom, getScene, getXRSession } from "justdom-three";
-import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
+import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
 import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
 import { xrSession } from "justdom-xr/session";
 import { Backdrop } from "justdom-xr/scene";
+
+declare global {
+  interface Window {
+    /** The frame rate readout's controls, for the mirror benchmarks. */
+    __diagnostics?: DiagnosticsControls;
+  }
+}
 
 /**
  * What the session is set against: one colour, all the way round, rather
@@ -52,6 +59,10 @@ export const Scene = (panel: HTMLElement) =>
     // Kept across sessions, so a second session's chart starts from the
     // first one's scale rather than from nothing.
     const diagnostics = createDiagnostics();
+    // For the mirror benchmarks in apps/showcase/bench, which switch the
+    // readout off: its number moves with the frame rate, and each move is
+    // work that would otherwise land in their counts.
+    window.__diagnostics = diagnostics;
 
     useEffects(getScene(ctx), [
       effects((scene) => {

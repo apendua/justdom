@@ -111,9 +111,9 @@ drawn from the head and a ray from the head lands on the pixel touched. The sess
 layer, lets go of the trigger and the grip, parks the controllers at once, forgets the fingers and
 zooms back out to the headset's own field of view.
 
-**Tilt**, in the top corner, turns the head with the phone as well, as a window onto the room, and
-the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a page
-the phone's orientation only once a tap has asked for it.
+**Tilt**, in the top right corner, turns the head with the phone as well, as a window onto the room,
+and the drag still turns it past where an arm will reach. It is off until tapped, since iOS hands a
+page the phone's orientation only once a tap has asked for it.
 
 **Exit**, in the top left corner, ends the session. The layer covers the whole screen while a
 session is up, the page's own button for ending it included.

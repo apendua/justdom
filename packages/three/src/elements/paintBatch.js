@@ -3,14 +3,29 @@ import { GRADIENT_GLSL, rectGeometry, SDF_GLSL } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
-import { bandBase } from "./elevation.js";
+import { bandBase, PIECE_BAND } from "./elevation.js";
 import {
   createHalfPlaneUniforms,
   HALF_PLANES_FRAGMENT_GLSL,
   HALF_PLANES_VERTEX_GLSL,
   passHalfPlaneWorld,
 } from "./halfPlanes.js";
-import { BOX_BUCKET_BIAS, BoxBatch, writeBoxInstance } from "./boxBatch.js";
+import {
+  BOX_BUCKET_BIAS,
+  BoxBatch,
+  DECORATION_INSET_SHADOW,
+  DECORATION_OUTER_SHADOW,
+  DECORATION_RING,
+  hasOutline,
+  INSET_SHADOW_BIAS,
+  isInsetShadow,
+  OUTER_SHADOW_BIAS,
+  setLanes,
+  shadowCount,
+  writeBoxInstance,
+  writeOutlineInstance,
+  writeShadowInstance,
+} from "./boxBatch.js";
 import { TextBatch } from "./textBatch.js";
 import { isProxy } from "./layerOrder.js";
 import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
@@ -62,6 +77,15 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  */
 export const ARRAYS_PER_DRAW = 15;
 
+/**
+ * Where in its layer's band an outline's ring draws: after every level of
+ * the layer and everything at it, a quarter step short of the next band, so
+ * that a layer's rings draw over all of the layer and under the layers
+ * after it. In the order the walk met them among themselves, which is tree
+ * order.
+ */
+export const RING_PLACE = PIECE_BAND - BOX_BUCKET_BIAS / 2;
+
 /** How many instances a freshly grown draw has room for. */
 const MINIMUM_CAPACITY = 16;
 
@@ -82,6 +106,17 @@ const MINIMUM_CAPACITY = 16;
  * leave empty: `z` is a header packing the kind, three flags and the ramp
  * row into one integer-valued float (exact far past any row count a page
  * reaches), and `w` the box's opacity (`writeBoxInstance` in `boxBatch.js`).
+ *
+ * An outline and each layer of a `box-shadow` are instances of their own,
+ * decorations of their box, and no lane more: `aSize.w` below 0, an opacity
+ * no box has, says so, and which decoration it is (`DECORATION_RING` and
+ * the rest in `boxBatch.js`). A ring's width and offset ride in `aBorder`
+ * (`writeOutlineInstance`), and so do a shadow's offsets, blur and spread
+ * (`writeShadowInstance`). The quad is the unit one grown by what the
+ * decoration reaches past its box on every side, in the box's own unit
+ * coordinates, since the box's matrix carries its size: a ring's offset
+ * and width, an outer shadow's offset, spread and three sigmas of blur, and
+ * nothing for an inset shadow, which stays inside its box.
  */
 const vertexShader = /* glsl */ `
 ${HALF_PLANES_VERTEX_GLSL}
@@ -122,7 +157,22 @@ void main() {
   vGradientTile = aGradientTile;
   vLayer = aGradientGeometry.x;
   vec2 local = position.xy;
-  if (aSize.z < -0.5) {
+  if (aSize.w < -0.5) {
+    // A decoration: -2 in the slot for a ring, -3 for an outer shadow and
+    // -4 for an inset one, which no run or box has.
+    float kind = floor(-aSize.w + 0.5);
+    vSlot = -1 - int(kind);
+    float reach = kind < 1.5
+      ? max(aBorder.x + aBorder.y, 0.0)
+      : kind < 2.5
+        ? max(abs(aBorder.x), abs(aBorder.y)) + max(aBorder.w, 0.0) + 1.5 * aBorder.z
+        : 0.0;
+    vec2 size = max(aSize.xy, vec2(1e-6));
+    local = (position.xy * (size + 2.0 * reach) - reach) / size;
+    vUnit = local;
+    vGradient = vec4(0.0);
+    vGradientRamp = vec2(0.0);
+  } else if (aSize.z < -0.5) {
     vSlot = int(floor(-aSize.z - 0.5));
     // A run's quad is the unit one scaled to the run, where a box's
     // instance matrix carries its size.
@@ -198,6 +248,22 @@ ${sampleRuns}
     vec2 clipD = abs(vLocal - 0.5 * (vClip.xy + vClip.zw)) - clipHalf;
     float clipDist = max(clipD.x, clipD.y);
     alpha *= 1.0 - smoothstep(-fwidth(clipDist), fwidth(clipDist), clipDist);
+    if (alpha < 0.001) {
+      discard;
+    }
+    gl_FragColor = vec4(vFillColor.rgb, alpha);
+  } else if (vSlot == -2) {
+    float alpha = vBorderColor.a *
+      ringCoverage(vUnit, vSize, vRadii, vBorder.x, vBorder.y, vClip, vClipRadii);
+    if (alpha < 0.001) {
+      discard;
+    }
+    gl_FragColor = vec4(vBorderColor.rgb, alpha);
+  } else if (vSlot < -2) {
+    float coverage = vSlot == -3
+      ? outerShadowCoverage(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii)
+      : insetShadowCoverage(vUnit, vSize, vRadii, vGradientGeometry, vBorder, vClip, vClipRadii);
+    float alpha = vFillColor.a * coverage;
     if (alpha < 0.001) {
       discard;
     }
@@ -358,15 +424,15 @@ class Draw {
     const layer = /** @type {Slot} */ (run.shown).layer;
     const at = index * 4;
     const { data } = this;
-    setVec4(data.aSize, at, run.width, run.height, -1 - slot, 1);
-    setVec4(data.aFillColor, at, color.r, color.g, color.b, opacity);
-    setVec4(data.aClip, at, clip.x, clip.y, clip.z, clip.w);
-    setVec4(data.aGradientGeometry, at, layer, 0, 0, 0);
-    setVec4(data.aRadii, at, 0, 0, 0, 0);
-    setVec4(data.aBorder, at, 0, 0, 0, 0);
-    setVec4(data.aBorderColor, at, 0, 0, 0, 0);
-    setVec4(data.aClipRadii, at, 0, 0, 0, 0);
-    setVec4(data.aGradientTile, at, 0, 0, 0, 0);
+    setLanes(data.aSize, at, run.width, run.height, -1 - slot, 1);
+    setLanes(data.aFillColor, at, color.r, color.g, color.b, opacity);
+    setLanes(data.aClip, at, clip.x, clip.y, clip.z, clip.w);
+    setLanes(data.aGradientGeometry, at, layer, 0, 0, 0);
+    setLanes(data.aRadii, at, 0, 0, 0, 0);
+    setLanes(data.aBorder, at, 0, 0, 0, 0);
+    setLanes(data.aBorderColor, at, 0, 0, 0, 0);
+    setLanes(data.aClipRadii, at, 0, 0, 0, 0);
+    setLanes(data.aGradientTile, at, 0, 0, 0, 0);
   }
 
   /**
@@ -404,21 +470,6 @@ class Draw {
     this.#disposeMesh();
     this.material.dispose();
   }
-}
-
-/**
- * @param {Float32Array} array
- * @param {number} at
- * @param {number} x
- * @param {number} y
- * @param {number} z
- * @param {number} w
- */
-function setVec4(array, at, x, y, z, w) {
-  array[at] = x;
-  array[at + 1] = y;
-  array[at + 2] = z;
-  array[at + 3] = w;
 }
 
 /**
@@ -460,6 +511,15 @@ export class PaintBatch {
   #boxes = [];
   /** @type {(Member | null)[]} */
   #runs = [];
+  /**
+   * Which decoration of its box the box at an index is drawn as, 0 for the
+   * box itself (`DECORATION_RING` and the rest in `boxBatch.js`).
+   *
+   * @type {number[]}
+   */
+  #decorations = [];
+  /** Which layer of its box's `box-shadow` a shadow is. @type {number[]} */
+  #shadowLayers = [];
   /** @type {THREE.Matrix4[]} */
   #matrices = [];
   /** The indices into the above, in the order they draw. @type {number[]} */
@@ -625,6 +685,8 @@ export class PaintBatch {
     this.#orders.length = 0;
     this.#boxes.length = 0;
     this.#runs.length = 0;
+    this.#decorations.length = 0;
+    this.#shadowLayers.length = 0;
     this.#breaks.length = 0;
     this.boxes.beginWalk();
     this.runs.beginWalk();
@@ -678,14 +740,11 @@ export class PaintBatch {
     const box = this.boxes.take(mesh);
     const run = box ? null : this.runs.take(mesh);
     if (box || run) {
-      const index = this.#orders.length;
-      this.#orders.push(box ? mesh.renderOrder + BOX_BUCKET_BIAS : mesh.renderOrder);
-      this.#boxes.push(box);
-      this.#runs.push(run);
-      if (!this.#matrices[index]) {
-        this.#matrices[index] = new THREE.Matrix4();
+      const order = box ? mesh.renderOrder + BOX_BUCKET_BIAS : mesh.renderOrder;
+      this.#take(order, box, run, 0, 0, matrix);
+      if (box) {
+        this.#decorate(order, mesh.renderOrder, box, matrix);
       }
-      this.#matrices[index].copy(matrix);
     } else if (drawsItself(object)) {
       this.#breaks.push(object.renderOrder);
     }
@@ -693,6 +752,55 @@ export class PaintBatch {
     for (let i = 0; i < children.length; i++) {
       this.#walk(children[i], matrix, depth + 1);
     }
+  }
+
+  /**
+   * Note the decorations of a box the walk met: its shadows, the bottom
+   * layer first so that the topmost draws last, and its outline.
+   *
+   * @param {number} order The box's own, bias and all.
+   * @param {number} level Its render order, the level it is at.
+   * @param {Record<string, THREE.IUniform>} box
+   * @param {THREE.Matrix4} matrix
+   */
+  #decorate(order, level, box, matrix) {
+    for (let layer = shadowCount(box) - 1; layer >= 0; layer--) {
+      if (isInsetShadow(box, layer)) {
+        // Over the box's background, under its content.
+        this.#take(level + INSET_SHADOW_BIAS, box, null, DECORATION_INSET_SHADOW, layer, matrix);
+      } else {
+        // Under the box, and under every box at its level.
+        this.#take(level + OUTER_SHADOW_BIAS, box, null, DECORATION_OUTER_SHADOW, layer, matrix);
+      }
+    }
+    if (hasOutline(box)) {
+      // Over everything else in the box's layer, as a page paints an
+      // outline last in its stacking context.
+      this.#take(bandBase(order) + RING_PLACE, box, null, DECORATION_RING, 0, matrix);
+    }
+  }
+
+  /**
+   * Note an instance the walk met.
+   *
+   * @param {number} order
+   * @param {Record<string, THREE.IUniform> | null} box
+   * @param {Member | null} run
+   * @param {number} decoration Which decoration of `box` it is, 0 for none.
+   * @param {number} shadowLayer Which layer of the box's shadow, for one.
+   * @param {THREE.Matrix4} matrix
+   */
+  #take(order, box, run, decoration, shadowLayer, matrix) {
+    const index = this.#orders.length;
+    this.#orders.push(order);
+    this.#boxes.push(box);
+    this.#runs.push(run);
+    this.#decorations.push(decoration);
+    this.#shadowLayers.push(shadowLayer);
+    if (!this.#matrices[index]) {
+      this.#matrices[index] = new THREE.Matrix4();
+    }
+    this.#matrices[index].copy(matrix);
   }
 
   /**
@@ -721,11 +829,15 @@ export class PaintBatch {
         }
         draw.writeRun(index, run, slot);
       } else {
-        writeBoxInstance(
-          draw.data,
-          index,
-          /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]),
-        );
+        const box = /** @type {Record<string, THREE.IUniform>} */ (this.#boxes[i]);
+        const decoration = this.#decorations[i];
+        if (decoration === DECORATION_RING) {
+          writeOutlineInstance(draw.data, index, box);
+        } else if (decoration !== 0) {
+          writeShadowInstance(draw.data, index, box, this.#shadowLayers[i]);
+        } else {
+          writeBoxInstance(draw.data, index, box);
+        }
       }
     }
     draw.finish(end - start, this.#orders[sorted[start]]);

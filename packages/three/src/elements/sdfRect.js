@@ -7,6 +7,7 @@ import {
 } from "./halfPlanes.js";
 import { RAMP_WIDTH, rampUniforms } from "./gradient.js";
 import { keepProgram } from "./programKeeper.js";
+import { MAX_BOX_SHADOWS } from "./shadows.js";
 
 /**
  * @import VisualProperties from './VisualProperties.js';
@@ -268,29 +269,120 @@ float pictureCoverage(vec2 q, vec4 box) {
   float w = max(fwidth(dist), 1e-4);
   return 1.0 - smoothstep(0.0, 2.0 * w, dist);
 }
-vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
-  vec2 halfSize = 0.5 * size;
-  vec2 p = unit * size - halfSize;
-  float radius = p.x < 0.0
-    ? (p.y < 0.0 ? radii.x : radii.w)
-    : (p.y < 0.0 ? radii.y : radii.z);
-  radius = min(radius, min(halfSize.x, halfSize.y));
-  float outer = sdRoundedBox(p, halfSize, radius);
-  vec2 innerHalf = halfSize - 0.5 * vec2(border.w + border.y, border.x + border.z);
-  vec2 innerCenter = 0.5 * vec2(border.w - border.y, border.x - border.z);
-  float innerRadius = max(radius - max(
-    p.x < 0.0 ? border.w : border.y,
-    p.y < 0.0 ? border.x : border.z
-  ), 0.0);
-  float inner = sdRoundedBox(p - innerCenter, max(innerHalf, vec2(0.0)), innerRadius);
+float clipCoverageOf(vec2 p, vec2 halfSize, vec4 clip, vec4 clipRadii) {
   vec2 clipHalf = 0.5 * (clip.zw - clip.xy);
   vec2 clipCenter = 0.5 * (clip.xy + clip.zw) - halfSize;
   float clipRadius = p.x < clipCenter.x
     ? (p.y < clipCenter.y ? clipRadii.x : clipRadii.w)
     : (p.y < clipCenter.y ? clipRadii.y : clipRadii.z);
   clipRadius = min(clipRadius, min(clipHalf.x, clipHalf.y));
-  float clipped = sdRoundedBox(p - clipCenter, max(clipHalf, vec2(0.0)), clipRadius);
-  float clipCoverage = coverageOf(clipped);
+  return coverageOf(sdRoundedBox(p - clipCenter, max(clipHalf, vec2(0.0)), clipRadius));
+}
+float cornerRadius(vec2 p, vec2 halfSize, vec4 radii) {
+  float radius = p.x < 0.0
+    ? (p.y < 0.0 ? radii.x : radii.w)
+    : (p.y < 0.0 ? radii.y : radii.z);
+  return min(radius, min(halfSize.x, halfSize.y));
+}
+// The radius of the padding box's corner nearest p: the border box's, less
+// the wider of the two borders that meet there.
+float paddingRadius(vec2 p, vec2 halfSize, vec4 radii, vec4 border) {
+  return max(cornerRadius(p, halfSize, radii) - max(
+    p.x < 0.0 ? border.w : border.y,
+    p.y < 0.0 ? border.x : border.z
+  ), 0.0);
+}
+// A radius grown or shrunk by d, as CSS grows a corner for an outline or a
+// shadow's spread: a square corner stays square.
+float grownRadius(float radius, float d, vec2 halfSize) {
+  return radius > 0.0 ? clamp(radius + d, 0.0, min(halfSize.x, halfSize.y)) : 0.0;
+}
+vec2 shadowErf(vec2 x) {
+  vec2 s = sign(x);
+  vec2 a = abs(x);
+  x = 1.0 + (0.278393 + (0.230389 + 0.078108 * (a * a)) * a) * a;
+  x *= x;
+  return s - s / (x * x);
+}
+// One row of a rounded box blurred by a Gaussian: exact across, through erf.
+float blurredRow(float x, float y, float sigma, float corner, vec2 halfSize) {
+  float delta = min(halfSize.y - corner - abs(y), 0.0);
+  float curved = halfSize.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
+  vec2 integral = 0.5 + 0.5 * shadowErf((x + vec2(-curved, curved)) * (0.70710678 / sigma));
+  return integral.y - integral.x;
+}
+// How much of a rounded box centred on the origin covers p once blurred by a
+// Gaussian of sigma: exact across, and sampled down at four rows within
+// three sigmas. A sigma under a quarter of a pixel is no blur, and the box
+// is as sharp as a border.
+float blurredBox(vec2 p, vec2 halfSize, float corner, float sigma) {
+  if (sigma < 0.25) {
+    return coverageOf(sdRoundedBox(p, halfSize, corner));
+  }
+  float start = clamp(-3.0 * sigma, p.y - halfSize.y, p.y + halfSize.y);
+  float end = clamp(3.0 * sigma, p.y - halfSize.y, p.y + halfSize.y);
+  float step = (end - start) / 4.0;
+  float y = start + 0.5 * step;
+  float value = 0.0;
+  for (int i = 0; i < 4; i++) {
+    float weight = exp(-(y * y) / (2.0 * sigma * sigma)) / (2.5066283 * sigma);
+    value += blurredRow(p.x, p.y - y, sigma, corner, halfSize) * weight * step;
+    y += step;
+  }
+  return value;
+}
+// An outer shadow, shadow being (x, y, blur, spread): the border box moved
+// by the offset, grown by the spread and blurred by half the blur as sigma,
+// and cut out where the box itself is.
+float outerShadowCoverage(vec2 unit, vec2 size, vec4 radii, vec4 shadow, vec4 clip, vec4 clipRadii) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
+  vec2 q = p - shadow.xy;
+  vec2 shadowHalf = max(halfSize + shadow.w, vec2(0.0));
+  float corner = grownRadius(cornerRadius(q, halfSize, radii), shadow.w, shadowHalf);
+  float shape = blurredBox(q, shadowHalf, corner, 0.5 * shadow.z);
+  float own = coverageOf(sdRoundedBox(p, halfSize, cornerRadius(p, halfSize, radii)));
+  return shape * (1.0 - own) * clipCoverageOf(p, halfSize, clip, clipRadii);
+}
+// An inset shadow: the padding box, less the padding box moved by the
+// offset, shrunk by the spread and blurred.
+float insetShadowCoverage(
+  vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 shadow, vec4 clip, vec4 clipRadii
+) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
+  vec2 paddingHalf = max(halfSize - 0.5 * vec2(border.w + border.y, border.x + border.z), vec2(0.0));
+  vec2 paddingCenter = 0.5 * vec2(border.w - border.y, border.x - border.z);
+  vec2 r = p - paddingCenter;
+  float padding = coverageOf(sdRoundedBox(r, paddingHalf, paddingRadius(p, halfSize, radii, border)));
+  vec2 q = r - shadow.xy;
+  vec2 holeHalf = max(paddingHalf - shadow.w, vec2(0.0));
+  float corner = grownRadius(paddingRadius(q, halfSize, radii, border), -shadow.w, holeHalf);
+  float hole = blurredBox(q, holeHalf, corner, 0.5 * shadow.z);
+  return padding * (1.0 - hole) * clipCoverageOf(p, halfSize, clip, clipRadii);
+}
+float ringCoverage(vec2 unit, vec2 size, vec4 radii, float width, float offset, vec4 clip, vec4 clipRadii) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
+  float radius = cornerRadius(p, halfSize, radii);
+  vec2 innerHalf = max(halfSize + offset, vec2(0.0));
+  vec2 outerHalf = max(halfSize + offset + width, vec2(0.0));
+  float innerRadius = grownRadius(radius, offset, innerHalf);
+  float outerRadius = grownRadius(radius, offset + width, outerHalf);
+  float ring = coverageOf(sdRoundedBox(p, outerHalf, outerRadius)) *
+               (1.0 - coverageOf(sdRoundedBox(p, innerHalf, innerRadius)));
+  return ring * clipCoverageOf(p, halfSize, clip, clipRadii);
+}
+vec2 sdfCoverages(vec2 unit, vec2 size, vec4 radii, vec4 border, vec4 clip, vec4 clipRadii) {
+  vec2 halfSize = 0.5 * size;
+  vec2 p = unit * size - halfSize;
+  float radius = cornerRadius(p, halfSize, radii);
+  float outer = sdRoundedBox(p, halfSize, radius);
+  vec2 innerHalf = halfSize - 0.5 * vec2(border.w + border.y, border.x + border.z);
+  vec2 innerCenter = 0.5 * vec2(border.w - border.y, border.x - border.z);
+  float innerRadius = paddingRadius(p, halfSize, radii, border);
+  float inner = sdRoundedBox(p - innerCenter, max(innerHalf, vec2(0.0)), innerRadius);
+  float clipCoverage = clipCoverageOf(p, halfSize, clip, clipRadii);
   float coverage = coverageOf(outer) * clipCoverage;
   float fillness = coverageOf(inner) * clipCoverage;
   return vec2(min(fillness, coverage), max(coverage - fillness, 0.0));
@@ -410,6 +502,22 @@ export function createRectUniforms() {
     // has to be a box the element sits well inside of.
     uClip: { value: new THREE.Vector4(-1e6, -1e6, 1e6, 1e6) },
     uClipRadii: { value: new THREE.Vector4(0, 0, 0, 0) },
+    // The outline: its width and offset in px, and its colour with the
+    // element's opacity in the alpha. Read by the panel's one batch alone,
+    // which draws the ring as an instance of its own (`paintBatch.js`); a
+    // box that draws itself draws none.
+    uOutline: { value: new THREE.Vector2(0, 0) },
+    uOutlineColor: { value: new THREE.Vector4(0, 0, 0, 0) },
+    // The `box-shadow`, topmost layer first: how many layers there are, and
+    // per layer its offsets, blur and spread in px, its colour with the
+    // element's opacity in the alpha, and 1 for an inset one. Read by the
+    // batch alone, as the outline is.
+    uShadowCount: { value: 0 },
+    uShadows: { value: Array.from({ length: MAX_BOX_SHADOWS }, () => new THREE.Vector4()) },
+    uShadowColors: {
+      value: Array.from({ length: MAX_BOX_SHADOWS }, () => new THREE.Vector4()),
+    },
+    uShadowInset: { value: new Array(MAX_BOX_SHADOWS).fill(0) },
     // No picture until something loads one. Three binds its own empty
     // texture for a null sampler, so the declaration costs an unused unit
     // and nothing else; the branch above is skipped for every box in the
@@ -563,6 +671,20 @@ export function writeRectUniforms(uniforms, properties) {
   uFillColor.value.set(fill.r, fill.g, fill.b, properties.backgroundAlpha);
   const border = properties.borderColor;
   uBorderColor.value.set(border.r, border.g, border.b, properties.borderAlpha);
+  const width = properties.outlineWidth;
+  uniforms.uOutline.value.set(width, width > 0 ? properties.outlineOffset : 0);
+  if (width > 0) {
+    const outline = properties.outlineColor;
+    uniforms.uOutlineColor.value.set(outline.r, outline.g, outline.b, properties.outlineAlpha);
+  }
+  const shadows = properties.boxShadows;
+  uniforms.uShadowCount.value = shadows.length;
+  for (let i = 0; i < shadows.length; i++) {
+    const { color, alpha, x, y, blur, spread, inset } = shadows[i];
+    uniforms.uShadows.value[i].set(x, y, blur, spread);
+    uniforms.uShadowColors.value[i].set(color.r, color.g, color.b, alpha);
+    uniforms.uShadowInset.value[i] = inset ? 1 : 0;
+  }
 }
 
 /**

@@ -72,12 +72,17 @@ export const BoxBatchContext = createProperty(
  *   [R, R + 1/2) an `<svg>`'s content, shared out by `paintSlot`
  *   R + 1/8      a field's caret, over the glyphs (`CARET_ORDER_BIAS`)
  *   R + 1/4      a picture's box, which draws itself (`UNBATCHED_BOX_BIAS`)
+ *   R + 3/8      a batched box's outer shadows (`OUTER_SHADOW_BIAS`)
  *   R + 1/2      a batched box (`BOX_BUCKET_BIAS`)
+ *   R + 5/8      its inset shadows, over its background and under its
+ *                content (`INSET_SHADOW_BIAS`)
  *   R + 1        the next level's text
  *
  * The `<svg>` range spans the caret's and the picture's rungs, which is
  * safe because none of the three shares an element: an `<svg>` has no
- * caret and is no `<img>`.
+ * caret and is no `<img>`. It spans the outer shadows' rung too, and there
+ * the elements differ: a box a level past an `<svg>` whose shadow reaches
+ * over it draws the shadow under some of the `<svg>`'s shapes.
  *
  * A run of text whose colours are baked in draws itself at R and sorts
  * against the one batch's draw of R on its own origin, which a panel puts
@@ -94,6 +99,34 @@ export const BOX_BUCKET_BIAS = 0.5;
  * seen at.
  */
 export const UNBATCHED_BOX_BIAS = BOX_BUCKET_BIAS / 2;
+
+/**
+ * How far behind its integer a batched box's outer shadows draw: under
+ * every batched box of the level, its own included, and over everything of
+ * the levels before it, its parent's box among them. So a shadow falls on
+ * its parent and on what the page paints before it, and never on a box at
+ * its own level, as a later flow sibling's would on a page. Its place in
+ * the level is in the table at `BOX_BUCKET_BIAS`.
+ */
+export const OUTER_SHADOW_BIAS = (UNBATCHED_BOX_BIAS + BOX_BUCKET_BIAS) / 2;
+
+/**
+ * How far behind its integer a batched box's inset shadows draw: right
+ * after the box, so over its background, and before the next level's
+ * text, its content. Its place in the level is in the table at
+ * `BOX_BUCKET_BIAS`. It is clipped to the padding box, as CSS clips an
+ * inset shadow, so the border stays clear of it.
+ */
+export const INSET_SHADOW_BIAS = BOX_BUCKET_BIAS + 1 / 8;
+
+/**
+ * What an instance that is not a box draws around one, by `-aSize.w`, where
+ * a box has its opacity, 0 or more (`vertexShader` in `paintBatch.js`):
+ * an outline's ring, an outer shadow, or an inset one.
+ */
+export const DECORATION_RING = 1;
+export const DECORATION_OUTER_SHADOW = 2;
+export const DECORATION_INSET_SHADOW = 3;
 
 /**
  * Write a box's numbers into the arrays of an instance, as the one batch's
@@ -125,6 +158,112 @@ export function writeBoxInstance(data, index, uniforms) {
   writeVec4(data.aBorderColor, index, uBorderColor.value);
   writeVec4(data.aClip, index, uClip.value);
   writeVec4(data.aClipRadii, index, uClipRadii.value);
+}
+
+/**
+ * Whether a box's numbers say it has an outline the batch has to draw.
+ *
+ * @param {Record<string, THREE.IUniform>} uniforms
+ * @returns {boolean}
+ */
+export function hasOutline(uniforms) {
+  return uniforms.uOutline.value.x > 0 && uniforms.uOutlineColor.value.w > 0;
+}
+
+/**
+ * Write a box's outline into the arrays of an instance of its own: a ring
+ * drawn around the box, with the box's matrix, size, radii and clip, which
+ * is all a ring needs and so no lane more than a box has. `aSize.w`, a
+ * box's opacity, is `-DECORATION_RING`, which no box has: that is what says
+ * this instance is a ring (`vertexShader` in `paintBatch.js`). The outline's width and
+ * offset ride in `aBorder`, its colour, opacity folded in, in
+ * `aBorderColor`.
+ *
+ * @param {Record<string, Float32Array>} data
+ * @param {number} index
+ * @param {Record<string, THREE.IUniform>} uniforms The box's numbers.
+ * @returns {void}
+ */
+export function writeOutlineInstance(data, index, uniforms) {
+  const { uSize, uRadii, uOutline, uOutlineColor, uClip, uClipRadii } = uniforms;
+  const at = index * 4;
+  setLanes(data.aSize, at, uSize.value.x, uSize.value.y, 0, -DECORATION_RING);
+  writeVec4(data.aRadii, index, uRadii.value);
+  setLanes(data.aBorder, at, uOutline.value.x, uOutline.value.y, 0, 0);
+  writeVec4(data.aBorderColor, index, uOutlineColor.value);
+  setLanes(data.aFillColor, at, 0, 0, 0, 0);
+  writeVec4(data.aClip, index, uClip.value);
+  writeVec4(data.aClipRadii, index, uClipRadii.value);
+  setLanes(data.aGradientGeometry, at, 0, 0, 0, 0);
+  setLanes(data.aGradientTile, at, 0, 0, 0, 0);
+}
+
+/**
+ * How many layers of `box-shadow` a box's numbers say the batch has to
+ * draw.
+ *
+ * @param {Record<string, THREE.IUniform>} uniforms
+ * @returns {number}
+ */
+export function shadowCount(uniforms) {
+  return uniforms.uShadowCount.value;
+}
+
+/**
+ * Whether a layer of a box's `box-shadow` is an inset one.
+ *
+ * @param {Record<string, THREE.IUniform>} uniforms
+ * @param {number} layer
+ * @returns {boolean}
+ */
+export function isInsetShadow(uniforms, layer) {
+  return uniforms.uShadowInset.value[layer] > 0;
+}
+
+/**
+ * Write one layer of a box's `box-shadow` into the arrays of an instance of
+ * its own, as `writeOutlineInstance` writes a ring: the box's matrix, size,
+ * radii and clip, `-DECORATION_OUTER_SHADOW` or `-DECORATION_INSET_SHADOW`
+ * in `aSize.w`, the layer's offsets, blur and spread in `aBorder` and its
+ * colour, opacity folded in, in `aFillColor`. An inset shadow is clipped to
+ * the padding box, so the box's border widths ride in `aGradientGeometry`,
+ * which a decoration has no gradient for.
+ *
+ * @param {Record<string, Float32Array>} data
+ * @param {number} index
+ * @param {Record<string, THREE.IUniform>} uniforms The box's numbers.
+ * @param {number} layer Which layer, 0 the topmost.
+ * @returns {void}
+ */
+export function writeShadowInstance(data, index, uniforms, layer) {
+  const { uSize, uRadii, uBorder, uShadows, uShadowColors, uClip, uClipRadii } = uniforms;
+  const at = index * 4;
+  const kind = isInsetShadow(uniforms, layer) ? DECORATION_INSET_SHADOW : DECORATION_OUTER_SHADOW;
+  setLanes(data.aSize, at, uSize.value.x, uSize.value.y, 0, -kind);
+  writeVec4(data.aRadii, index, uRadii.value);
+  writeVec4(data.aBorder, index, uShadows.value[layer]);
+  writeVec4(data.aFillColor, index, uShadowColors.value[layer]);
+  setLanes(data.aBorderColor, at, 0, 0, 0, 0);
+  writeVec4(data.aClip, index, uClip.value);
+  writeVec4(data.aClipRadii, index, uClipRadii.value);
+  writeVec4(data.aGradientGeometry, index, uBorder.value);
+  setLanes(data.aGradientTile, at, 0, 0, 0, 0);
+}
+
+/**
+ * @param {Float32Array} array
+ * @param {number} at
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @param {number} w
+ * @returns {void}
+ */
+export function setLanes(array, at, x, y, z, w) {
+  array[at] = x;
+  array[at + 1] = y;
+  array[at + 2] = z;
+  array[at + 3] = w;
 }
 
 /**

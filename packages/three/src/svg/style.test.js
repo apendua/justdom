@@ -99,6 +99,17 @@ describe("svg style reading", () => {
     assert.equal(transparent.alpha, 0);
   });
 
+  test("parsePaint reads a fill in any colour space", () => {
+    // Chromium keeps `oklch()` as written and draws this as rgb(75, 163, 247).
+    const paint = parsePaint("oklch(0.7 0.15 250 / 0.5)");
+    assert.ok(paint);
+    assert.equal(paint.color.getHexString(), "4ba3f7");
+    assert.equal(paint.alpha, 0.5);
+    const named = parsePaint("rebeccapurple");
+    assert.ok(named);
+    assert.equal(named.color.getHexString(), "663399", "the other named colours still read");
+  });
+
   test("parsePaint draws a paint server's fallback colour, and nothing without one", () => {
     const computed = parsePaint('url("#hatch") rgb(0, 128, 0)');
     assert.ok(computed);

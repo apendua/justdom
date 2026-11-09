@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { parseColor } from "../elements/VisualProperties.js";
+import { parseCssColor } from "../elements/cssColor.js";
 import { getAttributeCached } from "../elements/mirror.js";
 import { normalizeDashArray } from "./dash.js";
 
@@ -204,17 +204,16 @@ export function parsePaint(value) {
   if (!trimmed || trimmed === "none") {
     return null;
   }
-  if (/^rgba?\(/.test(trimmed)) {
-    // What a browser's computed style always is. Read as sRGB, the way every
-    // other colour in a portal is.
-    const [color, alpha] = parseColor(trimmed);
-    return { color, alpha };
+  const rgba = parseCssColor(trimmed);
+  if (rgba) {
+    // What a browser's computed style is, in whatever space it kept the
+    // colour in. Read as sRGB, the way every other colour in a portal is.
+    const color = new THREE.Color().setRGB(rgba[0], rgba[1], rgba[2], THREE.SRGBColorSpace);
+    return { color, alpha: rgba[3] };
   }
-  if (trimmed === "transparent") {
-    return { color: new THREE.Color(0, 0, 0), alpha: 0 };
-  }
-  // A keyword or a hex value, which is what an attribute says and what a
-  // style engine that does not resolve colours hands back.
+  // One of the named colours `parseCssColor` leaves out, which is what an
+  // attribute says and what a style engine that does not resolve colours
+  // hands back.
   const color = new THREE.Color();
   color.setStyle(trimmed, THREE.SRGBColorSpace);
   return { color, alpha: 1 };

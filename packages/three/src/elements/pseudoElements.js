@@ -268,19 +268,21 @@ function boxEqual(a, b) {
 
 /**
  * Whether a style paints anything on its box: a background colour that is
- * not transparent, a `background-image`, or a border that draws
- * (`getDrawnBorderColor`), so not a transparent one. A pseudo-element that
+ * not transparent, a `background-image`, a border that draws
+ * (`getDrawnBorderColor`), so not a transparent one, an outline or a
+ * `box-shadow`, which the batch draws around the box. A pseudo-element that
  * is only text builds no quad.
  *
  * @param {CSSStyleDeclaration} style
  * @returns {boolean}
  */
 export function paintsBox(style) {
-  const background = style.backgroundColor || "transparent";
   return (
-    (background !== "transparent" && parseAlpha(background) > 0) ||
+    parseAlpha(style.backgroundColor || "transparent") > 0 ||
     (style.backgroundImage || "none") !== "none" ||
-    parseAlpha(getDrawnBorderColor(style)) > 0
+    parseAlpha(getDrawnBorderColor(style)) > 0 ||
+    (style.outlineStyle || "none") !== "none" ||
+    (style.boxShadow || "none") !== "none"
   );
 }
 

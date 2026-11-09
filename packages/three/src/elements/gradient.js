@@ -1,4 +1,12 @@
 import * as THREE from "three";
+import {
+  COLOR_SPACES,
+  HUE_INDEX,
+  isLegacyColor,
+  parseCssColor,
+  srgbTo,
+  toSrgb,
+} from "./cssColor.js";
 
 /**
  * CSS gradients as a background layer, drawn by the same quad and shader as
@@ -51,9 +59,18 @@ import * as THREE from "three";
  */
 
 /**
- * A colour in sRGB channels, 0–1, straight (not premultiplied) alpha.
+ * @typedef {import('./cssColor.js').RGBA} RGBA
+ * @typedef {import('./cssColor.js').ColorSpace} ColorSpace
+ * @typedef {import('./cssColor.js').HueMethod} HueMethod
+ */
+
+/**
+ * The space a gradient's stops are mixed in, and for a polar space which way
+ * round the hue goes.
  *
- * @typedef {[number, number, number, number]} RGBA
+ * @typedef {object} Interpolation
+ * @property {ColorSpace} space
+ * @property {HueMethod} hue
  */
 
 /**
@@ -72,6 +89,7 @@ import * as THREE from "three";
  * @typedef {object} LinearGradient
  * @property {"linear"} kind
  * @property {boolean} repeating
+ * @property {Interpolation} interpolation
  * @property {StopEntry[]} stops
  * @property {number} angle In turns, CSS convention: 0 points up, clockwise.
  * @property {[number, number] | null} corner For `to top right` and the like,
@@ -84,6 +102,7 @@ import * as THREE from "three";
  * @typedef {object} RadialGradient
  * @property {"radial"} kind
  * @property {boolean} repeating
+ * @property {Interpolation} interpolation
  * @property {StopEntry[]} stops
  * @property {"circle" | "ellipse"} shape
  * @property {RadialExtent | [LengthPercentage, LengthPercentage]} size For an
@@ -95,6 +114,7 @@ import * as THREE from "three";
  * @typedef {object} ConicGradient
  * @property {"conic"} kind
  * @property {boolean} repeating
+ * @property {Interpolation} interpolation
  * @property {StopEntry[]} stops Positions in `percent` only: an angle is read
  *   as the percentage of a turn it is, and a px position invalidates the
  *   gradient.
@@ -190,88 +210,6 @@ export function splitTopLevel(value, separator) {
   }
   parts.push(value.slice(start));
   return parts.map((part) => part.trim()).filter((part) => part.length > 0);
-}
-
-/**
- * The colours a gradient in a computed style can hold. Browsers compute every
- * colour they can to `rgb()`/`rgba()` — `transparent` included — so that is
- * the case that matters; hex and the handful of keywords below are for
- * engines that hand back what was authored, jsdom among them. A colour this
- * cannot read makes the gradient unreadable too, which leaves the box drawing
- * its background colour alone: what it did before gradients were drawn at
- * all.
- *
- * @type {Record<string, RGBA>}
- */
-const NAMED_COLORS = {
-  transparent: [0, 0, 0, 0],
-  black: [0, 0, 0, 1],
-  white: [1, 1, 1, 1],
-  red: [1, 0, 0, 1],
-  lime: [0, 1, 0, 1],
-  blue: [0, 0, 1, 1],
-};
-
-/**
- * @param {string} value
- * @param {string} [currentColor]
- * @returns {RGBA | null}
- */
-export function parseCssColor(value, currentColor) {
-  const text = value.trim().toLowerCase();
-  if (text === "currentcolor") {
-    return currentColor && currentColor.toLowerCase() !== "currentcolor"
-      ? parseCssColor(currentColor)
-      : null;
-  }
-  if (text in NAMED_COLORS) {
-    return /** @type {RGBA} */ ([...NAMED_COLORS[text]]);
-  }
-  if (text.startsWith("#")) {
-    const hex = text.slice(1);
-    if (!/^[0-9a-f]+$/.test(hex)) {
-      return null;
-    }
-    const digits =
-      hex.length === 3 || hex.length === 4
-        ? hex.split("").map((digit) => parseInt(digit + digit, 16))
-        : hex.length === 6 || hex.length === 8
-          ? (hex.match(/../g) ?? []).map((pair) => parseInt(pair, 16))
-          : null;
-    if (!digits) {
-      return null;
-    }
-    return [digits[0] / 255, digits[1] / 255, digits[2] / 255, (digits[3] ?? 255) / 255];
-  }
-  const match = text.match(/^rgba?\((.*)\)$/);
-  if (!match) {
-    return null;
-  }
-  // Both syntaxes: `rgb(1, 2, 3, 0.5)` and `rgb(1 2 3 / 50%)`.
-  const [channelText, alphaText] = match[1].includes("/")
-    ? match[1].split("/")
-    : [match[1], undefined];
-  const channels = channelText
-    .split(/[\s,]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => (part.endsWith("%") ? (parseFloat(part) / 100) * 255 : parseFloat(part)));
-  const alphaPart = alphaText ?? (channels.length === 4 ? String(channels.pop()) : "1");
-  const alpha = alphaPart.trim().endsWith("%")
-    ? parseFloat(alphaPart) / 100
-    : parseFloat(alphaPart);
-  if (channels.length !== 3 || channels.some((channel) => !Number.isFinite(channel))) {
-    return null;
-  }
-  if (!Number.isFinite(alpha)) {
-    return null;
-  }
-  const clamp = (/** @type {number} */ x) => Math.min(Math.max(x, 0), 1);
-  return [
-    clamp(channels[0] / 255),
-    clamp(channels[1] / 255),
-    clamp(channels[2] / 255),
-    clamp(alpha),
-  ];
 }
 
 /**
@@ -430,16 +368,19 @@ export function parsePosition(tokens) {
 /**
  * The stop list of a gradient: every argument after the one that says how it
  * is shaped. Double-position stops (`red 10% 20%`) become the two stops they
- * abbreviate.
+ * abbreviate. `legacy` says whether every colour in it is written in a
+ * legacy syntax, which decides the space the gradient interpolates in when
+ * it names none.
  *
  * @param {string[]} parts
  * @param {"length" | "angle"} positions
  * @param {string} [currentColor]
- * @returns {StopEntry[] | null}
+ * @returns {{ stops: StopEntry[], legacy: boolean } | null}
  */
 function parseStops(parts, positions, currentColor) {
   /** @type {StopEntry[]} */
   const stops = [];
+  let legacy = true;
   for (const part of parts) {
     const tokens = splitTopLevel(part, " ");
     /** @type {LengthPercentage[]} */
@@ -459,6 +400,8 @@ function parseStops(parts, positions, currentColor) {
       if (!color) {
         return null;
       }
+      const written = token.trim().toLowerCase() === "currentcolor" ? currentColor : token;
+      legacy &&= isLegacyColor(written ?? token);
     }
     if (!color) {
       // A hint: a position alone, between two colour stops.
@@ -491,7 +434,7 @@ function parseStops(parts, positions, currentColor) {
       return null;
     }
   }
-  return stops;
+  return { stops, legacy };
 }
 
 /**
@@ -515,26 +458,33 @@ function anglePosition(token) {
 }
 
 /**
- * The part of a prelude that says which colour space to interpolate in. Read
- * past rather than honoured: the ramp is interpolated in sRGB whatever the
- * gradient asked for, which is the CSS default for gradients written with
- * legacy colours — every gradient in this repository — and a close
- * approximation otherwise.
+ * The part of a prelude that says which colour space to interpolate in, read
+ * out of the words around it: `in <space> [<hue-method> hue]`. `space` is
+ * `null` when the prelude names none, and the stops then decide. A space
+ * this does not know reads as none, so a gradient a newer engine computes
+ * with one still draws, in the default space.
  *
  * @param {string[]} words
- * @returns {string[]}
+ * @returns {{ words: string[], space: ColorSpace | null, hue: HueMethod }}
  */
-function withoutInterpolation(words) {
+function readInterpolation(words) {
   const at = words.indexOf("in");
   if (at < 0) {
-    return words;
+    return { words, space: null, hue: "shorter" };
   }
-  // `in <space> [<hue-method> hue]`
+  const name = words[at + 1] === "xyz" ? "xyz-d65" : words[at + 1];
+  const space = COLOR_SPACES.has(name) ? /** @type {ColorSpace} */ (name) : null;
   let end = at + 2;
+  /** @type {HueMethod} */
+  let hue = "shorter";
   if (words[end + 1] === "hue") {
+    const method = words[end];
+    if (method === "longer" || method === "increasing" || method === "decreasing") {
+      hue = method;
+    }
     end += 2;
   }
-  return [...words.slice(0, at), ...words.slice(end)];
+  return { words: [...words.slice(0, at), ...words.slice(end)], space, hue };
 }
 
 /**
@@ -555,19 +505,29 @@ export function parseGradient(value, currentColor) {
   if (parts.length === 0) {
     return null;
   }
-  const first = withoutInterpolation(splitTopLevel(parts[0].toLowerCase(), " "));
+  const first = readInterpolation(splitTopLevel(parts[0].toLowerCase(), " "));
   // Whether the first argument describes the shape or is already a stop.
   const firstIsStop = parseStops([parts[0]], kind === "conic" ? "angle" : "length", currentColor);
-  const prelude = firstIsStop ? [] : first;
+  const prelude = firstIsStop ? [] : first.words;
   const stopParts = firstIsStop ? parts : parts.slice(1);
-  const stops = parseStops(stopParts, kind === "conic" ? "angle" : "length", currentColor);
-  if (!stops) {
+  const parsed = parseStops(stopParts, kind === "conic" ? "angle" : "length", currentColor);
+  if (!parsed) {
     return null;
   }
+  const { stops } = parsed;
+  // With no space named, CSS mixes legacy colours in sRGB, as it always
+  // has, and any other in Oklab. Chromium computes the default away, so
+  // `linear-gradient(in oklab, red, blue)` keeps its `in oklab` but the same
+  // gradient with `oklch()` stops drops it.
+  /** @type {Interpolation} */
+  const interpolation = {
+    space: (!firstIsStop && first.space) || (parsed.legacy ? "srgb" : "oklab"),
+    hue: firstIsStop ? "shorter" : first.hue,
+  };
 
   if (kind === "linear") {
     /** @type {LinearGradient} */
-    const gradient = { kind, repeating, stops, angle: 0.5, corner: null };
+    const gradient = { kind, repeating, interpolation, stops, angle: 0.5, corner: null };
     if (prelude.length === 0) {
       return gradient;
     }
@@ -622,7 +582,7 @@ export function parseGradient(value, currentColor) {
       }
       from = angle;
     }
-    return { kind, repeating, stops, from, center };
+    return { kind, repeating, interpolation, stops, from, center };
   }
 
   /** @type {"circle" | "ellipse" | null} */
@@ -663,7 +623,7 @@ export function parseGradient(value, currentColor) {
   /** @type {RadialGradient["size"]} */
   const size =
     lengths.length === 0 ? (extent ?? "farthest-corner") : [lengths[0], lengths[1] ?? lengths[0]];
-  return { kind, repeating, stops, shape: resolvedShape, size, center };
+  return { kind, repeating, interpolation, stops, shape: resolvedShape, size, center };
 }
 
 /**
@@ -889,6 +849,8 @@ export const GRADIENT_CONIC = 3;
  *   and stop `i + 1`, if there is one.
  * @property {boolean} [straight] Interpolate the stops in straight alpha, as
  *   an SVG gradient is, rather than premultiplied, as a CSS one is.
+ * @property {Interpolation} [interpolation] The space to mix the stops in;
+ *   sRGB, the shorter way round, when absent.
  */
 
 /**
@@ -1098,19 +1060,27 @@ export function resolveStops(entries, length) {
  */
 function resolveRamp(gradient, length) {
   const { stops, hints } = resolveStops(gradient.stops, length);
+  const { interpolation } = gradient;
   if (!gradient.repeating) {
-    return { repeating: false, start: 0, period: 1, stops, hints };
+    return { repeating: false, start: 0, period: 1, stops, hints, interpolation };
   }
   const start = stops[0].position;
   const period = stops[stops.length - 1].position - start;
   if (period > 1e-6) {
-    return { repeating: true, start, period, stops, hints };
+    return { repeating: true, start, period, stops, hints, interpolation };
   }
   const spread = stops.map((stop, i) => ({
     color: stop.color,
     position: stops.length === 1 ? 0 : i / (stops.length - 1),
   }));
-  const average = averageColor({ repeating: false, start: 0, period: 1, stops: spread, hints });
+  const average = averageColor({
+    repeating: false,
+    start: 0,
+    period: 1,
+    stops: spread,
+    hints,
+    interpolation,
+  });
   return {
     repeating: false,
     start: 0,
@@ -1280,6 +1250,13 @@ export function rampKeyOf(ramp) {
   if (ramp.straight) {
     key += "s";
   }
+  const { space, hue } = ramp.interpolation ?? SRGB_SHORTER;
+  if (space !== "srgb") {
+    key += ` ${space}`;
+    if (hue !== "shorter" && space in HUE_INDEX) {
+      key += ` ${hue}`;
+    }
+  }
   for (let i = 0; i < ramp.stops.length; i++) {
     const { color, position } = ramp.stops[i];
     key += `|${round(position)}:${color.map(round).join(",")}`;
@@ -1292,11 +1269,24 @@ export function rampKeyOf(ramp) {
 }
 
 /**
+ * What a ramp without an `interpolation` mixes in, an SVG gradient's: sRGB,
+ * as a CSS gradient with legacy stops and no `in` does too.
+ *
+ * @type {Interpolation}
+ */
+const SRGB_SHORTER = { space: "srgb", hue: "shorter" };
+
+/**
  * The colour at a point of the gradient line, interpolated the way CSS does
- * it: between the two stops around it, in premultiplied sRGB, bent toward a
- * hint if the transition has one. Past either end it holds the end's colour.
- * A `straight` ramp, an SVG gradient's, interpolates the channels without
- * the alpha, as Chromium draws one.
+ * it: between the two stops around it, premultiplied, in the ramp's space,
+ * bent toward a hint if the transition has one. Past either end it holds the
+ * end's colour. A `straight` ramp, an SVG gradient's, interpolates the
+ * channels without the alpha, as Chromium draws one.
+ *
+ * In a polar space the hue is not premultiplied, and goes round the way the
+ * hue method says. A stop with no hue, a grey, takes the other stop's, so a
+ * gradient from white to blue in `oklch` stays blue rather than passing
+ * through red at hue 0.
  *
  * @param {ResolvedRamp} ramp
  * @param {number} t
@@ -1332,18 +1322,59 @@ export function colorAt(ramp, t) {
   if (alpha <= 0) {
     return [0, 0, 0, 0];
   }
-  /** @type {RGBA} */
-  const color = [0, 0, 0, alpha];
+  const { space, hue } = ramp.interpolation ?? SRGB_SHORTER;
+  const from = srgbTo([a.color[0], a.color[1], a.color[2]], space);
+  const to = srgbTo([b.color[0], b.color[1], b.color[2]], space);
+  const hueAt = HUE_INDEX[space];
+  if (hueAt !== undefined) {
+    fixHues(from, to, hueAt, hue);
+  }
+  /** @type {[number, number, number]} */
+  const mixed = [0, 0, 0];
   for (let c = 0; c < 3; c++) {
-    if (ramp.straight) {
-      color[c] = a.color[c] + (b.color[c] - a.color[c]) * weight;
+    if (ramp.straight || c === hueAt) {
+      mixed[c] = from[c] + (to[c] - from[c]) * weight;
       continue;
     }
     const premultiplied =
-      a.color[c] * a.color[3] + (b.color[c] * b.color[3] - a.color[c] * a.color[3]) * weight;
-    color[c] = premultiplied / alpha;
+      from[c] * a.color[3] + (to[c] * b.color[3] - from[c] * a.color[3]) * weight;
+    mixed[c] = premultiplied / alpha;
   }
-  return color;
+  const [red, green, blue] = toSrgb(mixed, space);
+  return [red, green, blue, alpha];
+}
+
+/**
+ * Put two hues where interpolating straight between them goes round the way
+ * `method` says, as CSS Color 4 sets out; a missing hue (`NaN`) takes the
+ * other's first.
+ *
+ * @param {[number, number, number]} from
+ * @param {[number, number, number]} to
+ * @param {number} at Which coordinate is the hue.
+ * @param {HueMethod} method
+ */
+function fixHues(from, to, at, method) {
+  let h1 = from[at];
+  let h2 = to[at];
+  if (Number.isNaN(h1)) h1 = Number.isNaN(h2) ? 0 : h2;
+  if (Number.isNaN(h2)) h2 = h1;
+  h1 = ((h1 % 360) + 360) % 360;
+  h2 = ((h2 % 360) + 360) % 360;
+  const delta = h2 - h1;
+  if (method === "shorter") {
+    if (delta > 180) h1 += 360;
+    else if (delta < -180) h2 += 360;
+  } else if (method === "longer") {
+    if (delta > 0 && delta < 180) h1 += 360;
+    else if (delta > -180 && delta <= 0) h2 += 360;
+  } else if (method === "increasing") {
+    if (h2 < h1) h2 += 360;
+  } else if (h1 < h2) {
+    h1 += 360;
+  }
+  from[at] = h1;
+  to[at] = h2;
 }
 
 /**
@@ -1514,9 +1545,9 @@ class RampAtlas {
     const texture = new THREE.DataTexture(data, RAMP_WIDTH, height, THREE.RGBAFormat);
     // The bytes are sRGB, as CSS colours are, and deliberately not declared
     // so: the shader composites the layer in sRGB, as CSS does, and wants the
-    // bytes as they are — and filtering between texels then interpolates in
-    // sRGB too, which is what a gradient's stops ask for. See
-    // `GRADIENT_GLSL`.
+    // bytes as they are. The ramp is baked in the space the gradient mixes
+    // in (`colorAt`), so filtering between two neighbouring texels, in sRGB,
+    // only bridges a 1/256 step of it. See `GRADIENT_GLSL`.
     texture.colorSpace = THREE.NoColorSpace;
     texture.magFilter = THREE.LinearFilter;
     texture.minFilter = THREE.LinearFilter;

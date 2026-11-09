@@ -16,10 +16,26 @@ import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { getDrawLevel, getRenderBand } from "./elevation.js";
+import { parseCssColor } from "./cssColor.js";
+import { parseBoxShadow } from "./shadows.js";
 import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradient.js";
 
 /**
  * @import {GradientLayout} from './gradient.js';
+ */
+
+/**
+ * One layer of a `box-shadow`, as the panel's batch draws it: its colour
+ * as three draws it, and its alpha with the element's opacity in it.
+ *
+ * @typedef {object} DrawnShadow
+ * @property {THREE.Color} color
+ * @property {number} alpha
+ * @property {number} x
+ * @property {number} y
+ * @property {number} blur
+ * @property {number} spread
+ * @property {boolean} inset
  */
 
 /**
@@ -51,6 +67,10 @@ import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradi
  * @property {string} paddingBottom
  * @property {string} paddingLeft
  * @property {string} borderColor
+ * @property {string} outlineWidth Empty when `outline-style` is `none`.
+ * @property {string} outlineOffset
+ * @property {string} outlineColor
+ * @property {string} boxShadow
  * @property {string} textColor
  * @property {number} drawLevel
  * @property {number} band Where the draw level counts from
@@ -77,6 +97,11 @@ import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradi
  * @property {GradientLayout | null} backgroundGradient
  * @property {THREE.Color} borderColor
  * @property {number} borderAlpha
+ * @property {number} outlineWidth
+ * @property {number} outlineOffset
+ * @property {THREE.Color} outlineColor
+ * @property {number} outlineAlpha
+ * @property {DrawnShadow[]} boxShadows
  * @property {THREE.Color} textColor
  * @property {number} textAlpha
  * @property {number} drawLevel
@@ -118,12 +143,6 @@ function parseSize(value, units) {
 }
 
 /**
- * A computed CSS colour as `getComputedStyle` serializes one: `rgb(r, g, b)`
- * or `rgba(r, g, b, a)`. The fourth group is the alpha, when there is one.
- */
-const COLOR_PATTERN = /rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/;
-
-/**
  * The alpha of a computed CSS colour alone, as `parseColor` reads it, for
  * the callers that want nothing else: it builds no `THREE.Color` and does
  * not convert one to linear.
@@ -132,13 +151,13 @@ const COLOR_PATTERN = /rgba?\(([^,]+),([^,]+),([^,]+)(?:,\s*([\d.]+))?\)/;
  * @returns {number}
  */
 export function parseAlpha(colorString) {
-  const match = COLOR_PATTERN.exec(colorString);
-  return match?.[4] !== undefined ? parseFloat(match[4]) : 1.0;
+  return parseCssColor(colorString)?.[3] ?? 1.0;
 }
 
 /**
  * A computed CSS colour, as the colour three.js should draw and the alpha it
- * should draw it with.
+ * should draw it with. Any colour `parseCssColor` reads, in any space; one it
+ * does not read draws opaque white.
  *
  * The channels are read as sRGB, which is what CSS means by them. Handing the
  * three numbers straight to `new THREE.Color(r, g, b)` would instead declare
@@ -150,17 +169,12 @@ export function parseAlpha(colorString) {
  * @returns {[THREE.Color, number]}
  */
 export function parseColor(colorString) {
-  const match = COLOR_PATTERN.exec(colorString);
-  if (!match) {
-    const color = new THREE.Color();
-    return [color, 1.0];
+  const rgba = parseCssColor(colorString);
+  if (!rgba) {
+    return [new THREE.Color(), 1.0];
   }
-  const r = parseInt(match[1], 10) / 255;
-  const g = parseInt(match[2], 10) / 255;
-  const b = parseInt(match[3], 10) / 255;
-  const a = match[4] !== undefined ? parseFloat(match[4]) : 1.0;
-  const color = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
-  return [color, a];
+  const color = new THREE.Color().setRGB(rgba[0], rgba[1], rgba[2], THREE.SRGBColorSpace);
+  return [color, rgba[3]];
 }
 
 /**
@@ -341,6 +355,12 @@ export default class VisualProperties {
     // nobody.
     const backgroundImage = style.backgroundImage || "none";
     const hasImage = backgroundImage !== "none";
+    // The same for an outline: a browser computes `outline-width` to its
+    // `medium` 3px whatever the style, so `none` is read from the style, and
+    // only a box that has one reads the rest. jsdom computes no longhand
+    // until one is set, and an empty style is none.
+    const outlineStyle = style.outlineStyle || "none";
+    const hasOutline = outlineStyle !== "none";
     /** @type {RawVisualProperties} */
     const properties = {
       totalWidth: width,
@@ -370,6 +390,10 @@ export default class VisualProperties {
       paddingBottom: hasImage ? style.paddingBottom : "",
       paddingLeft: hasImage ? style.paddingLeft : "",
       borderColor: getDrawnBorderColor(style),
+      outlineWidth: hasOutline ? style.outlineWidth : "",
+      outlineOffset: hasOutline ? style.outlineOffset : "",
+      outlineColor: hasOutline ? style.outlineColor : "",
+      boxShadow: style.boxShadow || "none",
       textColor: style.color,
       // The element's, also for its `::before` or `::after`, whose quad
       // reads its own level from its stand-in (`generatedContent.js`).
@@ -619,6 +643,49 @@ export default class VisualProperties {
     return parseAlpha(this.#props.borderColor) * this.#props.opacity;
   }
 
+  /**
+   * The outline's width in px, 0 for a box with none. Every style but
+   * `none` is drawn, as a solid line.
+   */
+  get outlineWidth() {
+    return parseFloat(this.#props.outlineWidth) || 0;
+  }
+
+  /** How far outside the border edge the outline starts, in px. */
+  get outlineOffset() {
+    return parseFloat(this.#props.outlineOffset) || 0;
+  }
+
+  get outlineColor() {
+    const [outlineColor] = parseColor(this.#props.outlineColor);
+    return outlineColor;
+  }
+
+  get outlineAlpha() {
+    return parseAlpha(this.#props.outlineColor) * this.#props.opacity;
+  }
+
+  /**
+   * The layers of the `box-shadow`, topmost first, at most `MAX_BOX_SHADOWS`
+   * (`shadows.js`).
+   *
+   * @returns {DrawnShadow[]}
+   */
+  get boxShadows() {
+    const { opacity, textColor } = this.#props;
+    return parseBoxShadow(this.#props.boxShadow, textColor).map(
+      ({ color: [r, g, b, alpha], x, y, blur, spread, inset }) => ({
+        color: new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace),
+        alpha: alpha * opacity,
+        x,
+        y,
+        blur,
+        spread,
+        inset,
+      }),
+    );
+  }
+
   get textColor() {
     const [textColor] = parseColor(this.#props.textColor);
     return textColor;
@@ -674,5 +741,10 @@ decorate(VisualProperties.prototype, "backgroundPicture", memo());
 decorate(VisualProperties.prototype, "backgroundPictureUrl", memo());
 decorate(VisualProperties.prototype, "borderColor", memo());
 decorate(VisualProperties.prototype, "borderAlpha", memo());
+decorate(VisualProperties.prototype, "outlineWidth", memo());
+decorate(VisualProperties.prototype, "outlineOffset", memo());
+decorate(VisualProperties.prototype, "outlineColor", memo());
+decorate(VisualProperties.prototype, "outlineAlpha", memo());
+decorate(VisualProperties.prototype, "boxShadows", memo());
 decorate(VisualProperties.prototype, "textColor", memo());
 decorate(VisualProperties.prototype, "textAlpha", memo());

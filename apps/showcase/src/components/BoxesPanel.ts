@@ -52,6 +52,60 @@ const swatchCircle = className`
   border-radius: 50%;
 `;
 
+/**
+ * Outlines are rings outside the border box, with no room in the layout: the
+ * offset one stands clear of its box, the negative one cuts into it, and the
+ * round one follows its radius out.
+ */
+const ringed = className`
+  outline: 3px solid rgb(240, 170, 60);
+`;
+
+const ringedOffset = className`
+  outline: 2px solid rgb(221, 64, 104);
+  outline-offset: 4px;
+`;
+
+const ringedInside = className`
+  outline: 3px solid rgb(255, 255, 255);
+  outline-offset: -8px;
+`;
+
+/**
+ * Shadows under each box, drawn under everything else in the panel: a soft
+ * card, a spread ring as sharp as a border, an inset well and two layers
+ * stacked.
+ */
+const shadowCard = className`
+  ${swatchBase}
+  background-color: rgb(250, 250, 253);
+  border-radius: 10px;
+  box-shadow: 0 6px 12px -2px rgba(20, 30, 60, 0.35);
+`;
+
+const shadowRing = className`
+  ${swatchBase}
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px rgb(240, 170, 60);
+`;
+
+const shadowInset = className`
+  ${swatchBase}
+  background-color: rgb(228, 231, 240);
+  border-radius: 10px;
+  box-shadow: inset 0 3px 6px rgba(20, 30, 60, 0.45);
+`;
+
+const shadowStacked = className`
+  ${swatchBase}
+  background-color: rgb(148, 96, 220);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px rgb(255, 255, 255),
+    0 0 0 4px rgb(148, 96, 220),
+    4px 6px 10px rgba(20, 30, 60, 0.4);
+`;
+
 const fadedStyle = className`
   opacity: 0.6;
 `;
@@ -135,6 +189,26 @@ const BoxesPanel = component((_ctx: WeakKey) => {
           $("div", [set("className", swatchOutlined)]),
           $("div", [set("className", swatchPill)]),
           $("div", [set("className", swatchCircle)]),
+        ),
+      ]),
+      $("p", [set("className", captionStyle), children(text`outline and outline-offset`)]),
+      $("div", [
+        set("className", rowStyle),
+        children(
+          $("div", [set("className", classes(swatchSquare, ringed))]),
+          $("div", [set("className", classes(swatchRounded, ringedOffset))]),
+          $("div", [set("className", classes(swatchRounded, ringedInside))]),
+          $("div", [set("className", classes(swatchCircle, ringedOffset))]),
+        ),
+      ]),
+      $("p", [set("className", captionStyle), children(text`box-shadow, outer and inset`)]),
+      $("div", [
+        set("className", rowStyle),
+        children(
+          $("div", [set("className", shadowCard)]),
+          $("div", [set("className", shadowRing)]),
+          $("div", [set("className", shadowInset)]),
+          $("div", [set("className", shadowStacked)]),
         ),
       ]),
       $("p", [set("className", captionStyle), children(text`opacity & visibility`)]),

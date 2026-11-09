@@ -9,7 +9,9 @@ import { SPECIMEN } from "./specimen.js";
  * and the two stacks a panel draws differently. A box draws one gradient and
  * one picture, so a picture over a gradient shows both, and of two gradients
  * only the topmost is drawn. The second of those is here so that the
- * documented difference from a page has a photograph.
+ * documented difference from a page has a photograph. The last row is one
+ * swatch per kind of colour a browser keeps as written rather than computing
+ * to `rgb()`, and two gradients mixed outside sRGB.
  */
 
 /** A small tile, repeated: a dot on cream. */
@@ -84,6 +86,19 @@ const STACKS = [
   ],
 ] as const;
 
+/** Colours in the spaces a computed style keeps as written. */
+const SPACES = [
+  ["oklch", "oklch(0.65 0.15 250)"],
+  ["lab", "lab(55 45 35)"],
+  ["display-p3", "color(display-p3 0.2 0.65 0.4)"],
+  ["color-mix", "color-mix(in srgb, rgb(0, 123, 255), rgb(221, 64, 104))"],
+  ["oklab mix", "linear-gradient(90deg, oklch(0.65 0.15 250), oklch(0.7 0.15 60))"],
+  [
+    "oklch longer",
+    "linear-gradient(90deg in oklch longer hue, rgb(0, 123, 255), rgb(221, 64, 104))",
+  ],
+] as const;
+
 /** A labelled swatch. The background is inline, since every swatch has its own. */
 const swatch = (label: string, background: string, wide = false) =>
   $("div", [
@@ -121,6 +136,14 @@ const BackgroundsPanel = component((_ctx: WeakKey) => {
       $("div", [
         set("className", rowStyle),
         children(...STACKS.map(([label, background]) => swatch(label, background, true))),
+      ]),
+      $("p", [
+        set("className", captionStyle),
+        children(text`colour spaces: oklch, lab, display-p3, color-mix, gradients`),
+      ]),
+      $("div", [
+        set("className", rowStyle),
+        children(...SPACES.map(([label, background]) => swatch(label, background))),
       ]),
     ),
   ]);

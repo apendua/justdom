@@ -11,7 +11,6 @@ import {
   parseAngle,
   parseBackground,
   parseBackgroundPicture,
-  parseCssColor,
   parseGradient,
   parseLengthPercentage,
   parsePosition,
@@ -24,6 +23,7 @@ import {
   resolveStops,
   splitTopLevel,
 } from "./gradient.js";
+import { parseCssColor } from "./cssColor.js";
 
 /**
  * @import {BackgroundBox, GradientLayout} from './gradient.js';
@@ -97,8 +97,13 @@ describe("gradient parsing", () => {
     assert.deepEqual(parseCssColor("#0000ff80"), [0, 0, 1, 128 / 255]);
     assert.deepEqual(parseCssColor("transparent"), [0, 0, 0, 0]);
     assert.deepEqual(parseCssColor("currentcolor", "rgb(0, 255, 0)"), [0, 1, 0, 1]);
-    assert.equal(parseCssColor("oklch(0.5 0.1 200)"), null);
     assert.equal(parseCssColor("10px"), null);
+  });
+
+  test("a stop in any colour space is read, not refused", () => {
+    const gradient = parseGradient("linear-gradient(red, oklch(0.5 0.1 200))");
+    assert.ok(gradient);
+    assert.deepEqual(gradient.stops[1].color, parseCssColor("oklch(0.5 0.1 200)"));
   });
 
   test("length-percentages, including the calc() a computed position can be", () => {
@@ -192,17 +197,61 @@ describe("gradient parsing", () => {
     assert.deepEqual(conic.stops[1].position, { percent: 25, px: 0 });
   });
 
-  test("an interpolation space is read past, not refused", () => {
+  test("an interpolation space is read out of the prelude", () => {
     const gradient = parseGradient("linear-gradient(in oklab to right, red, blue)");
     assert.ok(gradient && gradient.kind === "linear");
     assert.equal(gradient.angle, 0.25);
+    assert.deepEqual(gradient.interpolation, { space: "oklab", hue: "shorter" });
+    assert.deepEqual(
+      parseGradient("linear-gradient(90deg in oklch longer hue, red, blue)")?.interpolation,
+      {
+        space: "oklch",
+        hue: "longer",
+      },
+    );
+    assert.deepEqual(
+      parseGradient("conic-gradient(in hsl decreasing hue, red, blue)")?.interpolation,
+      {
+        space: "hsl",
+        hue: "decreasing",
+      },
+    );
+    assert.equal(
+      parseGradient("linear-gradient(in xyz, red, blue)")?.interpolation.space,
+      "xyz-d65",
+    );
+  });
+
+  test("with no space named, legacy stops mix in sRGB and any other in Oklab", () => {
+    assert.equal(
+      parseGradient("linear-gradient(red, #00f, rgb(0, 255, 0))")?.interpolation.space,
+      "srgb",
+    );
+    assert.equal(
+      parseGradient("linear-gradient(red, oklch(0.5 0.1 200))")?.interpolation.space,
+      "oklab",
+    );
+    assert.equal(
+      parseGradient("linear-gradient(red, color(srgb 0 0 1))")?.interpolation.space,
+      "oklab",
+    );
+    assert.equal(
+      parseGradient("linear-gradient(red, currentcolor)", "lab(50 0 0)")?.interpolation.space,
+      "oklab",
+      "currentcolor goes by the colour it stands for",
+    );
+    // A space this does not know falls back to the default, rather than the
+    // gradient going undrawn.
+    assert.equal(
+      parseGradient("linear-gradient(in nowhere, red, blue)")?.interpolation.space,
+      "srgb",
+    );
   });
 
   test("what cannot be drawn parses as nothing", () => {
     assert.equal(parseGradient("url(image.png)"), null);
     assert.equal(parseGradient("linear-gradient(to nowhere, red, blue)"), null);
     assert.equal(parseGradient("linear-gradient(red, 10%)"), null, "a hint needs a stop after it");
-    assert.equal(parseGradient("linear-gradient(red, oklch(0.5 0.1 200))"), null);
     assert.equal(
       parseGradient("conic-gradient(red 10px, blue)"),
       null,
@@ -250,6 +299,24 @@ describe("gradient parsing", () => {
   });
 });
 
+/**
+ * A gradient's ramp, laid out along a line 100 px long.
+ *
+ * @param {import('./gradient.js').Gradient} gradient
+ * @returns {import('./gradient.js').ResolvedRamp}
+ */
+function rampOf(gradient) {
+  const { stops, hints } = resolveStops(gradient.stops, 100);
+  return {
+    repeating: false,
+    start: 0,
+    period: 1,
+    stops,
+    hints,
+    interpolation: gradient.interpolation,
+  };
+}
+
 describe("stops", () => {
   test("unplaced stops are placed the way CSS places them", () => {
     const gradient = parseGradient("linear-gradient(red, lime, blue 80%, white 40%, black)");
@@ -292,6 +359,54 @@ describe("stops", () => {
     assertClose(colorAt(ramp, 0.5), [1, 0, 0, 0.5]);
     assertClose(colorAt({ ...ramp, straight: true }, 0.5), [0.5, 0, 0.5, 0.5]);
     assert.notEqual(rampKeyOf(ramp), rampKeyOf({ ...ramp, straight: true }), "never one row");
+  });
+
+  test("stops mix in the gradient's space, as Chromium mixes them", () => {
+    // The middle of each, as Chromium computes
+    // `color-mix(in <space>, oklch(0.6 0.1 30), oklch(0.6 0.1 250))`, which is
+    // what a gradient's midpoint is.
+    /** @type {[string, [number, number, number, number]][]} */
+    const cases = [
+      ["in srgb, ", [0.508139, 0.463416, 0.544473, 1]],
+      ["", [0.539696, 0.47815, 0.553746, 1]],
+      ["in oklab, ", [0.539696, 0.47815, 0.553746, 1]],
+      ["in oklch, ", [0.606508, 0.42341, 0.648427, 1]],
+      ["in oklch longer hue, ", [0.372343, 0.560116, 0.331225, 1]],
+      ["in lch increasing hue, ", [0.297345, 0.548886, 0.359175, 1]],
+      ["in hsl decreasing hue, ", [0.648412, 0.3356, 0.717013, 1]],
+      ["in display-p3, ", [0.521169, 0.465993, 0.548218, 1]],
+    ];
+    for (const [prelude, expected] of cases) {
+      const gradient = parseGradient(
+        `linear-gradient(${prelude}oklch(0.6 0.1 30), oklch(0.6 0.1 250))`,
+      );
+      assert.ok(gradient, prelude);
+      assertClose(colorAt(rampOf(gradient), 0.5), expected, 1e-3);
+    }
+  });
+
+  test("a grey takes the hue of the stop it mixes with", () => {
+    // Chromium: color(srgb 0.452849 0.63809 1.03604), blue all the way, not
+    // through the red at hue 0.
+    const gradient = parseGradient("linear-gradient(in oklch, white, blue)");
+    assert.ok(gradient);
+    assertClose(colorAt(rampOf(gradient), 0.5), [0.452849, 0.63809, 1, 1], 1e-3);
+  });
+
+  test("a polar mix premultiplies everything but the hue", () => {
+    // Chromium: color(srgb 0.761274 -0.0992244 0.788371 / 0.75098).
+    const gradient = parseGradient("linear-gradient(in oklch, red, rgba(0, 0, 255, 0.5))");
+    assert.ok(gradient);
+    assertClose(colorAt(rampOf(gradient), 0.5), [0.761274, 0, 0.788371, 0.75], 1e-3);
+  });
+
+  test("gradients that differ only in their space never share a row", () => {
+    const keys = ["", "in oklab, ", "in oklch, ", "in oklch longer hue, "].map((prelude) => {
+      const gradient = parseGradient(`linear-gradient(${prelude}red, blue)`);
+      assert.ok(gradient);
+      return rampKeyOf(rampOf(gradient));
+    });
+    assert.equal(new Set(keys).size, keys.length);
   });
 
   test("a hint moves the midpoint of its transition", () => {

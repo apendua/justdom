@@ -9,12 +9,15 @@ is stated exactly, with the reasons, in [What a panel draws](/api/three/css) and
 
 A box is drawn from its background colour, a gradient, a border width per side and one border
 colour, `border-radius`, `opacity`, `visibility`, `transform` and `overflow`, in the page's paint
-order. Text is rasterized once as a mask and coloured by its material, so animating `color` re-draws
-nothing. An `<img>` is a picture on the same box, with `object-fit` and `object-position`. A `<li>`
-has its marker. A checkbox is a box with a tick in it, in the element's `color`; a text field is a
-box with its value in it. Inline `<svg>` is drawn when the scene installs the `svgElements()` plugin
-from `justdom-three/svg`, from the shapes' computed style, so a class on a `<path>` and
-`fill: currentColor` work.
+order. An `outline` is a ring around the box, `outline-offset` from its border edge, drawn over
+everything else in the box's layer as a page draws it. A `box-shadow` is drawn, outer and inset, up
+to four layers of it. Text is rasterized once as a mask and coloured by its material, so animating
+`color` re-draws nothing. An `<img>` is a picture on the same box, with `object-fit` and
+`object-position`. A `<li>` has its marker. A checkbox is a box with a tick in it, in the element's
+`color`; a text field is a box with its value in it. Inline `<svg>` is drawn when the scene installs
+the `svgElements()` plugin from `justdom-three/svg`, from the shapes' computed style, so a class on
+a `<path>` and `fill: currentColor` work. A colour can be written in any CSS colour space,
+`oklch()`, `lab()` and `color(display-p3 …)` among them, and one outside sRGB is clipped to it.
 
 ## What to prefer
 
@@ -85,12 +88,15 @@ The things a page does that a panel does not, most often met:
 - All but the topmost gradient and the topmost `url()` picture of stacked backgrounds. A box with a
   picture is drawn on its own rather than in its panel's batch.
 - `background-clip`; the background fills the padding box.
-- Dashed, dotted and double borders, drawn solid, and sides bordered in different colours, drawn in
-  the first side's.
+- Dashed, dotted and double borders and outlines, drawn solid, and sides bordered in different
+  colours, drawn in the first side's.
+- The outline and the `box-shadow` of a box drawn on its own: an `<img>`, and a box with a `url()`
+  picture.
+- A shadow falling on a box at its own draw level, as a later flow sibling's does on a page.
 - A `::before` or `::after` positioned against a box other than its own element, or given a
   `z-index`, and the counters and quotes in a `content`.
-- `box-shadow`. A `text-shadow` is drawn, baked into the text's texture, and that text re-draws per
-  colour change.
+- A `text-shadow` past its first layer. The first is drawn, baked into the text's texture, and that
+  text re-draws per colour change.
 - `:has()`, `:nth-last-child()`, and a sibling combinator on `data-xr-hover`, `data-xr-active` or
   `data-xr-focus`.
 - A native `<select>`, a `<textarea>`'s value, every `<input>` type but checkboxes and the text

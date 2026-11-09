@@ -111,6 +111,8 @@ const inputStyle = stylesheet`
 
   .${CLASS_NAME}:focus {
     border-color: ${TICKED};
+    outline: 2px solid ${TICKED};
+    outline-offset: 2px;
   }
 `;
 

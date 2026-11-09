@@ -3794,7 +3794,10 @@ describe("character edges", () => {
               height: bottom - top,
             });
           },
-          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ (rects())),
+          getClientRects: () => {
+            onRect?.();
+            return /** @type {DOMRectList} */ (/** @type {unknown} */ (rects()));
+          },
         })
       );
     };
@@ -3870,6 +3873,115 @@ describe("character edges", () => {
     assert.ok(layout.reveal);
     assert.equal(layout.reveal.lines.length, 1);
     assert.deepEqual([...(layout.reveal.lines[0].edges ?? [])], [0, CHAR, 2 * CHAR, 3 * CHAR]);
+  });
+
+  test("a range that starts after a line break is not stretched up to the line before", () => {
+    // `ab\ncd` under `pre-wrap`, as WebKit reports it: a range that starts
+    // right after the newline also has a zero-width rect at the end of the
+    // line before, so its bounding rect reaches up into that line. Read that
+    // way, `cd` was drawn a line too high and `c`'s edge spanned `ab`.
+    const content = "ab\ncd";
+    /** @param {number} index */
+    const glyph = (index) => {
+      const line = index < 3 ? 0 : 1;
+      const column = index < 3 ? index : index - 3;
+      const width = content[index] === "\n" ? 0 : CHAR;
+      return { left: column * CHAR, right: column * CHAR + width, top: line * LINE };
+    };
+    const original = document.createRange;
+    resetMeasuringRangeForTests();
+    document.createRange = () => {
+      let start = 0;
+      let end = 0;
+      const rects = () => {
+        /** @type {Array<{ left: number, top: number, right: number, bottom: number, width: number, height: number }>} */
+        const found = [];
+        if (start > 0 && content[start - 1] === "\n") {
+          const before = glyph(start - 1);
+          found.push({
+            left: before.right,
+            right: before.right,
+            top: before.top,
+            bottom: before.top + LINE,
+            width: 0,
+            height: LINE,
+          });
+        }
+        for (let index = start; index < end; index++) {
+          const { left, right, top } = glyph(index);
+          const last = found[found.length - 1];
+          if (last && last.top === top && last.right === left && index > start) {
+            last.right = right;
+            last.width = right - last.left;
+            continue;
+          }
+          found.push({ left, right, top, bottom: top + LINE, width: right - left, height: LINE });
+        }
+        return found;
+      };
+      return /** @type {Range} */ (
+        /** @type {unknown} */ ({
+          selectNodeContents: () => {
+            start = 0;
+            end = content.length;
+          },
+          setStart: (/** @type {Node} */ _node, /** @type {number} */ offset) => {
+            start = offset;
+          },
+          setEnd: (/** @type {Node} */ _node, /** @type {number} */ offset) => {
+            end = offset;
+          },
+          getBoundingClientRect: () => {
+            const all = rects();
+            const left = Math.min(...all.map((rect) => rect.left));
+            const top = Math.min(...all.map((rect) => rect.top));
+            const right = Math.max(...all.map((rect) => rect.right));
+            const bottom = Math.max(...all.map((rect) => rect.bottom));
+            return /** @type {DOMRect} */ ({
+              left,
+              top,
+              right,
+              bottom,
+              width: right - left,
+              height: bottom - top,
+            });
+          },
+          getClientRects: () => /** @type {DOMRectList} */ (/** @type {unknown} */ (rects())),
+        })
+      );
+    };
+    const parent = document.createElement("pre");
+    parent.style.whiteSpace = "pre-wrap";
+    const node = document.createTextNode(content);
+    parent.appendChild(node);
+    document.body.appendChild(parent);
+    const mirror = createMirror();
+    mirror.adopt(parent);
+    mirror.adopt(node);
+    const stop = trackCharacterEdges(node);
+    try {
+      const layout = getTextLayout(node);
+      assert.deepEqual(
+        layout.lines.map((line) => [line.text, line.top, line.height]),
+        [
+          ["ab", 0, LINE],
+          ["cd", LINE, LINE],
+        ],
+      );
+      assert.ok(layout.reveal);
+      assert.deepEqual(
+        layout.reveal.lines.map((line) => [line.top, [...(line.edges ?? [])]]),
+        [
+          [0, [0, CHAR, 2 * CHAR]],
+          [LINE, [0, CHAR, 2 * CHAR]],
+        ],
+      );
+    } finally {
+      stop();
+      parent.remove();
+      document.createRange = original;
+      resetMeasuringRangeForTests();
+    }
   });
 
   test("tracking is per node, and is given back", () => {

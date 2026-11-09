@@ -38,6 +38,7 @@ import {
   invalidatePanelFrames,
   measureClientRect,
   measureClientRects,
+  measureRunRect,
 } from "./panelFrame.js";
 
 /**
@@ -4257,7 +4258,7 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
   const starts = findLineStarts(content.length, boxes.length, (index) => {
     range.setStart(text, index);
     range.setEnd(text, index + 1);
-    const rect = measureClientRect(range, frame);
+    const rect = measureRunRect(range, frame);
     if (rect.width <= 0 && rect.height <= 0) {
       // Whitespace the layout collapsed away occupies no space and sits on
       // no line box.
@@ -4301,7 +4302,7 @@ function measureTextRectsWith(range, text, parentElement, whiteSpace, scrolled, 
     // union of per-character boxes.
     range.setStart(text, from);
     range.setEnd(text, to);
-    const rect = measureClientRect(range, frame);
+    const rect = measureRunRect(range, frame);
     lines.push({
       text: value,
       left: rect.left - boundsRect.left,
@@ -4352,7 +4353,7 @@ function measureRevealLayout(text, range, frame, boundsRect, lines, offsets) {
     const edges = buildCharacterEdges(count, (at) => {
       range.setStart(text, lineOffsets[at]);
       range.setEnd(text, lineOffsets[at] + 1);
-      const rect = measureClientRect(range, frame);
+      const rect = measureRunRect(range, frame);
       if (rect.width <= 0 && rect.height <= 0) {
         return null;
       }

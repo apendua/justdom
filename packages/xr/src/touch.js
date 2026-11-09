@@ -584,7 +584,25 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
   const layer = document.createElement("div");
   // Over IWER's canvas, which it stands at 999.
   layer.style.cssText =
-    "position:fixed;inset:0;z-index:1000;touch-action:none;display:none;user-select:none;-webkit-user-select:none";
+    "position:fixed;inset:0;z-index:1000;touch-action:none;display:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none";
+  // A long press is also how a phone starts selecting text, and on a layer
+  // with none it selects the page; on Android it raises a context menu
+  // too, which cancels the finger and would end every hold as it became a
+  // grip. Only a touch on a button keeps its default, since cancelling
+  // it would swallow the click; one anywhere else, the button bar's
+  // padding and gaps included, has none to keep.
+  layer.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!(event.target instanceof Element && event.target.closest("button"))) {
+        event.preventDefault();
+      }
+    },
+    { passive: false },
+  );
+  layer.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
 
   layer.addEventListener("pointerdown", (event) => {
     if (event.target !== layer) {

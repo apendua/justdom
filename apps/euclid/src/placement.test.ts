@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { BOARD_AT, BOARD_HEIGHT, EDITOR_AT, editorScale, EDITOR_WIDTH, facing } from "./placement";
+import {
+  BOARD_AT,
+  BOARD_HEIGHT,
+  EDITOR_AT,
+  editorScale,
+  EDITOR_WIDTH,
+  facing,
+  TOOLBAR_GAP,
+  toolbarAt,
+  toolbarScale,
+  TOOLBAR_WIDTH,
+} from "./placement";
 
 /**
  * How high the top edge of a panel `height` metres tall reaches when it
@@ -8,6 +19,11 @@ import { BOARD_AT, BOARD_HEIGHT, EDITOR_AT, editorScale, EDITOR_WIDTH, facing } 
  */
 function topOf(at: readonly [number, number, number], height: number): number {
   return at[1] + (height / 2) * Math.cos(facing(at).pitch);
+}
+
+/** How low the bottom edge of such a panel reaches. */
+function bottomOf(at: readonly [number, number, number], height: number): number {
+  return at[1] - (height / 2) * Math.cos(facing(at).pitch);
 }
 
 describe("the program's panel", () => {
@@ -31,5 +47,30 @@ describe("the program's panel", () => {
 
   it("keeps its full scale in a window short enough for it", () => {
     expect(editorScale(480, 700)).toBe(0.08);
+  });
+});
+
+describe("the toolbar's panel", () => {
+  const drawingTop = topOf(BOARD_AT, BOARD_HEIGHT);
+
+  // A headset's browser, a laptop's, and phones, where the toolbar wraps
+  // to three or four rows.
+  for (const [width, height] of [
+    [1280, 44],
+    [1024, 44],
+    [390, 170],
+    [360, 200],
+  ]) {
+    it(`hangs over the drawing, never across it, when laid out ${width} by ${height} px`, () => {
+      const metres = 0.01 * toolbarScale(width);
+      const at = toolbarAt(width, height);
+      expect(bottomOf(at, height * metres)).toBeGreaterThanOrEqual(drawingTop + TOOLBAR_GAP);
+      expect(width * metres).toBeLessThanOrEqual(TOOLBAR_WIDTH + 1e-9);
+    });
+  }
+
+  it("keeps its labels the size a headset's browser gives them", () => {
+    expect(toolbarScale(390)).toBe(0.08);
+    expect(toolbarScale(1280)).toBeCloseTo(TOOLBAR_WIDTH / 12.8);
   });
 });

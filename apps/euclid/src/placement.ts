@@ -63,25 +63,44 @@ export function editorScale(width: number, height: number): number {
 export const EDITOR_AT: Vec3 = [-(BOARD_WIDTH / 2 + 0.24), -0.12, -0.74];
 
 /**
- * How wide the toolbar hangs, whatever width its element was laid out at:
- * about as wide as the drawing and the program together, which in a window
- * as wide as a headset's browser makes its 13px labels about a centimetre
- * tall.
+ * How wide the toolbar hangs at most: about as wide as the drawing and the
+ * program together, which in a window as wide as a headset's browser makes
+ * its 13px labels about a centimetre tall.
  */
 export const TOOLBAR_WIDTH = 1.0;
 
+/**
+ * The toolbar's scale at most: 0.8 mm a px, the program's. A toolbar laid
+ * out narrower than a headset's browser, as on a phone, where it wraps to
+ * several rows, keeps its labels the size they have there rather than
+ * being blown up to `TOOLBAR_WIDTH`.
+ */
+export const TOOLBAR_SCALE = 0.08;
+
 /** The toolbar's scale, for a toolbar element laid out `width` px wide. */
 export function toolbarScale(width: number): number {
-  return TOOLBAR_WIDTH / (0.01 * Math.max(1, width));
+  return Math.min(TOOLBAR_SCALE, TOOLBAR_WIDTH / (0.01 * Math.max(1, width)));
 }
 
+/** How far the toolbar's bottom edge hangs above the drawing's top edge. */
+export const TOOLBAR_GAP = 0.02;
+
 /**
- * The middle of the toolbar: over the top edge of the drawing and of the
- * program, and nearer than either, so that the construction picker's menu,
- * which opens downwards, hangs in front of the drawing rather than into
- * it.
+ * The middle of the toolbar, for a toolbar element laid out `width` by
+ * `height` px: over the program and the drawing, and nearer than either,
+ * so that the construction picker's menu, which opens downwards, hangs in
+ * front of the drawing rather than into it. Its bottom edge, not its
+ * middle, is what is placed, `TOOLBAR_GAP` over the top of the drawing's
+ * box, so that a toolbar wrapped to several rows grows upwards and never
+ * hangs over the drawing.
  */
-export const TOOLBAR_AT: Vec3 = [-0.18, BOARD_AT[1] + BOARD_HEIGHT / 2 + 0.04, -0.72];
+export function toolbarAt(width: number, height: number): Vec3 {
+  const drawingTop = BOARD_AT[1] + BOARD_HEIGHT / 2;
+  const tall = 0.01 * Math.max(1, height) * toolbarScale(width);
+  // Tipped back to face the head, the panel's bottom edge reaches a little
+  // less than half its height below its middle, so the gap only grows.
+  return [-0.18, drawingTop + TOOLBAR_GAP + tall / 2, -0.72];
+}
 
 /**
  * A panel at `at` turned to face the head. The yaw points its face back

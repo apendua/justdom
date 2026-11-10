@@ -11,7 +11,7 @@ import {
   EDITOR_AT,
   editorScale,
   facing,
-  TOOLBAR_AT,
+  toolbarAt,
   toolbarScale,
   type Vec3,
 } from "../placement";
@@ -38,7 +38,7 @@ export interface Mounts {
 
 /**
  * One of the page's mount points, mirrored into a panel at `at`, turned to
- * face the head and scaled by `scale`, which is asked for from the size the
+ * face the head and scaled by `scale`. Both are asked for from the size the
  * page laid the element out at, as the session starts and again whenever
  * the element is resized, as it is when the window is. There only while a
  * session is presenting.
@@ -51,21 +51,23 @@ const Panel = component(
   (
     ctx: WeakKey,
     element: HTMLElement,
-    at: Vec3,
+    at: (rect: DOMRect) => Vec3,
     scale: (rect: DOMRect) => number,
     options: PortalOptions = {},
   ) => {
     if (!getXRSession(ctx)) {
       return NOTHING;
     }
-    const { pitch, yaw } = facing(at);
     return dom(
       ctx,
       element,
       [
         effects((o) => {
-          o.scale.setScalar(scale(clientRect(element)));
-          o.position.set(...at);
+          const rect = clientRect(element);
+          const where = at(rect);
+          const { pitch, yaw } = facing(where);
+          o.scale.setScalar(scale(rect));
+          o.position.set(...where);
           o.rotation.set(pitch, yaw, 0, "YXZ");
         }),
       ],
@@ -121,8 +123,18 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
           }),
         ]),
         $(new THREE.AmbientLight(0xffffff, 2)),
-        Panel(ctx, toolbar, TOOLBAR_AT, (rect) => toolbarScale(rect.width)),
-        Panel(ctx, editor, EDITOR_AT, (rect) => editorScale(rect.width, rect.height)),
+        Panel(
+          ctx,
+          toolbar,
+          (rect) => toolbarAt(rect.width, rect.height),
+          (rect) => toolbarScale(rect.width),
+        ),
+        Panel(
+          ctx,
+          editor,
+          () => EDITOR_AT,
+          (rect) => editorScale(rect.width, rect.height),
+        ),
         // Not atomic: a drag or a pan changes the drawing on every move, and
         // an atomic panel holds each change back until a frame finds nothing
         // left to resolve, or until it has waited a second
@@ -136,10 +148,16 @@ export const Scene = ({ toolbar, editor, canvas }: Mounts) =>
         // to bring in exactly when the drawing does, and the drawing is
         // what follows the hand. The program catches up once the hand
         // stops.
-        Panel(ctx, canvas, BOARD_AT, (rect) => boardScale(rect.width, rect.height), {
-          atomic: false,
-          priority: 1,
-        }),
+        Panel(
+          ctx,
+          canvas,
+          () => BOARD_AT,
+          (rect) => boardScale(rect.width, rect.height),
+          {
+            atomic: false,
+            priority: 1,
+          },
+        ),
         // The mark at the end of each ray. Half the default size: a drawn
         // point is a few millimetres across, and the mark aiming at one
         // should not hide it.

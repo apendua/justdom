@@ -88,9 +88,11 @@ The app is mounted in three places because a panel is the element it mirrors, an
 apart in a session: the drawing straight ahead, the program to its left, turned to face the viewer,
 and the toolbar over both and nearer than either, so that the picker's menu, which opens downwards,
 hangs in front of the drawing. Each is scaled from the size the page laid it out at, as the session
-starts and again whenever its element is resized, as it is when the window is. Each can also be
-picked up by its edges, whose strips show while a ray is on the panel, and put somewhere else for
-the rest of the session.
+starts and again whenever its element is resized, as it is when the window is. The toolbar is placed
+by its bottom edge, a little over the drawing, so a toolbar wrapped to several rows on a phone grows
+upwards and never hangs over the drawing, and it is never scaled larger than in a headset's browser.
+Each can also be picked up by its edges, whose strips show while a ray is on the panel, and put
+somewhere else for the rest of the session.
 
 The drawing's panel is not atomic, unlike the other two. justdom-three holds an atomic panel's
 change back until a frame finds nothing left to resolve, or until it has waited a second, and a

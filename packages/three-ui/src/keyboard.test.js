@@ -692,7 +692,7 @@ describe("projecting a keyboard", () => {
     for (const target of added.slice(1)) {
       manager.dispatch(
         /** @type {any} */ (target),
-        /** @type {any} */ ({ type: "select", originalTarget: target }),
+        /** @type {any} */ ({ type: "select", originalTarget: target, completedOn: target }),
       );
     }
 

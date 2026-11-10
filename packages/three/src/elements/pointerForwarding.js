@@ -1571,11 +1571,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @param {Object3D[]} path
    * @param {boolean} [controlsOnly]
+   * @param {number} [from] Where along the path to start looking.
    * @returns {Target | undefined}
    */
-  const innermost = (path, controlsOnly = false) => {
-    for (const object of path) {
-      const target = targets.get(object);
+  const innermost = (path, controlsOnly = false, from = 0) => {
+    for (let i = from; i < path.length; i += 1) {
+      const target = targets.get(path[i]);
       if (target && !(controlsOnly && target.list)) {
         return target;
       }
@@ -2352,21 +2353,21 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       if (!pressed) {
         return;
       }
-      if (pressed.list) {
-        if (!isGone(pressed.element) && !drags.didScroll(e.controller)) {
-          pressed.element.dispatchEvent(new MouseEvent("click", clickInit(e)));
-        }
-        stopPropagation(e);
-        return;
-      }
+      // The click goes to what the press and the release share, as a
+      // page's goes to the nearest element its `mousedown` and `mouseup`
+      // share: pressed on an icon and let go on the button around it, the
+      // button. The manager completes the press along its own path, which
+      // this one is the panel's part of, so what it completed on is here.
+      const from = path.indexOf(e.completedOn);
+      const completed = from === -1 ? undefined : innermost(path, false, from);
       // A press that turned into a drag was the player scrolling the list
       // this control sits in, not pressing the control: the same bargain a
       // touchscreen strikes, and for the same reason, since there is
       // nowhere else to grab a list that is made of buttons. A press that
-      // became a drag and drop is no click either, as a mouse drag is not.
-      const first = innermost(path, true);
+      // became a drag and drop is no click either, as a mouse drag is not,
+      // even let go on the list it was dragged in.
       if (
-        !first ||
+        !completed ||
         press.swallowed ||
         isGone(pressed.element) ||
         drags.didScroll(e.controller) ||
@@ -2375,11 +2376,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         stopPropagation(e);
         return;
       }
-      first.element.dispatchEvent(new MouseEvent("click", clickInit(e)));
-      for (const object of path) {
-        const target = targets.get(object);
-        if (target && !target.list) {
-          target.onPress?.();
+      completed.element.dispatchEvent(new MouseEvent("click", clickInit(e)));
+      if (!completed.list) {
+        for (let i = from; i < path.length; i += 1) {
+          const target = targets.get(path[i]);
+          if (target && !target.list) {
+            target.onPress?.();
+          }
         }
       }
       stopPropagation(e);
@@ -2429,11 +2432,11 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // The grip is the ray's other button. A page hears the mouse's other
       // button as `contextmenu`, and that is where it flags a tile or opens
       // a menu of its own, so that is what the grip sends: on what the ray
-      // is on, once however many controls the press holds, and only for a
-      // press let go where it started, as a click is. Nothing for a grip
+      // is on, once however many controls the press holds, and on what the
+      // press and its release share, as a click is. Nothing for a grip
       // that closed while the hand carried or moved a list, whatever it
       // does now, nor for one that opens while it does.
-      const first = innermost(path, true);
+      const first = innermost(path, true, path.indexOf(e.completedOn));
       if (first && !isGone(gripped.element) && owns(e.start) && !busy(e.controller)) {
         const init = pressInit(panel(), e, true, 2);
         init.buttons = heldButtons(e.controller, HAND_BITS.squeeze);

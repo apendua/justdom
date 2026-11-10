@@ -55,10 +55,11 @@ panel costs a matrix multiply a frame.
 An element is a ray target when its computed `cursor` is `pointer`, the signal a page uses for
 "clickable", and checkboxes, text fields and `draggable="true"` elements are targets without asking.
 Closing the trigger on one sends `pointerdown` and `mousedown`; opening it sends `pointerup`,
-`mouseup` and `click`. The grip is the mouse's other button, arriving as `contextmenu`. Every event
-carries `clientX` and `clientY` mapped onto the page's layout, so a page that finds what was pressed
-from where it was pressed, a board drawn as one `<svg>`, reads the place a mouse would have given
-it.
+`mouseup` and `click`. The `click` goes where a page sends one, to the nearest ray target the press
+and the release share: pressed on an icon and let go on the button's padding, the button is clicked.
+The grip is the mouse's other button, arriving as `contextmenu`. Every event carries `clientX` and
+`clientY` mapped onto the page's layout, so a page that finds what was pressed from where it was
+pressed, a board drawn as one `<svg>`, reads the place a mouse would have given it.
 
 Hover and press are written onto the element as attributes, since `:hover` and `:active` cannot be
 set from outside: `data-xr-hover` while a ray is on it and `data-xr-active` while it is held. The

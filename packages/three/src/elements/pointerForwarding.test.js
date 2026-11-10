@@ -165,8 +165,21 @@ function nest({ outer, inner, build, haptics = null }) {
      *   carry the start it began with, as the manager's do.
      * @param {THREE.XRTargetRaySpace} [hand] The controller it came from:
      *   the one hand unless said otherwise.
+     * @param {THREE.Object3D} [completedOn] On a `select` or `squeeze`,
+     *   where the press completed, and where the completion is dispatched
+     *   from: `of` unless said otherwise, the outer's for a press on the
+     *   inner let go on the outer.
      */
-    press(type, inputSource = null, point, on, from = null, of = innerObject, hand = controller) {
+    press(
+      type,
+      inputSource = null,
+      point,
+      on,
+      from = null,
+      of = innerObject,
+      hand = controller,
+      completedOn = of,
+    ) {
       const mesh = of.children.find((child) => child instanceof THREE.Mesh) ?? of;
       const button = type.startsWith("squeeze") ? "squeeze" : "select";
       const event = {
@@ -180,12 +193,13 @@ function nest({ outer, inner, build, haptics = null }) {
         ...(point && { intersection: { point, object: on ?? mesh } }),
         ...(!type.endsWith("start") &&
           !type.startsWith("pointer") && { start: starts.get(button) }),
+        ...(type === button && { completedOn }),
       };
       if (type.endsWith("start")) {
         starts.set(button, event);
       }
       manager.dispatch(
-        /** @type {THREE.Object3D<XREventMap>} */ (mesh),
+        /** @type {THREE.Object3D<XREventMap>} */ (completedOn === of ? mesh : completedOn),
         /** @type {never} */ (event),
       );
       if (type.endsWith("start") || type.endsWith("end")) {
@@ -353,6 +367,60 @@ describe("a press on nested clickable elements", () => {
     assert.deepEqual(s.events, ["mousedown on span", "mouseup on span", "click on span"]);
     assert.deepEqual(pressed, ["span", "button"], "each hears its own press");
     assert.deepEqual(s.escaped, [], "and nothing outside the panel hears it");
+    s.teardown();
+  });
+
+  test("let go on the outer, clicks the outer and presses it alone", () => {
+    // Pressed on an icon, let go on the button's padding: the manager
+    // completes on the button, and a page clicks the button.
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    /** @type {string[]} */
+    const pressed = [];
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) =>
+        box(ctx, /** @type {HTMLElement} */ (element), {
+          onPress: () => pressed.push(element.localName),
+        }),
+    });
+
+    s.press("selectstart");
+    s.press("selectend");
+    s.press("select", null, undefined, undefined, null, s.innerObject, s.controller, s.outerObject);
+
+    assert.deepEqual(s.events, ["mousedown on span", "mouseup on span", "click on button"]);
+    assert.deepEqual(pressed, ["button"], "the span was not pressed, as it was not clicked");
+    assert.deepEqual(s.escaped, []);
+    s.teardown();
+  });
+
+  test("of the grip, let go on the outer, opens the outer's context menu", () => {
+    const outer = html("button", "cursor: pointer");
+    const inner = html("span", "cursor: pointer");
+    outer.appendChild(inner);
+    const s = nest({
+      outer,
+      inner,
+      build: (ctx, element) => box(ctx, /** @type {HTMLElement} */ (element)),
+    });
+
+    s.press("squeezestart");
+    s.press("squeezeend");
+    s.press(
+      "squeeze",
+      null,
+      undefined,
+      undefined,
+      null,
+      s.innerObject,
+      s.controller,
+      s.outerObject,
+    );
+
+    assert.deepEqual(s.events, ["contextmenu on button"]);
     s.teardown();
   });
 

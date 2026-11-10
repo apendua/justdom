@@ -86,6 +86,19 @@ import { addDependency, batch, Derived } from "justdom-signal";
  */
 
 /**
+ * What a completion carries besides: where the press completed. That is
+ * the innermost registered object holding both what was pressed and what
+ * the release is on, as a page's click goes to the nearest element its
+ * `mousedown` and `mouseup` share. It is the pressed object itself for a
+ * press let go where it began, and an ancestor of it for one pressed on an
+ * icon and let go on the button around it. The completion goes along the
+ * press's path starting from it, so what is below it hears none.
+ *
+ * @typedef {object} PressCompletion
+ * @property {Object3D<XREventMap>} completedOn
+ */
+
+/**
  * A pointer event's `inputSource` is the source three connected to the
  * controller, for what the ray lands on to reach the hand that is pointing:
  * its gamepad, with the motors a panel buzzes, and its handedness. Null
@@ -140,11 +153,11 @@ import { addDependency, batch, Derived } from "justdom-signal";
  * @typedef {object} InteractionEventMap
  * @property {InputEvent} selectstart
  * @property {InputCancelEvent & PressEnd} selectend
- * @property {InputEvent & PressEnd} select
+ * @property {InputEvent & PressEnd & PressCompletion} select
  * @property {InputCancelEvent & PressEnd} selectmissed
  * @property {InputEvent} squeezestart
  * @property {InputCancelEvent & PressEnd} squeezeend
- * @property {InputEvent & PressEnd} squeeze
+ * @property {InputEvent & PressEnd & PressCompletion} squeeze
  * @property {InputCancelEvent & PressEnd} squeezemissed
  * @property {PointerEvent} pointermove
  * @property {PointerEnterEvent} pointerenter

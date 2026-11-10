@@ -433,7 +433,7 @@ describe("createPortal", () => {
     assert.ok(control);
     manager.dispatch(
       /** @type {any} */ (control),
-      /** @type {any} */ ({ type: "select", originalTarget: control }),
+      /** @type {any} */ ({ type: "select", originalTarget: control, completedOn: control }),
     );
 
     // The click the ray sends is a click, so the DOM does the toggling and the
@@ -497,7 +497,7 @@ describe("createPortal", () => {
     assert.ok(control);
     manager.dispatch(
       /** @type {any} */ (control),
-      /** @type {any} */ ({ type: "select", originalTarget: control }),
+      /** @type {any} */ ({ type: "select", originalTarget: control, completedOn: control }),
     );
     await pump();
     assert.equal(input.checked, true);
@@ -506,7 +506,7 @@ describe("createPortal", () => {
 
     manager.dispatch(
       /** @type {any} */ (control),
-      /** @type {any} */ ({ type: "select", originalTarget: control }),
+      /** @type {any} */ ({ type: "select", originalTarget: control, completedOn: control }),
     );
     await pump();
     assert.equal(background.get(), "rgb(255, 255, 255)", "and back when unticked");
@@ -2471,7 +2471,12 @@ describe("createPortal", () => {
       for (const type of ["selectstart", "selectend", "select"]) {
         manager.dispatch(
           rowObject,
-          /** @type {any} */ ({ type, controller, originalTarget: rowObject }),
+          /** @type {any} */ ({
+            type,
+            controller,
+            originalTarget: rowObject,
+            completedOn: rowObject,
+          }),
         );
       }
     };
@@ -4092,7 +4097,13 @@ describe("a draggable panel", () => {
     for (const type of ["selectstart", "select", "selectend"]) {
       manager.dispatch(
         /** @type {any} */ (field),
-        /** @type {any} */ ({ type, controller, inputSource: null, originalTarget: field }),
+        /** @type {any} */ ({
+          type,
+          controller,
+          inputSource: null,
+          originalTarget: field,
+          completedOn: field,
+        }),
       );
     }
     await nextMacrotask();

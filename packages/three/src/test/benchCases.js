@@ -34,7 +34,8 @@ export function nextMacrotask() {
  * @typedef {object} Sample
  * @property {number} evaluations
  * @property {number} rectReads Element rects. Range reads are counted
- *   separately, since only the typing table below is about them.
+ *   separately, since only the typing table in `mirror.bench.js` is about
+ *   them.
  * @property {number} rangeReads
  * @property {number} ms
  */

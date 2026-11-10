@@ -37,10 +37,10 @@ node common/scripts/install-run-rush.js build
 ## The count gate
 
 [`packages/three/src/elements/mirrorCounts.test.js`](packages/three/src/elements/mirrorCounts.test.js)
-runs the 100-row list and the 100-card board of the mirror bench (`src/elements/mirror.bench.js`) as
-an ordinary test, so every build runs it. Each case counts the reactive evaluations and the layout
-reads one change costs a panel, which are exact on any machine, and checks them against the
-`CEILINGS` table at the top of the file.
+runs the 100-row list and the 100-card board of the mirror bench
+(`packages/three/src/elements/mirror.bench.js`) as an ordinary test, so every build runs it. Each
+case counts the reactive evaluations and the layout reads one change costs a panel, which are exact
+on any machine, and checks them against the `CEILINGS` table at the top of the file.
 
 The test fails when a count goes over its ceiling, and also when it falls more than 5% under it. The
 message names the case and the measured number. To update a ceiling:

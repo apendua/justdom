@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createProperty } from "justdom-signal";
 import { bandBase, getElevation, PIECE_BAND, setLayerBase } from "./elevation.js";
+import { markMoved } from "./place.js";
 import {
   carryHalfPlanes,
   clearHalfPlanes,
@@ -788,7 +789,7 @@ export class LayerOrder {
     // Its world matrix is the last mesh's until it is told: it updates its
     // matrix only when asked, and a parent passes the force down only in a
     // frame it moved itself.
-    proxy.matrixWorldNeedsUpdate = true;
+    markMoved(proxy);
     return proxy;
   }
 
@@ -1041,7 +1042,7 @@ function createProxy(mesh) {
   proxy.raycast = () => {};
   proxy.frustumCulled = false;
   proxy.matrixAutoUpdate = false;
-  proxy.matrixWorldNeedsUpdate = true;
+  markMoved(proxy);
   proxies.add(proxy);
   mesh.add(proxy);
   return proxy;

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { matrixEpoch, noteMatrixChange } from "../matrixEpoch.js";
 
 /**
  * @import {Object3D} from 'three';
@@ -34,7 +35,7 @@ import * as THREE from "three";
  * forgot to commit would freeze an element wherever it last was, and there is
  * no way to write that here. The one object this does not cover is one whose
  * matrix is composed by hand — a CSS transform, in `div` — which sets its own
- * flag and its own `matrixWorldNeedsUpdate` for the same reason.
+ * flag and calls `markMoved` for the same reason.
  *
  * An opt-out is only worth what the scene above it allows, which is what
  * `keepSubtreeMatrices` below is for.
@@ -58,6 +59,7 @@ export function place(object, x, y, z) {
   object.matrixAutoUpdate = false;
   object.position.set(x, y, z);
   object.updateMatrix();
+  noteMatrixChange();
 }
 
 /**
@@ -80,11 +82,44 @@ export function placeAndScale(object, x, y, z, scaleX, scaleY, scaleZ) {
   object.position.set(x, y, z);
   object.scale.set(scaleX, scaleY, scaleZ);
   object.updateMatrix();
+  noteMatrixChange();
 }
 
 /**
+ * Say that an object's world matrix is stale: its own matrix was composed by
+ * hand, or it was attached under a new parent. The one way code under a panel
+ * marks an object, so that the panel's next walk descends to it (see
+ * `keepSubtreeMatrices`). Setting `matrixWorldNeedsUpdate` alone would leave
+ * an idle panel's walk at its edge, and the object where it was.
+ *
+ * @param {Object3D} object
+ * @returns {void}
+ */
+export function markMoved(object) {
+  object.matrixWorldNeedsUpdate = true;
+  noteMatrixChange();
+}
+
+/**
+ * What a panel's walk knows about its subtree: the count of matrix changes
+ * (`matrixEpoch`) it last descended at, and whether it found anything there
+ * that composes its own matrix each frame.
+ *
+ * @typedef {object} KeptSubtree
+ * @property {number} epoch
+ * @property {boolean} live
+ */
+
+/** @type {WeakMap<Object3D, KeptSubtree>} */
+const keptSubtrees = new WeakMap();
+
+/** Three's own walk, which a plain object has not overridden. */
+const plainWalk = THREE.Object3D.prototype.updateMatrixWorld;
+
+/**
  * Let everything below this object keep the matrices it composed, whatever the
- * scene above decides.
+ * scene above decides, and skip the walk below it in a frame in which nothing
+ * there moved.
  *
  * `matrixAutoUpdate` is per object, but its consequences are not. Three walks
  * the graph carrying a flag: an object that recomposed its own matrix marks
@@ -107,8 +142,35 @@ export function placeAndScale(object, x, y, z, scaleX, scaleY, scaleZ) {
  * moved has moved the panel, and everything inside then does need its world
  * matrix again. So this recomputes its own world matrix every walk — one
  * multiply — and passes the flag on only when that matrix actually came out
- * different. A panel that is not moving costs a multiply and a comparison; a
- * panel that is moving costs exactly what it did before.
+ * different.
+ *
+ * The walk below the panel follows these rules, which every write under a
+ * panel has to keep:
+ *
+ * - A write to an object's matrix, and an attachment of an object under a new
+ *   parent, call `noteMatrixChange` (`matrixEpoch.js`): through `place`,
+ *   `placeAndScale` or `markMoved` here, or directly where a module below the
+ *   panel layer attaches an object.
+ * - The walk descends when the panel's own world matrix changed, when the
+ *   count of changes moved since it last descended, or when the last descent
+ *   found an object that composes its own matrix (`matrixAutoUpdate`, three's
+ *   default, which an app's object or a plugin's may keep). Otherwise it stops
+ *   at the panel.
+ * - It records the count before it descends, so a change made during the
+ *   descent wakes the next walk.
+ * - A nested panel decides for itself. The walk above it calls it whenever it
+ *   descends, and descends every time while the nested panel is live.
+ *
+ * A panel that is not moving, in a page where nothing moved, costs a
+ * multiply and a comparison; the two walks a frame (the loop's, before rays
+ * are cast, and the renderer's) then stop at its edge. A frame that moved
+ * something costs one descent, since the second walk finds the count where
+ * the first left it.
+ *
+ * Below the panel the walk is three's own (`Object3D.updateMatrixWorld`) for
+ * every object that has not overridden it, done here so that it can see which
+ * objects compose their own matrices. An object that overrides it (a camera,
+ * a skinned mesh, a nested panel) is called as three would call it.
  *
  * Three offers no flag for this. `matrixWorldAutoUpdate` looks like the one
  * and is not: it stops the object computing its own world matrix while still
@@ -123,6 +185,9 @@ export function keepSubtreeMatrices(object) {
   // Per object rather than shared: portals nest, and a shared scratch would be
   // overwritten by the inner walk before the outer one had compared it.
   const previous = new THREE.Matrix4();
+  /** @type {KeptSubtree} */
+  const kept = { epoch: -1, live: false };
+  keptSubtrees.set(object, kept);
   /**
    * @this {Object3D}
    */
@@ -141,9 +206,64 @@ export function keepSubtreeMatrices(object) {
     // matrix are the same numbers through the same multiply, which is the
     // same result to the bit.
     const moved = !this.matrixWorld.equals(previous);
-    const children = this.children;
-    for (let i = 0, l = children.length; i < l; i++) {
-      children[i].updateMatrixWorld(moved);
+    const epoch = matrixEpoch();
+    if (!moved && !kept.live && kept.epoch === epoch) {
+      return;
     }
+    kept.epoch = epoch;
+    kept.live = descend(this.children, moved);
   };
+}
+
+/**
+ * Three's walk over these children and everything under them, which also
+ * answers whether any of them composes its own matrix each frame.
+ *
+ * @param {Object3D[]} children
+ * @param {boolean} force
+ * @returns {boolean}
+ */
+function descend(children, force) {
+  let live = false;
+  for (let i = 0, l = children.length; i < l; i++) {
+    const child = children[i];
+    if (child.updateMatrixWorld !== plainWalk) {
+      child.updateMatrixWorld(force);
+      const nested = keptSubtrees.get(child);
+      live = (nested ? nested.live : composesItsOwn(child)) || live;
+      continue;
+    }
+    if (child.matrixAutoUpdate) {
+      child.updateMatrix();
+      live = true;
+    }
+    let below = force;
+    if (child.matrixWorldNeedsUpdate || force) {
+      if (child.matrixWorldAutoUpdate) {
+        child.matrixWorld.multiplyMatrices(
+          /** @type {Object3D} */ (child.parent).matrixWorld,
+          child.matrix,
+        );
+      }
+      child.matrixWorldNeedsUpdate = false;
+      below = true;
+    }
+    live = descend(child.children, below) || live;
+  }
+  return live;
+}
+
+/**
+ * Whether anything in an object's subtree composes its own matrix each frame,
+ * for an object whose walk is its own and so cannot be watched from here.
+ *
+ * @param {Object3D} object
+ * @returns {boolean}
+ */
+function composesItsOwn(object) {
+  let found = false;
+  object.traverse((each) => {
+    found ||= each.matrixAutoUpdate;
+  });
+  return found;
 }

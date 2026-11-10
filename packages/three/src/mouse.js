@@ -356,6 +356,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       child.position.z = -Math.max(MIN_REACH, to(-child.position.z));
       // Into the matrix by hand, for a thing that keeps its own (what a
       // portal draws does): `drag` writes those directly too.
+      // matrix-epoch: held by the pointer, not under a panel, and walked here.
       child.updateMatrix();
       child.updateMatrixWorld(true);
     }

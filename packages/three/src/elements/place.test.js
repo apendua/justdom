@@ -1,7 +1,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { keepSubtreeMatrices, place, placeAndScale } from "./place.js";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import { keepSubtreeMatrices, markMoved, place, placeAndScale } from "./place.js";
+import { noteMatrixChange } from "../matrixEpoch.js";
 
 /**
  * A scene shaped like an app holding a panel: a group the app moved once and
@@ -132,5 +136,201 @@ describe("keepSubtreeMatrices", () => {
 
     const world = new THREE.Vector3().setFromMatrixPosition(late.matrixWorld);
     assert.deepEqual([world.x, world.y, world.z], [5, 1, -0.5]);
+  });
+
+  test("an idle panel's walk stops at its edge", () => {
+    const s = scene();
+    const calls = spyOnWalk(s.leaves[2].object);
+    s.walk();
+    calls.count = 0;
+    // The loop's walk and the renderer's, for five frames in which nothing
+    // anywhere moved.
+    s.walk(10);
+    assert.equal(calls.count, 0);
+  });
+
+  test("a write anywhere wakes the walk for one descent, and a second walk stops again", () => {
+    const s = scene();
+    const calls = spyOnWalk(s.leaves[2].object);
+    s.walk();
+    calls.count = 0;
+
+    place(s.leaves[1].object, 7, 0, 0);
+    s.walk(2);
+
+    assert.equal(calls.count, 1);
+    const world = new THREE.Vector3().setFromMatrixPosition(s.leaves[1].object.matrixWorld);
+    assert.deepEqual([world.x, world.y, world.z], [7, 1, -0.5]);
+  });
+
+  test("a matrix composed by hand reaches the walk through markMoved", () => {
+    const s = scene();
+    s.walk(2);
+
+    const leaf = s.leaves[3].object;
+    leaf.matrix.makeTranslation(9, 0, 0);
+    markMoved(leaf);
+    s.walk();
+
+    const world = new THREE.Vector3().setFromMatrixPosition(leaf.matrixWorld);
+    assert.deepEqual([world.x, world.y, world.z], [9, 1, -0.5]);
+  });
+
+  test("a write made during a descent wakes the next walk", () => {
+    const s = scene();
+    s.walk(2);
+    const early = s.leaves[0].object;
+    // A leaf walked after `early` that moves it, once: `early` has been
+    // walked already in that descent, so only the next walk can carry it.
+    const late = s.leaves[3].object;
+    let pending = true;
+    late.updateMatrixWorld = function (force) {
+      if (pending) {
+        pending = false;
+        place(early, 0, 5, 0);
+      }
+      THREE.Object3D.prototype.updateMatrixWorld.call(this, force);
+    };
+    noteMatrixChange();
+    s.walk();
+    s.walk();
+
+    const world = new THREE.Vector3().setFromMatrixPosition(early.matrixWorld);
+    assert.deepEqual([world.x, world.y, world.z], [0, 6, -0.5]);
+  });
+
+  test("an object on three's defaults under the panel keeps moving by assignment", () => {
+    const s = scene();
+    const calls = spyOnWalk(s.leaves[2].object);
+    s.walk(2);
+
+    // A plugin's object, or an app's, which moves itself by assignment and
+    // tells nobody. Its attachment is noted, as every attachment is.
+    const spinner = new THREE.Object3D();
+    s.perimeter.add(spinner);
+    noteMatrixChange();
+    s.walk();
+
+    calls.count = 0;
+    for (const x of [1, 2, 3]) {
+      spinner.position.x = x;
+      s.walk();
+      const world = new THREE.Vector3().setFromMatrixPosition(spinner.matrixWorld);
+      assert.deepEqual([world.x, world.y, world.z], [x, 1, -0.5]);
+    }
+    // The whole panel is walked while it holds such an object, as before.
+    assert.equal(calls.count, 3);
+
+    // And once it is gone, the walk stops at the edge again, after the one
+    // descent that finds it gone.
+    s.perimeter.remove(spinner);
+    s.walk(3);
+    assert.equal(calls.count, 4);
+  });
+
+  test("a nested panel is skipped with the one around it, and woken with it", () => {
+    const s = scene();
+    const inner = new THREE.Group();
+    place(inner, 0, 0, 1);
+    keepSubtreeMatrices(inner);
+    const leaf = new THREE.Object3D();
+    place(leaf, 1, 0, 0);
+    inner.add(leaf);
+    s.perimeter.add(inner);
+    const calls = spyOnWalk(leaf);
+    s.walk();
+    calls.count = 0;
+
+    s.walk(4);
+    assert.equal(calls.count, 0);
+
+    s.group.position.set(0, 0, -2);
+    s.walk();
+    assert.equal(calls.count, 1);
+    const world = new THREE.Vector3().setFromMatrixPosition(leaf.matrixWorld);
+    assert.deepEqual([world.x, world.y, world.z], [1, 1, -1]);
+
+    place(leaf, 3, 0, 0);
+    s.walk(2);
+    assert.equal(calls.count, 2);
+    world.setFromMatrixPosition(leaf.matrixWorld);
+    assert.deepEqual([world.x, world.y, world.z], [3, 1, -1]);
+  });
+
+  test("a nested panel holding an object on three's defaults keeps the outer walk going", () => {
+    const s = scene();
+    const inner = new THREE.Group();
+    place(inner, 0, 0, 1);
+    keepSubtreeMatrices(inner);
+    const spinner = new THREE.Object3D();
+    inner.add(spinner);
+    s.perimeter.add(inner);
+    s.walk(2);
+
+    spinner.position.x = 4;
+    s.walk();
+    const world = new THREE.Vector3().setFromMatrixPosition(spinner.matrixWorld);
+    assert.deepEqual([world.x, world.y, world.z], [4, 1, 0.5]);
+  });
+});
+
+/**
+ * Count the walks that reach an object, by giving it a walk of its own that
+ * does what three's does.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {{ count: number }}
+ */
+function spyOnWalk(object) {
+  const calls = { count: 0 };
+  object.updateMatrixWorld = function (force) {
+    calls.count += 1;
+    THREE.Object3D.prototype.updateMatrixWorld.call(this, force);
+  };
+  return calls;
+}
+
+describe("matrix writes under a panel", () => {
+  /**
+   * Every module of the package, but its tests and test helpers.
+   *
+   * @param {string} directory
+   * @returns {string[]}
+   */
+  const modules = (directory) =>
+    readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return entry.name === "test" ? [] : modules(path);
+      }
+      return entry.name.endsWith(".js") && !entry.name.endsWith(".test.js") ? [path] : [];
+    });
+
+  test("go through place.js, or note the change themselves", () => {
+    const src = fileURLToPath(new URL("..", import.meta.url));
+    /** @type {string[]} */
+    const found = [];
+    for (const path of modules(src)) {
+      const name = relative(src, path);
+      if (name === join("elements", "place.js")) {
+        continue;
+      }
+      const lines = readFileSync(path, "utf8").split("\n");
+      lines.forEach((line, i) => {
+        const writes =
+          /\.matrixWorldNeedsUpdate\s*=[^=]/.test(line) || /\.updateMatrix\(\)/.test(line);
+        if (!writes) {
+          return;
+        }
+        // A write followed at once by the note keeps the rule; so does one
+        // the line before explains with the marker.
+        const noted = /noteMatrixChange\(\)/.test(lines[i + 1] ?? "");
+        const exempt = /matrix-epoch:/.test(lines[i - 1] ?? "");
+        if (!noted && !exempt) {
+          found.push(`${name}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+    assert.deepEqual(found, []);
   });
 });

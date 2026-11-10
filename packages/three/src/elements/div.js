@@ -46,7 +46,7 @@ import {
 import { LayerOrderContext } from "./layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
-import { place, placeAndScale } from "./place.js";
+import { markMoved, place, placeAndScale } from "./place.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { forwardListEvents, forwardPointerEvents, isRayTarget } from "./pointerForwarding.js";
@@ -758,7 +758,7 @@ export function box(ctx, element, options = {}) {
     }
     obj.matrixAutoUpdate = false;
     obj.matrix.copy(nextMatrix);
-    obj.matrixWorldNeedsUpdate = true;
+    markMoved(obj);
     wroteMatrix = true;
     placed = null;
     batchChanged();
@@ -883,7 +883,7 @@ export function box(ctx, element, options = {}) {
             contentGroup.matrix.premultiply(
               scrollTranslation.makeTranslation(-scroll.left || 0, -scroll.top || 0, 0),
             );
-            contentGroup.matrixWorldNeedsUpdate = true;
+            markMoved(contentGroup);
             // The batches copy instance matrices by walking the panel, and
             // re-walk only when told; anything batched under this group
             // would otherwise stay where it was. Nothing SVG is batched

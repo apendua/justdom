@@ -53,13 +53,15 @@ describe("the program's panel", () => {
 describe("the toolbar's panel", () => {
   const drawingTop = topOf(BOARD_AT, BOARD_HEIGHT);
 
-  // A headset's browser, a laptop's, and phones, where the toolbar wraps
-  // to three or four rows.
+  // The bar as a session lays it out, with Passthrough and the × in it: in
+  // a 1280 px headset's browser, in a 1024 px window, where it wraps to two
+  // rows, and on a 390 px and a 320 px phone, where it wraps to four and
+  // five.
   for (const [width, height] of [
-    [1280, 44],
-    [1024, 44],
-    [390, 170],
-    [360, 200],
+    [1280, 56],
+    [1024, 114],
+    [390, 177],
+    [320, 228],
   ]) {
     it(`hangs over the drawing, never across it, when laid out ${width} by ${height} px`, () => {
       const metres = 0.01 * toolbarScale(width);

@@ -666,12 +666,6 @@ importers:
       iwer:
         specifier: ^2.4.0
         version: 2.7.0
-      justdom-signal:
-        specifier: workspace:^
-        version: link:../signal
-      justdom-three:
-        specifier: workspace:^
-        version: link:../three
     devDependencies:
       '@apendua/jsdom-env':
         specifier: workspace:*
@@ -685,6 +679,12 @@ importers:
       '@types/webxr':
         specifier: ^0.5.24
         version: 0.5.24
+      justdom-signal:
+        specifier: workspace:*
+        version: link:../signal
+      justdom-three:
+        specifier: workspace:*
+        version: link:../three
       playwright-core:
         specifier: ^1.56.0
         version: 1.64.1

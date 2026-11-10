@@ -210,7 +210,7 @@ async function main() {
       );
       const [at, scale] =
         id === "toolbar"
-          ? [placement.TOOLBAR_AT, placement.toolbarScale(rect.width)]
+          ? [placement.toolbarAt(rect.width, rect.height), placement.toolbarScale(rect.width)]
           : id === "editor"
             ? [placement.EDITOR_AT, placement.editorScale(rect.width, rect.height)]
             : [placement.BOARD_AT, placement.boardScale(rect.width, rect.height)];

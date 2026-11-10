@@ -25,22 +25,49 @@ import type { Tool } from "../store/App";
  * pressable by the ray.
  */
 
-const toolbarStyle = className`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #26231e;
-  color: #e8e4d8;
-  flex-wrap: wrap;
+/*
+ * A phone has the width of the tools and little more, so the bar drops the
+ * title, which the page's own title already says, and moves the hint to a
+ * line of its own at the bottom. The breakpoint is the page's, in
+ * `index.css`, which below it shows the program only on demand.
+ */
+const PHONE = "(max-width: 600px)";
+
+const toolbarStyle = stylesheet`
+  .${CLASS_NAME} {
+    /* What the × is placed against on a phone. */
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #26231e;
+    color: #e8e4d8;
+    flex-wrap: wrap;
+  }
+
+  /* Room for the ×, which a phone puts in the top right corner. */
+  @media ${PHONE} {
+    .${CLASS_NAME}[data-session] {
+      padding-right: 54px;
+    }
+  }
 `;
 
-const titleStyle = className`
-  font-family: Georgia, 'Times New Roman', serif;
-  font-style: italic;
-  font-size: 18px;
-  margin-right: 12px;
-  color: #f3efe4;
+const titleStyle = stylesheet`
+  .${CLASS_NAME} {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-size: 18px;
+    margin-right: 12px;
+    color: #f3efe4;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      display: none;
+    }
+  }
 `;
 
 const buttonStyle = className`
@@ -70,12 +97,35 @@ const buttonStyle = className`
 
 const groupStyle = className`
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: center;
 `;
 
-const spacerStyle = className`
-  flex: 1;
+const spacerStyle = stylesheet`
+  .${CLASS_NAME} {
+    flex: 1;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      order: 1;
+      flex-basis: 100%;
+    }
+  }
+`;
+
+/** Shows and hides the program; there only on a phone. */
+const codeToggleStyle = stylesheet`
+  .${CLASS_NAME} {
+    display: none;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      display: inline-block;
+    }
+  }
 `;
 
 const hintStyle = className`
@@ -83,21 +133,36 @@ const hintStyle = className`
   color: #97907f;
 `;
 
-/** Ends the session; there only while there is one. */
-const closeStyle = className`
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 1px solid #4a453c;
-  border-radius: 15px;
-  background: #33302a;
-  color: #d8d3c5;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  &:hover {
+/**
+ * Ends the session; there only while there is one. At the end of the bar,
+ * except on a phone, where the bar wraps and the end of it is the start of
+ * a row of its own, so it sits in the top right corner, beside the tools.
+ */
+const closeStyle = stylesheet`
+  .${CLASS_NAME} {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #4a453c;
+    border-radius: 15px;
+    background: #33302a;
+    color: #d8d3c5;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .${CLASS_NAME}:hover {
     background: #b91c1c;
     color: #ffffff;
+  }
+
+  @media ${PHONE} {
+    .${CLASS_NAME} {
+      position: absolute;
+      top: 6px;
+      right: 12px;
+    }
   }
 `;
 
@@ -215,12 +280,11 @@ const TOOLS: ToolButton[] = [
 /** How much one press of a zoom button zooms. */
 const ZOOM_STEP = 1.25;
 
-/**
- * What only a session has, mounted while there is one and taken down when
- * it ends.
- */
-const inSession = (render: () => Subscribable<Mountable>) =>
-  list(() => (xrSession.get() ? [true] : []), render);
+/** What `render` makes, mounted while `when` holds and taken down after. */
+const whenever = (when: () => boolean, render: () => Subscribable<Mountable>) =>
+  list(() => (when() ? [true] : []), render);
+
+const inSession = () => xrSession.get() !== null;
 
 /**
  * The toolbar: the tools, undo, the view, what the active tool wants next
@@ -228,6 +292,8 @@ const inSession = (render: () => Subscribable<Mountable>) =>
  * page, and a headset session mirrors this very bar into a panel of its own
  * over the drawing.
  *
+ * The Code button, which shows and hides the program on a phone, is not
+ * there in a session, which always shows the program in a panel of its own.
  * Two things are there only in a session, mounted when the scene says there
  * is one: the passthrough switch, pressable only in a session that can
  * show the room, and the × at the end of the bar, which ends the session.
@@ -245,6 +311,7 @@ const Toolbar = component((store: AppStore) => {
 
   return $("div", [
     set("className", toolbarStyle),
+    attr("data-session", () => (inSession() ? "" : undefined)),
     children(
       $("span", [set("className", titleStyle), children(text`Euclid`)]),
       $("span", [
@@ -298,6 +365,23 @@ const Toolbar = component((store: AppStore) => {
             on("click", () => store.fitView()),
             children(text`Fit view`),
           ]),
+          whenever(
+            () => !inSession(),
+            () =>
+              $("span", [
+                set("className", codeToggleStyle),
+                children(
+                  $("button", [
+                    set("className", buttonStyle),
+                    set({ type: "button" }),
+                    attr("aria-pressed", () => String(store.codeShown.get())),
+                    attr("data-active", () => (store.codeShown.get() ? "true" : undefined)),
+                    on("click", () => store.codeShown.set(!store.codeShown.get())),
+                    children(text`Code`),
+                  ]),
+                ),
+              ]),
+          ),
         ),
       ]),
       $("span", [
@@ -310,7 +394,7 @@ const Toolbar = component((store: AppStore) => {
         selected: () => store.exampleName.get(),
         onSelect: (name) => store.loadExample(name),
       }),
-      inSession(() =>
+      whenever(inSession, () =>
         $("button", [
           set("className", buttonStyle),
           set({
@@ -324,7 +408,7 @@ const Toolbar = component((store: AppStore) => {
           children(text`Passthrough`),
         ]),
       ),
-      inSession(() =>
+      whenever(inSession, () =>
         $("button", [
           set("className", closeStyle),
           set({ type: "button", title: "Leave the headset" }),

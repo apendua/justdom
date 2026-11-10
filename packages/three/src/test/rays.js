@@ -28,14 +28,21 @@ export function forwardedPanel(ctx) {
 
 /**
  * A ray event sent the way the manager sends one: to the object the ray
- * met, and up through its parents, each told what the ray met. For a test
- * whose manager is a recording stand-in; with a real one, `dispatch`.
+ * met, and up through its parents, each told what the ray met. A `select`
+ * or `squeeze` completes where it was pressed. For a test whose manager is
+ * a recording stand-in; with a real one, `dispatch`.
  *
  * @param {THREE.Object3D} object
- * @param {object} event
+ * @param {{ type: string, [key: string]: unknown }} event
  */
 export function bubble(object, event) {
-  const sent = /** @type {never} */ ({ ...event, target: object, originalTarget: object });
+  const completes = event.type === "select" || event.type === "squeeze";
+  const sent = /** @type {never} */ ({
+    ...event,
+    target: object,
+    originalTarget: object,
+    ...(completes && { completedOn: object }),
+  });
   for (let node = /** @type {THREE.Object3D | null} */ (object); node; node = node.parent) {
     node.dispatchEvent(sent);
   }
@@ -46,17 +53,24 @@ const starts = new WeakMap();
 
 /**
  * A ray event as the manager sends it: a press's `selectstart` is kept for
- * the hand, and the events that end the press carry it as `start`.
+ * the hand, and the events that end the press carry it as `start`. A
+ * `select` completes where it was pressed unless it says otherwise.
  *
- * @template {{ type: string, controller: object }} E
+ * @template {{ type: string, controller: object, originalTarget?: object }} E
  * @param {E} event
  * @returns {E}
  */
 export function withStart(event) {
   if (event.type === "selectstart") {
     starts.set(event.controller, event);
-  } else if (event.type === "select" || event.type === "selectend") {
+  } else if (event.type === "selectend") {
     return { ...event, start: starts.get(event.controller) };
+  } else if (event.type === "select") {
+    return {
+      completedOn: event.originalTarget,
+      ...event,
+      start: starts.get(event.controller),
+    };
   }
   return event;
 }

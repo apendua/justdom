@@ -172,11 +172,12 @@ export class InteractionManager {
    * @param {THREE.Object3D<XREventMap>[]} path
    * @param {XREventMap[TEvent] & THREE.BaseEvent<TEvent>} event
    * @param {number} [reach]
+   * @param {number} [from] Where along the path it starts.
    * @returns {number} How many objects it reached, the one that stopped it
    *   included.
    */
-  #dispatchAlong(path, event, reach = path.length) {
-    for (let i = 0; i < reach; i += 1) {
+  #dispatchAlong(path, event, reach = path.length, from = 0) {
+    for (let i = from; i < reach; i += 1) {
       path[i].dispatchEvent(event);
       if (this.#done.get(event)) {
         return i + 1;
@@ -206,6 +207,39 @@ export class InteractionManager {
         return node;
       }
       node = /** @type {THREE.Object3D<XREventMap> | null} */ (node.parent);
+    }
+    return undefined;
+  }
+
+  /**
+   * The innermost registered object that holds both a press and its
+   * release, which is where a page sends a click: to the nearest element
+   * its `mousedown` and its `mouseup` share. A button around an icon is
+   * one, since `cursor` is inherited and registers the icon too, and a
+   * press on the icon let go on the button's padding completes on the
+   * button. Undefined when the two share no registered object, as two
+   * buttons side by side do not.
+   *
+   * @param {THREE.Object3D<XREventMap>} pressed
+   * @param {THREE.Object3D<XREventMap>} released
+   * @returns {THREE.Object3D<XREventMap> | undefined}
+   */
+  #sharedTarget(pressed, released) {
+    /** @type {THREE.Object3D<XREventMap> | null} */
+    let node = pressed;
+    for (; node; node = /** @type {THREE.Object3D<XREventMap> | null} */ (node.parent)) {
+      // The press's own target counts even if it was deregistered since,
+      // as it is still what the press is a press of.
+      if (node !== pressed && !this.#objects.has(node)) {
+        continue;
+      }
+      /** @type {THREE.Object3D | null} */
+      let up = released;
+      for (; up; up = up.parent) {
+        if (up === node) {
+          return node;
+        }
+      }
     }
     return undefined;
   }
@@ -328,11 +362,17 @@ export class InteractionManager {
        * press completes: the completing event goes along the path the press
        * went through, so a click reaches the same elements that have been
        * wearing the pressed styling since the start, even if the one pressed
-       * has since been re-rendered. Anywhere else, it misses. The end, the
-       * completion and the miss each carry the start, and go no further
-       * along the path than the start did (see `Press`). A press whose hand
-       * went misses wherever the ray was left, and its end and its miss
-       * say `lost`.
+       * has since been re-rendered. Let go on something else, it completes
+       * on the innermost registered object holding both (`#sharedTarget`),
+       * as a page's click goes to what its `mousedown` and `mouseup` share:
+       * a press on an icon let go on the button around it completes on the
+       * button. The completion then starts there, so what is below it on
+       * the path hears no completion, as the icon on a page hears no click,
+       * and its `completedOn` names it. With nothing shared, it misses. The
+       * end, the completion and the miss each carry the start, and go no
+       * further along the path than the start did (see `Press`). A press
+       * whose hand went misses wherever the ray was left, and its end and
+       * its miss say `lost`.
        *
        * @param {"select" | "squeeze"} button
        * @param {Press | undefined} press
@@ -347,6 +387,13 @@ export class InteractionManager {
         const intersection = lost ? undefined : this.getIntersection(controller);
         const { object, path, reach, start } = press;
         const releasedOn = intersection && this.getTarget(intersection.object);
+        const completedOn =
+          releasedOn && press.target && this.#sharedTarget(press.target, releasedOn);
+        // Where along the press's path the completion starts. Off the path
+        // when the scene was rearranged under the press, and past `reach`
+        // when the start was stopped below it: either way the object the
+        // two share never heard the press, and it misses.
+        const from = completedOn ? path.indexOf(completedOn) : -1;
         this.#dispatchAlong(
           path,
           {
@@ -361,7 +408,7 @@ export class InteractionManager {
           },
           reach,
         );
-        if (intersection && press.target && releasedOn === press.target) {
+        if (intersection && completedOn && from !== -1 && from < reach) {
           this.#dispatchAlong(
             path,
             {
@@ -372,8 +419,10 @@ export class InteractionManager {
               controller,
               intersection,
               start,
+              completedOn,
             },
             reach,
+            from,
           );
         } else {
           this.#dispatchAlong(

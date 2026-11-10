@@ -23,7 +23,13 @@ $(new THREE.Mesh(), [makeInteractive(() => props.draggable)]);
 The events are the registered object's, whichever of its meshes the ray met. A projected button is a
 quad of background and a quad of text, and a hand drifting from the one onto the other gets a
 `pointermove`, not a `pointerleave` and a `pointerenter`; a press on the label released on the
-background is a `select`. Every event carries:
+background is a `select`. When the press and the release land on different registered objects, the
+press completes on the innermost registered object holding both, as a page's click goes to the
+nearest element its `mousedown` and `mouseup` share: pressed on a registered icon and released on
+the registered button around it, the button gets the `select`, and the icon hears none. The `select`
+says where it completed in `completedOn`. Two registered objects that share no registered ancestor,
+two buttons side by side, get a `selectmissed`. The grip completes the same way. Every event
+carries:
 
 - `controller`, the hand it came from, and `inputSource`, what three connected to it, so what is
   pointed at can reach the hand's gamepad. `inputSource` is null while nothing is connected: a

@@ -71,6 +71,31 @@ function labelledButton() {
   };
 }
 
+/**
+ * Record the given events on each named object, as "<event> on <name>",
+ * with where a completion completed.
+ *
+ * @param {Record<string, THREE.Object3D<XREventMap>>} objects
+ * @param {("select" | "selectmissed")[]} types
+ * @returns {string[]}
+ */
+function listen(objects, types) {
+  /** @type {string[]} */
+  const events = [];
+  const nameOf = (/** @type {THREE.Object3D} */ object) =>
+    Object.keys(objects).find((name) => objects[name] === object);
+  for (const [name, object] of Object.entries(objects)) {
+    for (const type of types) {
+      object.addEventListener(type, (event) => {
+        const completed =
+          "completedOn" in event ? `, completed on ${nameOf(event.completedOn)}` : "";
+        events.push(`${type} on ${name}${completed}`);
+      });
+    }
+  }
+  return events;
+}
+
 /** Slide something out of the ray, as a hand moving does to what it was on. */
 function moveAside(/** @type {THREE.Object3D} */ object) {
   object.position.x = 100;
@@ -635,6 +660,93 @@ describe("select", () => {
     controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
 
     assert.deepEqual(events, ["selectmissed"]);
+    subscription.unsubscribe();
+  });
+
+  test("a press on a label registered inside a button, let go beside it, clicks the button", () => {
+    // A page registers the label too when the button's `cursor: pointer` is
+    // inherited into it. A page's click goes to the nearest element its
+    // `mousedown` and `mouseup` share, and so does this one.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, label } = labelledButton();
+    manager.add(button);
+    manager.add(label);
+    const events = listen({ button, label }, ["select", "selectmissed"]);
+
+    assert.strictEqual(manager.getIntersection(controller)?.object, label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    moveAside(label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    // The label is below where the press completed, so it hears nothing of
+    // the completion, as a page's inner span hears no click.
+    assert.deepEqual(events, ["select on button, completed on button"]);
+    subscription.unsubscribe();
+  });
+
+  test("a press beside a label registered inside a button, let go on it, clicks the button", () => {
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, label } = labelledButton();
+    manager.add(button);
+    manager.add(label);
+    const events = listen({ button, label }, ["select", "selectmissed"]);
+
+    moveAside(label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    label.position.x = 0;
+    label.updateMatrixWorld();
+    assert.strictEqual(manager.getIntersection(controller)?.object, label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["select on button, completed on button"]);
+    subscription.unsubscribe();
+  });
+
+  test("a press on one registered piece of a registered group, let go on another, clicks the group", () => {
+    // A board drawn as a clickable `<g>` around clickable fields: a page
+    // clicks the board.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const board = /** @type {THREE.Object3D<XREventMap>} */ (new THREE.Object3D());
+    const near = targetMesh(5);
+    const far = targetMesh(6);
+    board.add(near, far);
+    board.updateMatrixWorld(true);
+    manager.add(board);
+    manager.add(near);
+    manager.add(far);
+    const events = listen({ board, near, far }, ["select", "selectmissed"]);
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    moveAside(near);
+    assert.strictEqual(manager.getIntersection(controller)?.object, far);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["select on board, completed on board"]);
+    subscription.unsubscribe();
+  });
+
+  test("a press taken below what it shares with its release misses there", () => {
+    // The button never heard the press, so it is not told of a click.
+    const manager = new InteractionManager();
+    const controller = fakeController();
+    const subscription = connect(manager, controller);
+    const { button, label } = labelledButton();
+    manager.add(button);
+    manager.add(label);
+    label.addEventListener("selectstart", (event) => manager.stopPropagation(event));
+    const events = listen({ button, label }, ["select", "selectmissed"]);
+
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectstart", data: {} }));
+    moveAside(label);
+    controller.dispatchEvent(/** @type {any} */ ({ type: "selectend", data: {} }));
+
+    assert.deepEqual(events, ["selectmissed on label"]);
     subscription.unsubscribe();
   });
 

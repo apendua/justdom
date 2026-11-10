@@ -686,6 +686,40 @@ export default class VisualProperties {
     );
   }
 
+  /**
+   * Whether the box draws any pixel of its own: a background colour or
+   * image, a border, a shadow or an outline. A box that draws none takes no
+   * instance in the panel's batch (`drawQuad` in `div.js`), which is most
+   * boxes on a page: the wrappers that only lay their children out.
+   *
+   * By the colours' own alpha and not the element's opacity, which every
+   * colour above folds in: an element faded out, or fading in, keeps its
+   * place in the batch, and a fade does not add and take away an instance
+   * on its first and last frames. `visibility` is decided where the box is
+   * drawn, as before.
+   *
+   * @returns {boolean}
+   */
+  get paints() {
+    const props = this.#props;
+    if (parseAlpha(props.backgroundColor) > 0 || this.background !== null) {
+      return true;
+    }
+    if (
+      parseAlpha(props.borderColor) > 0 &&
+      (this.borderTopWidth > 0 ||
+        this.borderRightWidth > 0 ||
+        this.borderBottomWidth > 0 ||
+        this.borderLeftWidth > 0)
+    ) {
+      return true;
+    }
+    if (this.outlineWidth > 0 && parseAlpha(props.outlineColor) > 0) {
+      return true;
+    }
+    return props.boxShadow !== "none" && this.boxShadows.length > 0;
+  }
+
   get textColor() {
     const [textColor] = parseColor(this.#props.textColor);
     return textColor;
@@ -745,6 +779,7 @@ decorate(VisualProperties.prototype, "outlineWidth", memo());
 decorate(VisualProperties.prototype, "outlineOffset", memo());
 decorate(VisualProperties.prototype, "outlineColor", memo());
 decorate(VisualProperties.prototype, "outlineAlpha", memo());
+decorate(VisualProperties.prototype, "paints", memo());
 decorate(VisualProperties.prototype, "boxShadows", memo());
 decorate(VisualProperties.prototype, "textColor", memo());
 decorate(VisualProperties.prototype, "textAlpha", memo());

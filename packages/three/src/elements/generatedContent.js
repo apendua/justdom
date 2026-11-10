@@ -284,7 +284,7 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
     { isEqual: contentImageEqual },
   );
   return $(mesh, [
-    ...drawQuad(mesh, uniforms, batch),
+    ...drawQuad(mesh, uniforms, batch, () => properties.paints),
     effects(() => {
       onCleanup(() => {
         rampSlot.release();

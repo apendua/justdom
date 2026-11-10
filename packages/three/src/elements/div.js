@@ -241,12 +241,18 @@ const committedPlacements = new WeakMap();
  * order it draws at (`registerDrawOrder`). Shared by an element's box and
  * the boxes of its `::before` and `::after` (`generatedContent.js`).
  *
+ * A batched box that `paints` nothing (`VisualProperties.paints`) takes no
+ * instance: it wears the batch's invisible material and stays out of the
+ * batch until a style gives it a colour, through the same effect a picture
+ * background takes it out by. Its mesh stays, for the ray.
+ *
  * @param {THREE.Mesh} mesh
  * @param {ReturnType<typeof createRectUniforms>} uniforms
  * @param {() => import('./boxBatch.js').BoxBatch | null} batch
+ * @param {() => boolean} paints
  * @returns {EntityEffect<THREE.Mesh>[]}
  */
-export function drawQuad(mesh, uniforms, batch) {
+export function drawQuad(mesh, uniforms, batch, paints) {
   return [
     set("material", () => {
       const drawnBy = batch();
@@ -279,7 +285,7 @@ export function drawQuad(mesh, uniforms, batch) {
     // every such change.
     effects(() => {
       const drawnBy = batch();
-      if (!drawnBy) {
+      if (!drawnBy || !paints()) {
         return;
       }
       drawnBy.add(mesh, uniforms);
@@ -914,7 +920,7 @@ export function box(ctx, element, options = {}) {
       // scale write, everything else a uniform write, which is what makes a
       // layout animation affordable and a style change nearly free.
       $(boxMesh, [
-        ...drawQuad(boxMesh, uniforms, batch),
+        ...drawQuad(boxMesh, uniforms, batch, () => properties.paints),
         // A box that is a layer's root is one of the planes the panel's walk
         // orders (`layerOrder.js`), for as long as it is one.
         effects(() => {

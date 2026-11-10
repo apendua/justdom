@@ -34,12 +34,15 @@ import { measureBoard, measureList } from "../test/benchCases.js";
  * rows; the board's, the piled board at 100 cards. "app attr", "transform"
  * and the board's three came down when an author's attribute stopped
  * restyling the siblings no rule could carry it to (`getSiblingReach`).
+ * "mount", "+1 row" and "insert top" rose by one evaluation a box when a
+ * box that paints nothing stopped taking an instance: the
+ * `VisualProperties.paints` memo that decides it.
  */
 const CEILINGS = {
   list: {
-    mount: { evaluations: 30132, rectReads: 203 },
-    "+1 row": { evaluations: 354, rectReads: 5 },
-    "insert top": { evaluations: 4560, rectReads: 106 },
+    mount: { evaluations: 30332, rectReads: 203 },
+    "+1 row": { evaluations: 356, rectReads: 5 },
+    "insert top": { evaluations: 4562, rectReads: 106 },
     hover: { evaluations: 36, rectReads: 0 },
     "app attr": { evaluations: 381, rectReads: 106 },
     transform: { evaluations: 78, rectReads: 3 },

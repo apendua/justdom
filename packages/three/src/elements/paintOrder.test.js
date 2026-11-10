@@ -1460,12 +1460,57 @@ describe("a panel drawn in paint order", () => {
     await g.walk();
     const [draw, ...rest] = draws(g.panel);
     assert.equal(rest.length, 0, "one draw");
-    // The card's box, the label's and the inner box, and then the label's
-    // run, which is the label's content and so a level past the boxes.
-    assert.deepEqual(kinds(draw), ["box", "box", "box", "run"]);
+    // The card's box and the inner box, and then the label's run, which is
+    // the label's content and so a level past the boxes. The label's own
+    // box paints nothing and takes no instance.
+    assert.deepEqual(kinds(draw), ["box", "box", "run"]);
     g.teardown();
     restoreRange();
     canvas.restore();
+  });
+
+  test("a box that paints nothing takes no instance until a style gives it a colour", async () => {
+    // A hundred wrappers around their text, the shape most of a page has.
+    // Each took an instance it drew nothing with.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: `row${i}`,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+        text: `row ${i}`,
+      })),
+    );
+    await g.walk();
+    const boxes = () =>
+      draws(g.panel)
+        .flatMap(kinds)
+        .filter((kind) => kind === "box").length;
+    assert.equal(boxes(), 0, "no row paints, so none is drawn");
+
+    g.get("row3").style.background = "rgb(0, 0, 255)";
+    await g.settle();
+    await g.walk();
+    assert.equal(boxes(), 1, "the row a background was given to");
+
+    g.get("row3").style.background = "";
+    g.get("row4").style.border = "1px solid rgb(0, 0, 0)";
+    await g.settle();
+    await g.walk();
+    assert.equal(boxes(), 1, "the first gave it back, and a border is paint too");
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a box that paints nothing still takes a press", async () => {
+    const g = await page([
+      { id: "under", style: CARD, at: [0, 0, 200, 200] },
+      { id: "blank", style: `position: absolute; ${POINTER}`, at: [50, 50, 100, 100] },
+    ]);
+    assert.equal(g.press(75, 75), "blank", "over the card it covers");
+    assert.equal(g.press(25, 25), "under", "and the card where it does not reach");
+    g.teardown();
   });
 
   test("draws the layers after the root in the root's draw", async () => {

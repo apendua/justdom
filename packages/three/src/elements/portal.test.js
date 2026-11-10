@@ -1692,7 +1692,9 @@ describe("createPortal", () => {
     // the text that draws itself appeared at once: labels over no card. The
     // commit has to ask for the rebuild itself. The instanced meshes the
     // box batch draws from are the observable: their counts add up to the
-    // boxes the walk found.
+    // boxes the walk found. Each box has a background, since one that paints
+    // nothing takes no instance.
+    const painted = paintEveryBox();
     const manager = new InteractionManager();
     const ctx = InteractionContext.set({}, manager);
     const portal = createPortal(ctx, { budget: 0 });
@@ -1736,6 +1738,7 @@ describe("createPortal", () => {
     // Unmounting asked for a frame; let it run so it does not reach the
     // next test's count of the shared stub's queue.
     await drain();
+    painted.remove();
   });
 
   test("a mounting panel shows a loading frame its own size, where the panel will be", async () => {
@@ -2183,7 +2186,9 @@ describe("createPortal", () => {
     // warm phase resolves: the panel jumped to its new height while every
     // box inside it still waited for the commit. As an effect it is the
     // write, and waits with the rest. The row that grew the panel is the
-    // yardstick: the panel may move only in the frame the row appears.
+    // yardstick: the panel may move only in the frame the row appears, and
+    // it has a background so that its box is drawn.
+    const painted = paintEveryBox();
     const originalRect = window.Element.prototype.getBoundingClientRect;
     let panelHeight = 100;
     window.Element.prototype.getBoundingClientRect = function () {
@@ -2267,6 +2272,7 @@ describe("createPortal", () => {
       await drain();
     } finally {
       window.Element.prototype.getBoundingClientRect = originalRect;
+      painted.remove();
     }
   });
 
@@ -5110,3 +5116,17 @@ describe("a panel that is always busy", () => {
     }
   });
 });
+
+/**
+ * Give every box in a portal a background, so that each takes an instance
+ * in its panel's batch: a box that paints nothing takes none. Remove the
+ * element it answers to stop.
+ *
+ * @returns {HTMLStyleElement}
+ */
+function paintEveryBox() {
+  const style = document.createElement("style");
+  style.textContent = "[data-xr-portal] div { background-color: rgb(255, 0, 0); }";
+  document.head.appendChild(style);
+  return style;
+}

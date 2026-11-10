@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike.",
+      "type": "patch",
+      "packageName": "justdom-vite-hmr"
+    }
+  ],
+  "packageName": "justdom-vite-hmr",
+  "email": "noreply@anthropic.com"
+}

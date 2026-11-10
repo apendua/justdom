@@ -13,7 +13,8 @@ and the controller and hand models.
 npm install justdom-xr justdom-three justdom-signal three
 ```
 
-`three` is a peer dependency. The package has six entries for a page and no index, so that an app
+`justdom-three`, `justdom-signal` and `three` are peer dependencies, so the app and this package
+share one copy of each. The package has six entries for a page and no index, so that an app
 importing one does not pull in the others: `justdom-xr/emulator`, `justdom-xr/touch`,
 `justdom-xr/offer`, `justdom-xr/session`, `justdom-xr/scene` and `justdom-xr/theming`. A seventh,
 `justdom-xr/driver`, runs in Node and drives the emulated headset from a check script. It needs

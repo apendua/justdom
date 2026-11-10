@@ -14,13 +14,13 @@
  * panel, then mounting a panel one flush at a time is quadratic in its size.
  *
  * The "app attr" column is an attribute the portal does not know the name
- * of, toggled on the first row. It costs what a class swap on the row costs,
- * since a stylesheet may select on it through `+` or `~`. The "transform"
- * column is an inline `style.transform` written on the first row, the motion
- * a gauge writes every frame, which moves no box and so should measure the
- * row and not the list: its rects stay at 3. Its evals still grow with the
- * list, because a `style` write restyles the row's siblings, as any author's
- * attribute does. The "loading" column is the portal's own flag toggled on
+ * of, toggled on the first row. No rule of the bench's document names it in
+ * a sibling selector, so it restyles the row alone (`getSiblingReach` in
+ * `documentStyles.js`); its rects grow with the list, since the rows after
+ * it re-measure where they are. The "transform" column is an inline
+ * `style.transform` written on the first row, the motion a gauge writes
+ * every frame, which moves no box and so measures the row and not the list,
+ * in evals as in rects. The "loading" column is the portal's own flag toggled on
  * its container, above every element in the panel, and should cost nothing:
  * the mirror drops it.
  *

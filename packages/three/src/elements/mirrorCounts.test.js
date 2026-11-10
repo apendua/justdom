@@ -29,8 +29,11 @@ import { measureBoard, measureList } from "../test/benchCases.js";
  */
 
 /**
- * The counts measured on develop at 291de63. The list's are its table "in
- * normal flow" at 100 rows; the board's, the piled board at 100 cards.
+ * The counts measured on develop at 291de63, and lowered since by the
+ * change that says so. The list's are its table "in normal flow" at 100
+ * rows; the board's, the piled board at 100 cards. "app attr", "transform"
+ * and the board's three came down when an author's attribute stopped
+ * restyling the siblings no rule could carry it to (`getSiblingReach`).
  */
 const CEILINGS = {
   list: {
@@ -38,13 +41,13 @@ const CEILINGS = {
     "+1 row": { evaluations: 354, rectReads: 5 },
     "insert top": { evaluations: 4560, rectReads: 106 },
     hover: { evaluations: 36, rectReads: 0 },
-    "app attr": { evaluations: 4017, rectReads: 106 },
-    transform: { evaluations: 3714, rectReads: 3 },
+    "app attr": { evaluations: 381, rectReads: 106 },
+    transform: { evaluations: 78, rectReads: 3 },
   },
   board: {
-    "move first": { evaluations: 3783, rectReads: 3 },
-    "slide off": { evaluations: 3679, rectReads: 3 },
-    "slide on": { evaluations: 3679, rectReads: 3 },
+    "move first": { evaluations: 183, rectReads: 3 },
+    "slide off": { evaluations: 79, rectReads: 3 },
+    "slide on": { evaluations: 79, rectReads: 3 },
   },
 };
 

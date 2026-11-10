@@ -19,7 +19,11 @@ import {
 } from "./textLines.js";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
 import { classify } from "./animationClock.js";
-import { GENERATED_COPY_ATTRIBUTE, withGeneratedCopyRule } from "./documentStyles.js";
+import {
+  GENERATED_COPY_ATTRIBUTE,
+  getSiblingReach,
+  withGeneratedCopyRule,
+} from "./documentStyles.js";
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
@@ -309,6 +313,20 @@ function isSelfScoped(element, name) {
     return true;
   }
   return SVG_GEOMETRY_ATTRIBUTES.has(name) && isSvgElement(element) && !isSvgRoot(element);
+}
+
+/**
+ * Whether some rule of the document could restyle an element's sibling for
+ * a change of `name` (`getSiblingReach`). An attribute no sibling rule
+ * names, which is most of them on most pages, `style` included, restyles
+ * the element's own subtree and leaves its siblings alone.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+function reachesSibling(name) {
+  const reach = getSiblingReach();
+  return reach === null || reach.has(name.toLowerCase());
 }
 
 /**
@@ -1445,7 +1463,7 @@ export class DomMirror {
             contained = false;
           }
         }
-        if (!isSelfScoped(element, name)) {
+        if (!isSelfScoped(element, name) && reachesSibling(name)) {
           selfScoped = false;
         }
         if (!movesOnlyItsFrame(element, name)) {
@@ -1482,8 +1500,8 @@ export class DomMirror {
    * was. So a swap that moved nothing costs a rect for the element and for
    * each element after it, a text measurement for each text node after it,
    * a rect for the parent's size, and a rect for each positioned box in the
-   * panel (`outOfFlowLayout`). That is the scope the restyle above already
-   * has, since an author's attribute can restyle its siblings.
+   * panel (`outOfFlowLayout`). That is the scope the restyle above has when
+   * a sibling rule names the attribute (`reachesSibling`).
    *
    * In a flex row every child is told, the ones before the element too:
    * the items share the row, so an item that grows shrinks the items
@@ -2135,7 +2153,8 @@ export class DomMirror {
    *   default: an author's mutation can change which rules match across
    *   `~`, `+` and the structural pseudo-classes, and those reach exactly
    *   that far. False for the changes that cannot move a selector's
-   *   verdict on a sibling, an animation (`animatedStyles`), and for the
+   *   verdict on a sibling: an animation (`animatedStyles`), an attribute
+   *   no sibling rule of the document names (`reachesSibling`), and the
    *   ones declared not to by contract (`isSelfScoped`), whose sibling
    *   rules are not followed. That is what keeps hovering one row in a
    *   long list off every other row in it, and moving one shape of a

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "An author's attribute, inline style included, restyles an element's siblings only when a rule of the document could carry it to them",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

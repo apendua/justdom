@@ -853,6 +853,52 @@ describe("svg shape", () => {
     root.remove();
   });
 
+  test("a <g> moved by its transform attribute takes its shapes along", () => {
+    // A move written as the attribute, the way a sprite walks across the
+    // Knights board, is a change to the group's frame alone: the mirror
+    // measures nothing under it, and the matrix and the clip still follow.
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.setAttribute("viewBox", "0 0 50 25");
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("transform", "translate(10, 0)");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("width", "5");
+    rect.setAttribute("height", "5");
+    rect.setAttribute("fill", "red");
+    g.appendChild(rect);
+    root.appendChild(g);
+    document.body.appendChild(root);
+    const { mirror, flush, disconnect } = observedMirror(root);
+    for (const node of [root, g, rect]) {
+      mirror.adopt(node);
+    }
+    /** @type {Object3D | undefined} */
+    let groupObject;
+    /** @type {Object3D | undefined} */
+    let shapeObject;
+    const subscriptions = [
+      group({}, g).subscribe((value) => {
+        groupObject = value;
+      }),
+      shape({}, rect).subscribe((value) => {
+        shapeObject = value;
+      }),
+    ];
+    assert.ok(groupObject && shapeObject);
+    const [fill] = /** @type {Mesh[]} */ (shapeObject.children);
+    assert.deepEqual(matrix2d(groupObject), [1, 0, 0, 1, 10, 0]);
+    assert.deepEqual(rootBounds(fill), { left: 20, top: 0, right: 30, bottom: 10 });
+
+    g.setAttribute("transform", "translate(20, 5)");
+    flush();
+    assert.deepEqual(matrix2d(groupObject), [1, 0, 0, 1, 20, 5]);
+    assert.deepEqual(rootBounds(fill), { left: 40, top: 10, right: 50, bottom: 20 });
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    disconnect();
+    root.remove();
+  });
+
   test("a <g> that moves leaves its shapes' geometry alone", () => {
     const root = document.createElementNS(SVG_NS, "svg");
     root.setAttribute("viewBox", "0 0 50 25");

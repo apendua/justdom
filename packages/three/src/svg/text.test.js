@@ -438,6 +438,35 @@ describe("svg text", () => {
     s.teardown();
   });
 
+  test("a group that moves the text measures nothing, and one that resizes it does", () => {
+    // A stack's count on the Knights board, under a group whose transform
+    // walks it from field to field. The text's runs are in its own user
+    // space, which the move does not change.
+    const text = svg("text", { x: "0", y: "10", fill: "red" }, ["7"]);
+    const group = svg("g", { transform: "translate(0,0)" }, [text]);
+    const s = scene([group], text);
+    /** @param {() => void} change */
+    const ingest = (change) => {
+      const observer = new window.MutationObserver(() => {});
+      observer.observe(s.root, { subtree: true, attributes: true, attributeOldValue: true });
+      change();
+      const records = observer.takeRecords();
+      observer.disconnect();
+      batch(() => s.mirror.ingest(records));
+    };
+    const reads = s.transforms.length;
+    ingest(() => group.setAttribute("transform", "translate(10,5)"));
+    ingest(() => group.setAttribute("transform", "translate(20,10)"));
+    assert.equal(s.transforms.length, reads, "two steps, no measurement");
+    // An attribute that does reach the layout, beside the move, still does.
+    ingest(() => {
+      group.setAttribute("transform", "translate(30,15)");
+      group.setAttribute("font-size", "20");
+    });
+    assert.equal(s.transforms.length, reads + 1, "measured again for the font");
+    s.teardown();
+  });
+
   test("a hover that moves a font's axis measures the text again", () => {
     const text = svg("text", { x: "0", y: "10", fill: "red" }, ["A"]);
     const s = scene([text], text);

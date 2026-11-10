@@ -91,11 +91,11 @@ node common/scripts/publish.mjs
 ### Ranges between the packages
 
 A published package names the others it needs, in `dependencies` or `peerDependencies`, as
-`workspace:^`. `pnpm publish` turns that into a caret range on the version in the workspace, so
-`justdom-three-ui` 0.4.2 asks for `justdom-three` `^0.34.0` and `justdom-signal` `^1.3.0`. An app
-can then take a patch of `justdom-three`, or a minor of `justdom-signal`, without waiting for a new
-`justdom-three-ui`. A caret on a `0.x` version stops at the next minor, the place semver keeps for
-breaking changes before 1.0.
+`workspace:^`. `pnpm publish` turns that into a caret range on the version in the workspace at
+publish time. For example, `justdom-three-ui` 0.4.2 asks for `justdom-three` `^0.34.0` and
+`justdom-signal` `^1.3.0`. An app can then take a patch of `justdom-three`, or a minor of
+`justdom-signal`, without waiting for a new `justdom-three-ui`. A caret on a `0.x` version stops at
+the next minor, the place semver keeps for breaking changes before 1.0.
 
 `workspace:*` would publish the exact version instead, and an app with any other version of a peer
 then gets a peer warning, or a second copy of a dependency. `devDependencies` and the apps keep
@@ -103,7 +103,9 @@ then gets a peer warning, or a second copy of a dependency. `devDependencies` an
 
 `rush version --bump` leaves `workspace:^` as written. It still bumps a package by a patch when a
 package it depends on gets a new version, so the floor of the published range moves up with each
-release.
+release. Rush finds those dependents through `dependencies` and `devDependencies` only, never
+`peerDependencies`, so every peer on another package here also needs its `workspace:*` twin in
+`devDependencies`. Without the twin, the package is not bumped and keeps publishing a stale floor.
 
 ### Logging in to npm
 

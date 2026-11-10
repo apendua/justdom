@@ -1,6 +1,15 @@
 # Change Log - justdom-three
 
-This log was last generated on Mon, 09 Nov 2026 22:53:55 GMT and should not be manually modified.
+This log was last generated on Tue, 10 Nov 2026 20:13:58 GMT and should not be manually modified.
+
+## 0.34.0
+Tue, 10 Nov 2026 20:13:58 GMT
+
+### Minor changes
+
+- An SVG image under a clip-path or a viewport is cut down to what the clip leaves before it is drawn, so a sprite sheet behind a one-frame clip shades one frame and not the whole sheet.
+- A transform attribute changed on an SVG element below the root no longer makes the mirror measure the text under it again.
+- A press on a registered element inside another, such as an icon inside a button, and let go on the outer one now completes on the outer one and clicks it, as a page's click goes to the nearest element its mousedown and mouseup share. The select and squeeze events carry where the press completed as completedOn.
 
 ## 0.33.0
 Mon, 09 Nov 2026 22:53:55 GMT

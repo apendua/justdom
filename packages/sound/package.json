@@ -1,6 +1,6 @@
 {
   "name": "@apendua/sound",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "The noises the demos make: waveforms generated in code, and the three.js voices that place them in the room",
   "keywords": [
     "audio",

@@ -1,6 +1,13 @@
 # Change Log - justdom-core
 
-This log was last generated on Mon, 09 Nov 2026 22:53:55 GMT and should not be manually modified.
+This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+
+## 0.6.1
+Tue, 10 Nov 2026 21:23:39 GMT
+
+### Patches
+
+- Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike.
 
 ## 0.6.0
 Mon, 09 Nov 2026 22:53:55 GMT

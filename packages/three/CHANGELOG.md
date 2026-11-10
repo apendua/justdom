@@ -1,6 +1,13 @@
 # Change Log - justdom-three
 
-This log was last generated on Tue, 10 Nov 2026 20:13:58 GMT and should not be manually modified.
+This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+
+## 0.34.1
+Tue, 10 Nov 2026 21:23:39 GMT
+
+### Patches
+
+- Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike.
 
 ## 0.34.0
 Tue, 10 Nov 2026 20:13:58 GMT

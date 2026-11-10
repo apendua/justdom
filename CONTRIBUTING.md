@@ -34,6 +34,25 @@ node common/scripts/install-run-rush.js build
 - `build` type-checks and tests every package and demo. It also type-checks the code blocks in the
   docs against the packages; [`site/README.md`](site/README.md#checking-the-code-blocks) says how.
 
+## The count gate
+
+[`packages/three/src/elements/mirrorCounts.test.js`](packages/three/src/elements/mirrorCounts.test.js)
+runs the 100-row list and the 100-card board of the mirror bench (`src/elements/mirror.bench.js`) as
+an ordinary test, so every build runs it. Each case counts the reactive evaluations and the layout
+reads one change costs a panel, which are exact on any machine, and checks them against the
+`CEILINGS` table at the top of the file.
+
+The test fails when a count goes over its ceiling, and also when it falls more than 5% under it. The
+message names the case and the measured number. To update a ceiling:
+
+- A count that went down is an improvement. Write the new number into `CEILINGS` in the same pull
+  request, so that a later change cannot spend the saving without anyone seeing.
+- A count that went up is either a bug or a cost the change means to pay. If it is meant, raise the
+  ceiling and say in the pull request what the change costs and why.
+
+A bump of jsdom, Node or another dependency the counts run through can move a count with no change
+to the package. Update the ceiling the same way, and name the bump in the pull request.
+
 ## Change files
 
 A change to a published package needs a change file, and CI checks for one with

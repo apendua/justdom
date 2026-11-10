@@ -3,9 +3,12 @@
 **Status:** implemented. `UpdateChannel({ atomic })`, `Effect.warm()` and a two-phase pass in
 `UpdateQueue`; the portal's channel is atomic, and the portal holds arrivals and departures for the
 same frame. **Scope:** `packages/signal/src/{Effect,UpdateChannel,UpdateQueue}.js`,
-`packages/freedom/src/elements/{portal,portalPump}.js`. **Follows:**
-[`signal-update-channels-design.md`](./signal-update-channels-design.md) (what a channel is) and
-[`signal-pull-model.md`](./signal-pull-model.md) (why only effects have one).
+`packages/three/src/elements/{portal,portalPump}.js`. **Follows:**
+[`signal-update-channels-design.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/signal-update-channels-design.md)
+(what a channel is) and
+[`signal-pull-model.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/signal-pull-model.md)
+(why only effects have one), both in the apendua.dev repository, where the two packages were
+written. The pull request and issue numbers below marked apendua.dev are that repository's.
 
 ## 1. The problem
 
@@ -357,7 +360,7 @@ is a trade this change did not make. It assumed the animation clock was the one 
 input a panel has, queueing one element's restyle per frame, which warms in well under any budget.
 That did not hold: an animation the clock cannot read is taken to move layout and re-measures the
 panel every frame, and timers and drags are sustained input too. The desk's charts panel never
-loaded under them (desk ledger 12 and 14).
+loaded under them (items 12 and 14 of the desk's ledger in apendua.dev).
 
 The bound came later, as a time in the pump rather than a pass count in the channel:
 `MAX_COMMIT_WAIT` in `portalPump.js`, a second. Once the pump has had no node to build and has
@@ -371,7 +374,9 @@ frame builds it: once a node new to the queue arrives from the page that long in
 pump builds everything queued and flushes with no budget, again only once the commit is due. A build
 fed only by its own content is never forced, however long it takes. The animation clock is also held
 while a panel loads, which removes the commonest sustained input before the bound is needed. R3, in
-section 8 of [`freedom-architecture-plan.md`](./freedom-architecture-plan.md), has the reasoning.
+section 8 of
+[`freedom-architecture-plan.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/freedom-architecture-plan.md)
+in apendua.dev, has the reasoning.
 
 ### 5.3 What warming cannot reach
 
@@ -388,16 +393,16 @@ fall outside it, and both degrade to "correct, but paid at the commit":
   of §3.2 doing its job.
 
 What would defeat it is expensive work inside an effect body or downstream of an effect's write. The
-package's own rule already pushes against the first — the user guide's preface: a `Derived` computes
-and must be pure, an `Effect` is where the world is touched — and the portal's element code is
-written to it. `UpdateChannel.test.js` pins the sweep being unbudgeted even when the effects
+package's own rule already pushes against the first — `site/guide/reactivity.md`: a `Derived`
+computes and must be pure, an `Effect` is where the world is touched — and the portal's element code
+is written to it. `UpdateChannel.test.js` pins the sweep being unbudgeted even when the effects
 themselves are the cost, so the failure is a hitch and never a tear.
 
 ### 5.4 Effects with `deferred: true`
 
 A deferred first run has no recorded dependencies, so it is trivially warm and pays for everything
-at the sweep. Nothing in freedom builds panel effects that way — the first run happens in the
-constructor, inside the pump's budgeted node build — and a caller who does is choosing to.
+at the sweep. Nothing in `justdom-three` builds panel effects that way — the first run happens in
+the constructor, inside the pump's budgeted node build — and a caller who does is choosing to.
 
 ## 6. What the tests pin
 
@@ -423,7 +428,7 @@ constructor, inside the pump's budgeted node build — and a caller who does is 
 | a running effect is warm                                        | "counts a running effect as warm"                                                |
 | non-atomic channels are untouched                               | "a channel that is not atomic is not warmed by its flush"                        |
 
-`packages/freedom/src/elements/portal.test.js`:
+`packages/three/src/elements/portal.test.js`:
 
 | behaviour                                                                      | test                                                                           |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -438,7 +443,7 @@ constructor, inside the pump's budgeted node build — and a caller who does is 
 | a built, unattached object is taken down with the panel                        | "an object built for a commit that never came is taken down with the panel"    |
 | shared-budget accounting, counted at the build rather than the scene           | "portals under one scheduler share one budget…"                                |
 
-`packages/freedom/src/elements/portal.test.js`, "a panel that is always busy", for section 4.5:
+`packages/three/src/elements/portal.test.js`, "a panel that is always busy", for section 4.5:
 
 | behaviour                                                                  | test                                                                                         |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |

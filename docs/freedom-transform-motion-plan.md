@@ -1,14 +1,17 @@
-# `@apendua/freedom`: a transform-only animation that does not wait for the commit
+# `justdom-three`: a transform-only animation that does not wait for the commit
 
 This plan takes an element's own CSS `transform` out of the panel's atomic update. A transition or
 keyframe animation that moves only `transform` writes the element's matrix in the frame the
 animation clock samples it, whatever else the panel's channel is still reading. Every other write,
 layout and paint and order, stays atomic. The paint-order default plan
-(`docs/freedom-paint-order-default-plan.md`) left this out of its scope as one of the two causes of
-the desk's hover lag. The other cause, the desk's steady cost per frame, is not in this plan either.
+([`freedom-paint-order-default-plan.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/freedom-paint-order-default-plan.md),
+in the apendua.dev repository, where the package was written) left this out of its scope as one of
+the two causes of the desk's hover lag. The other cause, the desk's steady cost per frame, is not in
+this plan either.
 
-The plan stacks on #722, the last PR of the paint-order port, because every mechanism it touches
-(`layerOrder.js`, `getClearedSiblings`, `hasDepthTransform`) is in the shape that port leaves it.
+The plan stacks on apendua.dev#722, the last PR of the paint-order port, because every mechanism it
+touches (`layerOrder.js`, `getClearedSiblings`, `hasDepthTransform`) is in the shape that port
+leaves it.
 
 ## Decisions for the maintainer
 
@@ -53,7 +56,8 @@ a frame's delay. On a panel that is busy elsewhere, a timer rewriting a text nod
 restyle of a card's siblings, the step waits until all of that is warm, and the next step joins the
 same wait. The `atomic` option's own doc says so: "a panel whose per-frame reading does not fit the
 budget does not move until the animation ends", or until `MAX_COMMIT_WAIT`. On the Quest a corkboard
-card stops for a moment as the ray comes onto it (#676), on `develop` and on the stack alike.
+card stops for a moment as the ray comes onto it (apendua.dev#676), on `develop` and on the stack
+alike.
 
 The pieces downstream of the matrix already read it live:
 
@@ -176,9 +180,9 @@ of rebuilding is left out of this plan (see the last section), so PR 4 measures 
 
 ## PRs
 
-Each is a draft through the review loop in `CLAUDE.md`, stacked on the one before.
+Each is a draft through the review loop in apendua.dev's `CLAUDE.md`, stacked on the one before.
 
-1. **This plan**, docs only, on #722.
+1. **This plan**, docs only, on apendua.dev#722.
 2. **The transform signal.** The `transformed` batch, `record.transform`, `getTransformStyle`, and
    the five readers moved onto it. No change to what is drawn or when. Tests: a transform sample
    leaves `getComputedStyleCached` unread, the proxy for `setFromElement`, which fails on the old
@@ -186,7 +190,7 @@ Each is a draft through the review loop in `CLAUDE.md`, stacked on the one befor
    `translateZ` sample that moves still queues the place effect in the atomic channel until PR 3.
 3. **The motion channel and the split placement.** The rules above, with their docs: the `atomic`
    option's doc in `portal.js`, a section in `docs/freedom-atomic-panel-updates.md` and the rule of
-   its section 7.1 (with the `div.test.js` tests that pin it), and the freedom README where it
+   its section 7.1 (with the `div.test.js` tests that pin it), and the package README where it
    describes atomic updates. Tests in `portal.test.js`, each failing on the old code where it
    describes new behaviour:
    - an atomic panel holding a cold effect elsewhere moves a transform-only animation's box every

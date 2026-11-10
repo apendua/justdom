@@ -1,4 +1,4 @@
-# `@apendua/freedom`: SVG in a portal — implementation plan
+# `justdom-three`: SVG in a portal — implementation plan
 
 Inline `<svg>` is the one kind of content a page uses for diagrams, icons and arrows, and until now
 a portal drew none of it: an `<svg>` element was a CSS box like any other (its background and border
@@ -13,9 +13,9 @@ earcut triangulator — and the stroker in `SVGLoader`, some 30 kB minified on t
 already costs. `checkbox.js` went to some trouble to keep exactly that out of every bundle with a
 portal in it, and most panels never carry an SVG. So the mirror grows a small seam — a list of
 _element plugins_ asked before the built-in dispatch — and the SVG support lives behind a second
-entry point, `@apendua/freedom/svg`, that nothing in the main entry imports. A scene registers it
-once; a scene that does not pays nothing, and an `<svg>` in such a scene is its CSS box and nothing
-inside it.
+entry point, `justdom-three/svg`, that nothing in the main entry imports. A scene registers it once;
+a scene that does not pays nothing, and an `<svg>` in such a scene is its CSS box and nothing inside
+it.
 
 **The DOM stays the source of truth, styles included.** Nothing here parses an SVG file. The shapes
 are live elements in the page, styled by the page's stylesheets, and what the plugin reads is their
@@ -66,7 +66,7 @@ appear" for the showcase's visual suite, which photographs the scene in a real b
   SVG element. The `<svg>` root is the exception: it is a real CSS box and stays one, plugin or not.
 - **`render.js`** — `RenderOptions.portalPlugins`.
 
-### The plugin: `@apendua/freedom/svg`
+### The plugin: `justdom-three/svg`
 
 `svgElements()` returns the plugin. What it claims and how:
 
@@ -146,12 +146,12 @@ the mirror's child-list signals, so a `<g>` reorder is a render-order write, not
 
 ### Showcase
 
-`apps/showcase-xr` gains a fifth panel, _Vectors_, centred between the four: a diagram of boxes
-joined by dashed and dotted arrows with polygon heads, a row of icons drawn through a `viewBox` at
-three sizes, a rotated `<g>`, strokes with each `linecap`/`linejoin`, an animated
-`stroke-dashoffset` and a stroke whose colour is animated by CSS keyframes — every mechanism S1
-supports, in one photograph. The visual suite also counts pixels of a colour only the SVG panel
-uses, a check that means the same thing on any machine.
+`apps/showcase` gains a fifth panel, _Vectors_, centred between the four: a diagram of boxes joined
+by dashed and dotted arrows with polygon heads, a row of icons drawn through a `viewBox` at three
+sizes, a rotated `<g>`, strokes with each `linecap`/`linejoin`, an animated `stroke-dashoffset` and
+a stroke whose colour is animated by CSS keyframes — every mechanism S1 supports, in one photograph.
+The visual suite also counts pixels of a colour only the SVG panel uses, a check that means the same
+thing on any machine.
 
 ### Left out of S1, on purpose
 
@@ -163,8 +163,9 @@ every element inherited it. The base package has since hidden the container off-
 made boxes follow `visibility` on their own quads, and shapes now follow it the same way: the
 shape's meshes go, its object stays, and a shape that says `visible` is drawn under a hidden `<g>`.
 S3 has since added `pointer-events` and hit-testing. Item 5 of
-[the architecture plan](freedom-architecture-plan.md) (#525) added percentage lengths in a shape's
-geometry and its stroke.
+[the architecture plan](https://github.com/apendua/apendua.dev/blob/develop/docs/freedom-architecture-plan.md)
+in the apendua.dev repository (apendua.dev#525) added percentage lengths in a shape's geometry and
+its stroke.
 
 ---
 
@@ -297,10 +298,10 @@ Several things the list above did not foresee. The portal built nothing under a 
 nothing there either, so an edit inside a `<marker>` reached no signal. It now adopts every node of
 an SVG subtree no plugin drew into its mirror, without building it. Its walk reaches a `<defs>` at
 the end of the panel after the paths that use it. `markers` used to adopt a `<marker>` through a
-`PortalTemplatesContext` the portal handed plugins, the moment it resolved one; item 4 of
-`docs/freedom-architecture-plan.md` took that out, since a read made before the walk gets there
-follows the node's adoption and is read again once it does (#454). A `<marker>` outside the panel is
-drawn as first read, since the portal observes only its own container.
+`PortalTemplatesContext` the portal handed plugins, the moment it resolved one; item 4 of that
+architecture plan took that out, since a read made before the walk gets there follows the node's
+adoption and is read again once it does (apendua.dev#454). A `<marker>` outside the panel is drawn
+as first read, since the portal observes only its own container.
 
 Template content is drawn but never hit: a press forwarded to an element inside a `<marker>` would
 reach nothing on the page. A copy's object follows the path's `visibility`, since browsers paint no
@@ -474,5 +475,5 @@ Each is a shader concern. A linear or radial gradient fill is a small `ShaderMat
 in `objectBoundingBox` or `userSpaceOnUse` units. `clip-path: url(#id)` referring to a `<clipPath>`
 of shapes is a stencil or a second SDF. A rectangular one is the existing clip box, and is drawn: a
 `<clipPath>` holding one `<rect>` joins the viewports `readChain` in `svg/shape.js` intersects, a
-turned rect as its bounding box (item 5 of the architecture plan, #534). `mask` is a render target.
-None of the rest is needed for diagrams; each goes in when a real panel wants it.
+turned rect as its bounding box (item 5 of the architecture plan, apendua.dev#534). `mask` is a
+render target. None of the rest is needed for diagrams; each goes in when a real panel wants it.

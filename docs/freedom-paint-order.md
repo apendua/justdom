@@ -1,9 +1,10 @@
-# `@apendua/freedom`: paint order
+# `justdom-three`: paint order
 
 A panel is drawn the way a page paints a `preserve-3d` context. This file holds the rules that code
 follows. The experiment that chose this model, with its counts and its measurements, is recorded in
-[`docs/freedom-paint-order-plan.md`](freedom-paint-order-plan.md). Where the two differ, this file
-and the code are right.
+[`docs/freedom-paint-order-plan.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/freedom-paint-order-plan.md)
+in the apendua.dev repository, where the package was written. Where the two differ, this file and
+the code are right.
 
 ## The rules
 
@@ -199,9 +200,9 @@ shares an element.
 - **Depth writes for overlays and swung layers.** Only the root writes depth. Something drawn after
   the panel and behind a swung card, inside the root's box, is not hidden by the card. If that
   shows, the pieces write depth in a last depth-only pass.
-- **A layer seen from behind.** Freedom reads `backface-visibility` nowhere, so a card flipped past
-  90° shows its content mirrored. When it comes, it is the walk's: a piece whose layer says `hidden`
-  and whose plane faces away is left out of the order.
+- **A layer seen from behind.** `justdom-three` reads `backface-visibility` nowhere, so a card
+  flipped past 90° shows its content mirrored. When it comes, it is the walk's: a piece whose layer
+  says `hidden` and whose plane faces away is left out of the order.
 - **The drag ghost** (`takeSnapshot` in `ghostSnapshot.js`) renders the panel in the order of its
   last walk, from the headset's viewpoint, and not from the ghost camera's.
 - **A plugin's own object.** A portal plugin may return any object, and the tree assumes every layer

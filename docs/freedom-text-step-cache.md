@@ -1,7 +1,7 @@
 # Text steps without the stall: holding and preparing rasterized steps
 
 **Status:** implemented: held steps (PR 1 in section 6) and preparing ahead (PR 2). **Scope:**
-`packages/freedom/src/elements/{textScale,textRun,textHelpers,textBatch,textPrepare,portalScheduler,portal}.js`.
+`packages/three/src/elements/{textScale,textRun,textHelpers,textBatch,textPrepare,portalScheduler,portal}.js`.
 **Follows:** [`freedom-atomic-panel-updates.md`](./freedom-atomic-panel-updates.md), which is why a
 panel's reading is budgeted and its writing lands in one frame.
 
@@ -45,8 +45,9 @@ The time-slicing and the atomic swap that this proposal first asked for already 
 
 The desk (Beige Box '84) ran in a session on the emulated headset in headless Chromium, as
 `apps/desk/tests/xr-check.mjs` runs it. The script set the head's position every frame and recorded,
-per frame, the time spent in sections of freedom (wrapped by a Vite transform in the dev server, so
-the repository was not changed) and in the native canvas and WebGL calls (wrapped in the page).
+per frame, the time spent in sections of `justdom-three` (wrapped by a Vite transform in the dev
+server, so the repository was not changed) and in the native canvas and WebGL calls (wrapped in the
+page).
 
 Three adjustments make the numbers mean something:
 
@@ -85,8 +86,8 @@ runs on each desk panel.
 
 ### 3.3 One step change, frame by frame
 
-A typical crossing on one panel, leaning in at 1.5 cm a frame (`run` is freedom's frame callback,
-`render` is `renderer.render`):
+A typical crossing on one panel, leaning in at 1.5 cm a frame (`run` is the package's frame
+callback, `render` is `renderer.render`):
 
 | Frame | What happens        | `run`   | Rasterized    | Batch and GPU                             | `render` |
 | ----- | ------------------- | ------- | ------------- | ----------------------------------------- | -------- |

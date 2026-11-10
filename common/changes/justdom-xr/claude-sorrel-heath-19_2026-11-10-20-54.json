@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "justdom-three and justdom-signal are now peer dependencies rather than dependencies, so an app and justdom-xr share one copy of each. Apps must install both, as the README already said.",
+      "type": "minor",
+      "packageName": "justdom-xr"
+    }
+  ],
+  "packageName": "justdom-xr",
+  "email": "noreply@anthropic.com"
+}

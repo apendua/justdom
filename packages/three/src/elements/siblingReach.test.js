@@ -39,6 +39,12 @@ describe("siblingReachOf", () => {
     assert.deepEqual(reach("li:nth-child(2n+1) ~ [data-x]"), ["data-x"]);
   });
 
+  test("an :nth-child() that counts by a selector reaches the siblings it counts", () => {
+    assert.deepEqual(reach("li:nth-child(2 of .done)"), ["class"]);
+    assert.deepEqual(reach("li:nth-last-child(odd of [data-x])"), ["data-x"]);
+    assert.deepEqual(reach("li:nth-of-type(2)[data-x]"), []);
+  });
+
   test("a combinator or a name inside a string or an attribute's value does not count", () => {
     assert.deepEqual(reach("[title='a + b']"), []);
     assert.deepEqual(reach('[data-x="~.y#z"]'), []);

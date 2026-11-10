@@ -5,9 +5,11 @@ import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
  *
  * A change of an attribute restyles the element's siblings only when some
  * rule could match a sibling differently for it, and a rule can only do that
- * through a sibling combinator, `+` or `~`: one in the selector itself, as in
- * `.row[data-on] + .row`, or one inside a pseudo-class's argument, as in
- * `.row:has(+ .row[data-on])`. So a selector with neither reaches no
+ * through a sibling combinator, `+` or `~`, or through the selector an
+ * `:nth-child()` or `:nth-last-child()` counts siblings by: a combinator in
+ * the selector itself, as in `.row[data-on] + .row`, one inside a
+ * pseudo-class's argument, as in `.row:has(+ .row[data-on])`, or
+ * `li:nth-child(2 of .done)`. So a selector with none of these reaches no
  * sibling, whatever it names, and a selector with one reaches siblings
  * through every name it has.
  *
@@ -129,6 +131,11 @@ export function siblingReachOf(selector) {
       }
       if (NTH_PSEUDO_CLASSES.has(name) && selector[i + 1] === "(") {
         i = skipNthFormula(selector, i + 2) - 1;
+        // `:nth-child(2 of .done)` counts the siblings that match `.done`,
+        // so a sibling's class decides whether this element matches.
+        if (selector[i + 1] !== ")") {
+          siblings = true;
+        }
       } else if (name === "checked") {
         names.add("checked");
         names.add(CHECKED_ATTRIBUTE);

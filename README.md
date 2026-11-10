@@ -102,12 +102,12 @@ that did this for Three.js objects and, with the same vocabulary, for DOM nodes.
 
 freedom then grew from a renderer for 3D scenes into a UI library for XR. An interface in a headset
 needs what an interface on a page already has: layout, text, scrolling, text fields, a keyboard.
-Rather than build those again in the scene, freedom learned to mirror real DOM into it. The name had
-been a double pun all along, and the showcase still spells it FreeDOM: "free DOM", the DOM set free
-from the page, and, said aloud, "three DOM", because Three.js draws it. An app keeps its page as it
-is, and in a headset `justdom-three` draws the element the app is mounted in as a panel in the room,
-which the controllers point at and type into. That is how the todo and desk demos are each one app
-on a page and in a headset, and the showcase demo shows what a panel can draw.
+Rather than build those again in the scene, freedom learned to mirror real DOM into it. The name is
+a double pun, and the showcase still spells it FreeDOM: "free DOM", the DOM set free from the page,
+and, said aloud, "three DOM", because Three.js draws it. An app keeps its page as it is, and in a
+headset `justdom-three` draws the element the app is mounted in as a panel in the room, which the
+controllers point at and type into. That is how the todo and desk demos are each one app on a page
+and in a headset, and the showcase demo shows what a panel can draw.
 
 The rest of the stack grew with it:
 

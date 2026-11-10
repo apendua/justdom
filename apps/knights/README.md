@@ -55,10 +55,10 @@ the fourth does:
 - The battlefield behind the board is an `<img>` under the rest, not the container's
   `background-image`. A panel draws a `url()` background as nothing, which left the black grid on a
   black room.
-- A sprite's frame is picked by the image's `transform`, not its `x` and `y`. A panel takes a new
-  `transform` as a matrix write, where a new `x` and `y` would be a new quad ten times a second for
-  every stack. The frame's `clip-path` is on a group around the image, so the `transform` does not
-  move the clip with it.
+- A sprite's frame is picked by the image's `transform`, and the frame's `clip-path` is on a group
+  around the image, so the `transform` does not move the clip with it. A panel cuts the picture's
+  quad down to what the clip leaves, so it draws one frame of the sheet and not all 152, and a new
+  frame rewrites that quad's corners in place.
 - The walls are filled `url(#…) black`. A panel draws no `<pattern>` yet, and draws the fallback
   colour instead, so the walls are solid black there and hatched on the page.
 - The board carries `cursor: pointer` while it takes orders, so on the page the mouse is a hand over

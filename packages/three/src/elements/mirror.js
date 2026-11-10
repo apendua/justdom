@@ -312,6 +312,33 @@ function isSelfScoped(element, name) {
 }
 
 /**
+ * Whether a change of `name` on `element` only moves the frame the element
+ * and its subtree are drawn in, and so changes no measurement under it: a
+ * `transform` on an SVG element below the `<svg>` root.
+ *
+ * Everything under such an element is laid out in its own user space, and
+ * the transform takes that space where it is drawn without changing it. A
+ * `<text>` keeps its runs, a percentage keeps its viewport, and the panel
+ * takes the new transform as a matrix write (`svgNode`). The one thing
+ * that measures a subtree in place, a `<text>` laid out in a measurement
+ * clone (`measureRuns` in `svg/text.js`), measures it in its own user
+ * space, with the transform switched off. So the element's subtree is
+ * restyled, for a selector that keys on the attribute, and not measured
+ * again. The root is a box, placed by layout, and is not one of these.
+ *
+ * Without this, a stack walking across the Knights board re-measured the
+ * count under it on every step: a deep clone, its computed style copied
+ * and a forced layout, ten times a second.
+ *
+ * @param {Element} element
+ * @param {string} name
+ * @returns {boolean}
+ */
+function movesOnlyItsFrame(element, name) {
+  return name === "transform" && isSvgElement(element) && !isSvgRoot(element);
+}
+
+/**
  * An inline style's declarations, by property name. A declaration with no
  * colon keeps its text as its name, which `classify` reads as layout. So a
  * value the split cuts in two, a `data:` URL with a `;` in it say, reads as
@@ -1401,6 +1428,7 @@ export class DomMirror {
       let presentational = true;
       let selfScoped = true;
       let contained = true;
+      let placedOnly = true;
       for (const [name, oldValue] of names) {
         if (PORTAL_BOOKKEEPING_ATTRIBUTES.has(name)) {
           continue;
@@ -1420,10 +1448,13 @@ export class DomMirror {
         if (!isSelfScoped(element, name)) {
           selfScoped = false;
         }
+        if (!movesOnlyItsFrame(element, name)) {
+          placedOnly = false;
+        }
       }
       if (changed) {
         probeChange(element);
-        this.attributeChanged(element, { presentational, selfScoped, contained });
+        this.attributeChanged(element, { presentational, selfScoped, contained, placedOnly });
       }
     }
     for (const [node, oldValue] of characterBaselines) {
@@ -1467,6 +1498,11 @@ export class DomMirror {
    * moves none of its siblings; the root's own attributes, its `width` say,
    * are a box's and climb.
    *
+   * Two changes re-measure nothing at all, and only restyle: the portal's
+   * own flags (`presentational`), and a `transform` on an SVG element under
+   * the root, which moves the user space its subtree is laid out in without
+   * changing it (`placedOnly`, see `movesOnlyItsFrame`).
+   *
    * @param {Node} element
    * @param {object} [options]
    * @param {boolean} [options.presentational] Whether the change is one of
@@ -1482,15 +1518,18 @@ export class DomMirror {
    *   style that moved no box but the element's own, so the element's subtree
    *   re-measures and the layout around it is not settled. False by default.
    *   See `keepsToOwnBox`.
+   * @param {boolean} [options.placedOnly] Whether the change only moved
+   *   an SVG element's frame, so its subtree is restyled and nothing is
+   *   re-measured. False by default. See `movesOnlyItsFrame`.
    * @returns {void}
    */
   attributeChanged(
     element,
-    { presentational = false, selfScoped = false, contained = false } = {},
+    { presentational = false, selfScoped = false, contained = false, placedOnly = false } = {},
   ) {
     batch(() => {
       this.#restyleScope(element, { reachesSiblings: !selfScoped });
-      if (presentational) {
+      if (presentational || placedOnly) {
         return;
       }
       const record = recordOf(element);
@@ -4539,7 +4578,8 @@ function getLineBoxCopy(lineBox) {
 /**
  * Depend on what can restyle `lineBox`, or what is in it, from above: its
  * own `reflow` signal and its ancestors' up to the panel's root, which an
- * attribute change bumps unless it is presentational, and the portal-wide
+ * attribute change bumps unless it is presentational or only moves an SVG
+ * element's frame (`movesOnlyItsFrame`), and the portal-wide
  * epochs a stylesheet, a font and the viewport bump.
  *
  * A narrower read than `getReflowContext(lineBox)`, which also follows the
@@ -4606,7 +4646,8 @@ function getLineBoxShape(lineBox) {
  * Append `node`'s children to the description `getLineBoxShape` builds,
  * depending on each: on the child list, on a text's characters, and on an
  * element's own reflow signal, which a change to one of its attributes bumps
- * unless the portal declares the attribute presentational, and which waits
+ * unless the portal declares the attribute presentational or the change only
+ * moves an SVG element's frame (`movesOnlyItsFrame`), and which waits
  * for the element's adoption when it has no record yet. The box's own, its
  * ancestors' and the portal-wide ones reach the copy through
  * `readRestyledFromAbove`. Every length is written before what it measures,

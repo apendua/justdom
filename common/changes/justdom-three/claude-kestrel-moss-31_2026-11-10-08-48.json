@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "An SVG image under a clip-path or a viewport is cut down to what the clip leaves before it is drawn, so a sprite sheet behind a one-frame clip shades one frame and not the whole sheet.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -10,7 +10,7 @@ import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
 import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
-import { OBSERVER_OPTIONS } from "../elements/portal.js";
+import { observedMirror } from "../test/observedMirror.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, buildShapePath, fillBox, group, paintSlot, shape } from "./shape.js";
 import { RAMP_WIDTH, rampAtlas, rampUniforms } from "../elements/gradient.js";
@@ -31,29 +31,6 @@ import { LayerOrderContext } from "../elements/layerOrder.js";
 // SVGLoader parses its document with.
 if (typeof globalThis.DOMParser === "undefined") {
   globalThis.DOMParser = window.DOMParser;
-}
-
-/**
- * A mirror fed by an observer watching `root` as a portal watches its
- * container, so a write reaches the shapes only if a portal would have
- * reported it. `flush` hands the observer's records to the mirror there and
- * then, where a portal would wait for the observer's microtask.
- *
- * @param {Element} root
- */
-function observedMirror(root) {
-  const mirror = createMirror();
-  const observer = new window.MutationObserver(() => {});
-  observer.observe(root, OBSERVER_OPTIONS);
-  return {
-    mirror,
-    flush() {
-      mirror.ingest(observer.takeRecords());
-    },
-    disconnect() {
-      observer.disconnect();
-    },
-  };
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -850,6 +827,53 @@ describe("svg shape", () => {
     for (const subscription of subscriptions) {
       subscription.unsubscribe();
     }
+    root.remove();
+  });
+
+  test("a <g> moved by its transform attribute takes its shapes along", () => {
+    // A move written as the attribute, the way a sprite walks across the
+    // Knights board, is a change to the group's frame alone, and the matrix
+    // and the clip follow it. That nothing under it is measured again is
+    // `text.test.js`'s to show.
+    const root = document.createElementNS(SVG_NS, "svg");
+    root.setAttribute("viewBox", "0 0 50 25");
+    root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("transform", "translate(10, 0)");
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("width", "5");
+    rect.setAttribute("height", "5");
+    rect.setAttribute("fill", "red");
+    g.appendChild(rect);
+    root.appendChild(g);
+    document.body.appendChild(root);
+    const { mirror, flush, disconnect } = observedMirror(root);
+    for (const node of [root, g, rect]) {
+      mirror.adopt(node);
+    }
+    /** @type {Object3D | undefined} */
+    let groupObject;
+    /** @type {Object3D | undefined} */
+    let shapeObject;
+    const subscriptions = [
+      group({}, g).subscribe((value) => {
+        groupObject = value;
+      }),
+      shape({}, rect).subscribe((value) => {
+        shapeObject = value;
+      }),
+    ];
+    assert.ok(groupObject && shapeObject);
+    const [fill] = /** @type {Mesh[]} */ (shapeObject.children);
+    assert.deepEqual(matrix2d(groupObject), [1, 0, 0, 1, 10, 0]);
+    assert.deepEqual(rootBounds(fill), { left: 20, top: 0, right: 30, bottom: 10 });
+
+    g.setAttribute("transform", "translate(20, 5)");
+    flush();
+    assert.deepEqual(matrix2d(groupObject), [1, 0, 0, 1, 20, 5]);
+    assert.deepEqual(rootBounds(fill), { left: 40, top: 10, right: 50, bottom: 20 });
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+    disconnect();
     root.remove();
   });
 

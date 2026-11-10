@@ -944,9 +944,12 @@ share of the element's box: for a copy, the box it is drawn in; for a nested `<s
 `getBBox()` moved out past its `x`, `y` and `viewBox`; for anything else, its `getBBox()`, read
 again only when the chain that reads it is read again, which for a `<g>` is when one of its children
 has an attribute changed. A `transform` on the `<clipPath>` or the `<rect>` moves the rect. The clip
-intersects the viewports around the element, and trims a ray as it trims the drawing. A `<clipPath>`
-that is not in the document when the element is first drawn is found the next time the element's
-chain is read. A `<title>`, `<desc>` or `<metadata>` beside the rect is skipped.
+intersects the viewports around the element, and trims a ray as it trims the drawing. An `<image>`
+under a clip is cut down to the part the clip leaves, and a pixel around it, before it is drawn, so
+a sprite sheet shifted under a clip the size of one frame costs the pixels of one frame and not of
+the whole sheet. A `<clipPath>` that is not in the document when the element is first drawn is found
+the next time the element's chain is read. A `<title>`, `<desc>` or `<metadata>` beside the rect is
+skipped.
 
 Not followed:
 

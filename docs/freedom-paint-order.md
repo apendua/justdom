@@ -38,12 +38,13 @@ past its parent, its content one past the box, and an element that clears siblin
 (`getClearedSiblings`) is one level past everything they draw. Only a positioned or transformed
 element clears, and it clears each sibling it overlaps that a page paints under it: the earlier
 siblings in its own painting layer (`getPaintLayer`), every sibling in a lower one, and every
-sibling in the flow, earlier or later. A cleared sibling in another layer and a child that is a
-layer are left out of the count. Where one of two things whose painted bounds overlap is positioned
-or transformed, they never share a level, and the one painted later has the higher level. Two flow
-siblings are not ordered against each other, which is one of the limits the `elevation.js` header
-lists. Within one level, any order is correct. There is no exception for an opaque box: an opaque
-card climbs past what it covers as a translucent one does.
+sibling in the flow, earlier or later. A box with a negative `z-index` clears nothing, and no flow
+sibling clears it. A cleared sibling in another layer and a child that is a layer are left out of
+the count. Where one of two things whose painted bounds overlap clears the other, they do not share
+a level, and the one painted later has the higher level. Two flow siblings are not ordered against
+each other, and a box with a negative `z-index` is level with the flow siblings it covers. Both are
+among the limits the `elevation.js` header lists. Within one level, any order is correct. There is
+no exception for an opaque box: an opaque card climbs past what it covers as a translucent one does.
 
 Every element is placed flat on its layer's plane. An overlay stands `OVERLAY_LIFT` in front of its
 parent's content and every other element level with it (`placement` in `div.js`), and the layer's

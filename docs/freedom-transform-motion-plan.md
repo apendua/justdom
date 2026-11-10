@@ -165,13 +165,14 @@ of rebuilding is left out of this plan (see the last section), so PR 4 measures 
   atomic channel. The equality gates stop it there (`clearedEqual`, then the draw levels). The
   desk's lift also scales the card by 1.04, and its board has a handful of cards, so it should fit;
   PR 4's trace confirms it.
-- **A motion channel per panel.** `new UpdateChannel({ name: "motion", order: 2 })`, made only for a
-  portal that has frames to draw in (under `render()`; a portal on a plain page has none, and its
-  place effect writes the matrix itself), after the portal's channel since the place effect's write
-  marks the motion effect. It drains with the batch that marked it, like the default channel. The
-  atomic doc's section 4.2 keeps the clock on a channel that comes along with an atomic pass, so the
-  pump also flushes the motion channel with no budget at the end of its tick, and the scroll's
-  synchronous flush does the same. That flush is a rule, not an optimisation. Section 7.1 of
+- **A motion channel per panel.** `new UpdateChannel({ name: "motion", order: 2 })`, made only where
+  the portal has frames (`hasFrames` in `portal.js`: a renderer's, or the page's
+  `requestAnimationFrame`; a test runner with neither has no motion channel, and the place effect
+  writes the matrix itself), after the portal's channel since the place effect's write marks the
+  motion effect. It drains with the batch that marked it, like the default channel. The atomic doc's
+  section 4.2 keeps the clock on a channel that comes along with an atomic pass, so the pump also
+  flushes the motion channel with no budget at the end of its tick, and the scroll's synchronous
+  flush does the same. That flush is a rule, not an optimisation. Section 7.1 of
   `docs/freedom-atomic-panel-updates.md` has one effect write a box's place and its clip so they
   never disagree. After the split, the offset the place effect publishes and the clip it writes
   agree with the matrix only once the motion channel has drained, and on a non-atomic panel a

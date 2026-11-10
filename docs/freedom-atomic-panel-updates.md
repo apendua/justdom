@@ -483,8 +483,8 @@ its place and its clip in the same effect:
   portal's `motion` channel (section 4.5). That is two effects, and a budget can stop between them,
   so the rule holds by the end of the frame rather than by the effect: the pump drains the motion
   channel with no budget at the end of every tick, and the scroll's flush does too. Outside a
-  portal, and in a portal with no frames to draw in, there is no motion channel, and the place
-  effect writes the matrix itself.
+  portal, and in a portal with neither a renderer nor `requestAnimationFrame` (a test runner), there
+  is no motion channel, and the place effect writes the matrix itself.
 - **Text.** The text node's effect already placed the run and wrote its clip together.
 
 Merging costs a run: the effect now re-runs on anything either half reads. Both merged effects keep

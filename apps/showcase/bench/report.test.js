@@ -45,17 +45,21 @@ test("the summary keeps unsteady counts apart from changed ones", () => {
   assert.equal(countsCell([moved, unsteady, unsteady]), "**1 changed**, 2 unsteady");
 });
 
+const five = (/** @type {number} */ from) => [0, 1, 2, 3, 4].map((i) => from + 3 * i);
+
 test("times whose ranges overlap are no result", () => {
-  assert.equal(compareTimes([30, 33, 36], [31, 34, 40]).verdict, "no result");
+  assert.equal(compareTimes(five(30), five(31)).verdict, "no result");
 });
 
 test("times whose ranges stay apart are faster or slower", () => {
-  assert.equal(compareTimes([30, 33, 36], [9, 10, 12]).verdict, "faster");
-  assert.equal(compareTimes([9, 10, 12], [30, 33, 36]).verdict, "slower");
+  assert.equal(compareTimes(five(30), five(5)).verdict, "faster");
+  assert.equal(compareTimes(five(5), five(30)).verdict, "slower");
 });
 
-test("times from too few rounds get no verdict, however far apart", () => {
-  assert.equal(compareTimes([30], [9]).verdict, "fewer than 3 rounds");
+test("times from fewer than five rounds get no verdict, however far apart", () => {
+  // Three rounds of the same code fall apart one time in ten.
+  assert.equal(compareTimes([30, 33, 36], [9, 10, 12]).verdict, "");
+  assert.equal(compareTimes([30, 31, 32, 33], [9, 10, 11, 12]).verdict, "");
   assert.equal(compareTimes([30], [9]).base, "30");
   assert.equal(compareTimes([30, 33, 36], [9, 10, 12]).base, "33 (30–36)");
 });
@@ -101,6 +105,23 @@ test("draw calls list only the rows that moved", () => {
   assert.match(section, /\| desk: a \| \*\*4 → 3\*\* \| \*\*4 → 3\*\* \| 0 \| 0 \|/);
   assert.doesNotMatch(section, /desk: b/);
   assert.match(section, /0 looks or apps and 1 panels did not change/);
+  assert.doesNotMatch(section, /animated/);
+});
+
+test("an animated row that differs is set apart, not called a change", () => {
+  // As the desk's Night Ops did with the same code on both sides: 154 a
+  // frame in one run, 154.4 in the next, since its charts redraw on timers.
+  const section = drawsSection(draws(20, 4), draws(20.4, 4.4));
+  assert.doesNotMatch(section, /→/);
+  assert.match(section, /no change in the 0 looks and apps and 1 panels that held still/);
+  assert.match(section, /2 animated, .* not counted as changes: desk, desk: a\./);
+});
+
+test("a change among animated rows is still listed", () => {
+  const base = draws(20.4, 4.4).replace("| desk: b | 3 |", "| desk: b | 5 |");
+  const section = drawsSection(base, draws(20, 4));
+  assert.match(section, /\| desk: b \| \*\*5 → 3\*\* \|/);
+  assert.match(section, /2 animated/);
 });
 
 /**
@@ -136,13 +157,25 @@ const mirror = (/** @type {number} */ headRows) => ({
 
 test("the mirror section reads the first side as this pull request, net of idle", () => {
   const section = mirrorSection(mirror(825));
+  // Three rounds a side: times without a verdict, and a line saying so.
+  assert.match(section, /without a verdict below 5 rounds/);
   // develop is the second side: 1658 reads and 62 - 30 above idle.
   assert.match(
     section,
-    /\| `scroll` \| \*\*1 changed\*\* \| median: 32 \(30–34\) → 11 \(10–12\) \| faster \|/,
+    /\| `scroll` \| \*\*1 changed\*\* \| median: 32 \(30–34\) → 11 \(10–12\) \|  \|/,
   );
   assert.match(section, /\| `getBoundingClientRect` \| 1658 \| 829 \| \*\*-829\*\* \|/);
   assert.doesNotMatch(section, /WARNING/);
+});
+
+test("five rounds a side give times their verdict", () => {
+  const data = mirror(825);
+  data.repeat = 5;
+  data.sides[0].runs = [40, 41, 42, 43, 44].map((gap) => round(825, 829, gap));
+  data.sides[1].runs = [60, 61, 62, 63, 64].map((gap) => round(825, 1658, gap));
+  const section = mirrorSection(data);
+  assert.match(section, /median: 32 \(30–34\) → 12 \(10–14\) \| faster \|/);
+  assert.doesNotMatch(section, /without a verdict/);
 });
 
 test("two sides that mirrored different workloads are warned about", () => {

@@ -49,11 +49,18 @@ measure a newer push. Expect it to take about an hour.
 
 The comment is written by `report.js` from this suite's `--json` file and the draw bench's tables.
 It follows the rules below: a count that moved is flagged, and a time is a median with the range of
-its rounds, called faster or slower only when the two ranges do not overlap. The same report is on
-the run's summary page, and the artifact holds everything both benches printed.
+its rounds. A time is called faster or slower only when both sides had at least 5 rounds and the two
+ranges do not overlap. At the label's 3 rounds, two ranges of the same code fall apart one time in
+ten, which across the report's rows is about one false verdict a run; at 5 it is one in 126. The
+runner also draws with software GL, so an idle frame there takes about 80 ms and its frame gaps
+measure the rasterizer as much as this code. A draw-call row whose figure is a fraction on either
+side animates (the desk's charts redraw from random data on timers), so its average depends on the
+frames a run caught; the report lists such rows apart and does not call them changed. The same
+report is on the run's summary page, and the artifact holds everything both benches printed.
 
 The workflow can also be run from the Actions tab on any branch, with a narrower set of scenarios or
-another number of rounds. It then writes the report to the run's summary and posts no comment.
+another number of rounds. It then writes the report to the run's summary and posts no comment. That
+is the timing check: `repeat` 5 adds about 20 minutes to the run and gives its times a verdict.
 
 ## Reading `mount`
 
@@ -303,4 +310,5 @@ spending a week on the scheduler.
 - Twenty frames of stimulus before the clock starts, and the first ten frames of each measurement
   discarded.
 - `--repeat 3` by default; medians across rounds are reported. Treat overlapping ranges as no
-  result, not as a small one.
+  result, not as a small one, and three rounds that do not overlap as a hint: the pull request
+  report waits for five before it calls a time faster or slower.

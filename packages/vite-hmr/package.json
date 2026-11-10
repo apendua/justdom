@@ -43,7 +43,7 @@
     "test:watch": "node --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "justdom-signal": "workspace:*"
+    "justdom-signal": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^24.7.0",

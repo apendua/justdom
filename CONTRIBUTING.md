@@ -85,8 +85,25 @@ node common/scripts/publish.mjs
    next.
 3. Builds the `publishable` version policy.
 4. Asks npm about each package's exact version, and publishes the ones npm does not have yet with
-   `pnpm publish`, which turns `workspace:*` into the versions it points at.
+   `pnpm publish`, which turns each `workspace:` range into a version range (see below).
 5. Tags each published package as `<package>_v<version>`, and pushes those tags at the end.
+
+### Ranges between the packages
+
+A published package names the others it needs, in `dependencies` or `peerDependencies`, as
+`workspace:^`. `pnpm publish` turns that into a caret range on the version in the workspace, so
+`justdom-three-ui` 0.4.2 asks for `justdom-three` `^0.34.0` and `justdom-signal` `^1.3.0`. An app
+can then take a patch of `justdom-three`, or a minor of `justdom-signal`, without waiting for a new
+`justdom-three-ui`. A caret on a `0.x` version stops at the next minor, the place semver keeps for
+breaking changes before 1.0.
+
+`workspace:*` would publish the exact version instead, and an app with any other version of a peer
+then gets a peer warning, or a second copy of a dependency. `devDependencies` and the apps keep
+`workspace:*`, since npm never resolves them.
+
+`rush version --bump` leaves `workspace:^` as written. It still bumps a package by a patch when a
+package it depends on gets a new version, so the floor of the published range moves up with each
+release.
 
 ### Logging in to npm
 

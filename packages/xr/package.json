@@ -53,8 +53,8 @@
   "dependencies": {
     "@iwer/devui": "^2.4.0",
     "iwer": "^2.4.0",
-    "justdom-signal": "workspace:*",
-    "justdom-three": "workspace:*"
+    "justdom-signal": "workspace:^",
+    "justdom-three": "workspace:^"
   },
   "devDependencies": {
     "@apendua/jsdom-env": "workspace:*",

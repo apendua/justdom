@@ -1,6 +1,17 @@
 # Change Log - justdom-xr
 
-This log was last generated on Tue, 10 Nov 2026 20:13:58 GMT and should not be manually modified.
+This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+
+## 0.5.0
+Tue, 10 Nov 2026 21:23:39 GMT
+
+### Minor changes
+
+- justdom-three and justdom-signal are now peer dependencies rather than dependencies, so an app and justdom-xr share one copy of each. Apps must install both, as the README already said.
+
+### Patches
+
+- Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike.
 
 ## 0.4.1
 Tue, 10 Nov 2026 20:13:58 GMT

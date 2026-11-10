@@ -2,6 +2,29 @@
   "name": "@apendua/sound",
   "entries": [
     {
+      "version": "0.1.7",
+      "tag": "@apendua/sound_v0.1.7",
+      "date": "Tue, 10 Nov 2026 21:23:39 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.34.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.5`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.34.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.6",
       "tag": "@apendua/sound_v0.1.6",
       "date": "Tue, 10 Nov 2026 20:13:58 GMT",

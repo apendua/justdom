@@ -2,6 +2,23 @@
   "name": "justdom-core",
   "entries": [
     {
+      "version": "0.6.1",
+      "tag": "justdom-core_v0.6.1",
+      "date": "Tue, 10 Nov 2026 21:23:39 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.5`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.6.0",
       "tag": "justdom-core_v0.6.0",
       "date": "Mon, 09 Nov 2026 22:53:55 GMT",

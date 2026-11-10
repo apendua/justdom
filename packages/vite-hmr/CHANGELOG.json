@@ -2,6 +2,18 @@
   "name": "justdom-vite-hmr",
   "entries": [
     {
+      "version": "0.5.5",
+      "tag": "justdom-vite-hmr_v0.5.5",
+      "date": "Tue, 10 Nov 2026 21:23:39 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Other justdom packages are now required with a caret range (^x.y.z) rather than an exact version, in dependencies and peerDependencies alike."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.5.4",
       "tag": "justdom-vite-hmr_v0.5.4",
       "date": "Mon, 09 Nov 2026 22:53:55 GMT",

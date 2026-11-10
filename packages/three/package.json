@@ -1,6 +1,6 @@
 {
   "name": "justdom-three",
-  "version": "0.34.0",
+  "version": "0.34.1",
   "description": "Reactive Three.js scene graph built on justdom-signal, with WebXR helpers and a DOM-in-scene bridge",
   "keywords": [
     "three",

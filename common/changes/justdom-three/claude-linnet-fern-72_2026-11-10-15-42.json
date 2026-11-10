@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A transform attribute changed on an SVG element below the root no longer makes the mirror measure the text under it again.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

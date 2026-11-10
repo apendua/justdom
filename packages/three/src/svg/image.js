@@ -220,9 +220,13 @@ const NO_QUAD = { left: 0, top: 0, right: 0, bottom: 0, u0: 0, v0: 0, u1: 0, v1:
 
 /**
  * How far past its clip box a trimmed quad still reaches, in the box's
- * frame. The clip patch fades coverage across the box's edge, over a
- * pixel's width either side of it (`fwidth`), and a quad cut flush with
- * the edge would lose the outer half of that fade.
+ * frame, one of the root's CSS pixels. The clip patch fades coverage
+ * across the box's edge, over a device pixel either side of it (`fwidth`),
+ * and a quad cut flush with the edge would lose the outer half of that
+ * fade. The margin covers it while a root pixel is at least a device pixel
+ * wide, as it is on a phone or a panel at arm's length. A panel seen from
+ * far enough that a root pixel is less than that cuts into the fade, and
+ * the clip's edge ends in a faint step rather than fading out.
  */
 const TRIM_MARGIN = 1;
 
@@ -400,7 +404,6 @@ export function image(ctx, element, instance = null) {
    * quad, the clip or the matrix moves. One geometry for the life of the
    * element, written in place, since a sprite's next frame moves it.
    */
-  const placed = new Derived(() => quad.get() !== null);
   const drawn = buildImageGeometry(NO_QUAD);
 
   return svgNode(ctx, element, instance, (node) => ({
@@ -414,7 +417,10 @@ export function image(ctx, element, instance = null) {
     content: [
       children(
         node.mesh({
-          geometry: () => (placed.get() ? drawn : null),
+          // Kept until teardown, where the mesh disposes it. While there
+          // is no quad, `paints` and `hit` keep it out of the draw and the
+          // ray.
+          geometry: () => drawn,
           // A picture paints once it has loaded, which is after the node is
           // built, into the material the node was built with.
           paints: () => quad.get() !== null,

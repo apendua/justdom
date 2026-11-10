@@ -400,7 +400,7 @@ describe("svg image", () => {
     // an <image> and its picture landing.
     const s = setup({ href: PICTURE, width: "20", height: "10" });
     assert.equal(s.mesh.visible, false);
-    assert.equal(s.mesh.geometry.getAttribute("position").count, 0);
+    assert.deepEqual(bounds(s.mesh), [0, 0, 0, 0], "an empty quad until the picture lands");
     s.teardown();
   });
 

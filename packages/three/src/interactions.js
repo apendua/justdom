@@ -368,11 +368,11 @@ export class InteractionManager {
        * a press on an icon let go on the button around it completes on the
        * button. The completion then starts there, so what is below it on
        * the path hears no completion, as the icon on a page hears no click,
-       * and its `completedOn` names it. With nothing shared, it misses. The end, the
-       * completion and the miss each carry the start, and go no further
-       * along the path than the start did (see `Press`). A press whose hand
-       * went misses wherever the ray was left, and its end and its miss
-       * say `lost`.
+       * and its `completedOn` names it. With nothing shared, it misses. The
+       * end, the completion and the miss each carry the start, and go no
+       * further along the path than the start did (see `Press`). A press
+       * whose hand went misses wherever the ray was left, and its end and
+       * its miss say `lost`.
        *
        * @param {"select" | "squeeze"} button
        * @param {Press | undefined} press

@@ -1571,10 +1571,14 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @param {Object3D[]} path
    * @param {boolean} [controlsOnly]
-   * @param {number} [from] Where along the path to start looking.
+   * @param {number} [from] Where along the path to start looking. -1,
+   *   what `indexOf` says of an object off the path, finds nothing.
    * @returns {Target | undefined}
    */
   const innermost = (path, controlsOnly = false, from = 0) => {
+    if (from === -1) {
+      return undefined;
+    }
     for (let i = from; i < path.length; i += 1) {
       const target = targets.get(path[i]);
       if (target && !(controlsOnly && target.list)) {
@@ -2359,7 +2363,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // button. The manager completes the press along its own path, which
       // this one is the panel's part of, so what it completed on is here.
       const from = path.indexOf(e.completedOn);
-      const completed = from === -1 ? undefined : innermost(path, false, from);
+      const completed = innermost(path, false, from);
       // A press that turned into a drag was the player scrolling the list
       // this control sits in, not pressing the control: the same bargain a
       // touchscreen strikes, and for the same reason, since there is

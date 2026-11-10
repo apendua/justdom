@@ -2,7 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { batch } from "justdom-signal";
-import { createMirror, getComputedStyleCached } from "../elements/mirror.js";
+import { getComputedStyleCached } from "../elements/mirror.js";
+import { observedMirror } from "../test/observedMirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText, layoutScale, measuringScale } from "./text.js";
@@ -56,7 +57,7 @@ function scene(content, draw, { portalOrder = false, viewBox = "0 0 50 25" } = {
   root.getBoundingClientRect = () =>
     /** @type {DOMRect} */ ({ left: 0, top: 0, right: 100, bottom: 50, width: 100, height: 50 });
   document.body.appendChild(root);
-  const mirror = createMirror();
+  const { mirror, flush, disconnect } = observedMirror(root);
   mirror.adopt(root);
   /** @param {Node} node */
   const adopt = (node) => {
@@ -81,6 +82,8 @@ function scene(content, draw, { portalOrder = false, viewBox = "0 0 50 25" } = {
     root,
     mirror,
     object: drawn,
+    /** Hand the mirror what changed since, as the portal's observer would. */
+    flush,
     /** Adopt what `portalOrder` left out, as the portal's walk does. */
     adoptRest() {
       draw.childNodes.forEach(adopt);
@@ -104,6 +107,7 @@ function scene(content, draw, { portalOrder = false, viewBox = "0 0 50 25" } = {
     },
     teardown() {
       subscription.unsubscribe();
+      disconnect();
       root.remove();
       layout.restore();
     },
@@ -445,24 +449,17 @@ describe("svg text", () => {
     const text = svg("text", { x: "0", y: "10", fill: "red" }, ["7"]);
     const group = svg("g", { transform: "translate(0,0)" }, [text]);
     const s = scene([group], text);
-    /** @param {() => void} change */
-    const ingest = (change) => {
-      const observer = new window.MutationObserver(() => {});
-      observer.observe(s.root, { subtree: true, attributes: true, attributeOldValue: true });
-      change();
-      const records = observer.takeRecords();
-      observer.disconnect();
-      batch(() => s.mirror.ingest(records));
-    };
+    s.flush();
     const reads = s.transforms.length;
-    ingest(() => group.setAttribute("transform", "translate(10,5)"));
-    ingest(() => group.setAttribute("transform", "translate(20,10)"));
+    group.setAttribute("transform", "translate(10,5)");
+    s.flush();
+    group.setAttribute("transform", "translate(20,10)");
+    s.flush();
     assert.equal(s.transforms.length, reads, "two steps, no measurement");
     // An attribute that does reach the layout, beside the move, still does.
-    ingest(() => {
-      group.setAttribute("transform", "translate(30,15)");
-      group.setAttribute("font-size", "20");
-    });
+    group.setAttribute("transform", "translate(30,15)");
+    group.setAttribute("font-size", "20");
+    s.flush();
     assert.equal(s.transforms.length, reads + 1, "measured again for the font");
     s.teardown();
   });

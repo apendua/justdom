@@ -4578,7 +4578,8 @@ function getLineBoxCopy(lineBox) {
 /**
  * Depend on what can restyle `lineBox`, or what is in it, from above: its
  * own `reflow` signal and its ancestors' up to the panel's root, which an
- * attribute change bumps unless it is presentational, and the portal-wide
+ * attribute change bumps unless it is presentational or only moves an SVG
+ * element's frame (`movesOnlyItsFrame`), and the portal-wide
  * epochs a stylesheet, a font and the viewport bump.
  *
  * A narrower read than `getReflowContext(lineBox)`, which also follows the
@@ -4645,7 +4646,8 @@ function getLineBoxShape(lineBox) {
  * Append `node`'s children to the description `getLineBoxShape` builds,
  * depending on each: on the child list, on a text's characters, and on an
  * element's own reflow signal, which a change to one of its attributes bumps
- * unless the portal declares the attribute presentational, and which waits
+ * unless the portal declares the attribute presentational or the change only
+ * moves an SVG element's frame (`movesOnlyItsFrame`), and which waits
  * for the element's adoption when it has no record yet. The box's own, its
  * ancestors' and the portal-wide ones reach the copy through
  * `readRestyledFromAbove`. Every length is written before what it measures,

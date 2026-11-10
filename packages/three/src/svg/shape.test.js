@@ -10,7 +10,7 @@ import { setContentGroup } from "../elements/contentGroup.js";
 import { getControlRoot } from "../elements/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
 import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
-import { OBSERVER_OPTIONS } from "../elements/portal.js";
+import { observedMirror } from "../test/observedMirror.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, buildShapePath, fillBox, group, paintSlot, shape } from "./shape.js";
 import { RAMP_WIDTH, rampAtlas, rampUniforms } from "../elements/gradient.js";
@@ -31,29 +31,6 @@ import { LayerOrderContext } from "../elements/layerOrder.js";
 // SVGLoader parses its document with.
 if (typeof globalThis.DOMParser === "undefined") {
   globalThis.DOMParser = window.DOMParser;
-}
-
-/**
- * A mirror fed by an observer watching `root` as a portal watches its
- * container, so a write reaches the shapes only if a portal would have
- * reported it. `flush` hands the observer's records to the mirror there and
- * then, where a portal would wait for the observer's microtask.
- *
- * @param {Element} root
- */
-function observedMirror(root) {
-  const mirror = createMirror();
-  const observer = new window.MutationObserver(() => {});
-  observer.observe(root, OBSERVER_OPTIONS);
-  return {
-    mirror,
-    flush() {
-      mirror.ingest(observer.takeRecords());
-    },
-    disconnect() {
-      observer.disconnect();
-    },
-  };
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -855,8 +832,9 @@ describe("svg shape", () => {
 
   test("a <g> moved by its transform attribute takes its shapes along", () => {
     // A move written as the attribute, the way a sprite walks across the
-    // Knights board, is a change to the group's frame alone: the mirror
-    // measures nothing under it, and the matrix and the clip still follow.
+    // Knights board, is a change to the group's frame alone, and the matrix
+    // and the clip follow it. That nothing under it is measured again is
+    // `text.test.js`'s to show.
     const root = document.createElementNS(SVG_NS, "svg");
     root.setAttribute("viewBox", "0 0 50 25");
     root.getBoundingClientRect = () => clientRect(0, 0, 100, 50);

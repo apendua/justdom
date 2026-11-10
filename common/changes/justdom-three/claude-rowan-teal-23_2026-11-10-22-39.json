@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Read which attributes the document's rules can carry to a sibling (no behaviour change yet)",
+      "type": "none",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

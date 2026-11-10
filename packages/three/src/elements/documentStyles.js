@@ -63,6 +63,7 @@
 import { Signal } from "justdom-signal";
 import { originalSelector, restoreUserActions, rewriteUserActions } from "./userActionRules.js";
 import { generatedHost, resolveNested, splitSelectorList, walkStyleRules } from "./styleRules.js";
+import { siblingReachOf } from "./siblingReach.js";
 
 /**
  * What a style change can restyle: the classes every changed rule starts
@@ -616,6 +617,7 @@ function announce(scope) {
  */
 function notify(scope) {
   refreshGeneratedSelectors();
+  siblingReach = null;
   // A copy, because a listener is free to stop watching from inside the call —
   // a portal disposed by something a restyle triggered would otherwise mutate
   // the set being iterated.
@@ -698,6 +700,111 @@ function readGeneratedSelectors() {
     before: hosts.before.length > 0 ? hosts.before.join(", ") : null,
     after: hosts.after.length > 0 ? hosts.after.join(", ") : null,
   };
+}
+
+/**
+ * The attribute names whose change can restyle an element's siblings, by
+ * the document's rules as they stand, or null when every attribute can
+ * (`siblingReachOf` for how a selector is read). Null too while no panel
+ * watches the styles, and when a sheet's rules cannot be read: there is
+ * then no telling, and every attribute restyles the siblings, as each did
+ * before the rules were read for this.
+ *
+ * Read on every attribute change a panel dispatches, so it is kept between
+ * reads. An announcement drops it. So does a change in how many sheets the
+ * document has, or how many top-level rules any of them has, which an
+ * announcement does not report: a rule added through `insertRule`, or a
+ * sheet adopted (see the header). A rule edited in place through the CSSOM
+ * goes unseen, as it does for every other read here, until theming mode or
+ * the next announcement. It is not a signal: the dispatch reads it while it
+ * routes an invalidation, and nothing recomputes when it changes. A rule
+ * that newly reaches a sibling restyles what it matches by its own
+ * announcement, and the reach decides only what a later change restyles.
+ *
+ * @returns {ReadonlySet<string> | null}
+ */
+export function getSiblingReach() {
+  if (listeners.size === 0) {
+    return null;
+  }
+  const shape = sheetShape();
+  if (siblingReach === null || siblingReach.shape !== shape) {
+    siblingReach = { shape, names: readSiblingReach() };
+  }
+  return siblingReach.names;
+}
+
+/**
+ * The reach `getSiblingReach` last read, with the shape of the sheets it
+ * read it from.
+ *
+ * @type {{ shape: number, names: ReadonlySet<string> | null } | null}
+ */
+let siblingReach = null;
+
+/**
+ * A number that changes when a sheet is added or taken away, or a rule is
+ * inserted into or deleted from the top level of one. Read with no
+ * allocation, since the dispatch asks on every attribute change, and an
+ * inline transform written each frame is one.
+ *
+ * @returns {number}
+ */
+function sheetShape() {
+  let shape = 0;
+  const sheets = document.styleSheets;
+  for (let i = 0; i < sheets.length; i++) {
+    shape = (shape * 31 + 1 + ruleCount(sheets[i])) | 0;
+  }
+  const adopted = document.adoptedStyleSheets;
+  if (adopted) {
+    for (let i = 0; i < adopted.length; i++) {
+      shape = (shape * 31 + 7 + ruleCount(adopted[i])) | 0;
+    }
+  }
+  return shape;
+}
+
+/**
+ * @param {CSSStyleSheet} sheet
+ * @returns {number}
+ */
+function ruleCount(sheet) {
+  try {
+    return sheet.cssRules.length;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * @returns {ReadonlySet<string> | null}
+ */
+function readSiblingReach() {
+  /** @type {Set<string> | null} */
+  let names = new Set();
+  walkStyleRules(
+    documentSheets(),
+    (rule, parent) => {
+      if (names === null) {
+        return;
+      }
+      for (const selector of splitSelectorList(resolveNested(rule.selectorText, parent))) {
+        const reach = siblingReachOf(selector);
+        if (reach === null) {
+          names = null;
+          return;
+        }
+        for (const name of reach) {
+          names.add(name);
+        }
+      }
+    },
+    () => {
+      names = null;
+    },
+  );
+  return names;
 }
 
 /**
@@ -785,6 +892,8 @@ export function watchDocumentStyles(listener) {
     }
     syncPoller();
     if (listeners.size === 0 && observer) {
+      // Nobody hears of a change from here on, so nothing would drop it.
+      siblingReach = null;
       // The last panel: the page gets its rules back as it wrote them.
       restoreUserActions(documentSheets());
       observer.disconnect();

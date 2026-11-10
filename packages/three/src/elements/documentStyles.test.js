@@ -5,6 +5,7 @@ import {
   followUserActions,
   GENERATED_COPY_ATTRIBUTE,
   getGeneratedSelectors,
+  getSiblingReach,
   leadingClass,
   watchDocumentStyles,
   withGeneratedCopyRule,
@@ -708,6 +709,118 @@ describe("watchDocumentStyles", () => {
       stopTheming();
       watcher.stop();
       style.remove();
+    }
+  });
+});
+
+/**
+ * Stand `sheets` in for the document's adopted sheets while `fn` runs.
+ *
+ * @param {unknown[]} sheets
+ * @param {() => void} fn
+ * @returns {void}
+ */
+function withAdopted(sheets, fn) {
+  const adopted = Object.getOwnPropertyDescriptor(document, "adoptedStyleSheets");
+  Object.defineProperty(document, "adoptedStyleSheets", { configurable: true, value: sheets });
+  try {
+    fn();
+  } finally {
+    if (adopted) {
+      Object.defineProperty(document, "adoptedStyleSheets", adopted);
+    } else {
+      delete (/** @type {any} */ (document).adoptedStyleSheets);
+    }
+  }
+}
+
+/**
+ * @returns {string[] | null}
+ */
+function reach() {
+  const names = getSiblingReach();
+  return names && [...names].sort();
+}
+
+describe("getSiblingReach", () => {
+  test("every attribute reaches the siblings while no panel watches", () => {
+    assert.equal(getSiblingReach(), null);
+  });
+
+  test("names what the document's sibling rules select on, and nothing else", async () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    try {
+      assert.deepEqual(reach(), []);
+
+      style.innerHTML = ".row { color: red; } .row[data-on] > .label { color: blue; }";
+      document.head.appendChild(style);
+      await flush();
+      assert.deepEqual(reach(), [], "no sibling combinator, so nothing reaches a sibling");
+
+      style.innerHTML = ".row[data-on] + .row { color: blue; }";
+      await flush();
+      assert.deepEqual(reach(), ["class", "data-on"]);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
+  test("a rule inserted through the CSSOM, which nothing announces, is read", () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    style.innerHTML = ".row { color: red; }";
+    document.head.appendChild(style);
+    try {
+      assert.deepEqual(reach(), []);
+      /** @type {CSSStyleSheet} */ (style.sheet).insertRule("[data-open] ~ .panel { color: red; }");
+      assert.deepEqual(reach(), ["class", "data-open"]);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
+  test("a rule nested in another, or inside :has(), reaches through its names", () => {
+    const watcher = watch();
+    try {
+      // jsdom parses no nesting, so the sheet is one as Chromium reads it.
+      withAdopted(
+        [
+          {
+            cssRules: [
+              { selectorText: ".list", cssRules: [{ selectorText: "& [data-x] ~ li" }] },
+              { selectorText: ".a:has(+ [data-y])" },
+              { selectorText: "input:checked + label, .plain" },
+            ],
+          },
+        ],
+        () => {
+          assert.deepEqual(reach(), ["checked", "class", "data-x", "data-xr-checked", "data-y"]);
+        },
+      );
+    } finally {
+      watcher.stop();
+    }
+  });
+
+  test("a sheet whose rules cannot be read, or a pseudo-class with no name, reaches all", () => {
+    const watcher = watch();
+    try {
+      const unreadable = {
+        get cssRules() {
+          throw new DOMException("cross-origin", "SecurityError");
+        },
+      };
+      withAdopted([unreadable], () => {
+        assert.equal(getSiblingReach(), null);
+      });
+      withAdopted([{ cssRules: [{ selectorText: "input:disabled + label" }] }], () => {
+        assert.equal(getSiblingReach(), null);
+      });
+    } finally {
+      watcher.stop();
     }
   });
 });

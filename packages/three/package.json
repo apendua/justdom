@@ -70,7 +70,7 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "justdom-signal": "workspace:*",
+    "justdom-signal": "workspace:^",
     "three": ">=0.180.0"
   },
   "publishConfig": {

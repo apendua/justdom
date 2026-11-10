@@ -11,14 +11,14 @@ controller and hand models.
 npm install justdom-xr justdom-three justdom-signal three
 ```
 
-`three` is a peer dependency; `justdom-three`, `justdom-signal` and the emulator's `iwer` and
-`@iwer/devui` are dependencies. The package has six entries for a page and no index, so that an app
-importing one does not pull in the others. The emulator brings IWER and its dev UI with it, over
-half a megabyte, and is meant to be imported lazily, as is the touch layer; the offer and the
-session import nothing from three.js, so a page can load them before it knows whether it will ever
-make a scene; the scene entry and theming import three.js and `justdom-three`, and belong in the
-chunk that makes the scene. A seventh entry, the driver, is for the apps' check scripts and runs in
-Node.
+`justdom-three`, `justdom-signal` and `three` are peer dependencies, so the app and this package
+share one copy of each; the emulator's `iwer` and `@iwer/devui` are dependencies. The package has
+six entries for a page and no index, so that an app importing one does not pull in the others. The
+emulator brings IWER and its dev UI with it, over half a megabyte, and is meant to be imported
+lazily, as is the touch layer; the offer and the session import nothing from three.js, so a page can
+load them before it knows whether it will ever make a scene; the scene entry and theming import
+three.js and `justdom-three`, and belong in the chunk that makes the scene. A seventh entry, the
+driver, is for the apps' check scripts and runs in Node.
 
 ## `justdom-xr/emulator`
 

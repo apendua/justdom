@@ -56,9 +56,9 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "justdom-core": "workspace:*",
-    "justdom-signal": "workspace:*",
-    "justdom-three": "workspace:*",
+    "justdom-core": "workspace:^",
+    "justdom-signal": "workspace:^",
+    "justdom-three": "workspace:^",
     "three": ">=0.180.0"
   },
   "publishConfig": {

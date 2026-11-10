@@ -189,9 +189,10 @@ function main() {
   try {
     for (const p of pending) {
       console.log(`\nPublishing ${p.name}@${p.version}`);
-      // pnpm rewrites `workspace:*` to the versions it points at. The
-      // registry flags override anything in the publisher's ~/.npmrc, such
-      // as an "@apendua" scope mapped to GitHub Packages.
+      // pnpm rewrites `workspace:^` to a caret range on the version it
+      // points at, as CONTRIBUTING.md says. The registry flags override
+      // anything in the publisher's ~/.npmrc, such as an "@apendua" scope
+      // mapped to GitHub Packages.
       run(
         pnpm,
         ["publish", "--no-git-checks", "--registry", registry, `--@apendua:registry=${registry}`],

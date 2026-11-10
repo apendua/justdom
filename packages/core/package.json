@@ -45,7 +45,7 @@
     "test:watch": "node --import ./src/test/setup-jsdom.js --test --watch \"src/**/*.test.js\""
   },
   "dependencies": {
-    "justdom-signal": "workspace:*"
+    "justdom-signal": "workspace:^"
   },
   "devDependencies": {
     "@apendua/jsdom-env": "workspace:*",

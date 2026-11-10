@@ -10,8 +10,9 @@
  *
  * Code under a panel does not call `noteMatrixChange` directly when it moves
  * an object: `place`, `placeAndScale` and `markMoved` in `elements/place.js`
- * call it. It is called directly where an object joins a tree that may be a
- * panel's, from modules below the panel layer.
+ * call it. It is called directly from modules below the panel layer, where
+ * an object joins a tree that may be a panel's, or where a matrix is
+ * composed, as `setLocalMatrix` in `interactions.js` does.
  */
 
 let epoch = 0;

@@ -261,9 +261,18 @@ function descend(children, force) {
  * @returns {boolean}
  */
 function composesItsOwn(object) {
-  let found = false;
-  object.traverse((each) => {
-    found ||= each.matrixAutoUpdate;
-  });
-  return found;
+  foundComposing = false;
+  object.traverse(findComposing);
+  return foundComposing;
+}
+
+/** What `findComposing` found, kept here so a walk allocates nothing. */
+let foundComposing = false;
+
+/**
+ * @param {Object3D} each
+ * @returns {void}
+ */
+function findComposing(each) {
+  foundComposing ||= each.matrixAutoUpdate;
 }

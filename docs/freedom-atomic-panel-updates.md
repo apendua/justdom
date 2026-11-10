@@ -130,16 +130,20 @@ Three things make this cheap to add:
 
 ```js
 warm() {
-  if (this.#disposed || this.#running) return;
+  if (this.#disposed) return;
   this.warmed = true;
-  if (this.state === CLEAN) return;
+  if (this.#running || this.state === CLEAN) return;
   for (const dependency of this.dependencies()) {
+    if (this.#disposed) return; // disposed by what the warm just resolved
     if (dependency instanceof ReactiveNode) {
       try { dependency.updateIfNecessary(); } catch { /* kept by the node, delivered by the run */ }
     }
   }
 }
 ```
+
+A running effect is marked warm before the walk is skipped (4.3 says why), and the walk stops when
+resolving a dependency disposes the effect, since the rest of what it read then has no reader.
 
 `warmed` is set _before_ the walk. Resolving a dependency can mark the effect again — a `Derived`
 attaching a foreign source on the way up, and the source firing — and `markStale` clears the flag.
@@ -478,8 +482,9 @@ its place and its clip in the same effect:
   place effect commits the placement and the motion effect writes the matrix from it, in the
   portal's `motion` channel (section 4.5). That is two effects, and a budget can stop between them,
   so the rule holds by the end of the frame rather than by the effect: the pump drains the motion
-  channel with no budget at the end of every tick, and the scroll's flush does too. Outside a portal
-  there is no motion channel, and the place effect writes the matrix itself.
+  channel with no budget at the end of every tick, and the scroll's flush does too. Outside a
+  portal, and in a portal with no frames to draw in, there is no motion channel, and the place
+  effect writes the matrix itself.
 - **Text.** The text node's effect already placed the run and wrote its clip together.
 
 Merging costs a run: the effect now re-runs on anything either half reads. Both merged effects keep

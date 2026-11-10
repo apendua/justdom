@@ -24,16 +24,16 @@ the rest — which is what makes a class swap, a `[data-xr-hover]` rule on the b
 or a CSS keyframe on `stroke-dashoffset` reach the scene through the same invalidation path every
 other style does.
 
-| Phase | Deliverable                                                   | Size | Status                                      |
-| ----- | ------------------------------------------------------------- | ---- | ------------------------------------------- |
-| S1    | Plugin seam; shapes with fill, stroke, dashes; showcase panel | L    | **shipped**                                 |
-| S2a   | `<image>` inside inline SVG                                   | S    | **done**                                    |
-| S4a   | The matrix-aware clip patch, everything still at identity     | S    | **done**                                    |
-| S4b   | Transforms as matrices, not baked vertices                    | M    | **done**                                    |
-| S2b   | Markers (arrowheads), `<use>`/`<symbol>`, nested `<svg>` clip | M    | **done**                                    |
-| S3    | Shapes as ray targets: hover, press and click on a `<path>`   | M    | **done**                                    |
-| S5    | `<text>` inside SVG                                           | M    | **done**                                    |
-| S6    | Gradients, `clip-path`, `mask`, `vector-effect`, own stroker  | S–M  | a rect `clip-path` done; the rest as needed |
+| Phase | Deliverable                                                   | Size | Status                                                              |
+| ----- | ------------------------------------------------------------- | ---- | ------------------------------------------------------------------- |
+| S1    | Plugin seam; shapes with fill, stroke, dashes; showcase panel | L    | **shipped**                                                         |
+| S2a   | `<image>` inside inline SVG                                   | S    | **done**                                                            |
+| S4a   | The matrix-aware clip patch, everything still at identity     | S    | **done**                                                            |
+| S4b   | Transforms as matrices, not baked vertices                    | M    | **done**                                                            |
+| S2b   | Markers (arrowheads), `<use>`/`<symbol>`, nested `<svg>` clip | M    | **done**                                                            |
+| S3    | Shapes as ray targets: hover, press and click on a `<path>`   | M    | **done**                                                            |
+| S5    | `<text>` inside SVG                                           | M    | **done**                                                            |
+| S6    | Gradients, `clip-path`, `mask`, `vector-effect`, own stroker  | S–M  | gradients, patterns and a rect `clip-path` done; the rest as needed |
 
 The order was revised in review of the first step: S4 goes before markers and `<use>`, because a
 marker is a prefix matrix and a `<use>` is one geometry under a translation — on baked vertices
@@ -122,8 +122,9 @@ wants, and something S4's matrices do not change.
 **Paint.** `fill`, `fill-opacity`, `fill-rule`, `stroke`, `stroke-opacity` and `opacity` are read
 into the materials in an effect of their own, so a colour animation is a uniform write and rebuilds
 nothing. `fill: none` and `stroke: none` drop the mesh. `visibility: hidden` hides; `display: none`
-draws nothing. `url(#…)` paint is treated as `none` until S6, or as its fallback colour when it
-names one (`url(#hatch) black`).
+draws nothing. In S1 a `url(#…)` paint was treated as `none`, or as its fallback colour when it
+named one (`url(#hatch) black`). A gradient or a pattern is drawn now (S6), and the fallback is for
+a reference to nothing a paint server can be.
 
 **Draw order.** Every shape in one `<svg>` gets the `<svg>`'s content render order plus a fraction
 from its place in the root's document order — fill, then stroke, then the next shape — kept inside
@@ -146,8 +147,9 @@ the mirror's child-list signals, so a `<g>` reorder is a render-order write, not
 
 ### Showcase
 
-`apps/showcase` gains a fifth panel, _Vectors_, centred between the four: a diagram of boxes joined
-by dashed and dotted arrows with polygon heads, a row of icons drawn through a `viewBox` at three
+The showcase gained a fifth panel, _Vectors_, centred between the four (in `apps/showcase` it is now
+one panel of a deck, `SvgPanel.ts`, with _SVG paint_ beside it for S6): a diagram of boxes joined by
+dashed and dotted arrows with polygon heads, a row of icons drawn through a `viewBox` at three
 sizes, a rotated `<g>`, strokes with each `linecap`/`linejoin`, an animated `stroke-dashoffset` and
 a stroke whose colour is animated by CSS keyframes — every mechanism S1 supports, in one photograph.
 The visual suite also counts pixels of a colour only the SVG panel uses, a check that means the same
@@ -165,7 +167,8 @@ shape's meshes go, its object stays, and a shape that says `visible` is drawn un
 S3 has since added `pointer-events` and hit-testing. Item 5 of
 [the architecture plan](https://github.com/apendua/apendua.dev/blob/develop/docs/freedom-architecture-plan.md)
 in the apendua.dev repository (apendua.dev#525) added percentage lengths in a shape's geometry and
-its stroke.
+its stroke. Gradients and patterns came with S6, and so did a rectangular `clip-path`.
+`site/api/three/css.md`, under _SVG_, is the current list of what is followed and what is not.
 
 ---
 
@@ -470,10 +473,19 @@ time (drawn as one run from its box), and, as for HTML text, a selector that rea
 
 ## S6 — Gradients, clip paths, masks
 
-Each is a shader concern. A linear or radial gradient fill is a small `ShaderMaterial` (or
-`SVGLoader`'s own gradient texture, once it stops warning) keyed on the `<linearGradient>`'s stops,
-in `objectBoundingBox` or `userSpaceOnUse` units. `clip-path: url(#id)` referring to a `<clipPath>`
-of shapes is a stencil or a second SDF. A rectangular one is the existing clip box, and is drawn: a
-`<clipPath>` holding one `<rect>` joins the viewports `readChain` in `svg/shape.js` intersects, a
-turned rect as its bounding box (item 5 of the architecture plan, apendua.dev#534). `mask` is a
-render target. None of the rest is needed for diagrams; each goes in when a real panel wants it.
+Each is a shader concern. The plan for a gradient was a small `ShaderMaterial` (or `SVGLoader`'s own
+gradient texture, once it stops warning) keyed on the `<linearGradient>`'s stops, in
+`objectBoundingBox` or `userSpaceOnUse` units.
+
+As built, a linear or radial gradient and a `<pattern>` are drawn on a shape's fill and stroke.
+`svg/paintServer.js` reads the server a `url(#…)` names as SVG defines it, `href` chains included.
+`svg/paintShader.js` is a patch on the shape's own material, not a `ShaderMaterial`: it evaluates
+the gradient per pixel from the shape's user space and reads the colour from the ramp atlas the CSS
+boxes bake their stops into. A pattern is a picture of one tile (`svg/patternTile.js`), repeated by
+the same patch. Neither is drawn on text.
+
+`clip-path: url(#id)` referring to a `<clipPath>` of shapes is a stencil or a second SDF. A
+rectangular one is the existing clip box, and is drawn: a `<clipPath>` holding one `<rect>` joins
+the viewports `readChain` in `svg/shape.js` intersects, a turned rect as its bounding box (item 5 of
+the architecture plan, apendua.dev#534). `mask` is a render target. `mask`, filters, `vector-effect`
+and an own stroker are not built; each goes in when a real panel wants it.

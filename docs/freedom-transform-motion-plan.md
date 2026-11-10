@@ -1,5 +1,10 @@
 # `justdom-three`: a transform-only animation that does not wait for the commit
 
+**Status:** implemented, PRs 2 and 3 below. _The rules_ and _Mechanics_ say what the code does.
+_Where things stand_ describes the package before them, and the Quest check of PR 4 has no result
+recorded here. Section 4.5 of [`freedom-atomic-panel-updates.md`](./freedom-atomic-panel-updates.md)
+is the short form.
+
 This plan takes an element's own CSS `transform` out of the panel's atomic update. A transition or
 keyframe animation that moves only `transform` writes the element's matrix in the frame the
 animation clock samples it, whatever else the panel's channel is still reading. Every other write,
@@ -160,16 +165,18 @@ of rebuilding is left out of this plan (see the last section), so PR 4 measures 
   atomic channel. The equality gates stop it there (`clearedEqual`, then the draw levels). The
   desk's lift also scales the card by 1.04, and its board has a handful of cards, so it should fit;
   PR 4's trace confirms it.
-- **A motion channel per panel.** `new UpdateChannel({ name: "motion", order: 2 })`, after the
-  portal's channel since the place effect's write marks the motion effect. It drains with the batch
-  that marked it, like the default channel. The atomic doc's section 4.2 keeps the clock on a
-  channel that comes along with an atomic pass, so the pump also flushes the motion channel with no
-  budget at the end of its tick, and the scroll's synchronous flush does the same. That flush is a
-  rule, not an optimisation. Section 7.1 of `docs/freedom-atomic-panel-updates.md` has one effect
-  write a box's place and its clip so they never disagree. After the split, the offset the place
-  effect publishes and the clip it writes agree with the matrix only once the motion channel has
-  drained, and on a non-atomic panel a budgeted pass can cut the motion channel after the place
-  effect. The unbudgeted flush at the end of the tick closes that within the frame.
+- **A motion channel per panel.** `new UpdateChannel({ name: "motion", order: 2 })`, made only for a
+  portal that has frames to draw in (under `render()`; a portal on a plain page has none, and its
+  place effect writes the matrix itself), after the portal's channel since the place effect's write
+  marks the motion effect. It drains with the batch that marked it, like the default channel. The
+  atomic doc's section 4.2 keeps the clock on a channel that comes along with an atomic pass, so the
+  pump also flushes the motion channel with no budget at the end of its tick, and the scroll's
+  synchronous flush does the same. That flush is a rule, not an optimisation. Section 7.1 of
+  `docs/freedom-atomic-panel-updates.md` has one effect write a box's place and its clip so they
+  never disagree. After the split, the offset the place effect publishes and the clip it writes
+  agree with the matrix only once the motion channel has drained, and on a non-atomic panel a
+  budgeted pass can cut the motion channel after the place effect. The unbudgeted flush at the end
+  of the tick closes that within the frame.
 - **`box()` splits its placement.** `placement` keeps the layout half (offset, `z`, size, the
   snapshot) and loses the transform. The place effect writes it to a signal. The motion effect,
   built under the motion channel through the portal's context, composes it with the live transform

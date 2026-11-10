@@ -28,15 +28,22 @@ draws is depth-tested, so an opaque hand drawn before the panel hides it.
 `getLayer(element)` in `elevation.js` is the element itself when it is the portal's root, an overlay
 (`isOverlay`) or transformed out of its parent's plane (`hasDepthTransform`), a `translateZ` as much
 as a `rotateY`, and its parent's layer otherwise. A box that clears a sibling is not a layer; it is
-painted in order after that sibling.
+painted in order after that sibling. An SVG element is never a layer: what is inside an `<svg>` is
+drawn within the `<svg>`'s content level. An element's `::before` or `::after` is drawn in its
+element's layer and ordered as its first or last child would be, unless it is positioned with a
+positive `z-index`. Then it is an overlay and a layer of its own.
 
 Inside a layer, `getDrawLevel` counts from the layer's root, which is level 0. A box is one level
-past its parent, its content one past the box, and an element that clears earlier siblings
-(`getClearedSiblings`) is one level past everything they draw. A cleared sibling in another layer
-and a child that is a layer are left out of the count. Two things whose painted bounds overlap never
-share a level, and the one painted later has the higher level. Within one level, any order is
-correct. There is no exception for an opaque box: an opaque card climbs past what it covers as a
-translucent one does.
+past its parent, its content one past the box, and an element that clears siblings
+(`getClearedSiblings`) is one level past everything they draw. Only a positioned or transformed
+element clears, and it clears each sibling it overlaps that a page paints under it: the earlier
+siblings in its own painting layer (`getPaintLayer`), every sibling in a lower one, and every
+sibling in the flow, earlier or later. A cleared sibling in another layer and a child that is a
+layer are left out of the count. Where one of two things whose painted bounds overlap is positioned
+or transformed, they never share a level, and the one painted later has the higher level. Two flow
+siblings are not ordered against each other, which is one of the limits the `elevation.js` header
+lists. Within one level, any order is correct. There is no exception for an opaque box: an opaque
+card climbs past what it covers as a translucent one does.
 
 Every element is placed flat on its layer's plane. An overlay stands `OVERLAY_LIFT` in front of its
 parent's content and every other element level with it (`placement` in `div.js`), and the layer's
@@ -44,8 +51,9 @@ own transform puts the layer where the page does. The box's quad sits in its ele
 its content in the same plane.
 
 A painted bound is the border box, grown by the element's own text's shadow (`getPaintedBounds`).
-The 2 px a run's glyphs can come out wider than their box is not in it, which is one of the limits
-the `elevation.js` header lists.
+With a transform of the element's own it is the axis-aligned box around the four transformed
+corners. A pseudo-element's is what its quad covers. The 2 px a run's glyphs can come out wider than
+their box is not in it, which is one of the limits the `elevation.js` header lists.
 
 ## Bases and the band
 
@@ -89,9 +97,9 @@ Chromium's compositor does for a `preserve-3d` context. Its rules:
 ## The walk
 
 Every frame, in `onLateFrame` before the batches flush, the panel walks its tree back to front from
-one viewpoint: the XR camera's position, the midpoint of the eyes, taken into the panel's frame.
-Both eyes draw that one order. The walk gives each piece a place in order, and the first piece of a
-layer it visits gives the layer its base.
+one viewpoint, taken into the panel's frame: in a session the XR camera's position, the midpoint of
+the eyes, and outside one the scene camera's. Both eyes draw that one order. The walk gives each
+piece a place in order, and the first piece of a layer it visits gives the layer its base.
 
 A layer with no plane to give, one with no area or past a perspective's eye, is drawn whole after
 the rest. A layer the page has taken out stays in the panel's set until the mirror's flush reports
@@ -133,6 +141,10 @@ and keep what they know of them, and hand them to the paint batch, which draws t
   at sixteen. `aSize.z` is a box's gradient header, from 0 up, or `-1 - array` for a run, where
   `array` is the run's slot among the arrays its draw samples. Fifteen arrays and the gradient ramp
   are WebGL2's sixteen guaranteed texture units.
+- **What draws around a box.** An outline's ring and a box's shadows are instances in the same
+  stream, told from a box by a negative `aSize.w`. A shadow draws at its rung of the box's level
+  (below). A ring draws at `RING_PLACE`, a quarter level short of the end of its layer's band, so a
+  layer's rings draw over all of the layer and under the layers after it.
 
 ## The depth quad
 
@@ -167,8 +179,9 @@ meet on a panel registers how far past its `renderOrder` it draws (`registerDraw
 `drawOrder.js`), and `getObjectDrawOrder` reads the sum. A batched box registers `BOX_BUCKET_BIAS`,
 since its ray target is its element's mesh and the panel's one batch lays it at
 `renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a level later. The box, the
-picture, the run, the caret, the checkbox's tick and the SVG shape register. A mesh that did not
-register reads as `-Infinity`, so where a hit is on no panel the nearest wins as it was found.
+picture, a pseudo-element's box, the run, the caret, the checkbox's tick and the SVG shape register.
+A mesh that did not register reads as `-Infinity`, so where a hit is on no panel the nearest wins as
+it was found.
 
 A split needs nothing on the ray side: a ray meets a plane at one point, and that point is on one
 side of every other plane. A piece behind the root's plane is farther along the ray than the root's
@@ -179,17 +192,21 @@ box, so the root takes the press there.
 Some things share one integer level R and still have to draw in a set order. The table is the
 `BOX_BUCKET_BIAS` doc in `boxBatch.js`, and `boxBatch.test.js` holds the constants to it:
 
-| Order        | What draws there                                            |
-| ------------ | ----------------------------------------------------------- |
-| R            | the level's text, and a run that draws itself               |
-| [R, R + 1/2) | an `<svg>`'s content, shared out by `paintSlot`             |
-| R + 1/8      | a field's caret, over the glyphs (`CARET_ORDER_BIAS`)       |
-| R + 1/4      | a picture's box, which has no bucket (`UNBATCHED_BOX_BIAS`) |
-| R + 1/2      | a batched box (`BOX_BUCKET_BIAS`)                           |
-| R + 1        | the next level's text                                       |
+| Order        | What draws there                                                                   |
+| ------------ | ---------------------------------------------------------------------------------- |
+| R            | the level's text, and a run that draws itself                                      |
+| [R, R + 1/2) | an `<svg>`'s content, shared out by `paintSlot`                                    |
+| R + 1/8      | a field's caret, over the glyphs (`CARET_ORDER_BIAS`)                              |
+| R + 1/4      | a picture's box, which draws itself (`UNBATCHED_BOX_BIAS`)                         |
+| R + 3/8      | a batched box's outer shadows (`OUTER_SHADOW_BIAS`)                                |
+| R + 1/2      | a batched box (`BOX_BUCKET_BIAS`)                                                  |
+| R + 5/8      | its inset shadows, over its background and under its content (`INSET_SHADOW_BIAS`) |
+| R + 1        | the next level's text                                                              |
 
 The `<svg>` range spans the caret's and the picture's rungs, which is safe because none of the three
-shares an element.
+shares an element. It spans the outer shadows' rung too, and there the elements differ: a box a
+level past an `<svg>` whose shadow reaches over it draws the shadow under some of the `<svg>`'s
+shapes.
 
 ## Open cases
 

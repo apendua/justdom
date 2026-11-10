@@ -182,11 +182,10 @@ class SpriteStore {
  * browser never has to fetch or decode anything again.
  *
  * The clip path is on a group around the image rather than on the image,
- * and the shift is the image's `transform` rather than its `x` and `y`, for
- * a headset panel's sake. A panel takes a new `transform` as a matrix write,
- * where a new `x` or `y` would be a new quad ten times a second for every
- * stack on the board; and a clip path on the image would move with its
- * `transform`, as it does on the page, so the group holds it still.
+ * since a clip path on the image would move with its `transform`, as it
+ * does on the page, and the group holds it still. A headset panel cuts the
+ * image's quad down to what the clip leaves, so it draws one frame of the
+ * sheet rather than the whole sheet.
  */
 const Sprite = component((_: WeakKey, props: SpriteProps) => {
   const sprite = new SpriteStore(props);

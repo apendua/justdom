@@ -110,7 +110,9 @@ import {
  * `<svg>` root's content group carries the viewport matrix, each `<g>` and
  * nested `<svg>` carries its own transform, and the shape's object carries
  * the shape's. Three composes them, so a transform animated on a `<g>` is a
- * matrix write per frame and its descendants' buffers never change.
+ * matrix write per frame and its descendants' buffers never change. The one
+ * exception is a picture under a clip the move does not carry with it: its
+ * quad is cut to the clip (see `image.js`), and is cut again in place.
  *
  * The clip box is still given in the root's frame, which is no longer the
  * frame the vertices are in; the shape tells the clip patch the matrix
@@ -1755,6 +1757,10 @@ function rayTarget(ctx, element, hittable) {
  *   decides whether a clickable element is a ray target.
  * @property {EntityEffect<THREE.Object3D>[]} content Its meshes, as
  *   children, and whatever else hangs off its object.
+ * @property {(box: ClipBox, matrix: THREE.Matrix3) => void} [followClip]
+ *   Called with the clip box and the clip matrix each time they are
+ *   written, in the same effect, so what it writes can never lag them. A
+ *   picture cuts its quad down to the box here (see `image.js`).
  */
 
 /**
@@ -1765,7 +1771,8 @@ function rayTarget(ctx, element, hittable) {
  *
  * An element that draws passes `draw`, and is given its chain, its opacity
  * and its paint slot, and the meshes it asks for share the element's clip,
- * written in the effect that writes its matrix. The chain is read apart
+ * written in the effect that writes its matrix, where its `followClip` is
+ * called too. The chain is read apart
  * from what it decides, so a transform animated above the element stops at
  * the clip matrix and reaches neither the draw order nor the alpha. A `<g>`
  * passes null: it draws nothing, reads no chain, and is a ray target on
@@ -1800,7 +1807,6 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
     const root = new Derived(() => chain.get().root);
     const opacity = new Derived(() => drawnOpacity(chain.get()));
     const uniforms = clipUniforms(() => chain.get(), root);
-    followClip = uniforms.follow;
     /** @param {0 | 1 | 2} layer */
     const slot = (layer) => paintSlot(element, root.get(), instance, layer);
     const drawn = draw({
@@ -1816,6 +1822,13 @@ export function svgNode(ctx, element, instance, draw, decorate = []) {
     const hit = new Derived(drawn.hittable);
     hittable = () => hit.get();
     drawing = drawn.content;
+    const after = drawn.followClip;
+    followClip = after
+      ? () => {
+          uniforms.follow();
+          after(uniforms.clipBox(), uniforms.clipMatrix.value);
+        }
+      : uniforms.follow;
   }
   /**
    * The matrix last committed. `own` keeps the value it holds while the

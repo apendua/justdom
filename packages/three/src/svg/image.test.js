@@ -5,7 +5,14 @@ import { createMirror } from "../elements/mirror.js";
 import { clipMatrixOf } from "../test/clipUniforms.js";
 import { acquireImage, releaseIdleImages, releaseImage } from "../elements/image.js";
 import { parsePreserveAspectRatio } from "./geometry.js";
-import { buildImageGeometry, getSvgImageSource, image, placeImage } from "./image.js";
+import {
+  buildImageGeometry,
+  getSvgImageSource,
+  image,
+  placeImage,
+  trimImageGeometry,
+} from "./image.js";
+import { UNCLIPPED } from "../elements/clip.js";
 import { shape } from "./shape.js";
 
 /**
@@ -279,6 +286,94 @@ describe("buildImageGeometry", () => {
   });
 });
 
+describe("trimImageGeometry", () => {
+  /** The whole picture on a 10 by 10 quad. */
+  const whole = { left: 0, top: 0, right: 10, bottom: 10, u0: 0, v0: 0, u1: 1, v1: 1 };
+
+  /**
+   * A clip box, square-cornered.
+   *
+   * @param {number} left
+   * @param {number} top
+   * @param {number} right
+   * @param {number} bottom
+   */
+  const box = (left, top, right, bottom) => ({ ...UNCLIPPED, left, top, right, bottom });
+
+  /**
+   * The quad's corners and texture coordinates, rounded: the top left
+   * corner and the bottom right.
+   *
+   * @param {THREE.BufferGeometry} geometry
+   */
+  const corners = (geometry) => {
+    const position = geometry.getAttribute("position");
+    const uv = geometry.getAttribute("uv");
+    return [
+      position.getX(0),
+      position.getY(0),
+      position.getX(2),
+      position.getY(2),
+      uv.getX(0),
+      uv.getY(0),
+      uv.getX(2),
+      uv.getY(2),
+    ].map(round);
+  };
+
+  test("a clip inside the quad cuts it, with a pixel to spare, texture and all", () => {
+    const geometry = buildImageGeometry(whole);
+    trimImageGeometry(geometry, whole, box(4, 2, 6, 8), new THREE.Matrix3());
+    // v runs up the texture: the top of the cut, 0.1 down the picture, is
+    // v = 0.9.
+    assert.deepEqual(corners(geometry), [3, 1, 7, 9, 0.3, 0.9, 0.7, 0.1]);
+    geometry.dispose();
+  });
+
+  test("a turned clip cuts the quad to the bounding box of the turn", () => {
+    const geometry = buildImageGeometry(whole);
+    // A quarter turn: (x, y) in user space lands at (-y, x) in the box's
+    // frame, so the box's x from -6 to -4 is y from 4 to 6, and its y from
+    // 2 to 8 is x from 2 to 8.
+    const turn = new THREE.Matrix3().set(0, -1, 0, 1, 0, 0, 0, 0, 1);
+    trimImageGeometry(geometry, whole, box(-6, 2, -4, 8), turn);
+    assert.deepEqual(corners(geometry), [1, 3, 9, 7, 0.1, 0.7, 0.9, 0.3]);
+    geometry.dispose();
+  });
+
+  test("a clip that misses the quad leaves it no area, and no clip leaves it whole", () => {
+    const geometry = buildImageGeometry(whole);
+    trimImageGeometry(geometry, whole, box(20, 20, 30, 30), new THREE.Matrix3());
+    const [left, top, right, bottom] = corners(geometry);
+    assert.ok(right <= left && bottom <= top, "nothing left to rasterize");
+    trimImageGeometry(geometry, whole, UNCLIPPED, new THREE.Matrix3());
+    assert.deepEqual(corners(geometry), [0, 0, 10, 10, 0, 1, 1, 0]);
+    geometry.dispose();
+  });
+
+  test("a cut that comes out where the last one did uploads nothing", () => {
+    const geometry = buildImageGeometry(whole);
+    const position = /** @type {THREE.BufferAttribute} */ (geometry.getAttribute("position"));
+    trimImageGeometry(geometry, whole, box(4, 2, 6, 8), new THREE.Matrix3());
+    const version = position.version;
+    trimImageGeometry(geometry, whole, box(4, 2, 6, 8), new THREE.Matrix3());
+    assert.equal(position.version, version);
+    geometry.dispose();
+  });
+
+  test("the bounds follow the cut, for the frustum and the ray", () => {
+    const geometry = buildImageGeometry(whole);
+    geometry.computeBoundingBox();
+    trimImageGeometry(geometry, whole, box(4, 2, 6, 8), new THREE.Matrix3());
+    assert.deepEqual(
+      [geometry.boundingBox?.min.x, geometry.boundingBox?.max.x].map((v) => round(v ?? NaN)),
+      [3, 7],
+    );
+    assert.ok(round(geometry.boundingSphere?.radius ?? NaN) < 5);
+    geometry.dispose();
+  });
+});
+
 describe("getSvgImageSource", () => {
   test("href is resolved against the document, and xlink:href is read too", () => {
     // jsdom's document is at about:blank, which resolves nothing; a <base>
@@ -504,6 +599,44 @@ describe("svg image", () => {
     } finally {
       THREE.TextureLoader.prototype.load = original;
     }
+  });
+
+  test("a sprite sheet under a one-frame clip draws that frame and not the sheet", () => {
+    withLoadedPictures(fakeTexture(80, 40), () => {
+      // A sheet of four by two frames, 20 by 20 each, shifted so the second
+      // frame of the top row is under the clip.
+      const s = setup(
+        {
+          href: PICTURE,
+          width: "80",
+          height: "40",
+          style: "transform: matrix(1, 0, 0, 1, -20, 0)",
+        },
+        { wrap: { "clip-path": "url(#one-frame)" } },
+      );
+      const frame = document.createElementNS(SVG_NS, "rect");
+      frame.setAttribute("width", "20");
+      frame.setAttribute("height", "20");
+      const clipPath = document.createElementNS(SVG_NS, "clipPath");
+      clipPath.id = "one-frame";
+      clipPath.appendChild(frame);
+      s.root.appendChild(clipPath);
+      s.mirror.attributeChanged(s.element);
+      const geometry = s.mesh.geometry;
+      // The frame, from 20 to 40 across and 0 to 20 down, and a pixel
+      // around it where the sheet goes that far.
+      assert.deepEqual(bounds(s.mesh), [19, 0, 41, 21]);
+
+      // The next frame is a new transform, and the cut moves with it, in
+      // the same geometry.
+      s.element.setAttribute("style", "transform: matrix(1, 0, 0, 1, -40, 0)");
+      s.mirror.attributeChanged(s.element);
+      assert.deepEqual(bounds(s.mesh), [39, 0, 61, 21]);
+      assert.equal(s.mesh.geometry, geometry);
+      const uv = s.mesh.geometry.getAttribute("uv");
+      assert.deepEqual([round(uv.getX(0)), round(uv.getX(2))], [round(39 / 80), round(61 / 80)]);
+      s.teardown();
+    });
   });
 
   test("teardown gives the picture back and disposes what it made", () => {

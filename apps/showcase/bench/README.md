@@ -55,8 +55,11 @@ ten, which across the report's rows is about one false verdict a run; at 5 it is
 runner also draws with software GL, so an idle frame there takes about 80 ms and its frame gaps
 measure the rasterizer as much as this code. A draw-call row whose figure is a fraction on either
 side animates (the desk's charts redraw from random data on timers), so its average depends on the
-frames a run caught; the report lists such rows apart and does not call them changed. The same
-report is on the run's summary page, and the artifact holds everything both benches printed.
+frames a run caught; the report lists such rows apart, with their figures, and does not call them
+changed. That is a hint and not a proof: an animated panel's average can come out whole (Night Ops
+printed 154 in one same-code run and 154.4 in the next), and a whole figure that differs is listed
+as a change. The same report is on the run's summary page, and the artifact holds everything both
+benches printed.
 
 The workflow can also be run from the Actions tab on any branch, with a narrower set of scenarios or
 another number of rounds. It then writes the report to the run's summary and posts no comment. That

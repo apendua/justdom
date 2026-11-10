@@ -112,9 +112,12 @@ test("an animated row that differs is set apart, not called a change", () => {
   // As the desk's Night Ops did with the same code on both sides: 154 a
   // frame in one run, 154.4 in the next, since its charts redraw on timers.
   const section = drawsSection(draws(20, 4), draws(20.4, 4.4));
-  assert.doesNotMatch(section, /→/);
-  assert.match(section, /no change in the 0 looks and apps and 1 panels that held still/);
-  assert.match(section, /2 animated, .* not counted as changes: desk, desk: a\./);
+  assert.doesNotMatch(section, /\*\*/);
+  assert.match(section, /no change in the other 0 looks and apps and 1 panels/);
+  assert.match(
+    section,
+    /2 animated, .* not counted as changes: desk \(20 → 20\.4\), desk: a \(4 → 4\.4\)\./,
+  );
 });
 
 test("a change among animated rows is still listed", () => {
@@ -190,4 +193,23 @@ test("a scenario whose only moving count is unsteady is not called changed", () 
   const section = mirrorSection(data);
   assert.match(section, /\| `scroll` \| 1 unsteady \|/);
   assert.doesNotMatch(section, /changed/);
+});
+
+test("a row on one side only is a change, even with a fraction", () => {
+  const head = draws(20, 4).replace(
+    "| desk: b | 3 | 3 | 0 | 0 |",
+    "| desk: b | 3 | 3 | 0 | 0 |\n| desk: c | 4.4 | 4 | 0 | 0 |",
+  );
+  const section = drawsSection(draws(20, 4), head);
+  assert.match(section, /\| desk: c \| \*\*— → 4\.4\*\* \|/);
+  assert.doesNotMatch(section, /animated/);
+});
+
+test("at five rounds, a scenario short of a round says how many it had", () => {
+  const data = mirror(825);
+  data.repeat = 5;
+  data.sides[0].runs = [40, 41, 42, 43, 44].map((gap) => round(825, 829, gap));
+  data.sides[1].runs = [60, 61, 62, 63, 64].map((gap) => round(825, 1658, gap));
+  delete data.sides[0].runs[4].scroll;
+  assert.match(mirrorSection(data), /\| `scroll` \| .* \| 4 rounds \|/);
 });

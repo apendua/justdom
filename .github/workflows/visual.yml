@@ -83,6 +83,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{
             hashFiles('./common/config/rush/pnpm-lock.yaml') }}
       - name: Install Chromium
+        # Chromium needs its system libraries, and apt waits on a mirror
+        # that does not answer until the job times out. With nothing to
+        # fall back on, the step fails at ten minutes, under its own name.
+        timeout-minutes: 10
         run: node apps/showcase/node_modules/playwright-core/cli.js install --with-deps chromium
       - name: Photograph the scene
         id: photograph
@@ -281,6 +285,10 @@ jobs:
           key: playwright-${{ runner.os }}-${{
             hashFiles('./common/config/rush/pnpm-lock.yaml') }}
       - name: Install Chromium
+        # Chromium needs its system libraries, and apt waits on a mirror
+        # that does not answer until the job times out. With nothing to
+        # fall back on, the step fails at ten minutes, under its own name.
+        timeout-minutes: 10
         run: node apps/showcase/node_modules/playwright-core/cli.js install --with-deps chromium
       - name: Redraw the baselines
         working-directory: apps/showcase

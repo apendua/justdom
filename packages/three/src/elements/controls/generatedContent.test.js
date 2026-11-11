@@ -26,11 +26,15 @@ import { comparePaintOrder } from "../paint/layerTree.js";
 import { fakeClock } from "../../test/clock.js";
 import { countEvaluations } from "../../test/evaluations.js";
 import { flicker, reportTransform, shifted, transformTransition } from "../../test/motion.js";
-import { getPanel } from "../input/dragAndDrop.js";
+import { getPanel, hitElement } from "../input/dragAndDrop.js";
 import { layerDepth, listPaintOrder } from "../../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "../css/documentStyles.js";
 import { generatedHost, splitSelectorList } from "../css/styleRules.js";
 import { HOVER_ATTRIBUTE } from "../portal/portalRoot.js";
+
+/**
+ * @import { Panel } from "../input/dragAndDrop.js";
+ */
 
 /**
  * `createPortal` with the loading frame's timing off, so a mount loads the
@@ -1181,6 +1185,38 @@ describe("an element's ::before and ::after in the paint order", () => {
 
     panel.cleanup();
   });
+
+  for (const css of ["position: absolute", "position: absolute; z-index: 1"]) {
+    test(`a drag over a ::after (${css}) is over its element`, async () => {
+      // The ::after reaches 8 px above its element, and is drawn over the
+      // element's child where the two meet.
+      pseudoRule(".card", "after", '""', `${css}; background-color: red`);
+      const panel = generatedPanel(`
+        <div class="card" style="position: relative" data-rect="0,0,200,40" data-after="150,-8,40,16">
+          <div class="child" data-rect="0,0,200,40"></div>
+        </div>
+      `);
+      await settle(panel.portal);
+      const object = panel.parent.children[0];
+      const registered = /** @type {Panel} */ (getPanel(object));
+      object.updateWorldMatrix(true, true);
+      /**
+       * @param {number} x
+       * @param {number} y
+       * @returns {string | undefined}
+       */
+      const over = (x, y) => {
+        const target = object.localToWorld(new THREE.Vector3(x, y, 0));
+        const origin = target.clone().add(new THREE.Vector3(0, 0, 1));
+        const ray = new THREE.Ray(origin, target.sub(origin).normalize());
+        return hitElement(registered, ray)?.className;
+      };
+      assert.equal(over(170, -4), "card", "past the element's box");
+      assert.equal(over(170, 4), "card", "over the child");
+      assert.equal(over(100, 4), "child", "beside the ::after");
+      panel.cleanup();
+    });
+  }
 });
 
 /**

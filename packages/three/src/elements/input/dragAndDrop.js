@@ -5,10 +5,16 @@ import { InteractionContext, LEVEL } from "../../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "../portal/frameRequester.js";
 import { RendererContext } from "../../scene.js";
-import { getBorderBoxSize, getLocalClipBox } from "../mirror/geometryReads.js";
+import {
+  getBorderBoxSize,
+  getInteriorClipBox,
+  getLocalClipBox,
+  getScrollOffset,
+} from "../mirror/geometryReads.js";
 import {
   getComputedStyleCached,
   getParentElement,
+  hidesVisibility,
   isPortalRoot,
   isVisibilityHidden,
 } from "../mirror/styleReads.js";
@@ -21,10 +27,13 @@ import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { BOX_BUCKET_BIAS } from "../paint/boxBatch.js";
 import { getBoxRenderOrder } from "../paint/elevation.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
+import { generatedRules, getGenerated, KIND_BITS } from "../pseudoElements.js";
 
 /**
  * @import {DropEffect} from './dataTransfer.js';
  * @import {PanelFrame} from '../panelFrame.js';
+ * @import {Generated} from '../pseudoElements.js';
+ * @import {ClipBox} from '../clip.js';
  */
 
 /**
@@ -233,8 +242,9 @@ function boxOrder(element) {
  * picture's own coordinates, not boxes; the `<svg>` is the candidate, as
  * it is for a click.
  *
- * Each element's object is its own border box, top-left origin and y down,
- * so the ray is taken into that frame and met at z = 0.
+ * An element is a candidate too where the ray meets its `::before` or
+ * `::after` (`gatherGenerated`), its `::after` found before its children
+ * and its `::before` after them, as a page orders them among the children.
  *
  * @param {HTMLElement} element
  * @param {(node: Node) => THREE.Object3D | undefined} objectOf
@@ -246,10 +256,17 @@ function gather(element, objectOf, ray) {
   if (!object || !object.visible) {
     return;
   }
+  const kinds = generatedRules(element);
+  if (kinds & KIND_BITS.after) {
+    gatherGenerated(getGenerated(element, "after"), object, ray);
+  }
   if (!isSvgRoot(element)) {
     for (let child = element.lastElementChild; child; child = child.previousElementSibling) {
       gather(/** @type {HTMLElement} */ (child), objectOf, ray);
     }
+  }
+  if (kinds & KIND_BITS.before) {
+    gatherGenerated(getGenerated(element, "before"), object, ray);
   }
   if (
     isVisibilityHidden(element) ||
@@ -257,29 +274,94 @@ function gather(element, objectOf, ray) {
   ) {
     return;
   }
+  const size = getBorderBoxSize(element);
+  const distance = meetBox(object, ray, 0, 0, size.width, size.height, getLocalClipBox(element));
+  if (distance >= 0) {
+    candidates.push(element);
+    distances.push(distance);
+    orders.push(boxOrder(element));
+  }
+}
+
+/**
+ * Gather an element's `::before` or `::after`, while it draws, as a
+ * candidate that names the element, as a click on a page's `::before`
+ * icon is a click on the element. It is met where its quad is drawn
+ * (`generatedContent.js`): in its element's frame, scrolled, or, while it
+ * is an overlay, in its layer's object at the quad's corner, and inside
+ * what clips the element's content (`getInteriorClipBox`). Its own
+ * `visibility` and `pointer-events` decide, which it inherits from the
+ * element unless a rule sets them, and it is ordered by its quad as an
+ * element is by its box.
+ *
+ * @param {Generated} generated
+ * @param {THREE.Object3D} object The element's.
+ * @param {THREE.Ray} ray In world space.
+ * @returns {void}
+ */
+function gatherGenerated(generated, object, ray) {
+  if (generated.content.get() === null) {
+    return;
+  }
+  const style = generated.style();
+  if (hidesVisibility(style.visibility) || style.getPropertyValue("pointer-events") === "none") {
+    return;
+  }
+  const { element, layerObject } = generated;
+  const quad = generated.quad();
+  const scroll = getScrollOffset(element);
+  const x = quad.x - scroll.left;
+  const y = quad.y - scroll.top;
+  const clip = getInteriorClipBox(element);
+  const distance = layerObject
+    ? meetBox(layerObject, ray, 0, 0, quad.width, quad.height, clip, x, y)
+    : meetBox(object, ray, x, y, quad.width, quad.height, clip);
+  if (distance >= 0) {
+    candidates.push(element);
+    distances.push(distance);
+    orders.push(getBoxDrawOrder(generated) ?? getBoxRenderOrder(generated) + BOX_BUCKET_BIAS);
+  }
+}
+
+/**
+ * How far along a ray it meets a box in an object's plane, or -1 where it
+ * misses. The object's frame is a border box's: top-left origin, y down,
+ * met at z = 0. The box is `width` by `height` at `left`, `top`, and a
+ * point counts only inside `clip`, which is in a frame `clipX`, `clipY`
+ * up and to the left of the object's.
+ *
+ * @param {THREE.Object3D} object
+ * @param {THREE.Ray} ray In world space.
+ * @param {number} left
+ * @param {number} top
+ * @param {number} width
+ * @param {number} height
+ * @param {ClipBox} clip
+ * @param {number} [clipX]
+ * @param {number} [clipY]
+ * @returns {number}
+ */
+function meetBox(object, ray, left, top, width, height, clip, clipX = 0, clipY = 0) {
   toLocal.copy(object.matrixWorld).invert();
   localRay.copy(ray).applyMatrix4(toLocal);
   const along = -localRay.origin.z / localRay.direction.z;
   // Parallel to the plane, or meeting it behind the origin.
   if (!(along >= 0) || !Number.isFinite(along)) {
-    return;
+    return -1;
   }
   localRay.at(along, met);
-  const size = getBorderBoxSize(element);
   if (
-    met.x < 0 ||
-    met.y < 0 ||
-    met.x > size.width ||
-    met.y > size.height ||
-    !clipBoxContains(getLocalClipBox(element), met.x, met.y)
+    met.x < left ||
+    met.y < top ||
+    met.x > left + width ||
+    met.y > top + height ||
+    !clipBoxContains(clip, met.x + clipX, met.y + clipY)
   ) {
-    return;
+    return -1;
   }
   met.z = 0;
   met.applyMatrix4(object.matrixWorld);
-  candidates.push(element);
-  distances.push(met.distanceTo(ray.origin));
-  orders.push(boxOrder(element));
+  return met.distanceTo(ray.origin);
 }
 
 /**

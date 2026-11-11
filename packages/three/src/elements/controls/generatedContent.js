@@ -23,6 +23,7 @@ import { TextBatchContext } from "../paint/textBatch.js";
 import { drawQuad } from "./div.js";
 import { getRunRenderStyle, isTintableText } from "../textHelpers.js";
 import { surfaceRun } from "../surfaceRun.js";
+import { setBoxMesh } from "../../drawOrder.js";
 
 /**
  * @import {Source} from 'justdom-signal';
@@ -303,6 +304,13 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
     }),
     effects(() => {
       numbers.image(shown.get());
+    }),
+    // The scan orders the pseudo-element by this mesh while it is mounted.
+    effects(() => {
+      setBoxMesh(generated, mesh);
+      onCleanup(() => {
+        setBoxMesh(generated, null);
+      });
     }),
   ]);
 }

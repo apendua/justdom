@@ -1,4 +1,8 @@
 /**
+ * @import { Generated } from "./elements/pseudoElements.js";
+ */
+
+/**
  * Where what goes over everything draws: the cursor and a drag's ghost.
  * Panels draw at a layer's base plus its level (see `getRenderBand` in
  * elevation.js), and a draggable panel's strips at `HANDLE_RENDER_ORDER`,
@@ -94,19 +98,20 @@ function nodeAbove(object) {
 }
 
 /**
- * Each element's box mesh, while it has one mounted.
+ * Each element's box mesh, and each `::before` and `::after` quad, while
+ * it has one mounted.
  *
- * @type {WeakMap<Element, import('three').Object3D>}
+ * @type {WeakMap<Element | Generated, import('three').Object3D>}
  */
 const boxes = new WeakMap();
 
 /**
- * Say which mesh draws an element's box, or that none does any more, so
- * the scan that hit-tests elements (`hitElement` in
- * `elements/input/dragAndDrop.js`) orders the element by the number the
- * cast compares for that mesh.
+ * Say which mesh draws an element's box, or a pseudo-element's quad, or
+ * that none does any more, so the scan that hit-tests elements
+ * (`hitElement` in `elements/input/dragAndDrop.js`) orders the box by the
+ * number the cast compares for that mesh.
  *
- * @param {Element} element
+ * @param {Element | Generated} element
  * @param {import('three').Object3D | null} mesh
  * @returns {void}
  */
@@ -122,7 +127,7 @@ export function setBoxMesh(element, mesh) {
  * The order an element's box is drawn at, as the cast reads it for the box's
  * mesh (`getObjectDrawOrder`), or `undefined` while no box mesh is mounted.
  *
- * @param {Element} element
+ * @param {Element | Generated} element
  * @returns {number | undefined}
  */
 export function getBoxDrawOrder(element) {

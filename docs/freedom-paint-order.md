@@ -215,12 +215,17 @@ The scan's rules:
   the front, as the cast meets the double-sided box and blocker, until `backface-visibility` is read
   (see Open cases).
 - **What it visits.** Every element under the portal's root, last child first, a child before its
-  parent. An object the mirror has culled (`visible` false) is passed over with all it holds. What
-  is inside an `<svg>` is not visited: the `<svg>` is the target, as it is for a click.
+  parent. An element's `::after` is visited before its children and its `::before` after them, as a
+  page orders them among its paint children. An object the mirror has culled (`visible` false) is
+  passed over with all it holds. What is inside an `<svg>` is not visited: the `<svg>` is the
+  target, as it is for a click.
 - **What makes a candidate.** The point where the ray meets the element's plane lies inside its
   border box and inside its clip box (`getLocalClipBox`), the clip box's rounded corners included.
   An element that `visibility` hides or that says `pointer-events: none` is not a candidate, and its
-  children still are.
+  children still are. A `::before` or `::after`, while it draws, makes its element a candidate where
+  the ray meets its quad, in the element's plane or, as an overlay, in its layer's, inside what
+  clips the element's content (`getInteriorClipBox`), unless its own `visibility` or
+  `pointer-events` says otherwise. It is drawn at its quad's rung, read as an element's box is.
 - **Which candidate wins.** The cast's rule, read per element. The nearest wins, unless candidates
   within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element is
   drawn at its box's rung, the number the cast compares for the box's mesh: its `renderOrder`,
@@ -236,10 +241,8 @@ The scan's rules:
 - **A cut layer** needs nothing here, for the reason given above: a ray meets a plane at one point.
 - **What the scan cannot name.** It names elements, never meshes. A plugin's object stays the
   cast's: a press or a wheel on one goes to the scene, and a drag over one is over the element the
-  scan finds beneath it. An SVG shape is its `<svg>`, and a field's caret is its field. A
-  pseudo-element is not visited: the scan walks elements, and tests each against its own border box.
-  A `::before` or `::after` box placed outside its element's (a badge at `top: -8px`) is a hit for
-  the cast, which names the element, and a miss for the scan, which finds what is beneath.
+  scan finds beneath it. An SVG shape is its `<svg>`, and a field's caret is its field, and a
+  `::before` or `::after` is its element.
 - **What it costs.** The scan visits every element of the panel, since a child can overflow its
   parent. That is affordable for a drag's frames, a wheel on a gap and one note per missed press. It
   is not for hover, which runs every frame for every ray. Presses and hover move to the scan only
@@ -254,14 +257,13 @@ per-layer list under _What it costs_ is for, and content over a sibling's box ne
 what an element draws. The other two need neither: the cast breaking a level tie by tree order,
 which needs only the hits' elements, and the scan visiting pseudo-elements. The maintainer chose the
 same day to build those two and not the first two, which stay known differences, with the side that
-is right named. The level tie is built: the cast now names the later sibling, as the scan does.
+is right named. Both are built: the cast names the later of two level siblings, as the scan does,
+and the scan visits each element's `::before` and `::after`.
 
 - **Content over a sibling's box.** A run of text, or a picture an element holds, draws at its
   element's content order, R + 1, over a level sibling's box at R + 1/2, and the cast, meeting it,
   picks its element. The scan orders each element by its box, and picks the sibling. The cast is
   right, and the scan is to read what an element draws under the point.
-- **A pseudo-element's box outside its element.** The cast is right, as above. The scan is to visit
-  pseudo-elements as the paint children they are.
 - **A box that is not a ray target, over one that is.** A translucent cover or a badge without
   `cursor: pointer` over a button: the cast meets only the button and gives it the press, the scan
   gives it to the cover, and a page gives the click to the cover. Likewise, a card's background is

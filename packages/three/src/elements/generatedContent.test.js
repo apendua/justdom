@@ -20,6 +20,8 @@ import {
 } from "./elevation.js";
 import { isBlocker } from "./blocker.js";
 import { getLayerOrder } from "./layerOrder.js";
+import { PaintBatch } from "./paintBatch.js";
+import { buffers, watchBatch } from "../test/batchBuffers.js";
 import { comparePaintOrder } from "./layerTree.js";
 import { fakeClock } from "../test/clock.js";
 import { countEvaluations } from "../test/evaluations.js";
@@ -647,6 +649,48 @@ describe("an element's ::before and ::after in a panel", () => {
     }
   });
 
+  test("a ::before with a picture tells the panel's batch when it is shown", async () => {
+    // Its quad draws itself, but the batch's walk still reads it, for its
+    // visibility and its order, so showing it is the batch's business. Goes
+    // red with its numbers telling only the batch that draws it, which is
+    // none.
+    const load = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function (_url, onLoad) {
+      const texture = new THREE.Texture(
+        /** @type {HTMLImageElement} */ ({ width: 12, height: 14 }),
+      );
+      onLoad?.(/** @type {THREE.Texture<HTMLImageElement>} */ (texture));
+      return /** @type {THREE.Texture<HTMLImageElement>} */ (texture);
+    };
+    const invalidate = PaintBatch.prototype.invalidate;
+    try {
+      pseudoRule(".pic", "before", 'url("/icon.png")', "visibility: hidden");
+      const panel = generatedPanel(
+        `<div class="pic" data-rect="0,0,200,40" data-before="0,0,12,14" data-picture="0,0,12,14"></div>`,
+      );
+      await settle(panel.portal);
+      const [quad] = panel.quads();
+      assert.equal(quad.visible, false);
+
+      let asked = 0;
+      PaintBatch.prototype.invalidate = function () {
+        asked += 1;
+        return invalidate.call(this);
+      };
+      pseudoRules[0].css = "visibility: visible";
+      const host = /** @type {HTMLElement} */ (panel.root.querySelector(".pic"));
+      host.classList.add("shown");
+      await pump();
+      assert.equal(quad.visible, true);
+      assert.ok(asked > 0, "the panel's batch is told");
+
+      panel.cleanup();
+    } finally {
+      PaintBatch.prototype.invalidate = invalidate;
+      THREE.TextureLoader.prototype.load = load;
+    }
+  });
+
   test("an inline element's ::before is measured in the line its element is on", async () => {
     pseudoRule(".link", "before", '"→"', "background-color: red");
     const panel = generatedPanel(`
@@ -967,6 +1011,38 @@ describe("an element's ::before and ::after in the paint order", () => {
     const [level] = panel.quads();
     assert.equal(level.parent?.position.z, 0);
 
+    panel.cleanup();
+  });
+
+  test("a scroll of a lifted pseudo-element's element writes it where it is", async () => {
+    // Lifted, its group is placed at its corner less its element's scroll,
+    // and no layer's base changes, so the panel's batch writes the matrices
+    // under it rather than rebuilding. Goes red with the place effect's
+    // `moved` deleted: its box and text stay where they were.
+    const canvas = stubCanvas();
+    pseudoRule(".card", "after", '"abc"', "position: absolute; z-index: 1; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative; overflow: hidden; background-color: white"
+        data-rect="0,0,200,100" data-after="150,0,50,50"></div>
+    `);
+    await settle(panel.portal);
+    await walk(panel);
+    const card = /** @type {HTMLElement} */ (panel.root.querySelector(".card"));
+    const watched = watchBatch();
+    try {
+      Object.defineProperty(card, "scrollTop", { configurable: true, get: () => 10 });
+      card.dispatchEvent(new Event("scroll"));
+      await pump();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(batch, "the batch is told");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      const patched = buffers(panel.parent);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(panel.parent), "what a rebuild writes");
+    } finally {
+      watched.restore();
+      canvas.restore();
+    }
     panel.cleanup();
   });
 

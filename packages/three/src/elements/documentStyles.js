@@ -42,6 +42,9 @@
  * announces itself with a `load`, the one event a `<link>` has, and that is
  * worth having, because the panel that mounted before its own stylesheet
  * landed is otherwise wrong forever.
+ * A `<style>` that opens with an `@import` is heard the same way: it was
+ * read when it arrived, with the imported sheet still empty, and its `load`
+ * comes when the import has landed.
  *
  * Theming mode (`enableThemingMode`) covers the rest by looking instead of
  * listening. While it is on and a panel is watching, a timer reads every
@@ -63,6 +66,7 @@
 import { Signal } from "justdom-signal";
 import { originalSelector, restoreUserActions, rewriteUserActions } from "./userActionRules.js";
 import { generatedHost, resolveNested, splitSelectorList, walkStyleRules } from "./styleRules.js";
+import { siblingReachOf } from "./siblingReach.js";
 
 /**
  * What a style change can restyle: the classes every changed rule starts
@@ -618,6 +622,8 @@ function announce(scope) {
  */
 function notify(scope) {
   refreshGeneratedSelectors();
+  siblingReach = null;
+  unreadableSheets = new WeakSet();
   // A copy, because a listener is free to stop watching from inside the call —
   // a portal disposed by something a restyle triggered would otherwise mutate
   // the set being iterated.
@@ -703,6 +709,130 @@ function readGeneratedSelectors() {
 }
 
 /**
+ * The attribute names whose change can restyle an element's siblings, by
+ * the document's rules as they stand, or null when every attribute can
+ * (`siblingReachOf` for how a selector is read). Null too while no panel
+ * watches the styles, and when a sheet's rules cannot be read: there is
+ * then no telling, and every attribute restyles the siblings, as each did
+ * before the rules were read for this.
+ *
+ * Read on every attribute change a panel dispatches, so it is kept between
+ * reads. An announcement drops it. So does a change in how many sheets the
+ * document has, or how many top-level rules any of them has, which an
+ * announcement does not report: a rule added through `insertRule`, or a
+ * sheet adopted (see the header). A change that keeps every count goes
+ * unseen, as it does for every other read here, until theming mode or the
+ * next announcement: a rule edited in place through the CSSOM, a
+ * `deleteRule` followed by an `insertRule`, a `replaceSync` on an adopted
+ * sheet, or `adoptedStyleSheets` set to a new array with a sheet of the same
+ * size swapped in. It is not a signal: the dispatch reads it while it
+ * routes an invalidation, and nothing recomputes when it changes. A rule
+ * that newly reaches a sibling restyles what it matches by its own
+ * announcement, and the reach decides only what a later change restyles.
+ *
+ * @returns {ReadonlySet<string> | null}
+ */
+export function getSiblingReach() {
+  if (listeners.size === 0) {
+    return null;
+  }
+  const shape = sheetShape();
+  if (siblingReach === null || siblingReach.shape !== shape) {
+    siblingReach = { shape, names: readSiblingReach() };
+  }
+  return siblingReach.names;
+}
+
+/**
+ * The reach `getSiblingReach` last read, with the shape of the sheets it
+ * read it from.
+ *
+ * @type {{ shape: number, names: ReadonlySet<string> | null } | null}
+ */
+let siblingReach = null;
+
+/**
+ * A number that changes when a sheet is added or taken away, or a rule is
+ * inserted into or deleted from the top level of one. Read with no
+ * allocation, since the dispatch asks on every attribute change, and an
+ * inline transform written each frame is one.
+ *
+ * @returns {number}
+ */
+function sheetShape() {
+  let shape = 0;
+  const sheets = document.styleSheets;
+  for (let i = 0; i < sheets.length; i++) {
+    shape = (shape * 31 + 1 + ruleCount(sheets[i])) | 0;
+  }
+  const adopted = document.adoptedStyleSheets;
+  if (adopted) {
+    for (let i = 0; i < adopted.length; i++) {
+      shape = (shape * 31 + 7 + ruleCount(adopted[i])) | 0;
+    }
+  }
+  return shape;
+}
+
+/**
+ * @param {CSSStyleSheet} sheet
+ * @returns {number}
+ */
+function ruleCount(sheet) {
+  if (unreadableSheets.has(sheet)) {
+    return -1;
+  }
+  try {
+    return sheet.cssRules.length;
+  } catch {
+    unreadableSheets.add(sheet);
+    return -1;
+  }
+}
+
+/**
+ * The sheets whose rules `ruleCount` found it cannot read, so that it does
+ * not throw and catch a `SecurityError` for each of them on every read: a
+ * cross-origin sheet, such as a font service's `<link>`, never becomes
+ * readable. A same-origin `<link>` still loading throws too, and is readable
+ * once it loads, which is announced (`loadCallback`), so an announcement
+ * forgets them all.
+ *
+ * @type {WeakSet<CSSStyleSheet>}
+ */
+let unreadableSheets = new WeakSet();
+
+/**
+ * @returns {ReadonlySet<string> | null}
+ */
+function readSiblingReach() {
+  /** @type {Set<string> | null} */
+  let names = new Set();
+  walkStyleRules(
+    documentSheets(),
+    (rule, parent) => {
+      if (names === null) {
+        return;
+      }
+      for (const selector of splitSelectorList(resolveNested(rule.selectorText, parent))) {
+        const reach = siblingReachOf(selector);
+        if (reach === null) {
+          names = null;
+          return;
+        }
+        for (const name of reach) {
+          names.add(name);
+        }
+      }
+    },
+    () => {
+      names = null;
+    },
+  );
+  return names;
+}
+
+/**
  * Whether the browser reads `selector`. One it does not would make the whole
  * list it is joined into throw at every `matches`.
  *
@@ -724,11 +854,52 @@ function isSelector(selector) {
  */
 function loadCallback(event) {
   const target = event.target;
-  if (target instanceof Node && isStylesheetLink(target)) {
+  if (!(target instanceof Node)) {
+    return;
+  }
+  if (isStylesheetLink(target)) {
     // A linked sheet's rules are readable only once it has loaded.
     const sheet = /** @type {HTMLLinkElement} */ (target).sheet;
     rewriteRules(sheet ? [sheet] : []);
     announce(null);
+  } else if (target.nodeName === "STYLE") {
+    // A `<style>` was announced when it arrived, with the sheets it imports
+    // still empty, and their rules arriving later move no count of its own.
+    // Its `load` comes once they have loaded. One that imports nothing was
+    // read whole when it arrived, and is passed over.
+    const sheet = /** @type {HTMLStyleElement} */ (target).sheet;
+    if (sheet && importsSheets(sheet)) {
+      rewriteRules([sheet]);
+      announce(null);
+    }
+  }
+}
+
+/**
+ * Whether a sheet has an `@import`. Imports come before every other rule
+ * but `@layer` statements (`@layer theme, base;`), which may come first, and
+ * Tailwind's output opens with one. So the walk steps past those and stops
+ * at the first rule that is neither.
+ *
+ * @param {CSSStyleSheet} sheet
+ * @returns {boolean}
+ */
+function importsSheets(sheet) {
+  try {
+    // By the property, as `walkStyleRules` reads it, rather than by
+    // `instanceof`, which needs `CSSImportRule` and `CSSLayerStatementRule`
+    // to be globals.
+    for (const rule of sheet.cssRules) {
+      if ("styleSheet" in rule) {
+        return true;
+      }
+      if (!("nameList" in rule)) {
+        return false;
+      }
+    }
+    return false;
+  } catch {
+    return false;
   }
 }
 
@@ -777,8 +948,8 @@ export function watchDocumentStyles(listener) {
       subtree: true,
       characterData: true,
     });
-    // Capturing: `load` does not bubble, and the target is a `<link>` several
-    // levels down from nothing in particular.
+    // Capturing: `load` does not bubble, and the target is a `<link>` or a
+    // `<style>` several levels down from nothing in particular.
     document.head.addEventListener("load", loadCallback, true);
   }
   return () => {
@@ -787,6 +958,8 @@ export function watchDocumentStyles(listener) {
     }
     syncPoller();
     if (listeners.size === 0 && observer) {
+      // Nobody hears of a change from here on, so nothing would drop it.
+      siblingReach = null;
       // The last panel: the page gets its rules back as it wrote them.
       restoreUserActions(documentSheets());
       observer.disconnect();

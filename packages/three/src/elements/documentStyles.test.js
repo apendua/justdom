@@ -5,6 +5,7 @@ import {
   followUserActions,
   GENERATED_COPY_ATTRIBUTE,
   getGeneratedSelectors,
+  getSiblingReach,
   leadingClass,
   watchDocumentStyles,
   withGeneratedCopyRule,
@@ -708,6 +709,183 @@ describe("watchDocumentStyles", () => {
       stopTheming();
       watcher.stop();
       style.remove();
+    }
+  });
+});
+
+/**
+ * Stand `sheets` in for the document's adopted sheets while `fn` runs.
+ *
+ * @param {unknown[]} sheets
+ * @param {() => void} fn
+ * @returns {void}
+ */
+function withAdopted(sheets, fn) {
+  const adopted = Object.getOwnPropertyDescriptor(document, "adoptedStyleSheets");
+  Object.defineProperty(document, "adoptedStyleSheets", { configurable: true, value: sheets });
+  try {
+    fn();
+  } finally {
+    if (adopted) {
+      Object.defineProperty(document, "adoptedStyleSheets", adopted);
+    } else {
+      delete (/** @type {any} */ (document).adoptedStyleSheets);
+    }
+  }
+}
+
+/**
+ * @returns {string[] | null}
+ */
+function reach() {
+  const names = getSiblingReach();
+  return names && [...names].sort();
+}
+
+describe("getSiblingReach", () => {
+  test("every attribute reaches the siblings while no panel watches", () => {
+    assert.equal(getSiblingReach(), null);
+  });
+
+  test("names what the document's sibling rules select on, and nothing else", async () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    try {
+      assert.deepEqual(reach(), []);
+
+      style.innerHTML = ".row { color: red; } .row[data-on] > .label { color: blue; }";
+      document.head.appendChild(style);
+      await flush();
+      assert.deepEqual(reach(), [], "no sibling combinator, so nothing reaches a sibling");
+
+      style.innerHTML = ".row[data-on] + .row { color: blue; }";
+      await flush();
+      assert.deepEqual(reach(), ["class", "data-on"]);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
+  test("a rule inserted through the CSSOM, which nothing announces, is read", () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    style.innerHTML = ".row { color: red; }";
+    document.head.appendChild(style);
+    try {
+      assert.deepEqual(reach(), []);
+      /** @type {CSSStyleSheet} */ (style.sheet).insertRule("[data-open] ~ .panel { color: red; }");
+      assert.deepEqual(reach(), ["class", "data-open"]);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
+  test("a rule nested in another, or inside :has(), reaches through its names", () => {
+    const watcher = watch();
+    try {
+      // jsdom parses no nesting, so the sheet is one as Chromium reads it.
+      withAdopted(
+        [
+          {
+            cssRules: [
+              { selectorText: ".list", cssRules: [{ selectorText: "& [data-x] ~ li" }] },
+              { selectorText: ".a:has(+ [data-y])" },
+              { selectorText: "input:checked + label, .plain" },
+            ],
+          },
+        ],
+        () => {
+          assert.deepEqual(reach(), ["checked", "class", "data-x", "data-xr-checked", "data-y"]);
+        },
+      );
+    } finally {
+      watcher.stop();
+    }
+  });
+
+  for (const [name, layered] of [
+    ["", false],
+    [" behind an `@layer` statement", true],
+  ]) {
+    test(`a \`<style>\` whose import${name} lands after it was read is read again on its load`, async () => {
+      const watcher = watch();
+      const style = document.createElement("style");
+      style.textContent = "@import url('data:text/css,'); .row { color: red; }";
+      document.head.appendChild(style);
+      await flush();
+      const sheet = /** @type {CSSStyleSheet} */ (style.sheet);
+      if (layered) {
+        // jsdom drops `@layer` statements, so the sheet the load reads is
+        // given one in front of its import, as Tailwind's output has.
+        const rules = [{ nameList: ["theme", "base"] }, ...sheet.cssRules];
+        Object.defineProperty(style, "sheet", { value: { cssRules: rules } });
+      }
+      try {
+        assert.deepEqual(reach(), []);
+        // The import's rules arriving, which moves no count of the sheet's own.
+        const imported = /** @type {CSSImportRule} */ (sheet.cssRules[0]).styleSheet;
+        assert.ok(imported);
+        imported.insertRule("[data-open] ~ li { color: red; }", 0);
+        style.dispatchEvent(new window.Event("load"));
+        assert.deepEqual(reach(), ["data-open"]);
+      } finally {
+        style.remove();
+        watcher.stop();
+      }
+    });
+  }
+
+  test("a sheet that cannot be read is tried once until the next announcement", async () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    let tries = 0;
+    const unreadable = {
+      get cssRules() {
+        tries += 1;
+        throw new DOMException("cross-origin", "SecurityError");
+      },
+    };
+    try {
+      withAdopted([unreadable], () => {
+        assert.equal(getSiblingReach(), null);
+        const after = tries;
+        assert.equal(getSiblingReach(), null);
+        assert.equal(tries, after, "a second read throws nothing");
+      });
+      // An announcement, after which every sheet is tried again: a
+      // same-origin `<link>` that threw while it loaded is readable now.
+      style.textContent = ".row { color: red; }";
+      document.head.appendChild(style);
+      await flush();
+      const before = tries;
+      withAdopted([unreadable], () => {
+        assert.equal(getSiblingReach(), null);
+      });
+      assert.ok(tries > before);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
+  test("a sheet whose rules cannot be read, or a pseudo-class with no name, reaches all", () => {
+    const watcher = watch();
+    try {
+      const unreadable = {
+        get cssRules() {
+          throw new DOMException("cross-origin", "SecurityError");
+        },
+      };
+      withAdopted([unreadable], () => {
+        assert.equal(getSiblingReach(), null);
+      });
+      withAdopted([{ cssRules: [{ selectorText: "input:disabled + label" }] }], () => {
+        assert.equal(getSiblingReach(), null);
+      });
+    } finally {
+      watcher.stop();
     }
   });
 });

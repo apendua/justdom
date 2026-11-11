@@ -344,6 +344,31 @@ export class BoxBatch {
   }
 
   /**
+   * The numbers a member is drawn from, or undefined for a mesh that is not
+   * one. Unlike `take`, marks nothing.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {Record<string, THREE.IUniform> | undefined}
+   */
+  numbersOf(mesh) {
+    return this.#members.get(mesh);
+  }
+
+  /**
+   * A member's numbers changed, and nothing else about it: the one batch
+   * writes its instances again where they are (`changed` in
+   * `paintBatch.js`). A mesh that is not a member is drawn by nothing here.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {void}
+   */
+  changed(mesh) {
+    if (this.#members.has(mesh)) {
+      this.#draw.changed(mesh);
+    }
+  }
+
+  /**
    * Take this box into the batch: it stops drawing itself, and the one batch
    * starts drawing it. Idempotent.
    *
@@ -364,15 +389,8 @@ export class BoxBatch {
     // being out of anything else — the ray still finds it, and `visible` still
     // means what it meant. This used to set the flag per mesh, which a shared
     // material cannot have: clearing it on one box's teardown would put every
-    // other box on the page back into the draw.
-    // A mesh that will not be drawn has no business being tested against the
-    // frustum for it. Three asks that question — a bounding-sphere transform
-    // per mesh per frame — before it looks at whether the material is visible,
-    // so this is the difference between a box that is not drawn and a box that
-    // costs nothing. It is safe by the same token: nothing consults the answer.
-    // (What remains is three's per-mesh geometry bookkeeping, which only
-    // dropping the mesh from the render traversal altogether would avoid.)
-    mesh.frustumCulled = false;
+    // other box on the page back into the draw. Nor is it culled
+    // (`drawQuad` in `div.js`), whether or not it is a member.
     this.invalidate();
   }
 
@@ -385,17 +403,29 @@ export class BoxBatch {
       return;
     }
     // No visibility to restore: the material was never this mesh's to hide.
-    mesh.frustumCulled = true;
     if (this.#drawn.delete(mesh)) {
       this.invalidate();
     }
   }
 
   /**
-   * Something about the panel that the batch has copied down has changed: a
-   * box moved, was restyled, scrolled, appeared or went away. The one batch
-   * coalesces it with everything else the panel changed (`invalidate` in
-   * `paintBatch.js`).
+   * An object of the panel moved or scrolled, and nothing else about it
+   * changed: the one batch writes the matrices under it again where they
+   * are (`moved` in `paintBatch.js`).
+   *
+   * @param {THREE.Object3D} object
+   * @returns {void}
+   */
+  moved(object) {
+    this.#draw.moved(object);
+  }
+
+  /**
+   * Something about the panel that the batch has copied down has changed in
+   * a way that needs a rebuild: a box appeared, went away, or was shown or
+   * hidden. A change to a member's numbers alone is `changed`, and to an
+   * object's matrix alone `moved`. The one batch coalesces it with
+   * everything else the panel changed (`invalidate` in `paintBatch.js`).
    *
    * @returns {void}
    */

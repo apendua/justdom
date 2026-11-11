@@ -26,6 +26,7 @@ import { getPaintLayer } from "./elevation.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
 import { stagedRoot } from "../test/stagedRoot.js";
+import { watchDocumentStyles } from "./documentStyles.js";
 
 /**
  * @param {Element} element
@@ -420,6 +421,69 @@ describe("getComputedStyleCached", () => {
 
     subscription.unsubscribe();
     list.remove();
+  });
+
+  test("an author's attribute reaches a sibling only when a sibling rule names it", async () => {
+    // list ─┬── rowA
+    //       └── rowB
+    //
+    // While a panel watches the styles, the rules are read for the names a
+    // sibling combinator could carry (`getSiblingReach`). With none, an
+    // author's class, inline style or data attribute restyles the row it is
+    // on and not the row after it.
+    const list = document.createElement("div");
+    const rowA = document.createElement("div");
+    const rowB = document.createElement("div");
+    rowA.className = "row";
+    rowB.className = "row";
+    list.appendChild(rowA);
+    list.appendChild(rowB);
+    document.body.appendChild(list);
+    const style = document.createElement("style");
+    // jsdom-env exposes the common DOM globals, but not MutationObserver,
+    // which the styles' watcher needs.
+    globalThis.MutationObserver ??= window.MutationObserver;
+    const stop = watchDocumentStyles(() => {});
+
+    const mirror = createMirror();
+    for (const node of [list, rowA, rowB]) {
+      mirror.adopt(node);
+    }
+    let reads = 0;
+    const holder = new Effect(() => {
+      reads += 1;
+      getComputedStyleCached(rowB);
+    });
+
+    /** @param {string} name @param {string} value */
+    const wrote = (name, value) => {
+      const oldValue = rowA.getAttribute(name);
+      rowA.setAttribute(name, value);
+      batch(() => mirror.ingest([attributeRecord(rowA, name, oldValue)]));
+      return reads;
+    };
+
+    try {
+      assert.equal(reads, 1);
+      assert.equal(wrote("style", "transform: scaleX(0.5)"), 1, "an inline style stays on the row");
+      assert.equal(wrote("class", "row on"), 1, "so does a class");
+      assert.equal(wrote("data-on", "true"), 1, "and a data attribute");
+
+      // A rule added later that carries one of them across.
+      style.textContent = ".row[data-on] + .row { color: red; }";
+      document.head.appendChild(style);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.equal(wrote("data-on", "false"), 2, "the rule's attribute reaches the next row");
+      assert.equal(wrote("class", "row"), 3, "and so does its class");
+      assert.equal(wrote("style", ""), 3, "an inline style still does not");
+      assert.equal(wrote("title", "a"), 3, "nor does a name no rule has");
+    } finally {
+      holder.dispose();
+      stop();
+      style.remove();
+      list.remove();
+    }
   });
 
   test("a shape's geometry restyles the shape, not its siblings", () => {

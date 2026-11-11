@@ -667,16 +667,25 @@ function setupSiblings() {
     },
     /**
      * Where the element's own quad is in the draw order, read off the mesh
-     * `div` built for it. Its text draws at `getContentRenderOrder`.
+     * `div` built for it. Its text draws at `getContentRenderOrder`. A box
+     * that paints nothing and takes no ray mounts no quad, and is read where
+     * its quad would draw: a level before its content, behind its integer as
+     * a box drawn outside a batch is. That holds only with no batch, which
+     * this harness has: under one, the quad draws at its integer and the
+     * batch adds the bias.
      *
      * @param {Element} element
      */
     boxOrder(element) {
-      const box = objects
-        .get(element)
-        ?.children.find((child) => /** @type {THREE.Mesh} */ (child).geometry === rectGeometry);
-      assert.ok(box, "expected a box mesh");
-      return box.renderOrder;
+      const object = objects.get(element);
+      assert.ok(object, "expected the element to be drawn");
+      const box = object.children.find(
+        (child) => /** @type {THREE.Mesh} */ (child).geometry === rectGeometry,
+      );
+      if (box) {
+        return box.renderOrder;
+      }
+      return getContentRenderOrder(/** @type {HTMLElement} */ (element)) - 1 + UNBATCHED_BOX_BIAS;
     },
     teardown() {
       for (const subscription of subscriptions) {

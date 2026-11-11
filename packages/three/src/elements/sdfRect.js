@@ -625,18 +625,85 @@ export function batchedBoxMaterial() {
 }
 
 /**
+ * Set a vector to these components, and say whether that changed it.
+ *
+ * @param {THREE.Vector2} v
+ * @param {number} x
+ * @param {number} y
+ * @returns {boolean}
+ */
+function set2(v, x, y) {
+  if (v.x === x && v.y === y) {
+    return false;
+  }
+  v.set(x, y);
+  return true;
+}
+
+/**
+ * @param {THREE.Vector3} v
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @returns {boolean}
+ */
+function set3(v, x, y, z) {
+  if (v.x === x && v.y === y && v.z === z) {
+    return false;
+  }
+  v.set(x, y, z);
+  return true;
+}
+
+/**
+ * @param {THREE.Vector4} v
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @param {number} w
+ * @returns {boolean}
+ */
+function set4(v, x, y, z, w) {
+  if (v.x === x && v.y === y && v.z === z && v.w === w) {
+    return false;
+  }
+  v.set(x, y, z, w);
+  return true;
+}
+
+/**
+ * Set a uniform's value, and say whether that changed it.
+ *
+ * @template T
+ * @param {{ value: T }} uniform
+ * @param {T} value
+ * @returns {boolean}
+ */
+function setValue(uniform, value) {
+  if (uniform.value === value) {
+    return false;
+  }
+  uniform.value = value;
+  return true;
+}
+
+/**
  * Write the region an element's overflow-hiding ancestors leave it into its
  * rect material, in the element's own px. Another uniform write, on the same
  * terms as the rest: a scroll moves this every frame it is moving.
  *
+ * Like every writer here, it says whether it changed anything, so that a box
+ * can tell the batch only then (`BoxNumbers`).
+ *
  * @param {Record<string, THREE.IUniform>} uniforms
  * @param {import('./clip.js').ClipBox} box
- * @returns {void}
+ * @returns {boolean}
  */
 export function writeClipUniforms(uniforms, box) {
   const { uClip, uClipRadii } = uniforms;
-  uClip.value.set(box.left, box.top, box.right, box.bottom);
-  uClipRadii.value.set(box.topLeft, box.topRight, box.bottomRight, box.bottomLeft);
+  const clip = set4(uClip.value, box.left, box.top, box.right, box.bottom);
+  const radii = set4(uClipRadii.value, box.topLeft, box.topRight, box.bottomRight, box.bottomLeft);
+  return clip || radii;
 }
 
 /**
@@ -650,41 +717,59 @@ export function writeClipUniforms(uniforms, box) {
  *
  * @param {Record<string, THREE.IUniform>} uniforms
  * @param {VisualProperties} properties
- * @returns {void}
+ * @returns {boolean} Whether any value changed.
  */
 export function writeRectUniforms(uniforms, properties) {
   const { uSize, uRadii, uBorder, uFillColor, uBorderColor } = uniforms;
-  uSize.value.set(properties.totalWidth, properties.totalHeight);
-  uRadii.value.set(
-    properties.borderTopLeftRadius,
-    properties.borderTopRightRadius,
-    properties.borderBottomRightRadius,
-    properties.borderBottomLeftRadius,
-  );
-  uBorder.value.set(
-    properties.borderTopWidth,
-    properties.borderRightWidth,
-    properties.borderBottomWidth,
-    properties.borderLeftWidth,
-  );
+  let changed = set2(uSize.value, properties.totalWidth, properties.totalHeight);
+  changed =
+    set4(
+      uRadii.value,
+      properties.borderTopLeftRadius,
+      properties.borderTopRightRadius,
+      properties.borderBottomRightRadius,
+      properties.borderBottomLeftRadius,
+    ) || changed;
+  changed =
+    set4(
+      uBorder.value,
+      properties.borderTopWidth,
+      properties.borderRightWidth,
+      properties.borderBottomWidth,
+      properties.borderLeftWidth,
+    ) || changed;
   const fill = properties.backgroundColor;
-  uFillColor.value.set(fill.r, fill.g, fill.b, properties.backgroundAlpha);
+  changed = set4(uFillColor.value, fill.r, fill.g, fill.b, properties.backgroundAlpha) || changed;
   const border = properties.borderColor;
-  uBorderColor.value.set(border.r, border.g, border.b, properties.borderAlpha);
+  changed =
+    set4(uBorderColor.value, border.r, border.g, border.b, properties.borderAlpha) || changed;
   const width = properties.outlineWidth;
-  uniforms.uOutline.value.set(width, width > 0 ? properties.outlineOffset : 0);
+  changed =
+    set2(uniforms.uOutline.value, width, width > 0 ? properties.outlineOffset : 0) || changed;
   if (width > 0) {
     const outline = properties.outlineColor;
-    uniforms.uOutlineColor.value.set(outline.r, outline.g, outline.b, properties.outlineAlpha);
+    changed =
+      set4(
+        uniforms.uOutlineColor.value,
+        outline.r,
+        outline.g,
+        outline.b,
+        properties.outlineAlpha,
+      ) || changed;
   }
   const shadows = properties.boxShadows;
-  uniforms.uShadowCount.value = shadows.length;
+  changed = setValue(uniforms.uShadowCount, shadows.length) || changed;
   for (let i = 0; i < shadows.length; i++) {
     const { color, alpha, x, y, blur, spread, inset } = shadows[i];
-    uniforms.uShadows.value[i].set(x, y, blur, spread);
-    uniforms.uShadowColors.value[i].set(color.r, color.g, color.b, alpha);
-    uniforms.uShadowInset.value[i] = inset ? 1 : 0;
+    changed = set4(uniforms.uShadows.value[i], x, y, blur, spread) || changed;
+    changed = set4(uniforms.uShadowColors.value[i], color.r, color.g, color.b, alpha) || changed;
+    const flag = inset ? 1 : 0;
+    if (uniforms.uShadowInset.value[i] !== flag) {
+      uniforms.uShadowInset.value[i] = flag;
+      changed = true;
+    }
   }
+  return changed;
 }
 
 /**
@@ -695,7 +780,7 @@ export function writeRectUniforms(uniforms, properties) {
  *
  * @param {Record<string, THREE.IUniform>} uniforms
  * @param {ContentImage | null} image
- * @returns {void}
+ * @returns {boolean} Whether any value changed.
  */
 export function writeImageUniforms(uniforms, image) {
   const { uImage, uImageRect, uImageClip, uImageOpacity } = uniforms;
@@ -703,20 +788,23 @@ export function writeImageUniforms(uniforms, image) {
     // Dropping the reference matters as much as the switch: an element that
     // has let go of its picture must not be the reason its texture stays
     // uploaded.
-    uImage.value = null;
-    uImageOpacity.value = 0;
-    return;
+    const texture = setValue(uImage, null);
+    return setValue(uImageOpacity, 0) || texture;
   }
-  uImage.value = image.texture;
-  uImageRect.value.set(image.left, image.top, image.right, image.bottom);
+  let changed = setValue(uImage, image.texture);
+  changed = set4(uImageRect.value, image.left, image.top, image.right, image.bottom) || changed;
   const { content } = image;
-  uImageClip.value.set(content.left, content.top, content.right, content.bottom);
-  uImageOpacity.value = image.opacity;
-  uniforms.uImageMode.value.set(
-    image.repeatX ? 1 : 0,
-    image.repeatY ? 1 : 0,
-    image.underGradient ? 1 : 0,
-  );
+  changed =
+    set4(uImageClip.value, content.left, content.top, content.right, content.bottom) || changed;
+  changed = setValue(uImageOpacity, image.opacity) || changed;
+  changed =
+    set3(
+      uniforms.uImageMode.value,
+      image.repeatX ? 1 : 0,
+      image.repeatY ? 1 : 0,
+      image.underGradient ? 1 : 0,
+    ) || changed;
+  return changed;
 }
 
 /**
@@ -730,23 +818,26 @@ export function writeImageUniforms(uniforms, image) {
  * @param {VisualProperties} properties
  * @param {RampSlot} slot The box's hold on its ramp row, which it keeps
  *   between writes and lets go of when it is torn down.
- * @returns {void}
+ * @returns {boolean} Whether any value changed.
  */
 export function writeGradientUniforms(uniforms, properties, slot) {
   const { uGradient, uGradientGeometry, uGradientTile, uGradientRamp } = uniforms;
   const layout = properties.backgroundGradient;
   const row = slot.set(layout);
   if (!layout) {
-    uGradient.value.set(0, 0, 0, 0);
-    return;
+    return set4(uGradient.value, 0, 0, 0, 0);
   }
-  uGradient.value.set(
+  let changed = set4(
+    uGradient.value,
     layout.kind,
     layout.repeating ? 1 : 0,
     layout.repeatX ? 1 : 0,
     layout.repeatY ? 1 : 0,
   );
-  uGradientGeometry.value.fromArray(layout.geometry);
-  uGradientTile.value.fromArray(layout.tile);
-  uGradientRamp.value.set(row, properties.opacity);
+  const { geometry, tile } = layout;
+  changed =
+    set4(uGradientGeometry.value, geometry[0], geometry[1], geometry[2], geometry[3]) || changed;
+  changed = set4(uGradientTile.value, tile[0], tile[1], tile[2], tile[3]) || changed;
+  changed = set2(uGradientRamp.value, row, properties.opacity) || changed;
+  return changed;
 }

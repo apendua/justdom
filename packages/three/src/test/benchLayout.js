@@ -5,6 +5,7 @@
  * tables. Importing this installs the stand-ins on jsdom's `window`, so it
  * goes after `setup-jsdom.js` and before anything that reads a rect.
  *
+ * `benchCases.js` mounts the bench's cases from these rows and cards, and
  * `paintOrderScenes.js` counts the draws of the same scenes for the
  * paint-order experiment, so both build them from here.
  */

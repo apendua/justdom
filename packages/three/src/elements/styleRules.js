@@ -15,9 +15,10 @@
  * @param {CSSRuleList} rules
  * @param {(rule: CSSStyleRule, parent: string | null) => void} visit
  * @param {string | null} parent
+ * @param {(sheet: CSSStyleSheet) => void} unreadable
  * @returns {void}
  */
-function walkRules(rules, visit, parent) {
+function walkRules(rules, visit, parent, unreadable) {
   for (const rule of rules) {
     // By the properties rather than by `instanceof`, which needs each rule
     // class to be a global.
@@ -29,11 +30,11 @@ function walkRules(rules, visit, parent) {
     }
     const imported = /** @type {Partial<CSSImportRule>} */ (rule).styleSheet;
     if (imported) {
-      walkSheet(imported, visit);
+      walkSheet(imported, visit, unreadable);
     }
     const nested = /** @type {Partial<CSSGroupingRule>} */ (rule).cssRules;
     if (nested) {
-      walkRules(nested, visit, scope);
+      walkRules(nested, visit, scope, unreadable);
     }
   }
 }
@@ -41,9 +42,10 @@ function walkRules(rules, visit, parent) {
 /**
  * @param {CSSStyleSheet} sheet
  * @param {(rule: CSSStyleRule, parent: string | null) => void} visit
+ * @param {(sheet: CSSStyleSheet) => void} unreadable
  * @returns {void}
  */
-function walkSheet(sheet, visit) {
+function walkSheet(sheet, visit, unreadable) {
   /** @type {CSSRuleList} */
   let rules;
   try {
@@ -51,23 +53,26 @@ function walkSheet(sheet, visit) {
   } catch {
     // From another origin without CORS, or still loading: its rules are not
     // the script's to read, and not to rewrite either.
+    unreadable(sheet);
     return;
   }
-  walkRules(rules, visit, null);
+  walkRules(rules, visit, null, unreadable);
 }
 
 /**
  * Call `visit` on every style rule of every sheet in `sheets`, nested and
  * imported ones included, a nested one with the selector it is nested in
- * (see `walkRules`). A sheet whose rules cannot be read is skipped.
+ * (see `walkRules`). A sheet whose rules cannot be read is skipped, and
+ * given to `unreadable` when there is one.
  *
  * @param {Iterable<CSSStyleSheet>} sheets
  * @param {(rule: CSSStyleRule, parent: string | null) => void} visit
+ * @param {(sheet: CSSStyleSheet) => void} [unreadable]
  * @returns {void}
  */
-export function walkStyleRules(sheets, visit) {
+export function walkStyleRules(sheets, visit, unreadable = () => {}) {
   for (const sheet of sheets) {
-    walkSheet(sheet, visit);
+    walkSheet(sheet, visit, unreadable);
   }
 }
 

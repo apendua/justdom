@@ -31,6 +31,7 @@ import { getLayerOrder, isProxy, PANEL_PIECES } from "./layerOrder.js";
 import { ARRAYS_PER_DRAW, PaintBatch } from "./paintBatch.js";
 import { LayerTree } from "./layerTree.js";
 import { createPortal } from "./portal.js";
+import { buffers, drawn, draws, watchBatch } from "../test/batchBuffers.js";
 import { rectGeometry } from "./sdfRect.js";
 
 /**
@@ -190,20 +191,6 @@ function proxiesOf(panel) {
 }
 
 /**
- * The panel's draws of boxes and runs (`paintBatch.js`), in the order they
- * draw.
- *
- * @param {THREE.Object3D} panel
- * @returns {THREE.InstancedMesh[]}
- */
-function draws(panel) {
-  return drawn(panel)
-    .filter((mesh) => mesh instanceof THREE.InstancedMesh && !isProxy(mesh))
-    .map((mesh) => /** @type {THREE.InstancedMesh} */ (mesh))
-    .sort((a, b) => a.renderOrder - b.renderOrder);
-}
-
-/**
  * What each instance of a draw is, by the sign of its `aSize.z`.
  *
  * @param {THREE.InstancedMesh} draw
@@ -212,32 +199,6 @@ function draws(panel) {
 function kinds(draw) {
   const size = /** @type {THREE.InstancedBufferAttribute} */ (draw.geometry.getAttribute("aSize"));
   return Array.from({ length: draw.count }, (_, i) => (size.getZ(i) < -0.5 ? "run" : "box"));
-}
-
-/**
- * Every mesh the panel draws: visible, with a material that draws, and with
- * instances to draw if it is instanced.
- *
- * @param {THREE.Object3D} panel
- * @returns {THREE.Mesh[]}
- */
-function drawn(panel) {
-  /** @type {THREE.Mesh[]} */
-  const meshes = [];
-  panel.traverseVisible((object) => {
-    if (!(object instanceof THREE.Mesh)) {
-      return;
-    }
-    const material = /** @type {THREE.Material} */ (object.material);
-    if (!material.visible) {
-      return;
-    }
-    if (object instanceof THREE.InstancedMesh && object.count === 0) {
-      return;
-    }
-    meshes.push(object);
-  });
-  return meshes;
 }
 
 /**
@@ -1460,12 +1421,1210 @@ describe("a panel drawn in paint order", () => {
     await g.walk();
     const [draw, ...rest] = draws(g.panel);
     assert.equal(rest.length, 0, "one draw");
-    // The card's box, the label's and the inner box, and then the label's
-    // run, which is the label's content and so a level past the boxes.
-    assert.deepEqual(kinds(draw), ["box", "box", "box", "run"]);
+    // The card's box and the inner box, and then the label's run, which is
+    // the label's content and so a level past the boxes. The label's own
+    // box paints nothing and takes no instance.
+    assert.deepEqual(kinds(draw), ["box", "box", "run"]);
     g.teardown();
     restoreRange();
     canvas.restore();
+  });
+
+  test("a restyle reaches the batch only when it changes what a box draws", async () => {
+    // Every box writes its numbers through `BoxNumbers`, which tells the
+    // batch only when a write changed one. A text colour on a box with no
+    // text changes none of them, and a background colour is a box's numbers
+    // alone, which the batch writes where the box already is.
+    const g = await page([{ id: "card", style: CARD, at: [40, 40, 200, 150] }]);
+    await g.walk();
+    const fill = () => {
+      const [draw] = draws(g.panel);
+      const color = /** @type {THREE.InstancedBufferAttribute} */ (
+        draw.geometry.getAttribute("aFillColor")
+      );
+      return [color.getX(0), color.getY(0), color.getZ(0)];
+    };
+    assert.deepEqual(fill(), [1, 1, 1]);
+    const watched = watchBatch();
+    try {
+      g.get("card").style.color = "rgb(255, 0, 0)";
+      await g.settle();
+      assert.deepEqual([watched.invalidate, watched.changed], [0, 0], "nothing it draws changed");
+      g.get("card").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      assert.deepEqual([watched.invalidate, watched.changed], [0, 1], "its numbers changed");
+      assert.equal(watched.batch?.written, 1, "and only its instance is written");
+    } finally {
+      watched.restore();
+    }
+    assert.deepEqual(fill(), [0, 0, 1], "and drawn");
+    g.teardown();
+  });
+
+  test("a box restyled among many writes its own instances, as a rebuild would", async () => {
+    // One card's colour changing among a hundred writes that card's
+    // instance and its decorations, not a hundred, marks for upload the
+    // buffers of its own draw that changed and no other, and the buffers
+    // come out as a rebuild from scratch makes them. A picture in the first
+    // card breaks the stretch, so the outlines' rings, which draw after
+    // every box, are a second draw, and only their colour stays as it was.
+    // Then another card, before any rebuild: a patch after a patch writes
+    // its own boxes alone.
+    const g = await page(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: `card${i}`,
+        style: `${CARD}; box-shadow: rgb(0, 0, 0) 0px 2px 4px; outline-style: solid; outline-width: 1px; outline-color: rgb(0, 0, 0)`,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+        ...(i === 0 ? { children: [{ id: "picture", tag: "img", at: [10, 2, 16, 16] }] } : {}),
+      })),
+    );
+    await g.walk();
+    /**
+     * The version of every buffer of every draw, by draw and name.
+     *
+     * @returns {Record<string, number>[]}
+     */
+    const versions = () =>
+      draws(g.panel).map((draw) => ({
+        instanceMatrix: draw.instanceMatrix.version,
+        ...Object.fromEntries(
+          Object.entries(draw.geometry.attributes).map(([name, attribute]) => [
+            name,
+            /** @type {THREE.BufferAttribute} */ (attribute).version,
+          ]),
+        ),
+      }));
+    const before = versions();
+    assert.deepEqual(
+      draws(g.panel).map((draw) => draw.count),
+      [200, 100],
+      "the boxes and shadows, then the rings",
+    );
+    const watched = watchBatch();
+    try {
+      g.get("card42").style.background = "rgb(0, 128, 0)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0);
+      assert.equal(batch.written, 3, "the box, its shadow and its outline");
+      const after = versions();
+      assert.deepEqual(
+        Object.keys(after[0]).filter((name) => after[0][name] !== before[0][name]),
+        ["aFillColor"],
+        "the boxes' draw uploads its colours alone",
+      );
+      assert.deepEqual(after[1], before[1], "the rings' draw uploads nothing");
+      g.get("card7").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      assert.equal(watched.invalidate, 0);
+      assert.equal(batch.written, 3, "the second card's alone");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.equal(batch.written, 300);
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a change a patch cannot write rebuilds the batch", async () => {
+    // Each structural case of the batch's rules (`paintBatch.js`'s header)
+    // that reaches the batch as a change to a box's numbers: a shadow
+    // layer or an outline gained or lost, and a shadow turning inset. Each
+    // rebuilds, and leaves the buffers a rebuild from scratch would.
+    const g = await page(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    const watched = watchBatch();
+    const card = g.get("card3");
+    try {
+      for (const [style, value] of /** @type {[string, string][]} */ ([
+        ["boxShadow", "rgb(0, 0, 0) 0px 2px 4px"],
+        ["boxShadow", "rgb(0, 0, 0) 0px 2px 4px inset"],
+        ["boxShadow", "rgb(0, 0, 0) 0px 2px 4px inset, rgb(0, 0, 0) 0px 1px 2px"],
+        ["boxShadow", "none"],
+        ["outlineStyle", "solid"],
+        ["outlineWidth", "1px"],
+        ["outlineStyle", "none"],
+      ])) {
+        card.style.setProperty(
+          style.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`),
+          value,
+        );
+        await g.settle();
+        const batch = /** @type {PaintBatch} */ (watched.batch);
+        const count = draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+        assert.equal(batch.written, count, `${style}: ${value} rebuilds`);
+        const flushed = buffers(g.panel);
+        batch.rebuild();
+        assert.deepEqual(flushed, buffers(g.panel), `${style}: ${value}`);
+      }
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a box the last walk did not reach is passed over by a patch", async () => {
+    // A hidden card is drawn by nothing, so its colour changing writes
+    // nothing, and the other cards' colours are still patched. Showing it
+    // rebuilds, and draws it in its new colour.
+    const g = await page(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    g.get("card3").style.visibility = "hidden";
+    await g.settle();
+    const watched = watchBatch();
+    try {
+      g.get("card3").style.background = "rgb(0, 128, 0)";
+      g.get("card5").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0);
+      assert.equal(batch.written, 1, "the shown card alone");
+      g.get("card3").style.visibility = "visible";
+      await g.settle();
+      assert.equal(batch.written, 10, "showing it rebuilds");
+      const flushed = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(flushed, buffers(g.panel));
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a box changed past its writer's back is rebuilt, not patched", async () => {
+    // Every writer of a box's visibility, order and membership tells the
+    // batch by `invalidate`. One that forgot, and then said only that the
+    // numbers changed, still gets a rebuild: the patch checks the record.
+    const g = await page(
+      Array.from({ length: 4 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card1").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(batch.written, 1, "patched");
+      /** @type {THREE.Mesh[]} */
+      const members = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object)) {
+          members.push(object);
+        }
+      });
+      const [mesh] = members;
+      const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+
+      // Told twice in one flush, as a paint and a clip are by a scroll:
+      // written once.
+      batch.changed(mesh);
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, 1, "told twice, written once");
+
+      mesh.visible = false;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "hidden: rebuilt");
+      mesh.visible = true;
+      batch.invalidate();
+      batch.flush();
+
+      mesh.renderOrder += 1;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "reordered: rebuilt");
+      mesh.renderOrder -= 1;
+      batch.invalidate();
+      batch.flush();
+
+      const numbersOf = batch.boxes.numbersOf;
+      batch.boxes.numbersOf = () => undefined;
+      try {
+        batch.changed(mesh);
+        batch.flush();
+        assert.equal(batch.written, total(), "no longer a member: rebuilt");
+      } finally {
+        batch.boxes.numbersOf = numbersOf;
+      }
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  /**
+   * Scroll `element` down by `top` px, as the page would, and say so.
+   *
+   * @param {HTMLElement} element
+   * @param {number} top
+   */
+  const scrollTo = (element, top) => {
+    Object.defineProperty(element, "scrollTop", { configurable: true, get: () => top });
+    element.dispatchEvent(new Event("scroll"));
+  };
+
+  test("a scroll writes the matrices of what scrolls, as a rebuild would", async () => {
+    // A scroller of cards beside a card that does not scroll: a scroll
+    // moves the content group alone, and the batch writes the matrices of
+    // the boxes under it where they are, and nothing else. Goes red with a
+    // scroll rebuilding the batch. The scroller sits in a box away from
+    // the page's corner, so a move that started its walk from the identity
+    // goes red too, and the cards wear an outline and two shadows, so a
+    // move that wrote a box's own slot and not its decorations' does.
+    const DECORATED = `${CARD}; outline: 2px solid rgb(255, 0, 0); box-shadow: rgb(0, 0, 0) 0px 2px 4px, rgb(0, 0, 0) 0px 1px 2px inset`;
+    const g = await page([
+      {
+        id: "frame",
+        style: "position: absolute",
+        at: [30, 20, 210, 280],
+        children: [
+          {
+            id: "scroller",
+            style: "position: absolute; overflow: hidden",
+            at: [40, 30, 190, 260],
+            children: Array.from({ length: 10 }, (_, i) => ({
+              id: `card${i}`,
+              style: DECORATED,
+              at: /** @type {[number, number, number, number]} */ ([40, 70 + i * 20, 190, 20]),
+            })),
+          },
+        ],
+      },
+      { id: "still", style: CARD, at: [250, 0, 100, 100] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    const moved = PaintBatch.prototype.moved;
+    let movedCalls = 0;
+    PaintBatch.prototype.moved = function (object) {
+      movedCalls += 1;
+      watched.batch = this;
+      return moved.call(this, object);
+    };
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("scroller")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(movedCalls > 0, "the content group moved");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      // Each card's matrix, and its numbers, since its clip is expressed
+      // against the scroll; not the card that stays put.
+      assert.equal(batch.written, 60, "each card's slots, for the move and again for the clip");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      PaintBatch.prototype.moved = moved;
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a scroll of text writes its runs' clips and matrices, as a rebuild would", async () => {
+    // Labels in a scroller: a scroll moves the content group and changes
+    // each label's clip, which is expressed against the scroll. The batch
+    // writes both where they are. Goes red with the label's effect asking
+    // for a rebuild on every scroll.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      {
+        id: "scroller",
+        style: "position: absolute; overflow: hidden",
+        at: [0, 0, 200, 300],
+        children: Array.from({ length: 4 }, (_, i) => ({
+          id: `row${i}`,
+          style: CARD,
+          at: /** @type {[number, number, number, number]} */ ([0, 40 + i * 20, 200, 20]),
+          text: `row ${i}`,
+        })),
+      },
+    ]);
+    await g.walk();
+    const runs = () =>
+      draws(g.panel)
+        .flatMap(kinds)
+        .filter((kind) => kind === "run").length;
+    assert.equal(runs(), 4, "the labels are batched");
+    const watched = watchBatch();
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("scroller")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      assert.ok(watched.changed >= 4, "the labels' clips");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a scroll of fields writes their values' runs where they are", async () => {
+    // A field's value is a run its box draws (`surfaceRun.js`). The first
+    // field sits at the scroller's top edge, so a scroll moves the
+    // scroller's clip across it, which its value's clip follows. Goes red
+    // with that effect asking for a rebuild on every scroll.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      {
+        id: "scroller",
+        style: "position: absolute; overflow: hidden",
+        at: [0, 0, 200, 300],
+        children: Array.from({ length: 3 }, (_, i) => ({
+          id: `field${i}`,
+          tag: "input",
+          style: "position: absolute",
+          at: /** @type {[number, number, number, number]} */ ([0, i * 30, 200, 20]),
+        })),
+      },
+    ]);
+    for (let i = 0; i < 3; i++) {
+      /** @type {HTMLInputElement} */ (g.get(`field${i}`)).value = `value ${i}`;
+    }
+    await g.walk();
+    const runs = () =>
+      draws(g.panel)
+        .flatMap(kinds)
+        .filter((kind) => kind === "run").length;
+    assert.equal(runs(), 3, "the values are batched");
+    const watched = watchBatch();
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("scroller")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a scroll of a list item writes its marker's run where it is", async () => {
+    // A marker is a run whose origin follows its item's scroll
+    // (`listMarker.js` takes the scroll off its y), so a scroll moves the
+    // run with nothing structural to rebuild for. Goes red with the run's
+    // `moved` deleted from `surfaceRun.js`: its matrix stays where it was.
+    // jsdom computes no `::marker`; it takes the item's style, as in
+    // `paintOrderScenes.js`.
+    const computeStyle = window.getComputedStyle;
+    window.getComputedStyle = (element, pseudo) =>
+      computeStyle(element, pseudo === "::marker" ? null : pseudo);
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      {
+        id: "item",
+        tag: "li",
+        style: "position: absolute; display: list-item; list-style-type: disc; overflow: hidden",
+        at: [40, 40, 200, 40],
+        text: "abc",
+      },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("item")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(batch, "the batch is told");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+    window.getComputedStyle = computeStyle;
+  });
+
+  test("a text colour writes its run where it is", async () => {
+    // A label recoloured, as a hover does: its run's instance is written
+    // again, and nothing else. Goes red with the tint asking for a rebuild.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+      { id: "other", style: CARD, at: [20, 100, 200, 40] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      const [draw] = draws(g.panel);
+      const fill = /** @type {THREE.BufferAttribute} */ (draw.geometry.getAttribute("aFillColor"));
+      const was = fill.version;
+      g.get("card").style.color = "rgb(255, 0, 0)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      assert.equal(batch.written, 1, "the run alone");
+      // The arrays alone would match a rebuild's with the draw never
+      // marked, and the label would keep its old colour on screen.
+      assert.equal(fill.version, was + 1, "uploaded");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  /**
+   * Recolour or restyle one thing on a page of labelled cards and check the
+   * batch patched it: nothing structural, `written` instances, and the
+   * buffers a rebuild writes.
+   *
+   * @param {PageSpec[]} spec
+   * @param {(g: Awaited<ReturnType<typeof page>>) => void} change
+   * @param {number} written
+   */
+  const patchesText = async (spec, change, written) => {
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page(spec);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      change(g);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(batch, "the batch is told");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      assert.equal(batch.written, written);
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+      g.teardown();
+      restoreRange();
+      canvas.restore();
+    }
+  };
+
+  test("a label of another size is patched in its own size's slot", () => {
+    // Two labels of different lengths are two size classes, two arrays in
+    // one draw: a patch that wrote the wrong slot would draw the label
+    // with the other's glyphs.
+    return patchesText(
+      [
+        { id: "a", style: CARD, at: [20, 20, 200, 40], text: "one" },
+        { id: "b", style: CARD, at: [20, 100, 200, 40], text: "another one" },
+      ],
+      (g) => {
+        g.get("b").style.color = "rgb(255, 0, 0)";
+      },
+      1,
+    );
+  });
+
+  test("a fade writes its box and its label where they are", () => {
+    // The tint tells the batch when the opacity changes as well as the
+    // colour; without it the label keeps its alpha while its box fades.
+    return patchesText(
+      [
+        { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+        { id: "other", style: CARD, at: [20, 100, 200, 40] },
+      ],
+      (g) => {
+        g.get("card").style.opacity = "0.5";
+      },
+      2,
+    );
+  });
+
+  for (const [axis, dx, dy] of /** @type {const} */ ([
+    ["across", 7, 0],
+    ["down", 0, 7],
+  ])) {
+    test(`a label that moves ${axis} in its box is written where it is`, async () => {
+      // Its parent gains padding: the lines, and so the raster, stay as
+      // they were, and the run's place is all that changes. `text.js` tells
+      // the batch it moved; without that the run is drawn where it was.
+      let shift = { x: 0, y: 0 };
+      const stubbed = document.createRange;
+      const restore = () => {
+        document.createRange = stubbed;
+      };
+      const canvas = stubCanvas();
+      const restoreRange = installRange();
+      const measuring = document.createRange;
+      document.createRange = () => {
+        const range = measuring();
+        const rect = range.getBoundingClientRect.bind(range);
+        const shifted = () => {
+          const r = rect();
+          return /** @type {DOMRect} */ ({
+            ...r,
+            left: r.left + shift.x,
+            right: r.right + shift.x,
+            top: r.top + shift.y,
+            bottom: r.bottom + shift.y,
+          });
+        };
+        range.getBoundingClientRect = shifted;
+        range.getClientRects = () =>
+          /** @type {DOMRectList} */ (/** @type {unknown} */ ([shifted()]));
+        return range;
+      };
+      const g = await page([
+        { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+        { id: "other", style: CARD, at: [20, 100, 200, 40] },
+      ]);
+      await g.walk();
+      try {
+        const result = await patchOf(g, () => {
+          shift = { x: dx, y: dy };
+          g.get("card").style.padding = `${dy}px 0 0 ${dx}px`;
+        });
+        assert.equal(result.moved, 1, "the run moved");
+        assert.equal(result.invalidate, 0, "nothing structural");
+        assert.deepEqual(result.patched, result.rebuilt, "what a rebuild writes");
+      } finally {
+        g.teardown();
+        restoreRange();
+        restore();
+        canvas.restore();
+      }
+    });
+  }
+
+  test("a run changed past its writer's back is rebuilt, not patched", async () => {
+    // The same second guard as a box's, for a run: hidden, reordered or no
+    // longer a member, and said only to have changed its colour.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([{ id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" }]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card").style.color = "rgb(255, 0, 0)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Mesh | undefined} */
+      let run;
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.runs.memberOf(object)) {
+          run = object;
+        }
+      });
+      const mesh = /** @type {THREE.Mesh} */ (run);
+      const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, 1, "patched");
+
+      mesh.visible = false;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "hidden: rebuilt");
+      mesh.visible = true;
+      batch.invalidate();
+      batch.flush();
+
+      mesh.renderOrder += 1;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "reordered: rebuilt");
+      mesh.renderOrder -= 1;
+      batch.invalidate();
+      batch.flush();
+
+      const memberOf = batch.runs.memberOf;
+      batch.runs.memberOf = () => undefined;
+      try {
+        batch.changed(mesh);
+        batch.flush();
+        assert.equal(batch.written, total(), "no longer a member: rebuilt");
+      } finally {
+        batch.runs.memberOf = memberOf;
+      }
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a move writes the matrices of the boxes and runs under the object", async () => {
+    // A card with a label in it, moved without the layout knowing, as a
+    // transform's motion step moves one: the batch writes the card's
+    // matrix and its label's where they are, and the buffers come out as a
+    // rebuild makes them.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+      { id: "other", style: CARD, at: [20, 100, 200, 40] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("other").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Mesh[]} */
+      const members = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object)) {
+          members.push(object);
+        }
+      });
+      const card = /** @type {THREE.Object3D} */ (members[0].parent);
+      const versions = () => draws(g.panel).map((draw) => draw.instanceMatrix.version);
+      const before = versions();
+      card.matrix.multiply(new THREE.Matrix4().makeTranslation(5, 7, 0));
+      batch.moved(card);
+      batch.flush();
+      assert.equal(batch.written, 2, "the card and its label");
+      assert.ok(
+        versions().some((version, d) => version > before[d]),
+        "the matrices are marked for upload",
+      );
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  /**
+   * Run `change`, let the panel settle, and say how often the batch was
+   * told of a move and of a structural change, with the buffers it
+   * patched and the ones a rebuild writes after.
+   *
+   * @param {Awaited<ReturnType<typeof page>>} g
+   * @param {() => void} change
+   */
+  const patchOf = async (g, change) => {
+    const watched = watchBatch();
+    const moved = PaintBatch.prototype.moved;
+    let movedCalls = 0;
+    PaintBatch.prototype.moved = function (object) {
+      movedCalls += 1;
+      watched.batch = this;
+      return moved.call(this, object);
+    };
+    try {
+      change();
+      await g.settle();
+      const patched = buffers(g.panel);
+      watched.batch?.rebuild();
+      return {
+        moved: movedCalls,
+        invalidate: watched.invalidate,
+        patched,
+        rebuilt: buffers(g.panel),
+      };
+    } finally {
+      PaintBatch.prototype.moved = moved;
+      watched.restore();
+    }
+  };
+
+  /**
+   * Lay `element` out at `rect` from now on, and restyle it so the mirror
+   * reads its layout again.
+   *
+   * @param {HTMLElement} element
+   * @param {Rect} rect
+   */
+  const relayOut = (element, rect) => {
+    element.getBoundingClientRect = () => clientRect(...rect);
+    element.style.left = `${rect[0]}px`;
+  };
+
+  test("a card's transform is drawn where its motion step puts it", async () => {
+    // The motion step writes the card's own matrix and tells the batch it
+    // moved (`div.js`, the transform branch). Goes red without that call:
+    // the card is drawn where it was.
+    const g = await page([
+      { id: "card", style: `${CARD}; transform: matrix(1, 0, 0, 1, 5, 6)`, at: [20, 20, 100, 40] },
+      { id: "other", style: CARD, at: [20, 100, 100, 40] },
+    ]);
+    await g.walk();
+    const result = await patchOf(g, () => {
+      g.get("card").style.transform = "matrix(1, 0, 0, 1, 15, 16)";
+    });
+    assert.ok(result.moved > 0, "the batch is told");
+    assert.equal(result.invalidate, 0, "nothing structural");
+    assert.deepEqual(result.patched, result.rebuilt, "what a rebuild writes");
+    g.teardown();
+  });
+
+  test("a card moved by its layout is drawn where it is now", async () => {
+    // The plain branch of the place effect (`div.js`) tells the batch the
+    // card moved. A card with no text, since a run's clip moving would
+    // still ask for a rebuild and hide a missing call. Goes red without it.
+    const g = await page([
+      { id: "card", style: CARD, at: [20, 20, 100, 40] },
+      { id: "other", style: CARD, at: [20, 100, 100, 40] },
+    ]);
+    await g.walk();
+    const result = await patchOf(g, () => relayOut(g.get("card"), [60, 30, 100, 40]));
+    assert.ok(result.moved > 0, "the batch is told");
+    assert.equal(result.invalidate, 0, "nothing structural");
+    assert.deepEqual(result.patched, result.rebuilt, "what a rebuild writes");
+    g.teardown();
+  });
+
+  test("a card put in another column is drawn in it, at the same offset", async () => {
+    // `place(node)` in `portal.js` moves the card's object to its new
+    // parent, and a portal with no pump has no commit to rebuild for it.
+    // The card's offset in its new column is the one it had in the old, so
+    // its own place effect has nothing to say. Goes red without the
+    // reparent's `invalidate`: the card is drawn in its old column.
+    const g = await page([
+      {
+        id: "colA",
+        style: CARD,
+        at: [10, 10, 120, 200],
+        children: [
+          { id: "a1", style: CARD, at: [18, 18, 100, 30] },
+          { id: "a2", style: CARD, at: [18, 58, 100, 30] },
+        ],
+      },
+      {
+        id: "colB",
+        style: CARD,
+        at: [150, 10, 120, 200],
+        children: [{ id: "b1", style: CARD, at: [158, 18, 100, 30] }],
+      },
+    ]);
+    await g.walk();
+    const result = await patchOf(g, () => {
+      const a1 = g.get("a1");
+      g.get("colB").insertBefore(a1, g.get("b1"));
+      relayOut(a1, [158, 18, 100, 30]);
+      relayOut(g.get("a2"), [18, 18, 100, 30]);
+      relayOut(g.get("b1"), [158, 58, 100, 30]);
+    });
+    assert.deepEqual(result.patched, result.rebuilt, "what a rebuild writes");
+    g.teardown();
+  });
+
+  test("a card its scroller starts to clip away is drawn no more", async () => {
+    // The scroller takes `overflow: hidden`, and the card below its box is
+    // clipped away whole: its clip changes and nothing moves, so it is
+    // `shown` turning false that tells the batch. Goes red without that
+    // `invalidate`: the card is still drawn.
+    const g = await page([
+      {
+        id: "scroller",
+        style: "position: absolute",
+        at: [0, 0, 200, 100],
+        children: [
+          { id: "inside", style: CARD, at: [0, 0, 200, 40] },
+          { id: "below", style: CARD, at: [0, 150, 200, 40] },
+        ],
+      },
+    ]);
+    await g.walk();
+    const result = await patchOf(g, () => {
+      g.get("scroller").style.overflow = "hidden";
+    });
+    assert.equal(result.moved, 0, "nothing moves");
+    assert.deepEqual(result.patched, result.rebuilt, "what a rebuild writes");
+    g.teardown();
+  });
+
+  test("an object under another moved object is written once", async () => {
+    // A move writes the subtree under the object, so an object under
+    // another one moved in the same flush is skipped (`#move`).
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 200, 100],
+        children: [{ id: "inner", style: CARD, at: [30, 30, 50, 50] }],
+      },
+      { id: "other", style: CARD, at: [20, 150, 200, 40] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("other").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Object3D[]} */
+      const owners = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object) && object.parent) {
+          owners.push(object.parent);
+        }
+      });
+      const [card, inner] = owners;
+      batch.moved(inner);
+      batch.moved(card);
+      batch.flush();
+      assert.equal(batch.written, 2, "the card and the box in it, once each");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a move that meets a box the record does not have rebuilds the batch", async () => {
+    // A card shown past its writer's back, under a group then said to have
+    // moved: its box has no slot to write a matrix to, so the flush
+    // rebuilds rather than leave it undrawn. And a move under a hidden
+    // ancestor writes nothing, since nothing there is drawn.
+    const g = await page([
+      {
+        id: "group",
+        style: "position: absolute",
+        at: [0, 0, 400, 300],
+        children: Array.from({ length: 3 }, (_, i) => ({
+          id: `card${i}`,
+          style: CARD,
+          at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+        })),
+      },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card1").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Mesh[]} */
+      const members = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object)) {
+          members.push(object);
+        }
+      });
+      const mesh = members[members.length - 1];
+      const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+
+      mesh.visible = false;
+      batch.invalidate();
+      batch.flush();
+      const before = total();
+      mesh.visible = true;
+      batch.moved(/** @type {THREE.Object3D} */ (mesh.parent));
+      batch.flush();
+      assert.equal(total(), before + 1, "the card is drawn again");
+      assert.equal(batch.written, total(), "by a rebuild");
+
+      const parent = /** @type {THREE.Object3D} */ (mesh.parent);
+      parent.visible = false;
+      batch.invalidate();
+      batch.flush();
+      batch.moved(mesh);
+      batch.flush();
+      assert.equal(batch.written, 0, "a move under a hidden ancestor writes nothing");
+      parent.visible = true;
+      batch.invalidate();
+      batch.flush();
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("after any run of restyles, the buffers are what a rebuild makes", async () => {
+    // A seeded sequence of restyles of boxes among twenty, patched or
+    // rebuilt as each flush decides. Some change only a box's numbers, and
+    // some are structural: a box hidden, shown, lifted by a z-index, or
+    // taken out of the batch by a transparent background. Compared with a
+    // rebuild from scratch every fourth step, so that patches run one after
+    // another against an older record in between.
+    const g = await page(
+      Array.from({ length: 20 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([
+          (i % 4) * 90,
+          Math.floor(i / 4) * 50,
+          80,
+          40,
+        ]),
+      })),
+    );
+    await g.walk();
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const pick = (/** @type {string[]} */ values) => values[Math.floor(random() * values.length)];
+    const changes = [
+      [
+        "background",
+        ["rgb(255, 0, 0)", "rgb(0, 0, 255)", "rgba(0, 0, 0, 0.5)", "rgb(255, 255, 255)"],
+      ],
+      ["border-width", ["0px", "2px", "4px"]],
+      ["border-style", ["none", "solid"]],
+      ["border-color", ["rgb(0, 0, 0)", "rgb(0, 128, 0)"]],
+      ["border-top-left-radius", ["0px", "4px", "12px"]],
+      ["box-shadow", ["none", "rgb(0, 0, 0) 0px 2px 4px", "rgb(0, 0, 0) 0px 1px 2px inset"]],
+      ["outline-style", ["none", "solid"]],
+      ["outline-width", ["0px", "1px", "3px"]],
+      ["outline-color", ["rgb(255, 0, 0)", "rgb(0, 0, 255)"]],
+      ["opacity", ["1", "0.5"]],
+      ["visibility", ["visible", "hidden"]],
+      ["z-index", ["auto", "1", "2"]],
+      ["background", ["rgba(0, 0, 0, 0)", "rgb(255, 255, 255)"]],
+    ];
+    const watched = watchBatch();
+    let patched = 0;
+    try {
+      for (let step = 0; step < 60; step++) {
+        const touched = 1 + Math.floor(random() * 3);
+        for (let k = 0; k < touched; k++) {
+          const [name, values] = /** @type {[string, string[]]} */ (
+            changes[Math.floor(random() * changes.length)]
+          );
+          g.get(`card${Math.floor(random() * 20)}`).style.setProperty(name, pick(values));
+        }
+        await g.settle();
+        const batch = watched.batch;
+        if (!batch) {
+          continue;
+        }
+        if (batch.written < draws(g.panel).reduce((sum, draw) => sum + draw.count, 0)) {
+          patched += 1;
+        }
+        if (step % 4 === 3) {
+          const flushed = buffers(g.panel);
+          batch.rebuild();
+          assert.deepEqual(flushed, buffers(g.panel), `step ${step}`);
+        }
+      }
+    } finally {
+      watched.restore();
+    }
+    assert.ok(patched > 10, `most steps patch, ${patched} did`);
+    g.teardown();
+  });
+
+  test("a box that paints nothing takes no instance until a style gives it a colour", async () => {
+    // A hundred wrappers around their text, the shape most of a page has.
+    // Each took an instance it drew nothing with.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: `row${i}`,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+        text: `row ${i}`,
+      })),
+    );
+    await g.walk();
+    const boxes = () =>
+      draws(g.panel)
+        .flatMap(kinds)
+        .filter((kind) => kind === "box").length;
+    assert.equal(boxes(), 0, "no row paints, so none is drawn");
+    // Nor is any of them tested against the frustum every frame, which
+    // three does before it sees the material is invisible.
+    /** @type {THREE.Mesh[]} */
+    const culled = [];
+    g.panel.traverse((object) => {
+      if (
+        object instanceof THREE.Mesh &&
+        !(object instanceof THREE.InstancedMesh) &&
+        object.geometry === rectGeometry &&
+        object.frustumCulled
+      ) {
+        culled.push(object);
+      }
+    });
+    assert.deepEqual(culled, [], "a box the batch draws, or would draw, is not culled");
+
+    g.get("row3").style.background = "rgb(0, 0, 255)";
+    await g.settle();
+    await g.walk();
+    assert.equal(boxes(), 1, "the row a background was given to");
+
+    g.get("row3").style.background = "";
+    g.get("row4").style.border = "1px solid rgb(0, 0, 0)";
+    await g.settle();
+    await g.walk();
+    assert.equal(boxes(), 1, "the first gave it back, and a border is paint too");
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a box that paints nothing still takes a press", async () => {
+    const g = await page([
+      { id: "under", style: CARD, at: [0, 0, 200, 200] },
+      { id: "blank", style: `position: absolute; ${POINTER}`, at: [50, 50, 100, 100] },
+    ]);
+    assert.equal(g.press(75, 75), "blank", "over the card it covers");
+    assert.equal(g.press(25, 25), "under", "and the card where it does not reach");
+    g.teardown();
+  });
+
+  test("a blank child of a draggable card takes the press past the card's edge", async () => {
+    // On a page the child spills past its card and takes the press there,
+    // for the card. It draws nothing and has no cursor, so it is its being
+    // inside a ray target that keeps its quad; without it the press falls
+    // through to the root.
+    const g = await page([
+      {
+        id: "card",
+        style: "position: absolute; background: rgb(255, 255, 255)",
+        at: [20, 20, 100, 100],
+        children: [{ id: "spill", style: "position: absolute", at: [100, 40, 80, 30] }],
+      },
+    ]);
+    g.get("card").setAttribute("draggable", "true");
+    await g.settle();
+    assert.equal(g.press(150, 55), "card", "where the child spills past it");
+    g.teardown();
+  });
+
+  test("a blank cover over a card's button takes the press, as on a page", async () => {
+    // The cover comes after the button, so a page's hit test finds it
+    // first and the click goes to the card, not the button. Without the
+    // cover's quad the press reaches the button.
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 200, 100],
+        children: [
+          {
+            id: "button",
+            style: `position: absolute; ${POINTER}; background: rgb(0, 0, 255)`,
+            at: [40, 40, 40, 20],
+          },
+          { id: "cover", style: "position: absolute", at: [30, 30, 60, 40] },
+        ],
+      },
+    ]);
+    assert.equal(g.press(60, 50), "card");
+    g.teardown();
+  });
+
+  test("a blank cover with pointer-events: none passes the press to the button", async () => {
+    // A page's hit test skips the cover, so the click reaches the button
+    // under it.
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 200, 100],
+        children: [
+          {
+            id: "button",
+            style: `position: absolute; ${POINTER}; background: rgb(0, 0, 255)`,
+            at: [40, 40, 40, 20],
+          },
+          {
+            id: "cover",
+            style: "position: absolute; pointer-events: none; cursor: auto",
+            at: [30, 30, 60, 40],
+          },
+        ],
+      },
+    ]);
+    assert.equal(g.press(60, 50), "button");
+    g.teardown();
+  });
+
+  test("a blank spill with pointer-events: none passes the press to the card beneath", async () => {
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 100, 100],
+        children: [
+          {
+            id: "spill",
+            style: "position: absolute; pointer-events: none",
+            at: [100, 40, 80, 30],
+          },
+        ],
+      },
+      { id: "other", style: CARD, at: [150, 20, 100, 100] },
+    ]);
+    assert.equal(g.press(170, 55), "other");
+    g.teardown();
+  });
+
+  test("a box mounts its quad when it gains a colour and lets it go when it loses it", async () => {
+    const g = await page([{ id: "blank", style: "position: absolute", at: [0, 0, 100, 100] }]);
+    const quads = () => {
+      let count = 0;
+      g.panel.traverse((object) => {
+        if (
+          object instanceof THREE.Mesh &&
+          !(object instanceof THREE.InstancedMesh) &&
+          object.geometry === rectGeometry
+        ) {
+          count += 1;
+        }
+      });
+      return count;
+    };
+    const before = quads();
+    g.get("blank").style.background = "rgb(0, 0, 255)";
+    await g.settle();
+    assert.equal(quads(), before + 1, "a colour mounts it");
+    g.get("blank").style.background = "";
+    await g.settle();
+    assert.equal(quads(), before, "and taking the colour away lets it go");
+    g.teardown();
+  });
+
+  test("a blank box takes a press only while it has a cursor", async () => {
+    const g = await page([
+      { id: "under", style: CARD, at: [0, 0, 200, 200] },
+      { id: "blank", style: "position: absolute; cursor: default", at: [50, 50, 100, 100] },
+    ]);
+    assert.equal(g.press(75, 75), "under", "with no cursor, the card behind it");
+    g.get("blank").style.cursor = "pointer";
+    await g.settle();
+    assert.equal(g.press(75, 75), "blank", "given one after it mounted");
+    g.get("blank").style.cursor = "default";
+    await g.settle();
+    assert.equal(g.press(75, 75), "under", "and the card again once it is taken away");
+    g.teardown();
   });
 
   test("draws the layers after the root in the root's draw", async () => {
@@ -1517,6 +2676,40 @@ describe("a panel drawn in paint order", () => {
       orders.some((order) => order < picture.renderOrder) &&
         orders.some((order) => order > picture.renderOrder),
       `draws at ${orders} about the picture at ${picture.renderOrder}`,
+    );
+    g.teardown();
+  });
+
+  test("breaks the draw at a picture once it is shown", async () => {
+    // The same page with the picture hidden at first. A box that draws
+    // itself is still read by the batch's walk, so showing it has to reach
+    // the batch, though the batch does not draw it. Goes red with the
+    // picture's numbers telling only the batch that draws it, which is
+    // none: the cards stay one draw, under the picture.
+    const g = await page([
+      {
+        id: "under",
+        style: CARD,
+        at: [20, 20, 100, 100],
+        children: [
+          { id: "picture", tag: "img", style: "visibility: hidden", at: [40, 40, 60, 60] },
+        ],
+      },
+      { id: "over", style: CARD, at: [60, 60, 100, 100] },
+    ]);
+    await g.walk();
+    assert.deepEqual(
+      draws(g.panel).map((draw) => draw.count),
+      [2],
+      "both cards in one draw while the picture is hidden",
+    );
+    g.get("picture").style.visibility = "visible";
+    await g.settle();
+    await g.walk();
+    assert.deepEqual(
+      draws(g.panel).map((draw) => draw.count),
+      [1, 1],
+      "one draw on each side of the picture",
     );
     g.teardown();
   });

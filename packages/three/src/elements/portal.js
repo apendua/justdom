@@ -1384,6 +1384,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * the one it had in the old has nothing else to mark it, and without this
    * it would be drawn and hit where its old parent put it.
    *
+   * For the same reason it is structural to the paint batch: the walk meets
+   * it in another place, and every matrix under it is another product. The
+   * batch rebuilds, as it does for a commit with attachments pending.
+   *
    * @param {Node} node
    */
   const place = (node) => {
@@ -1392,6 +1396,7 @@ function buildPortal(ctx, ownOptions = {}) {
     if (object && parentObject) {
       getContentGroup(parentObject).add(object);
       markMoved(object);
+      paintBatch.invalidate();
     }
   };
 

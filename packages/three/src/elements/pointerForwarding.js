@@ -24,7 +24,10 @@ import {
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
+  getParentElement,
   isPortalRoot,
+  nodeCache,
+  nodeDerived,
 } from "./mirror.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
@@ -75,6 +78,61 @@ export function isClickable(element) {
  */
 export function isRayTarget(element) {
   return isClickable(element) || isDragSource(element) || isFieldLabel(element);
+}
+
+/** @type {WeakMap<Node, import("justdom-signal").Derived<boolean>>} */
+const inRayTargetCache = nodeCache();
+
+/**
+ * Whether the element is a ray target or sits inside one in its panel: the
+ * boxes a press on which the page would give to a ray target. A box there
+ * takes a ray even when it draws nothing, as a page's transparent child
+ * takes the click for the card around it, over a nested button or past the
+ * card's own edge. One memo per element, each reading its parent's.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+export function isInRayTarget(element) {
+  let signal = inRayTargetCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(element, () => isRayTarget(element) || isUnderRayTarget(element));
+    inRayTargetCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/**
+ * Whether a ray target is around the element in its panel, the element
+ * itself not counted. Asks the parent's memo, so a leaf pays for none of
+ * its own.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function isUnderRayTarget(element) {
+  if (isPortalRoot(element)) {
+    return false;
+  }
+  const parent = getParentElement(element);
+  return parent !== null && isInRayTarget(parent);
+}
+
+/**
+ * Whether a press on the element goes to a ray target around it, as a
+ * page's would: it sits inside one and takes pointer events. A box with
+ * `pointer-events: none` is passed through on a page, to what is beneath,
+ * so it does not count however blank; a box under it that sets them back
+ * to `auto` does, through its own style.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+export function pressesForRayTarget(element) {
+  return (
+    isUnderRayTarget(element) &&
+    getComputedStyleCached(element).getPropertyValue("pointer-events") !== "none"
+  );
 }
 
 /** The attributes of a field that `takesTheTyping` reads. */

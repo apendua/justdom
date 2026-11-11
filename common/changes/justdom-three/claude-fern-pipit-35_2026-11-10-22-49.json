@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A box that draws no background, border, shadow or outline takes no instance in its panel's batch",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

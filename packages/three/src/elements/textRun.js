@@ -53,7 +53,9 @@ import { TextPrepareContext } from "./textPrepare.js";
  * it writes in `extra`.
  *
  * Every effect that writes something the batch copied out of the mesh says
- * so, through `invalidate`, which is cheap and coalesced.
+ * so, and only when the value changed: the tint through `changed`, which
+ * writes the run's instance where it is, and the texture, the visibility and
+ * the order through `invalidate`, which is structural and coalesced.
  *
  * @param {WeakKey} ctx
  * @param {TextRunSource} source
@@ -299,6 +301,8 @@ export function textRun(ctx, source, extra = []) {
       const material = /** @type {MeshBasicMaterial} */ (obj.material);
       const opacity = source.opacity();
       const tint = source.tint();
+      const { r, g, b } = material.color;
+      const was = material.opacity;
       if (tint.masked) {
         const [color, alpha] = parseColor(tint.color);
         material.color.copy(color);
@@ -307,22 +311,32 @@ export function textRun(ctx, source, extra = []) {
         material.color.set("#ffffff");
         material.opacity = opacity;
       }
-      batch?.invalidate();
+      const { color } = material;
+      if (color.r !== r || color.g !== g || color.b !== b || material.opacity !== was) {
+        // A colour alone: the batch writes the run's instance where it is.
+        batch?.changed(obj);
+      }
     }),
     // On the mesh, which the renderer, the batch's walk and the raycast all
     // consult. The run keeps its texture, so showing it again costs a flag
     // and a batch rebuild.
     effects((obj) => {
-      obj.visible = !source.hidden();
-      batch?.invalidate();
+      const visible = !source.hidden();
+      if (obj.visible !== visible) {
+        obj.visible = visible;
+        batch?.invalidate();
+      }
     }),
     // One step past the box the run sits on. Text drawn before its surface
     // blends its antialiased edges with whatever was behind the panel, and
     // writes depth that keeps the surface from filling in behind them: a
     // thin dark border around every letter.
     effects((obj) => {
-      obj.renderOrder = source.renderOrder();
-      batch?.invalidate();
+      const order = source.renderOrder();
+      if (obj.renderOrder !== order) {
+        obj.renderOrder = order;
+        batch?.invalidate();
+      }
     }),
     // After the material and the geometry, both of which the batch reads
     // out of the mesh. A run whose colours are baked into its texture is

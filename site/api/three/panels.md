@@ -62,6 +62,14 @@ only because `cursor` is inherited: the innermost one is the target, its events 
 bubble from there, and every clickable element around it takes both flags, as `:hover` and `:active`
 would. An ancestor that is not a ray target takes neither.
 
+A ray meets an element where its box paints, where it is a ray target, or where it sits inside one.
+A box with no colour and no cursor outside anything clickable is not there for the ray, and a press
+on it lands on what is behind it, which is where a page's click would have bubbled to anyway. Inside
+a ray target every box that takes pointer events takes the ray, as on a page: a transparent child
+laid over a nested button takes the press for the target around it, and so does a transparent child
+where it reaches past the target's own box. A blank box with `pointer-events: none` is passed
+through, to what is beneath it.
+
 **The grip** is the mouse's other button: a press of it, let go on the element it started on,
 arrives as `contextmenu`, which is where a page already flags a tile or opens a menu of its own. Not
 a grip that something above the panel took as it closed — a `drag()` with `squeeze` among its
@@ -257,15 +265,20 @@ A box is drawn from its computed style: background colour, a gradient (see
 keeps its colours baked into the texture and re-draws per change.
 
 **A change to the DOM is followed as far as it can reach.** Every attribute is followed: a class, an
-inline style, `hidden`, an app's own `data-*` or `aria-*` flag. Changing one restyles the element,
-its subtree and its siblings (apart from the SVG geometry below), and re-measures the element's
-subtree. Then the element and what comes after it in its parent re-measure where they are, every
-item in the row when the parent is a flex row. The change climbs on to the parent's own siblings if
-the parent changed size or is an inline box, and so on up to the panel, which resizes with what it
-holds. So a menu opened by a class, or a section shown by taking `hidden` off, resizes the panel as
-it would if it were mounted. A change that moved nothing costs a client rect for the element, for
-each element after it and for the parent, a text measurement for each text node after it, and a
-client rect for each positioned box in the panel.
+inline style, `hidden`, an app's own `data-*` or `aria-*` flag. Changing one restyles the element
+and its subtree, and re-measures the element's subtree. It restyles the element's siblings too when
+a rule of the document could carry the change to them: a selector with `+` or `~` (in it or inside
+`:has()`, `:is()` or `:not()`), or an `:nth-child(… of …)` or `:nth-last-child(… of …)`, that names
+the attribute, or names a class or an id for `class` and `id`. Such a selector with a pseudo-class
+other than the structural ones, the user-action ones and `:checked`, or a stylesheet that cannot be
+read, makes every attribute reach the siblings. The SVG geometry below never does. Then the element
+and what comes after it in its parent re-measure where they are, every item in the row when the
+parent is a flex row. The change climbs on to the parent's own siblings if the parent changed size
+or is an inline box, and so on up to the panel, which resizes with what it holds. So a menu opened
+by a class, or a section shown by taking `hidden` off, resizes the panel as it would if it were
+mounted. A change that moved nothing costs a client rect for the element, for each element after it
+and for the parent, a text measurement for each text node after it, and a client rect for each
+positioned box in the panel.
 
 Two changes stay cheaper. An inline `style` write that moves no box but the element's own
 re-measures the element's subtree and nothing around it: a write of properties that move no box at

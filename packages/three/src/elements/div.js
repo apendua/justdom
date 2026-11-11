@@ -4,16 +4,7 @@ import { Derived, effects, flatMap, just, on, set, observable, useEffects } from
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
-import {
-  batchedBoxMaterial,
-  createRectMaterial,
-  createRectUniforms,
-  rectGeometry,
-  writeClipUniforms,
-  writeGradientUniforms,
-  writeImageUniforms,
-  writeRectUniforms,
-} from "./sdfRect.js";
+import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "./sdfRect.js";
 import { RampSlot } from "./gradient.js";
 import { backgroundImage, contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -23,6 +14,7 @@ import {
   getLocalClipBox,
   getParentElement,
   getScrollOffset,
+  isPortalRoot,
   isVisibilityHidden,
 } from "./mirror.js";
 import { getPaintChildren, isGenerated } from "./pseudoElements.js";
@@ -47,10 +39,16 @@ import {
 import { LayerOrderContext } from "./layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
-import { markMoved, place, placeAndScale } from "./place.js";
+import { markMoved, place } from "./place.js";
+import { BoxNumbers } from "./boxNumbers.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
-import { forwardListEvents, forwardPointerEvents, isRayTarget } from "./pointerForwarding.js";
+import {
+  forwardListEvents,
+  forwardPointerEvents,
+  pressesForRayTarget,
+  isRayTarget,
+} from "./pointerForwarding.js";
 import { lazyPanel, pressInit } from "./dragAndDrop.js";
 import { setContentGroup } from "./contentGroup.js";
 
@@ -244,12 +242,20 @@ const committedPlacements = new WeakMap();
  * order it draws at (`registerDrawOrder`). Shared by an element's box and
  * the boxes of its `::before` and `::after` (`generatedContent.js`).
  *
+ * A batched box that `paints` nothing (`VisualProperties.paints`) takes no
+ * instance: it wears the batch's invisible material and stays out of the
+ * batch until a style gives it a colour, through the same effect a picture
+ * background takes it out by. Its mesh stays while the box is a ray target
+ * or inside one; an element's box mounts none at all while it is none of
+ * these (`hasQuad` in `box`).
+ *
  * @param {THREE.Mesh} mesh
- * @param {ReturnType<typeof createRectUniforms>} uniforms
+ * @param {BoxNumbers['uniforms']} uniforms
  * @param {() => import('./boxBatch.js').BoxBatch | null} batch
+ * @param {() => boolean} paints
  * @returns {EntityEffect<THREE.Mesh>[]}
  */
-export function drawQuad(mesh, uniforms, batch) {
+export function drawQuad(mesh, uniforms, batch, paints) {
   return [
     set("material", () => {
       const drawnBy = batch();
@@ -258,6 +264,17 @@ export function drawQuad(mesh, uniforms, batch) {
       // that draws itself. It follows the draw the box is in now, from the
       // first run at mount on.
       registerDrawOrder(mesh, drawnBy ? BOX_BUCKET_BIAS : 0);
+      // A mesh that will not be drawn has no business being tested against
+      // the frustum for it. Three asks that question, a bounding-sphere
+      // transform per mesh per frame, before it looks at whether the
+      // material is visible, so this is the difference between a box that is
+      // not drawn and a box that costs nothing. It goes with the material
+      // and not with a place in the batch, which a box that paints nothing
+      // does not take. It is safe by the same token: nothing consults the
+      // answer. (What remains is three's per-mesh geometry bookkeeping,
+      // which only leaving the mesh out of the scene avoids, as `box` does
+      // for a box that is no ray target either.)
+      mesh.frustumCulled = !drawnBy;
       if (drawnBy) {
         // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
         // The numbers live in `uniforms` instead, which is what the batch
@@ -282,7 +299,7 @@ export function drawQuad(mesh, uniforms, batch) {
     // every such change.
     effects(() => {
       const drawnBy = batch();
-      if (!drawnBy) {
+      if (!drawnBy || !paints()) {
         return;
       }
       drawnBy.add(mesh, uniforms);
@@ -412,8 +429,8 @@ export function box(ctx, element, options = {}) {
    * any. Built only for elements that can carry one, and a tag never changes,
    * so this is decided once rather than watched. An ordinary div still pays
    * for the picture slot it shares with a `url()` background (below): one
-   * effect that reads one memoized string, and two uniform writes when it
-   * mounts.
+   * read of a memoized string, in `hasQuad`, and, while it has a quad, an
+   * effect that writes two uniforms.
    *
    * @type {Derived<import('./image.js').ContentImage | null> | null}
    */
@@ -482,9 +499,14 @@ export function box(ctx, element, options = {}) {
    * reaches the render list, so a material of its own would be a uuid, a
    * place in three's bookkeeping and a `dispose()` at teardown, per box, for
    * a program that is never compiled. What it actually needs is this record,
-   * which the batch copies into its instance buffers.
+   * which the batch copies into its instance buffers. Written through
+   * `BoxNumbers`, which tells the panel's batch when a write changed
+   * anything. The panel's, not `batch()`: a box that draws itself is still
+   * read by the batch's walk, which skips it while it is hidden and breaks
+   * the draws at its order.
    */
-  const uniforms = createRectUniforms();
+  const boxBatch = BoxBatchContext.get(ctx);
+  const numbers = new BoxNumbers(boxMesh, boxBatch);
   clipRaycast(boxMesh, () => currentClipBox, object);
 
   /**
@@ -504,7 +526,7 @@ export function box(ctx, element, options = {}) {
    *
    * @type {import('./boxBatch.js').BoxBatch | null}
    */
-  const panelBatch = image ? null : BoxBatchContext.get(ctx);
+  const panelBatch = image ? null : boxBatch;
 
   /**
    * The batch this box is drawn by now. A box with a `url()` background
@@ -520,35 +542,42 @@ export function box(ctx, element, options = {}) {
   const layerOrder = LayerOrderContext.get(ctx);
 
   /**
-   * The text of this panel, which has to hear about this element moving even
-   * though it draws none of it.
-   *
-   * A box moving moves everything inside it, and a scroll is the case that
-   * makes the point: the content group slides, every descendant goes with it,
-   * and not one of those descendants re-runs an effect of its own — that
-   * invariance is what makes scrolling cheap. The batches recompute their
-   * instance matrices by walking the panel, so one of them being told is
-   * enough for its own contents and no use at all to the other's.
-   *
-   * Today the text inside a scroller would in fact notice, because its clip
-   * box is expressed against the scroll offset and so changes with it. That
-   * is a chain of reasoning three files long, and a silent desync — text left
-   * behind where the panel used to be — is what it costs when it breaks.
+   * The text of this panel, which has to hear about this element being
+   * shown or hidden even though it draws none of it: hiding a box hides
+   * everything inside it, and not one of those descendants re-runs an
+   * effect of its own. Both batches hand what they hear to the panel's one
+   * paint batch, which walks boxes and text together, and so does `moved`.
    *
    * @type {import('./textBatch.js').TextBatch | null}
    */
   const textBatch = TextBatchContext.get(ctx);
 
   /**
-   * Say that something the batches copied out of this box has changed. Cheap
-   * and coalesced — each rebuilds once however many boxes call it — so the
-   * effects below can simply say so whenever they write anything.
+   * Say that the box's object was shown or hidden, which both batches copy
+   * as they walk. Cheap and coalesced: each rebuilds once however many
+   * boxes call it. The quad's own numbers are not told here: `BoxNumbers`
+   * tells the box batch itself, and only when a write changed one.
    *
    * @returns {void}
    */
   const batchChanged = () => {
     batch()?.invalidate();
     textBatch?.invalidate();
+  };
+
+  /**
+   * Say that one of the box's objects moved, its own or its content group,
+   * and nothing else about it changed. The one batch that draws the panel's
+   * boxes and text writes the matrices under it again where they are,
+   * rather than rebuilding (`moved` in `paintBatch.js`). Through the
+   * panel's box batch, whether or not it draws this box: the box's text is
+   * under the same object.
+   *
+   * @param {THREE.Object3D} moved
+   * @returns {void}
+   */
+  const objectMoved = (moved) => {
+    boxBatch?.moved(moved);
   };
 
   /**
@@ -742,7 +771,7 @@ export function box(ctx, element, options = {}) {
         place(obj, at.x, at.y, at.z);
         placed = at;
         wroteMatrix = false;
-        batchChanged();
+        objectMoved(obj);
       }
       return;
     }
@@ -775,7 +804,7 @@ export function box(ctx, element, options = {}) {
     markMoved(obj);
     wroteMatrix = true;
     placed = null;
-    batchChanged();
+    objectMoved(obj);
   };
 
   /**
@@ -804,7 +833,87 @@ export function box(ctx, element, options = {}) {
    */
   const draggability = forwardListEvents(ctx, element, object, () => isPanelReady() && shown.get());
 
+  /**
+   * Whether this box has a use for its quad: something to draw, or a ray to
+   * take. Most boxes on a page are wrappers that do neither, a layout `div`
+   * with no colour and no cursor outside anything clickable, and those mount
+   * no quad at all, so the render list, the layer walk and the raycast never
+   * meet a mesh for them. A press over one lands on what is behind it, which
+   * is where its events would have bubbled to, since only a ray target
+   * forwards anything (`isRayTarget`). A box inside a ray target that takes
+   * pointer events keeps its quad however blank (`pressesForRayTarget`), so
+   * that a press on it goes where a page sends it: to the target around it,
+   * over a nested target it covers and past the target's own edge where it
+   * spills over. A blank box with `pointer-events: none` mounts none, and a
+   * press passes through it, as on a page.
+   *
+   * An `<img>` and a `url()` background are drawn by the quad whether or not
+   * the box `paints` a colour of its own. A list that scrolls is grabbed by
+   * its quad, between its rows.
+   */
+  const hasQuad = new Derived(
+    () =>
+      image !== null ||
+      drawsBackgroundPicture() ||
+      properties.paints ||
+      clickable.get() ||
+      scrollable.get() ||
+      pressesForRayTarget(element),
+  );
+
+  /**
+   * The quad, with everything that writes it. Built each time it mounts.
+   *
+   * @returns {Source<Component>}
+   */
+  const quad = () =>
+    $(boxMesh, [
+      ...drawQuad(boxMesh, numbers.uniforms, batch, () => properties.paints),
+      // The quad is the element's own painting, so it goes when the element
+      // is hidden — out of the draw, out of the batch's walk and out of the
+      // raycast, all three of which follow this flag — while the content
+      // group beside it stays for any child that says `visible`.
+      effects(() => {
+        numbers.show(!hidden());
+      }),
+      // Lets go of the ramp row when the box goes, and not before.
+      effects(() => {
+        onCleanup(() => {
+          rampSlot.release();
+        });
+      }),
+      effects(() => {
+        numbers.paint(properties, rampSlot);
+        // Level with its object, and drawn in front of what it covers by
+        // the order alone.
+        numbers.place(0, 0, properties.totalWidth, properties.totalHeight);
+        // A batched box's order is the one the batch lays it at, with the
+        // bias added there. One that draws itself takes its own, behind its
+        // integer, since its origin, level with the container's, cannot
+        // order it against the text.
+        numbers.order(properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS));
+      }),
+      // Its own effect: a texture arriving late must not look like a reason
+      // to rewrite the box, and the box moving must not look like a reason
+      // to rebind a texture.
+      effects(() => {
+        numbers.image(shownPicture());
+      }),
+    ]);
+
   return just(object, [
+    // A box that is a layer's root is one of the planes the panel's walk
+    // orders (`layerOrder.js`), for as long as it is one, whether or not it
+    // has a quad of its own.
+    effects(() => {
+      if (!layerOrder || getLayer(element) !== element) {
+        return;
+      }
+      layerOrder.addLayer(element);
+      onCleanup(() => {
+        layerOrder.removeLayer(element);
+      });
+    }),
     // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
     // a card becomes clickable — so interactivity follows it rather than being
     // fixed at the moment the element was first projected into the scene.
@@ -828,7 +937,6 @@ export function box(ctx, element, options = {}) {
     }),
     effects(() => {
       properties.setFromElement(element);
-      batchChanged();
     }),
     // Where the box stands and what clips it, in one effect: the clip is
     // given in the box's own frame, so a box that moves inside a clipping
@@ -857,16 +965,24 @@ export function box(ctx, element, options = {}) {
       // axis would negate to back into 0.)
       if (!contentMatrix) {
         const scroll = getScrollOffset(element);
-        place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
+        const x = -scroll.left || 0;
+        const y = -scroll.top || 0;
+        const { position } = contentGroup;
+        if (contentGroup.matrixAutoUpdate || position.x !== x || position.y !== y) {
+          place(contentGroup, x, y, 0);
+          objectMoved(contentGroup);
+        }
       }
       currentClipBox = getLocalClipBox(element);
-      writeClipUniforms(uniforms, currentClipBox);
+      numbers.clip(currentClipBox);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
       // its descendants from the render traversal, and from the batch's walk,
       // which follows the same flag for the same reason.
-      obj.visible = shown.get();
-      batchChanged();
+      if (obj.visible !== shown.get()) {
+        obj.visible = shown.get();
+        batchChanged();
+      }
     }),
     // The motion effect, after the place effect so that its first run finds
     // a placement committed. Its own channel, so that a transform animating
@@ -903,7 +1019,7 @@ export function box(ctx, element, options = {}) {
             // would otherwise stay where it was. Nothing SVG is batched
             // today, so this is for what a plugin may put under a content
             // matrix of its own.
-            batchChanged();
+            objectMoved(contentGroup);
           }),
         ]
       : []),
@@ -926,65 +1042,11 @@ export function box(ctx, element, options = {}) {
       // The whole box — background and border ring both — is one quad and a
       // distance field. Geometry is shared and never rebuilt: a resize is a
       // scale write, everything else a uniform write, which is what makes a
-      // layout animation affordable and a style change nearly free.
-      $(boxMesh, [
-        ...drawQuad(boxMesh, uniforms, batch),
-        // A box that is a layer's root is one of the planes the panel's walk
-        // orders (`layerOrder.js`), for as long as it is one.
-        effects(() => {
-          if (!layerOrder || getLayer(element) !== element) {
-            return;
-          }
-          layerOrder.addLayer(element);
-          onCleanup(() => {
-            layerOrder.removeLayer(element);
-          });
-        }),
-        // The quad is the element's own painting, so it goes when the element
-        // is hidden — out of the draw, out of the batch's walk and out of the
-        // raycast, all three of which follow this flag — while the content
-        // group beside it stays for any child that says `visible`.
-        effects((obj) => {
-          obj.visible = !hidden();
-          batchChanged();
-        }),
-        // Lets go of the ramp row when the box goes, and not before.
-        effects(() => {
-          onCleanup(() => {
-            rampSlot.release();
-          });
-        }),
-        effects((obj) => {
-          writeRectUniforms(uniforms, properties);
-          writeGradientUniforms(uniforms, properties, rampSlot);
-          // A quad scaled to nothing has no surface to draw or hit, and a
-          // zero scale is not invertible; an empty box is better described
-          // as very small — same convention as the blocker. It is level with
-          // its object, and drawn in front of what it covers by the order
-          // alone.
-          placeAndScale(
-            obj,
-            0,
-            0,
-            0,
-            Math.max(properties.totalWidth, 1e-6),
-            Math.max(properties.totalHeight, 1e-6),
-            1,
-          );
-          // A batched box's order is the one the batch lays it at, with the
-          // bias added there. One that draws itself takes its own, behind its
-          // integer, since its origin, level with the container's, cannot
-          // order it against the text.
-          obj.renderOrder = properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS);
-          batchChanged();
-        }),
-        // Its own effect: a texture arriving late must not look like a reason
-        // to rewrite the box, and the box moving must not look like a reason
-        // to rebind a texture.
-        effects(() => {
-          writeImageUniforms(uniforms, shownPicture());
-        }),
-      ]),
+      // layout animation affordable and a style change nearly free. Mounted
+      // only while the box has a use for it (`hasQuad`).
+      flatMap((/** @type {boolean} */ mounted) => (mounted ? quad() : Nothing()))(
+        observable(() => hasQuad.get()),
+      ),
       ...content({
         properties,
         contentRenderOrder: () => getContentRenderOrder(element),

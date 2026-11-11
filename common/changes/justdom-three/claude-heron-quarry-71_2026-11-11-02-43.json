@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A scrolled or recoloured label no longer rebuilds its panel's batch: its run's clip, colour and matrix are written where the last rebuild put them.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

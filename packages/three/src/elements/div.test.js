@@ -670,7 +670,9 @@ function setupSiblings() {
      * `div` built for it. Its text draws at `getContentRenderOrder`. A box
      * that paints nothing and takes no ray mounts no quad, and is read where
      * its quad would draw: a level before its content, behind its integer as
-     * a box drawn outside a batch is.
+     * a box drawn outside a batch is. That holds only with no batch, which
+     * this harness has: under one, the quad draws at its integer and the
+     * batch adds the bias.
      *
      * @param {Element} element
      */

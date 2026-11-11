@@ -428,8 +428,8 @@ export function box(ctx, element, options = {}) {
    * any. Built only for elements that can carry one, and a tag never changes,
    * so this is decided once rather than watched. An ordinary div still pays
    * for the picture slot it shares with a `url()` background (below): one
-   * effect that reads one memoized string, and two uniform writes when it
-   * mounts.
+   * read of a memoized string, in `hasQuad`, and, while it has a quad, an
+   * effect that writes two uniforms.
    *
    * @type {Derived<import('./image.js').ContentImage | null> | null}
    */
@@ -814,10 +814,13 @@ export function box(ctx, element, options = {}) {
    * take for the element. Most boxes on a page are wrappers that do neither,
    * a layout `div` with no colour and no cursor, and those mount no quad at
    * all, so the render list, the layer walk and the raycast never meet a
-   * mesh for them. A press over one lands on what is behind it, which is
-   * where its events would have bubbled to: only a ray target forwards
-   * anything (`isRayTarget`), and an element that is not one hands a press
-   * on to the nearest one around it.
+   * mesh for them. A press over one lands on what is behind it. Outside a
+   * ray target that is where its events would have bubbled to, since only a
+   * ray target forwards anything (`isRayTarget`). Inside one it is not, in
+   * two cases: a transparent child that covers a nested ray target, which
+   * then takes the press a page would give the child and so the target
+   * around it, and a transparent child that reaches past the target's own
+   * box, which takes no press where it spills over.
    *
    * An `<img>` and a `url()` background are drawn by the quad whether or not
    * the box `paints` a colour of its own. A list that scrolls is grabbed by

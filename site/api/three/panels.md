@@ -62,6 +62,12 @@ only because `cursor` is inherited: the innermost one is the target, its events 
 bubble from there, and every clickable element around it takes both flags, as `:hover` and `:active`
 would. An ancestor that is not a ray target takes neither.
 
+A ray meets an element where its box paints or where it is a ray target. A box with no colour and no
+cursor of its own is not there for the ray, which differs from a page in two cases, both inside a
+ray target: a transparent child laid over a nested button lets the press through to the button,
+where a page gives it to the child and so to the target around it; and a transparent child that
+reaches past the target's own box takes no press where it spills over.
+
 **The grip** is the mouse's other button: a press of it, let go on the element it started on,
 arrives as `contextmenu`, which is where a page already flags a tile or opens a menu of its own. Not
 a grip that something above the panel took as it closed — a `drag()` with `squeeze` among its

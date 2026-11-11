@@ -1528,6 +1528,46 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  test("a box mounts its quad when it gains a colour and lets it go when it loses it", async () => {
+    const g = await page([{ id: "blank", style: "position: absolute", at: [0, 0, 100, 100] }]);
+    const quads = () => {
+      let count = 0;
+      g.panel.traverse((object) => {
+        if (
+          object instanceof THREE.Mesh &&
+          !(object instanceof THREE.InstancedMesh) &&
+          object.geometry === rectGeometry
+        ) {
+          count += 1;
+        }
+      });
+      return count;
+    };
+    const before = quads();
+    g.get("blank").style.background = "rgb(0, 0, 255)";
+    await g.settle();
+    assert.equal(quads(), before + 1, "a colour mounts it");
+    g.get("blank").style.background = "";
+    await g.settle();
+    assert.equal(quads(), before, "and taking the colour away lets it go");
+    g.teardown();
+  });
+
+  test("a blank box takes a press only while it has a cursor", async () => {
+    const g = await page([
+      { id: "under", style: CARD, at: [0, 0, 200, 200] },
+      { id: "blank", style: "position: absolute; cursor: default", at: [50, 50, 100, 100] },
+    ]);
+    assert.equal(g.press(75, 75), "under", "with no cursor, the card behind it");
+    g.get("blank").style.cursor = "pointer";
+    await g.settle();
+    assert.equal(g.press(75, 75), "blank", "given one after it mounted");
+    g.get("blank").style.cursor = "default";
+    await g.settle();
+    assert.equal(g.press(75, 75), "under", "and the card again once it is taken away");
+    g.teardown();
+  });
+
   test("draws the layers after the root in the root's draw", async () => {
     // Two cards lifted out of the root's plane are layers of their own, in
     // nodes of their own, and still one stretch of the order: nothing writes

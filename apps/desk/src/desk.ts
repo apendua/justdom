@@ -35,8 +35,9 @@ export interface MountedDesk {
  *
  * `reveal` says when the monitor holds its whole listing and lets the
  * mirror reveal it (`screen.ts`), and holds what reveals it: while a
- * session mirrors the desk, unless the caller says otherwise. A desk drawn into a texture is the page as it
- * is, so there the listing is typed into the page in a session too.
+ * session mirrors the desk, unless the caller says otherwise. A desk drawn
+ * into a texture is the page as it is, so there the listing is typed into
+ * the page in a session too.
  */
 export function mountDesk(
   desk: HTMLElement,

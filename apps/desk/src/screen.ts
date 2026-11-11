@@ -31,8 +31,9 @@ export function mountScreen(
 
   const listing = observable(() => terminal.listing.get());
   const typedPart = observable(() => terminal.listing.get().slice(0, terminal.typed.get()));
-  // One reveal for as long as `revealing` holds the same function, so a
-  // second session draws with the first one's.
+  // A reveal for each session: `revealing` goes back to null when a
+  // session ends, and the next one makes its own. A reveal holds only its
+  // handle, and its node leaves it when it is taken out of the screen.
   const reveal = new Derived(
     () =>
       revealing.get()?.(() => revealedCount(terminal.listing.get(), terminal.typed.get())) ?? null,

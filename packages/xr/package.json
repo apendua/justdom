@@ -69,7 +69,7 @@
     "justdom-signal": "workspace:^",
     "justdom-three": "workspace:^",
     "playwright-core": "^1.56.0",
-    "three": ">=0.180.0"
+    "three": ">=0.185.0 <0.188.0"
   },
   "peerDependenciesMeta": {
     "playwright-core": {

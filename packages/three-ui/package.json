@@ -59,7 +59,7 @@
     "justdom-core": "workspace:^",
     "justdom-signal": "workspace:^",
     "justdom-three": "workspace:^",
-    "three": ">=0.180.0"
+    "three": ">=0.185.0 <0.188.0"
   },
   "publishConfig": {
     "access": "public"

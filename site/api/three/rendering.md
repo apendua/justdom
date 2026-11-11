@@ -56,8 +56,9 @@ set together, and the scene is drawn again at once, so a resize never shows a cl
 change of the pixel ratio alone, such as a window dragged to a screen of another density, is read at
 the next resize. Nothing changes while a session is presenting, since the headset's layer has its
 own size, and the size is read again when the session ends, so a resize during a session is not
-lost. The session's end also puts back the camera's `fov` and `zoom`, which the headset's projection
-overwrote.
+lost. The session's end also puts back the camera's `fov` and `zoom` as they were when the session
+started, since the headset's projection overwrote them. A resize outside a session leaves both
+alone, so a pinch zoom or a zoom the app set survives it.
 
 ### Entering and leaving a session
 

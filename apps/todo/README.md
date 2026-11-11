@@ -35,17 +35,17 @@ a long press, and two fingers pinch the view in and out.
 
 ## How it is put together
 
-| File                             | What it is                                                                                                                                                                                                                                                                                                          |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`                    | Mounts `TodoApp` into `#root`, then offers a session that mirrors `#root`, through `justdom-xr`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present.                                                                                                                                          |
-| `src/xr.ts`                      | The session: makes the renderer with the controller and hand models from `justdom-xr`'s `inputModels()`, and the Enter button, and shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option.                                                                                     |
-| `src/components/TodoApp.ts`      | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `justdom-three-ui`, reordered by dragging.                                                                                                                                                                    |
-| `src/components/TodoItem.ts`     | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button.                                                                                                                                                                                                                           |
-| `tests/drag-check.mjs`           | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator.                                                                                                                                                                                                                  |
-| `src/focusDiagnostics.ts`        | Under `?keylog`, a log in the card of keys, focus and the system keyboard, to read in a headset.                                                                                                                                                                                                                    |
-| `src/components/Scene.ts`        | The scene: `dom(ctx, panel, …)`. A backdrop, lights, a cursor, the panel, and the frame rate while a session runs.                                                                                                                                                                                                  |
-| `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `justdom-three-ui` dressed for this panel.                                                                                                                                                                                                                  |
-| `justdom-xr`                     | Not a file here, but shared with the other headset apps: IWER behind `?emulator` and the offer of a session; `canPresent`; `xrSession`, the session the page is shown in, written by the scene and read by the app for its exit button; the backdrop; and the controller and hand models, from three's default CDN. |
+| File                             | What it is                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`                    | Mounts `TodoApp` into `#root`, then offers a session that mirrors `#root`, through `justdom-xr`'s `offerHeadset`, which loads `xr.ts` only on a platform that can present.                                                                                                                                                            |
+| `src/xr.ts`                      | The session: makes the renderer with the controller and hand models from `justdom-xr`'s `inputModels()`, and the Enter button, and shows the canvas only while a session runs. Hands `render()` the keyboard as a panel option.                                                                                                       |
+| `src/components/TodoApp.ts`      | The app, written for the page: a field, an Add button, a count, and the list behind `scrollable` from `justdom-three-ui`, reordered by dragging.                                                                                                                                                                                      |
+| `src/components/TodoItem.ts`     | A row: a drag handle, a checkbox drawn honestly in both builds, a label, a Delete button.                                                                                                                                                                                                                                             |
+| `tests/drag-check.mjs`           | Reorders the list by dragging, with the mouse on the page and with the controller in the emulator.                                                                                                                                                                                                                                    |
+| `src/focusDiagnostics.ts`        | Under `?keylog`, a log in the card of keys, focus and the system keyboard, to read in a headset.                                                                                                                                                                                                                                      |
+| `src/components/Scene.ts`        | The scene: `dom(ctx, panel, …)`. A backdrop, lights, a cursor, the panel, and the frame rate while a session runs.                                                                                                                                                                                                                    |
+| `src/components/TodoKeyboard.ts` | What the headset's keyboard looks like: `keyboard` from `justdom-three-ui` dressed for this panel.                                                                                                                                                                                                                                    |
+| `justdom-xr`                     | Not a file here, but shared with the other headset apps: IWER behind `?emulator` and the offer of a session; `canPresent`; `xrSession`, the session the page is shown in, which the scene sets with `enterSession` and the app reads for its exit button; the backdrop; and the controller and hand models, from three's default CDN. |
 
 Three things the page does not know about, and does not need to.
 
@@ -65,17 +65,19 @@ and the list listens for the browser's drag and drop: `dragstart` on the handle 
 carried and fades its row, `dragover` turns the divider above the slot it would land in blue, and
 `drop` moves it. On the page that is a mouse drag. In a session it is the trigger closed on the
 handle, the ray carried down the list and the trigger opened, and justdom-three turns that into the
-same events, so the same handlers run. The marks are plain CSS, an `opacity` and a border colour,
-set by classes. `node tests/drag-check.mjs` does both, the mouse on the page and the controller in
-the emulator, and prints the events and the order the todos ended up in; `SHOT=drag.png` photographs
-the drag half way.
+same events, so the same handlers run. The marks are plain CSS, an `opacity` and a border colour, on
+two attributes, `data-dragging` and `data-drop-marker`. The handlers write two signals, which row is
+carried and which slot it would land in, and each row's attributes follow those.
+`node tests/drag-check.mjs` does both, the mouse on the page and the controller in the emulator, and
+prints the events and the order the todos ended up in; `SHOT=drag.png` photographs the drag half
+way.
 
 **Two things are there only in a session.** The frame rate, from justdom-three-ui's
 `useDiagnostics`, hangs in the upper left of the view. And the card grows an exit button in its
 top-right corner, an ordinary `<button>` hidden on the page, which ends the session when pressed.
 The app cannot ask the renderer whether there is a session, since it is mounted before there is one,
-so the scene tells it: it copies `getXRSession(ctx)` into `xrSession`, and the button's `hidden`
-follows that.
+so the scene tells it: it passes `getXRSession(ctx)` to `enterSession`, which sets `xrSession`, and
+the button's `hidden` follows that.
 
 **Nothing runs until a session does.** The renderer is made with `presentingOnly`, so no frame is
 drawn and no frame callback runs between sessions, and the panel is mounted when a session starts
@@ -98,11 +100,12 @@ would blur the field. `Escape` puts it away too.
 ## The key log
 
 `?keylog` puts a log at the bottom of the card, `src/focusDiagnostics.ts`, to read in a headset,
-where there are no dev tools. It shows whether `navigator.virtualKeyboard` exists and the rectangle
-its `geometrychange` reports, every `keydown` with whether the browser sent it (`TRUSTED`) or a
-script did (justdom-three's keyboard), focus moving in the card, and the window and the visual
-viewport changing size. It is there to answer the first question in #547: whether a keyboard paired
-with a Quest sends its keys to the page during a session while nothing on the page has focus.
+where there are no dev tools. The page fetches that file only when the address asks for the log. It
+shows whether `navigator.virtualKeyboard` exists and the rectangle its `geometrychange` reports,
+every `keydown` with whether the browser sent it (`TRUSTED`) or a script did (justdom-three's
+keyboard), focus moving in the card, and the window and the visual viewport changing size. It is
+there to answer the first question in #547: whether a keyboard paired with a Quest sends its keys to
+the page during a session while nothing on the page has focus.
 
 A ray's press on the field is a click justdom-three dispatches itself, which moves no focus, so in a
 session the field never has the page's focus. Giving it that focus (`?realfocus`, #527) was tried

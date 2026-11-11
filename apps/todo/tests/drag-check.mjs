@@ -6,6 +6,7 @@
  *
  *   node tests/drag-check.mjs
  *   SHOT=drag.png node tests/drag-check.mjs   # and photograph it mid-drag
+ *   CHROMIUM=<path> node tests/drag-check.mjs # with a Chromium found elsewhere
  *
  * First on the page with the mouse, which is the browser's own drag and
  * drop. Then in a session on the emulated headset (IWER standing in for a
@@ -113,7 +114,7 @@ async function main() {
   if (!url) throw new Error("no vite url");
 
   const browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
     args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
   });
   try {
@@ -223,7 +224,9 @@ async function main() {
           first[1] + ((fourth[1] - first[1] - 0.5) * step) / steps,
         );
       }
-      const dragging = await page.evaluate(() => document.querySelectorAll("li.dragging").length);
+      const dragging = await page.evaluate(
+        () => document.querySelectorAll("li[data-dragging]").length,
+      );
       console.log("  rows marked as being dragged mid-drag:", dragging);
       if (process.env.SHOT) {
         // Long enough for the panel to have drawn the marks the drag made.

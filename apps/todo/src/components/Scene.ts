@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { children, cursors, $, dom, getScene, getXRSession, Nothing } from "justdom-three";
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
 import { component, effects, effectsOnly, useEffects } from "justdom-signal";
-import { xrSession } from "justdom-xr/session";
+import { enterSession } from "justdom-xr/session";
 import { Backdrop } from "justdom-xr/scene";
 
 declare global {
@@ -33,7 +33,7 @@ const BACKDROP = "#1e2430";
  *
  * While a session runs there is also the frame rate, in the corner of the
  * view (`useDiagnostics` from justdom-three-ui), and the app is told about
- * the session (`xrSession`) so that its card can show a button that ends it.
+ * the session (`enterSession`) so that its card can show a button that ends it.
  *
  * The panel exists only while a session is presenting. Between sessions the
  * page is all anyone sees, and a portal kept up behind it would go on
@@ -67,7 +67,7 @@ export const Scene = (panel: HTMLElement) =>
       effects(() => {
         // Re-run as a session starts and as it ends.
         const session = getXRSession(ctx);
-        xrSession.set(session);
+        enterSession(session);
         if (session) {
           useDiagnostics(ctx, diagnostics);
         }

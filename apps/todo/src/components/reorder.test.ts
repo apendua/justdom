@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { slotBefore } from "./reorder.js";
+import { dividerAbove, LIST_TOP, slotBefore } from "./reorder.js";
 
 /** Three 40 px rows with a 4 px gap after each, as the list lays them out. */
 function rows(): HTMLElement[] {
@@ -26,5 +26,30 @@ describe("slotBefore", () => {
 
   test("below every row, last", () => {
     expect(slotBefore(rows(), 200)).toBe(null);
+  });
+});
+
+describe("which divider marks a slot", () => {
+  const ids = ["1", "2", "3"];
+
+  test("before the first row, the list's own top border", () => {
+    expect(dividerAbove(ids, "1")).toBe(LIST_TOP);
+  });
+
+  test("before any other row, the row above it", () => {
+    expect(dividerAbove(ids, "2")).toBe("1");
+    expect(dividerAbove(ids, "3")).toBe("2");
+  });
+
+  test("last, the last row", () => {
+    expect(dividerAbove(ids, null)).toBe("3");
+  });
+
+  test("last in an empty list, the list's top border", () => {
+    expect(dividerAbove([], null)).toBe(LIST_TOP);
+  });
+
+  test("before a row that has gone, as last", () => {
+    expect(dividerAbove(ids, "9")).toBe("3");
   });
 });

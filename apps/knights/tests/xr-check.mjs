@@ -21,7 +21,8 @@
  *   there, through the board's own `mousemove` handler;
  * - the trigger sends the stack along it, through the board's `click`
  *   handler, at the place on the page the ray met, and the turn passes on;
- * - the battle theme plays, from the scene and not from the page;
+ * - the battle theme, which the page played before, plays from the scene
+ *   and not from the page;
  * - Passthrough, in the toolbar, takes the backdrop down;
  * - the × ends the session, and the theme stops with it.
  *
@@ -151,7 +152,15 @@ async function main() {
         "a browser that cannot present does not load the headset scene",
       );
       check(!(await plain.$("#ARButton, #VRButton")), "and shows no Enter button");
-      check(!!(await plain.$("audio")), "and plays the battle theme on the page");
+      // The theme waits for a gesture, which a click on the backdrop is.
+      await plain.mouse.click(5, 5);
+      await plain.waitForTimeout(500);
+      check(
+        await plain.evaluate(() =>
+          [...document.querySelectorAll("audio")].some((audio) => !audio.paused),
+        ),
+        "and plays the battle theme on the page",
+      );
       if (SHOTS) {
         await plain.screenshot({ path: join(SHOTS, "page.png") });
       }
@@ -288,6 +297,13 @@ async function main() {
       return a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right;
     });
     check(clear, "the Enter button does not cover the toolbar");
+    await page.mouse.click(5, 5);
+    await page.waitForTimeout(500);
+    const beforeSession = await music();
+    check(
+      beforeSession.scene === 0 && beforeSession.page === 1,
+      `before any session the page plays the theme (${JSON.stringify(beforeSession)})`,
+    );
     await page.click("#ARButton, #VRButton");
     await page
       .waitForFunction(

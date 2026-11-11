@@ -3,7 +3,6 @@ import { just } from "justdom-signal";
 import Game from "./components/Game";
 import { offerHeadset } from "justdom-xr/offer";
 import Root, { RootContext } from "./store/Root";
-import { pageOnly } from "./headset";
 import "./index.css";
 
 const rootElement = document.querySelector<HTMLDivElement>("#root");
@@ -28,13 +27,7 @@ void root.createNewGame();
 // session is known to be possible, so a page that is only ever a page does
 // not fetch three.js.
 offerHeadset(() => import("./xr"), { touch: {} })
-  .then((xr) => {
-    if (xr) {
-      xr.offerXR(rootElement);
-    } else {
-      pageOnly.set(true);
-    }
-  })
+  .then((xr) => xr?.offerXR(rootElement))
   .catch((err) => {
     console.error("Could not offer an XR session:", err);
   });

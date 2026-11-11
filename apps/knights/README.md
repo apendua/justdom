@@ -38,11 +38,11 @@ Two controls are there only in a session: Passthrough, which takes down the dark
 is set against and shows the room, and the × at the end of the toolbar, which ends the session. On a
 narrow page both are in the menu behind ☰ instead.
 
-The battle theme belongs to the session where one can be opened. The scene plays it through
-`@apendua/sound/xr`'s `Music`, as every headset app here does, from the moment a session starts to
-the moment it ends, so a player who leaves the headset comes back to a quiet page. A page that can
-open no session plays it itself, from an `<audio>` element, from the first click or key press on.
-`src/headset.ts` holds which of the two the page is, as `main.ts` learns it from `offerHeadset`.
+The battle theme is the page's until a session starts. The page plays it from an `<audio>` element,
+from the first click or key press on. Once a session has started, the scene plays it through
+`@apendua/sound/xr`'s `Music`, as Castle does, from the moment each session starts to the moment it
+ends, and the page's `<audio>` is taken down for good. A player who leaves the headset comes back to
+a quiet page. `src/headset.ts` holds whether a session has started, which `xr.ts` sets.
 
 On a laptop the page is the page and nothing else. No session can be opened, so no button is shown,
 no renderer is made and three.js is never fetched. `?emulator` installs a headset in the browser
@@ -82,16 +82,17 @@ the stack there. It loads the page again at a phone's size and fails if the tool
 items on one line inside the screen, with the way of playing in the menu, or if turning the page
 sideways does not put that back in the toolbar. Then it loads the page with the emulator and fails
 if the Enter button covers the toolbar. Then it plays on the emulated headset, which takes about a
-minute: it checks that the theme plays from the scene and not from the page, points the ray at a
-field the white stack can reach and checks that the route is drawn, pulls the trigger and checks
-that the click reached the board at that place and the turn passed on, then turns the passthrough
-on, leaves by the × and checks that the theme stopped. The page alone must play the theme itself.
-`SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints a stack for anything
-the page throws. It drives the browser and the controller through `justdom-xr/driver`, which
-launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>`
-points it at one installed elsewhere. A pull request that changes this app or a package it imports,
-other than in docs, unit tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's,
-from `.github/workflows/driven.yml`.
+minute: it checks that the theme the page played before the session now plays from the scene and not
+from the page, points the ray at a field the white stack can reach and checks that the route is
+drawn, pulls the trigger and checks that the click reached the board at that place and the turn
+passed on, then turns the passthrough on, leaves by the × and checks that the theme stopped. The
+page alone must play the theme itself after a click. `SHOTS=<dir>` also photographs the page and the
+session, and `STACKS=1` prints a stack for anything the page throws. It drives the browser and the
+controller through `justdom-xr/driver`, which launches the Chromium at
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
+elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
+tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
+`.github/workflows/driven.yml`.
 
 | File                      | What it is                                                                                                                                                                                  |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

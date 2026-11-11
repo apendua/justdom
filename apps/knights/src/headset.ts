@@ -1,12 +1,12 @@
 import { Signal } from "justdom-signal";
 
 /**
- * Whether the page is known to be unable to open a headset session, set by
- * `main.ts` once `offerHeadset` has answered. False until then, so nothing
- * that is meant for a page alone starts before the answer is in.
+ * Whether a headset session has started on this page, set by `xr.ts` as the
+ * first one starts and never cleared.
  *
- * The soundtrack goes by it. A page that can open a session plays the music
- * in the session only, from the scene, and stops it when the session ends;
- * a page that cannot plays it on the page.
+ * The soundtrack goes by it. Until then the page plays the battle theme, as
+ * a page always has. From the first session on, the scene plays it for the
+ * length of each session and the page stays quiet, so the music neither
+ * doubles up in a session nor goes on after the player leaves one.
  */
-export const pageOnly = Signal.of(false);
+export const sessionStarted = Signal.of(false);

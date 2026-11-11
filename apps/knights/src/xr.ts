@@ -3,6 +3,7 @@ import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import { inputModels } from "justdom-xr/scene";
 import { svgElements } from "justdom-three/svg";
 import Scene from "./components/Scene";
+import { sessionStarted } from "./headset";
 
 /**
  * Offer the page a headset: a scene that mirrors `root`, the element the
@@ -36,6 +37,8 @@ export function offerXR(root: HTMLElement): void {
       document.body.appendChild(canvas);
       renderer.xr.addEventListener("sessionstart", () => {
         canvas.style.display = "block";
+        // The scene's music takes over from the page's, for good.
+        sessionStarted.set(true);
       });
       renderer.xr.addEventListener("sessionend", () => {
         canvas.style.display = "none";

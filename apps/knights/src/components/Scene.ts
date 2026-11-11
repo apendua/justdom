@@ -44,9 +44,9 @@ const BACKDROP = "#181410";
  * in motion is the lesser harm, as it is for Euclid's drawing.
  *
  * The battle theme plays here, for the length of each session, and stops
- * when the session ends. The page plays it only where no session can be
- * opened (see `headset.ts`), so a player back from a session gets the page
- * as quiet as they left it.
+ * when the session ends. The page plays it only until the first session
+ * starts (see `headset.ts`), so a player back from a session gets a quiet
+ * page.
  *
  * The panel exists only while a session is presenting. Between sessions
  * the page is all anyone sees, and a portal kept up behind it would go on
@@ -57,7 +57,7 @@ export const Scene = (root: HTMLElement) =>
     // Kept across sessions, so a second session's chart starts from the
     // first one's scale rather than from nothing.
     const diagnostics = createDiagnostics();
-    // The ears ride the camera, as in every headset app here.
+    // The ears ride the camera, as in Castle.
     const listener = new THREE.AudioListener();
     const music = createMusicControls({ track: stepsToTheThrone, volume: MUSIC_VOLUME });
 

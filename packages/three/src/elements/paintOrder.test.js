@@ -1884,11 +1884,17 @@ describe("a panel drawn in paint order", () => {
     await g.walk();
     const watched = watchBatch();
     try {
+      const [draw] = draws(g.panel);
+      const fill = /** @type {THREE.BufferAttribute} */ (draw.geometry.getAttribute("aFillColor"));
+      const was = fill.version;
       g.get("card").style.color = "rgb(255, 0, 0)";
       await g.settle();
       const batch = /** @type {PaintBatch} */ (watched.batch);
       assert.equal(watched.invalidate, 0, "nothing structural");
       assert.equal(batch.written, 1, "the run alone");
+      // The arrays alone would match a rebuild's with the draw never
+      // marked, and the label would keep its old colour on screen.
+      assert.equal(fill.version, was + 1, "uploaded");
       const patched = buffers(g.panel);
       batch.rebuild();
       assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
@@ -1899,6 +1905,126 @@ describe("a panel drawn in paint order", () => {
     restoreRange();
     canvas.restore();
   });
+
+  /**
+   * Recolour or restyle one thing on a page of labelled cards and check the
+   * batch patched it: nothing structural, `written` instances, and the
+   * buffers a rebuild writes.
+   *
+   * @param {PageSpec[]} spec
+   * @param {(g: Awaited<ReturnType<typeof page>>) => void} change
+   * @param {number} written
+   */
+  const patchesText = async (spec, change, written) => {
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page(spec);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      change(g);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(batch, "the batch is told");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      assert.equal(batch.written, written);
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+      g.teardown();
+      restoreRange();
+      canvas.restore();
+    }
+  };
+
+  test("a label of another size is patched in its own size's slot", () => {
+    // Two labels of different lengths are two size classes, two arrays in
+    // one draw: a patch that wrote the wrong slot would draw the label
+    // with the other's glyphs.
+    return patchesText(
+      [
+        { id: "a", style: CARD, at: [20, 20, 200, 40], text: "one" },
+        { id: "b", style: CARD, at: [20, 100, 200, 40], text: "another one" },
+      ],
+      (g) => {
+        g.get("b").style.color = "rgb(255, 0, 0)";
+      },
+      1,
+    );
+  });
+
+  test("a fade writes its box and its label where they are", () => {
+    // The tint tells the batch when the opacity changes as well as the
+    // colour; without it the label keeps its alpha while its box fades.
+    return patchesText(
+      [
+        { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+        { id: "other", style: CARD, at: [20, 100, 200, 40] },
+      ],
+      (g) => {
+        g.get("card").style.opacity = "0.5";
+      },
+      2,
+    );
+  });
+
+  for (const [axis, dx, dy] of /** @type {const} */ ([
+    ["across", 7, 0],
+    ["down", 0, 7],
+  ])) {
+    test(`a label that moves ${axis} in its box is written where it is`, async () => {
+      // Its parent gains padding: the lines, and so the raster, stay as
+      // they were, and the run's place is all that changes. `text.js` tells
+      // the batch it moved; without that the run is drawn where it was.
+      let shift = { x: 0, y: 0 };
+      const stubbed = document.createRange;
+      const restore = () => {
+        document.createRange = stubbed;
+      };
+      const canvas = stubCanvas();
+      const restoreRange = installRange();
+      const measuring = document.createRange;
+      document.createRange = () => {
+        const range = measuring();
+        const rect = range.getBoundingClientRect.bind(range);
+        const shifted = () => {
+          const r = rect();
+          return /** @type {DOMRect} */ ({
+            ...r,
+            left: r.left + shift.x,
+            right: r.right + shift.x,
+            top: r.top + shift.y,
+            bottom: r.bottom + shift.y,
+          });
+        };
+        range.getBoundingClientRect = shifted;
+        range.getClientRects = () =>
+          /** @type {DOMRectList} */ (/** @type {unknown} */ ([shifted()]));
+        return range;
+      };
+      const g = await page([
+        { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+        { id: "other", style: CARD, at: [20, 100, 200, 40] },
+      ]);
+      await g.walk();
+      try {
+        const result = await patchOf(g, () => {
+          shift = { x: dx, y: dy };
+          g.get("card").style.padding = `${dy}px 0 0 ${dx}px`;
+        });
+        assert.equal(result.moved, 1, "the run moved");
+        assert.equal(result.invalidate, 0, "nothing structural");
+        assert.deepEqual(result.patched, result.rebuilt, "what a rebuild writes");
+      } finally {
+        g.teardown();
+        restoreRange();
+        restore();
+        canvas.restore();
+      }
+    });
+  }
 
   test("a run changed past its writer's back is rebuilt, not patched", async () => {
     // The same second guard as a box's, for a run: hidden, reordered or no

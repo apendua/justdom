@@ -53,7 +53,9 @@ import { TextPrepareContext } from "./textPrepare.js";
  * it writes in `extra`.
  *
  * Every effect that writes something the batch copied out of the mesh says
- * so, through `invalidate`, which is cheap and coalesced.
+ * so, and only when the value changed: the tint through `changed`, which
+ * writes the run's instance where it is, and the texture, the visibility and
+ * the order through `invalidate`, which is structural and coalesced.
  *
  * @param {WeakKey} ctx
  * @param {TextRunSource} source

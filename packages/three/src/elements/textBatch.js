@@ -706,7 +706,8 @@ export class TextBatch {
   }
 
   /**
-   * `changed` for every run under `object`, which share its clip.
+   * `changed` for every run that is a child of `object`, which share its
+   * clip.
    *
    * @param {THREE.Object3D} object
    * @returns {void}
@@ -715,7 +716,6 @@ export class TextBatch {
     const children = object.children;
     for (let i = 0; i < children.length; i++) {
       this.changed(/** @type {THREE.Mesh} */ (children[i]));
-      this.changedUnder(children[i]);
     }
   }
 

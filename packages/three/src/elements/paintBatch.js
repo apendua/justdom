@@ -577,8 +577,8 @@ export class PaintBatch {
   /** Something structural is pending, so the flush rebuilds. */
   #structural = false;
   /**
-   * The boxes whose numbers changed since the last flush, and nothing else
-   * about them: each once, in a list walked by index, since a hover or a
+   * The boxes and runs whose numbers changed since the last flush, and
+   * nothing else about them: each once, in a list walked by index, since a hover or a
    * colour animation patches every frame.
    *
    * @type {Object3D[]}
@@ -768,10 +768,10 @@ export class PaintBatch {
   }
 
   /**
-   * A box's numbers changed, and nothing else about it: the next flush
-   * writes its instances where the last rebuild put them, unless anything
-   * structural is pending or the box no longer matches what the rebuild
-   * recorded (see the file's header).
+   * A box's or a run's numbers changed, and nothing else about it: the
+   * next flush writes its instances where the last rebuild put them, unless
+   * anything structural is pending or the member no longer matches what the
+   * rebuild recorded (see the file's header).
    *
    * @param {Object3D} mesh A member of `boxes` or of `runs`.
    * @returns {void}
@@ -835,7 +835,7 @@ export class PaintBatch {
 
   /**
    * Write the matrices under the objects marked moved and the instances of
-   * the boxes marked changed where the last rebuild put them, if every one
+   * the boxes and runs marked changed where the last rebuild put them, if every one
    * of them still matches the record; say whether it did. A move that does
    * not match leaves matrices written, which the rebuild that follows
    * writes again.
@@ -971,8 +971,8 @@ export class PaintBatch {
   }
 
   /**
-   * Whether a box the last rebuild recorded is drawn where and as it
-   * recorded it, so that writing its numbers there draws what a rebuild
+   * Whether a box or a run the last rebuild recorded is drawn where and as
+   * it recorded it, so that writing its numbers there draws what a rebuild
    * would.
    *
    * @param {Object3D} object

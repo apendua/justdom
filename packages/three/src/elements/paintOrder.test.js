@@ -1469,6 +1469,41 @@ describe("a panel drawn in paint order", () => {
     canvas.restore();
   });
 
+  test("a restyle reaches the batch only when it changes what a box draws", async () => {
+    // Every box writes its numbers through `BoxNumbers`, which asks the
+    // batch to lay its draws again only when a write changed one. A text
+    // colour on a box with no text changes none of them.
+    const g = await page([{ id: "card", style: CARD, at: [40, 40, 200, 150] }]);
+    await g.walk();
+    const fill = () => {
+      const [draw] = draws(g.panel);
+      const color = /** @type {THREE.InstancedBufferAttribute} */ (
+        draw.geometry.getAttribute("aFillColor")
+      );
+      return [color.getX(0), color.getY(0), color.getZ(0)];
+    };
+    assert.deepEqual(fill(), [1, 1, 1]);
+    const invalidate = PaintBatch.prototype.invalidate;
+    let asked = 0;
+    PaintBatch.prototype.invalidate = function () {
+      asked += 1;
+      return invalidate.call(this);
+    };
+    try {
+      g.get("card").style.color = "rgb(255, 0, 0)";
+      await g.settle();
+      assert.equal(asked, 0, "nothing the box draws changed");
+      g.get("card").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      assert.ok(asked > 0, "a background colour is asked for");
+    } finally {
+      PaintBatch.prototype.invalidate = invalidate;
+    }
+    await g.walk();
+    assert.deepEqual(fill(), [0, 0, 1], "and drawn");
+    g.teardown();
+  });
+
   test("a box that paints nothing takes no instance until a style gives it a colour", async () => {
     // A hundred wrappers around their text, the shape most of a page has.
     // Each took an instance it drew nothing with.

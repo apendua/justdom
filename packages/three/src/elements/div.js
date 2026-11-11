@@ -4,16 +4,7 @@ import { Derived, effects, flatMap, just, on, set, observable, useEffects } from
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
-import {
-  batchedBoxMaterial,
-  createRectMaterial,
-  createRectUniforms,
-  rectGeometry,
-  writeClipUniforms,
-  writeGradientUniforms,
-  writeImageUniforms,
-  writeRectUniforms,
-} from "./sdfRect.js";
+import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "./sdfRect.js";
 import { RampSlot } from "./gradient.js";
 import { backgroundImage, contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
@@ -46,7 +37,8 @@ import {
 import { LayerOrderContext } from "./layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
-import { place, placeAndScale } from "./place.js";
+import { place } from "./place.js";
+import { BoxNumbers } from "./boxNumbers.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import { forwardListEvents, forwardPointerEvents, isRayTarget } from "./pointerForwarding.js";
@@ -249,7 +241,7 @@ const committedPlacements = new WeakMap();
  * `box`).
  *
  * @param {THREE.Mesh} mesh
- * @param {ReturnType<typeof createRectUniforms>} uniforms
+ * @param {BoxNumbers['uniforms']} uniforms
  * @param {() => import('./boxBatch.js').BoxBatch | null} batch
  * @param {() => boolean} paints
  * @returns {EntityEffect<THREE.Mesh>[]}
@@ -498,9 +490,10 @@ export function box(ctx, element, options = {}) {
    * reaches the render list, so a material of its own would be a uuid, a
    * place in three's bookkeeping and a `dispose()` at teardown, per box, for
    * a program that is never compiled. What it actually needs is this record,
-   * which the batch copies into its instance buffers.
+   * which the batch copies into its instance buffers. Written through
+   * `BoxNumbers`, which tells the batch when a write changed anything.
    */
-  const uniforms = createRectUniforms();
+  const numbers = new BoxNumbers(boxMesh, () => batch()?.invalidate());
   clipRaycast(boxMesh, () => currentClipBox, object);
 
   /**
@@ -556,9 +549,11 @@ export function box(ctx, element, options = {}) {
   const textBatch = TextBatchContext.get(ctx);
 
   /**
-   * Say that something the batches copied out of this box has changed. Cheap
-   * and coalesced — each rebuilds once however many boxes call it — so the
-   * effects below can simply say so whenever they write anything.
+   * Say that the box's object moved or was shown or hidden, which both
+   * batches copy as they walk. Cheap and coalesced: each rebuilds once
+   * however many boxes call it. The quad's own numbers are not told here:
+   * `BoxNumbers` tells the box batch itself, and only when a write changed
+   * one.
    *
    * @returns {void}
    */
@@ -842,14 +837,13 @@ export function box(ctx, element, options = {}) {
    */
   const quad = () =>
     $(boxMesh, [
-      ...drawQuad(boxMesh, uniforms, batch, () => properties.paints),
+      ...drawQuad(boxMesh, numbers.uniforms, batch, () => properties.paints),
       // The quad is the element's own painting, so it goes when the element
       // is hidden — out of the draw, out of the batch's walk and out of the
       // raycast, all three of which follow this flag — while the content
       // group beside it stays for any child that says `visible`.
-      effects((obj) => {
-        obj.visible = !hidden();
-        batchChanged();
+      effects(() => {
+        numbers.show(!hidden());
       }),
       // Lets go of the ramp row when the box goes, and not before.
       effects(() => {
@@ -857,35 +851,22 @@ export function box(ctx, element, options = {}) {
           rampSlot.release();
         });
       }),
-      effects((obj) => {
-        writeRectUniforms(uniforms, properties);
-        writeGradientUniforms(uniforms, properties, rampSlot);
-        // A quad scaled to nothing has no surface to draw or hit, and a
-        // zero scale is not invertible; an empty box is better described
-        // as very small — same convention as the blocker. It is level with
-        // its object, and drawn in front of what it covers by the order
-        // alone.
-        placeAndScale(
-          obj,
-          0,
-          0,
-          0,
-          Math.max(properties.totalWidth, 1e-6),
-          Math.max(properties.totalHeight, 1e-6),
-          1,
-        );
+      effects(() => {
+        numbers.paint(properties, rampSlot);
+        // Level with its object, and drawn in front of what it covers by
+        // the order alone.
+        numbers.place(0, 0, properties.totalWidth, properties.totalHeight);
         // A batched box's order is the one the batch lays it at, with the
         // bias added there. One that draws itself takes its own, behind its
         // integer, since its origin, level with the container's, cannot
         // order it against the text.
-        obj.renderOrder = properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS);
-        batchChanged();
+        numbers.order(properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS));
       }),
       // Its own effect: a texture arriving late must not look like a reason
       // to rewrite the box, and the box moving must not look like a reason
       // to rebind a texture.
       effects(() => {
-        writeImageUniforms(uniforms, shownPicture());
+        numbers.image(shownPicture());
       }),
     ]);
 
@@ -925,7 +906,6 @@ export function box(ctx, element, options = {}) {
     }),
     effects(() => {
       properties.setFromElement(element);
-      batchChanged();
     }),
     // Where the box stands and what clips it, in one effect: the clip is
     // given in the box's own frame, so a box that moves inside a clipping
@@ -957,7 +937,7 @@ export function box(ctx, element, options = {}) {
         place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
       }
       currentClipBox = getLocalClipBox(element);
-      writeClipUniforms(uniforms, currentClipBox);
+      numbers.clip(currentClipBox);
       // Fragments outside the box are discarded, but an element with nothing
       // left to show is worth skipping wholesale — `visible` prunes it and
       // its descendants from the render traversal, and from the batch's walk,

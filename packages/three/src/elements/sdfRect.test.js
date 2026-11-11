@@ -9,6 +9,7 @@ import {
   writeRectUniforms,
 } from "./sdfRect.js";
 import VisualProperties from "./VisualProperties.js";
+import { BoxNumbers } from "./boxNumbers.js";
 import {
   GRADIENT_LINEAR,
   layoutGradient,
@@ -290,5 +291,84 @@ describe("the gradient layer", () => {
     // The ramp texture is the page's, by reference.
     assert.equal(material.uniforms.uRamp, rampUniforms.uRamp);
     slot.release();
+  });
+});
+
+describe("BoxNumbers", () => {
+  /** @returns {{ numbers: BoxNumbers, mesh: THREE.Mesh, marks: () => number }} */
+  const box = () => {
+    const mesh = new THREE.Mesh(rectGeometry);
+    let marked = 0;
+    const numbers = new BoxNumbers(mesh, () => {
+      marked += 1;
+    });
+    return { numbers, mesh, marks: () => marked };
+  };
+
+  test("each write tells the batch when it changed something, and only then", () => {
+    const { numbers, mesh, marks } = box();
+    const slot = new RampSlot();
+    const blue = propertiesOf({ width: "20px", height: "10px", background: "rgb(0, 0, 255)" });
+    const clip = {
+      left: 0,
+      top: 0,
+      right: 20,
+      bottom: 10,
+      topLeft: 0,
+      topRight: 0,
+      bottomRight: 0,
+      bottomLeft: 0,
+    };
+    /** @type {[string, () => void][]} */
+    const writes = [
+      ["paint", () => numbers.paint(blue, slot)],
+      ["clip", () => numbers.clip(clip)],
+      ["place", () => numbers.place(1, 2, 20, 10)],
+      ["order", () => numbers.order(3)],
+      ["show", () => numbers.show(false)],
+    ];
+    for (const [name, write] of writes) {
+      const before = marks();
+      write();
+      assert.equal(marks(), before + 1, `${name}: a new value is marked`);
+      write();
+      assert.equal(marks(), before + 1, `${name}: the same value again is not`);
+    }
+    assert.equal(numbers.uniforms.uFillColor.value.z, 1);
+    assert.deepEqual([mesh.position.x, mesh.position.y, mesh.scale.x], [1, 2, 20]);
+    assert.equal(mesh.renderOrder, 3);
+    assert.equal(mesh.visible, false);
+    numbers.paint(propertiesOf({ width: "20px", height: "10px", background: "red" }), slot);
+    assert.equal(marks(), writes.length + 1, "a colour that changed is marked");
+    slot.release();
+  });
+
+  test("a picture, and none, are marked once each", () => {
+    const { numbers, marks } = box();
+    numbers.image(null);
+    assert.equal(marks(), 0, "no picture is what a box starts with");
+    const image = {
+      texture: new THREE.Texture(),
+      left: 0,
+      top: 0,
+      right: 10,
+      bottom: 10,
+      content: { left: 0, top: 0, right: 10, bottom: 10 },
+      opacity: 1,
+      repeatX: false,
+      repeatY: false,
+      underGradient: false,
+    };
+    numbers.image(/** @type {never} */ (image));
+    numbers.image(/** @type {never} */ (image));
+    assert.equal(marks(), 1);
+    numbers.image(null);
+    assert.equal(marks(), 2);
+  });
+
+  test("an empty box is placed very small rather than at a zero scale", () => {
+    const { numbers, mesh } = box();
+    numbers.place(0, 0, 0, 0);
+    assert.ok(mesh.scale.x > 0 && mesh.scale.y > 0);
   });
 });

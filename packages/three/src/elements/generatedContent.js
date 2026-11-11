@@ -4,14 +4,8 @@ import { $, children, Nothing } from "../operators.js";
 import VisualProperties from "./VisualProperties.js";
 import { getInteriorClipBox, getScrollOffset, hidesVisibility } from "./mirror.js";
 import { getGenerated, KIND_BITS, paintsBox } from "./pseudoElements.js";
-import {
-  createRectUniforms,
-  rectGeometry,
-  writeClipUniforms,
-  writeGradientUniforms,
-  writeImageUniforms,
-  writeRectUniforms,
-} from "./sdfRect.js";
+import { rectGeometry } from "./sdfRect.js";
+import { BoxNumbers } from "./boxNumbers.js";
 import { RampSlot } from "./gradient.js";
 import { backgroundImage, contentImageEqual, placeContentImage } from "./image.js";
 import { toLocalClipBox } from "./clip.js";
@@ -243,7 +237,7 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
   // Named for the pseudo-element, which is all that tells it from its
   // element's quad in a scene's tree.
   mesh.name = pseudo;
-  const uniforms = createRectUniforms();
+  const numbers = new BoxNumbers(mesh, () => batch()?.invalidate());
   const rampSlot = new RampSlot();
   surface.clipMesh(mesh);
   const background = backgroundImage(properties);
@@ -284,37 +278,29 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
     { isEqual: contentImageEqual },
   );
   return $(mesh, [
-    ...drawQuad(mesh, uniforms, batch, () => properties.paints),
+    ...drawQuad(mesh, numbers.uniforms, batch, () => properties.paints),
     effects(() => {
       onCleanup(() => {
         rampSlot.release();
         batchChanged();
       });
     }),
-    effects((obj) => {
-      writeRectUniforms(uniforms, properties);
-      writeGradientUniforms(uniforms, properties, rampSlot);
+    effects(() => {
+      numbers.paint(properties, rampSlot);
       const quad = generated.quad();
       const box = generated.layout.get();
-      const at = { x: origin().x + quad.x - box.x, y: origin().y + quad.y - box.y };
+      const x = origin().x + quad.x - box.x;
+      const y = origin().y + quad.y - box.y;
       const corner = frame();
-      placeAndScale(
-        obj,
-        at.x - corner.x,
-        at.y - corner.y,
-        0,
-        Math.max(properties.totalWidth, 1e-6),
-        Math.max(properties.totalHeight, 1e-6),
-        1,
+      numbers.place(x - corner.x, y - corner.y, properties.totalWidth, properties.totalHeight);
+      numbers.clip(toLocalClipBox(getInteriorClipBox(element), x, y));
+      numbers.order(
+        getRenderBand(generated) + getDrawLevel(generated) + (batch() ? 0 : UNBATCHED_BOX_BIAS),
       );
-      writeClipUniforms(uniforms, toLocalClipBox(getInteriorClipBox(element), at.x, at.y));
-      obj.renderOrder =
-        getRenderBand(generated) + getDrawLevel(generated) + (batch() ? 0 : UNBATCHED_BOX_BIAS);
-      obj.visible = !surface.hidden();
-      batchChanged();
+      numbers.show(!surface.hidden());
     }),
     effects(() => {
-      writeImageUniforms(uniforms, shown.get());
+      numbers.image(shown.get());
     }),
   ]);
 }

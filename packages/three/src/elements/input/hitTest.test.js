@@ -18,12 +18,14 @@ import {
   mountScene,
 } from "../../test/paintOrderScenes.js";
 import { getBoxDrawOrder, getObjectDrawOrder } from "../../drawOrder.js";
+import { intersectVisible, LEVEL } from "../../interactions.js";
 import { getPanel, hitElement } from "./dragAndDrop.js";
 import { isInRayTarget } from "./pointerForwarding.js";
 
 /**
  * @import { Scene } from "../../test/paintOrderScenes.js";
  * @import { Panel } from "./dragAndDrop.js";
+ * @import { XREventMap } from "../../core.js";
  */
 
 /** Rays across the scene, a side, for each slant. */
@@ -45,8 +47,12 @@ const SLANTS = [0, 0.5];
 /**
  * Where the two may differ (see the doc's list):
  *
- * - `tie`: both elements' boxes are drawn at one order. The cast keeps the
- *   first it found, the scan the later in tree order, which is right. In
+ * - `tie`: more than one element draws on top at the point, level and at
+ *   one order, and the scan names one of them. Which one the cast names
+ *   falls to the order three finds level hits in, which moves with the
+ *   rounding of three's own matrix maths from one version to the next, so
+ *   a tie is counted on every such ray, whether or not the two agreed. Of
+ *   boxes tied on top, the scan's is to be the later in tree order. In
  *   jsdom no frame walks the layers, so every layer here keeps the base its
  *   nesting gives it (`getElevation`), and coplanar sibling layers tie too.
  * - `content`: the cast met what an element draws a level past its box,
@@ -64,18 +70,20 @@ const SLANTS = [0, 0.5];
  * is held too, so that a scan that loses an element, and falls through to
  * the root where no ray is compared, fails.
  *
- * Every tie here is between boxes the stand-in layout lays over each other
- * at one order: labels wider than their cards, and two layers on one plane
- * whose bases no walk has set apart. Every content difference is a card's
- * label drawn over a card piled on it, or the faded menu's content, which
- * the stand-in layout puts over the label before the menu. A page hit-tests
- * what `opacity: 0` hides, and so do both.
+ * Every tie here is between things the stand-in layout lays over each
+ * other at one order: labels wider than their cards, two layers on one
+ * plane whose bases no walk has set apart, the options' text, which the
+ * stand-in measures from the page's corner, and the faded menu's picture
+ * level with the label's text before it. Every content difference is a
+ * card's label drawn over a card piled on it, or the faded menu's content
+ * over the label's box. A page hit-tests what `opacity: 0` hides, and so do
+ * both.
  *
  * @type {Record<string, { compared: number } & Partial<Record<Case, number>>>}
  */
 const EXPECTED = {
   "800-row list": { compared: 1152 },
-  "100 cards, apart": { compared: 1020, tie: 84 },
+  "100 cards, apart": { compared: 1020, tie: 90 },
   "100 cards, piled": { compared: 1152, content: 4 },
   "100 cards, translucent": { compared: 1152, content: 4 },
   "lifted by translateZ": { compared: 1152 },
@@ -87,8 +95,8 @@ const EXPECTED = {
   "three tilted about one centre": { compared: 1152 },
   "a closed overlay": { compared: 1152 },
   "a hidden group, one child shown": { compared: 1152 },
-  "a select of ten options": { compared: 1152 },
-  "a menu faded to opacity 0": { compared: 1152, content: 22 },
+  "a select of ten options": { compared: 1152, tie: 32 },
+  "a menu faded to opacity 0": { compared: 1152, tie: 110, content: 22 },
   "an svg with a clip, a symbol and a use": { compared: 1152 },
   "a positioned badge over later flow siblings": { compared: 1152 },
   "a row cut by its scroller's edge": { compared: 1152 },
@@ -195,12 +203,13 @@ const RULE_SCENES = [
 ];
 
 /**
- * Which case of the doc's list a difference is, or `null` for one in none.
+ * Which case of the doc's list a difference is other than a tie, or `null`
+ * for one in none.
  *
  * @param {THREE.Intersection} hit The cast's.
  * @param {Element | null} cast The element the cast's hit is in.
  * @param {Element} scanned
- * @returns {Case | null}
+ * @returns {"content" | null}
  */
 function caseOf(hit, cast, scanned) {
   if (!cast) {
@@ -216,13 +225,6 @@ function caseOf(hit, cast, scanned) {
   const hitOrder = getObjectDrawOrder(hit.object);
   if (castOrder !== undefined && hitOrder > scannedOrder && hitOrder > castOrder) {
     return "content";
-  }
-  // Of two boxes at one order, the scan's is to be the later in tree order.
-  if (
-    castOrder === scannedOrder &&
-    cast.compareDocumentPosition(scanned) & Node.DOCUMENT_POSITION_FOLLOWING
-  ) {
-    return "tie";
   }
   return null;
 }
@@ -266,6 +268,63 @@ async function differences(build) {
     }
     return null;
   };
+  const raycaster = new THREE.Raycaster();
+  /** @type {THREE.Intersection<THREE.Object3D<XREventMap>>[]} */
+  const hits = [];
+  /**
+   * The elements drawn on top under a ray, as the cast reads them: the
+   * nearest hits, level with one another, at the latest order among them.
+   * Every element but the root is a ray target, so the cast walks what is
+   * under each of the root's children.
+   *
+   * @param {THREE.Ray} ray
+   * @returns {{ elements: Set<Element>, order: number }}
+   */
+  const onTop = (ray) => {
+    raycaster.ray.copy(ray);
+    hits.length = 0;
+    for (const child of root.children) {
+      const object = registered.objectOf(child);
+      if (object) {
+        intersectVisible(raycaster, /** @type {THREE.Object3D<XREventMap>} */ (object), hits);
+      }
+    }
+    /** @type {Set<Element>} */
+    const elements = new Set();
+    let order = -Infinity;
+    const nearest = Math.min(...hits.map((hit) => hit.distance));
+    for (const hit of hits) {
+      if (hit.distance - nearest > LEVEL) {
+        continue;
+      }
+      const hitOrder = getObjectDrawOrder(hit.object);
+      if (hitOrder > order) {
+        order = hitOrder;
+        elements.clear();
+      }
+      const element = owner(hit.object);
+      if (hitOrder === order && element) {
+        elements.add(element);
+      }
+    }
+    return { elements, order };
+  };
+  /**
+   * Whether `scanned` is the later in tree order of the boxes in `top`
+   * drawn at `order`, when its own box is one of them.
+   *
+   * @param {Set<Element>} top
+   * @param {number} order
+   * @param {Element} scanned
+   */
+  const latestBox = (top, order, scanned) =>
+    getBoxDrawOrder(scanned) !== order ||
+    [...top].every(
+      (element) =>
+        element === scanned ||
+        getBoxDrawOrder(element) !== order ||
+        element.compareDocumentPosition(scanned) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   // The root's own box can be narrower than what it holds: the grid spans
   // every element's.
   let width = 0;
@@ -304,6 +363,15 @@ async function differences(build) {
         compared += 1;
         const hit = manager.getIntersection(controller);
         const cast = hit ? owner(hit.object) : null;
+        const top = onTop(ray);
+        if (cast && top.elements.size > 1 && top.elements.has(cast) && top.elements.has(scanned)) {
+          if (latestBox(top.elements, top.order, scanned)) {
+            counts.tie = (counts.tie ?? 0) + 1;
+          } else {
+            odd.push(`${Math.round(x)},${Math.round(y)} slant ${slant}`);
+          }
+          continue;
+        }
         if (cast === scanned) {
           continue;
         }

@@ -39,7 +39,7 @@ import {
 import { LayerOrderContext } from "./layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
-import { markMoved, place, placeAndScale } from "./place.js";
+import { markMoved, place } from "./place.js";
 import { BoxNumbers } from "./boxNumbers.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";

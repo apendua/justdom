@@ -227,6 +227,8 @@ export function bandBase(order) {
 }
 
 /** @type {WeakMap<PaintNode, Signal<number | null>>} */
+// Not a nodeCache: keyed by a layer and set by the panel's walk, which writes
+// it whole each time.
 const layerBases = new WeakMap();
 
 /**
@@ -620,6 +622,45 @@ function paintNode(child) {
   return child.nodeType === Node.ELEMENT_NODE ? /** @type {Element} */ (child) : null;
 }
 
+/**
+ * Whether a box in painting layer `layer` clears a sibling it overlaps in
+ * painting layer `below` (`getPaintLayer`), where `earlier` says whether the
+ * sibling comes first in tree order. This is the rule `getClearedSiblings`
+ * applies: a box in the flow (`null`) or with a negative `z-index` (`-1`)
+ * clears nothing, and any other clears a flow sibling, a sibling in a lower
+ * layer and an earlier one in its own.
+ *
+ * @param {PaintLayer} layer
+ * @param {PaintLayer} below
+ * @param {boolean} earlier
+ * @returns {boolean}
+ */
+export function clears(layer, below, earlier) {
+  if (layer === null || layer === -1) {
+    return false;
+  }
+  return below === null || below < layer || (below === layer && earlier);
+}
+
+/**
+ * Whether an overlap between two siblings, neither of them a layer
+ * (`getLayer`), decides a draw level: whether either clears the other
+ * (`clears`). That is so exactly when one of them is in painting layer 0 or
+ * 1. Two boxes in the flow, a box with a negative `z-index` and one in the
+ * flow, and two boxes with a negative `z-index` are drawn in their order
+ * however they overlap. Tree order does not change the answer: of two boxes
+ * in one layer that clears, the later clears the earlier. Whatever holds a
+ * step until the order it changes is committed asks this, so that it holds
+ * for exactly the overlaps `getDrawLevel` reads.
+ *
+ * @param {PaintLayer} layer the box's painting layer
+ * @param {PaintLayer} theirs the sibling's
+ * @returns {boolean}
+ */
+export function overlapOrders(layer, theirs) {
+  return clears(layer, theirs, true) || clears(theirs, layer, true);
+}
+
 /** @type {WeakMap<PaintNode, Derived<readonly PaintNode[]>>} */
 const clearedCache = nodeCache();
 
@@ -641,7 +682,9 @@ const clearedCache = nodeCache();
  * This is the one place the paint-layer and overlap rules are applied.
  * Whatever orders an element against its siblings reads it rather than
  * scanning again: `getDrawLevel`, and the paint-order count in
- * `test/paintOrderCount.js`.
+ * `test/paintOrderCount.js`. The motion step in `div.js`, which tests
+ * bounds no scan has read yet, asks the same rule through `clears`
+ * (`overlapOrders`) and the same test through `overlaps`.
  *
  * Reactive: it follows the style, layout and child list of the parent's
  * children. Nothing here runs per frame. The scan reads every sibling's
@@ -668,8 +711,9 @@ export function getClearedSiblings(element) {
         const layer = getPaintLayer(element);
         // A box with a negative `z-index` clears nothing either: anything it
         // cleared would also put it after its flow siblings, which a page
-        // paints over it.
-        if (layer === null || layer === -1) {
+        // paints over it. Asked before the scan, so that such a box reads
+        // no sibling at all.
+        if (!clears(layer, null, true)) {
           return NOTHING_CLEARED;
         }
         // The portal's root has no siblings inside the portal.
@@ -690,10 +734,9 @@ export function getClearedSiblings(element) {
           if (!sibling) {
             continue;
           }
-          const below = getPaintLayer(sibling);
           // A flow sibling is under the element in either tree order: a
           // page paints the flow before any positioned box.
-          if (below !== null && (below > layer || (below === layer && !earlier))) {
+          if (!clears(layer, getPaintLayer(sibling), earlier)) {
             continue;
           }
           if (

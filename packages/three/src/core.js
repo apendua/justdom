@@ -430,6 +430,13 @@ export function when(condition, render) {
  * compared by identity, so while it gives the same key what is mounted is
  * left alone. This is `branch` from `justdom-core`, for Three objects.
  *
+ * A replacement goes in the order this package's `list` replaces an item,
+ * which is not `justdom-core`'s: `render(key)` runs and the new alternative
+ * is added while the old one is still in the scene, then the old one is
+ * taken out, and only then are its effects disposed. So for a moment both
+ * are in the scene, and an alternative that holds something only one may
+ * hold, such as a physics body, has to allow for that.
+ *
  * @template K
  * @param {() => K} select
  * @param {(key: K) => Subscribable<Component>} render

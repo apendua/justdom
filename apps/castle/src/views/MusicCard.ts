@@ -1,5 +1,5 @@
-import { component, on, set } from "justdom-signal";
-import { children, $, text } from "justdom-core";
+import { on, set } from "justdom-signal";
+import { children, $, text, when } from "justdom-core";
 import { dropdown } from "justdom-three-ui";
 import type { AudioOutputSelection } from "@apendua/sound";
 import { musicRow, outputClasses, panelCard, panelTitle, stepButton, stepValue } from "./styles.js";
@@ -47,19 +47,18 @@ export function musicCard(
       // Nothing to switch between is nothing to show: most headsets have one way
       // out for sound, and it is only a desktop with a headset plugged in next
       // to its speakers that has a choice worth making.
-      component(() => {
-        if (output.outputs.get().length < 2) {
-          return text``;
-        }
-        return dropdown({
-          options: () =>
-            output.outputs.get().map(({ deviceId, label }) => ({ value: deviceId, label })),
-          classes: outputClasses,
-          placeholder: "Browser's choice",
-          selected: () => output.deviceId.get(),
-          onSelect: (deviceId) => output.select(deviceId),
-        });
-      })(),
+      when(
+        () => output.outputs.get().length >= 2,
+        () =>
+          dropdown({
+            options: () =>
+              output.outputs.get().map(({ deviceId, label }) => ({ value: deviceId, label })),
+            classes: outputClasses,
+            placeholder: "Browser's choice",
+            selected: () => output.deviceId.get(),
+            onSelect: (deviceId) => output.select(deviceId),
+          }),
+      ),
     ),
   ]);
 }

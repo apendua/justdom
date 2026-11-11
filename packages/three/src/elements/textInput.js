@@ -165,6 +165,7 @@ export const PASSWORD_BULLET = "•";
  *
  * @type {WeakMap<HTMLInputElement, Signal<number>>}
  */
+// Not a nodeCache: the element's own signal, see above.
 const valueVersions = new WeakMap();
 
 /**

@@ -3512,7 +3512,7 @@ describe("mounting a tree justdom-core did not build", () => {
           throw new Error("Cannot replace a segment that is not in a tree.");
         }
         parent.insertBefore(node, first);
-        for (let current = /** @type {Node | null} */ (first); current; ) {
+        for (let current = /** @type {Node | null} */ (first); current;) {
           const next = current.nextSibling;
           parent.removeChild(current);
           current = current === last ? null : next;
@@ -5019,6 +5019,52 @@ describe("a panel that is always busy", () => {
       during: held,
       after(object) {
         assert.equal(object.matrix.elements[12], 45, "the live transform, once committed");
+      },
+    }));
+
+  test("a step of a box with a negative z-index onto a sibling in the flow is drawn at once", () =>
+    // Neither clears the other (`overlapOrders`): the page paints the flow
+    // over the card wherever it goes, so covering the sibling changes no
+    // draw level, and holding the step would only make it lag.
+    whileWaiting({
+      prepare(list, card) {
+        const other = /** @type {HTMLElement} */ (card.nextElementSibling);
+        card.style.position = "relative";
+        card.style.zIndex = "-1";
+        lay(card, { width: 10, height: 10 });
+        other.getBoundingClientRect = () => clientRect(50, 0, 10, 10);
+      },
+      from: shifted(10),
+      to: shifted(45),
+      during(object) {
+        assert.equal(object.matrix.elements[12], 45, "drawn where it went");
+      },
+      after(object) {
+        assert.equal(object.matrix.elements[12], 45);
+      },
+    }));
+
+  test("a step of a box with a negative z-index onto another such sibling is drawn at once", () =>
+    // Neither clears the other: a box with a negative `z-index` clears
+    // nothing (`clears`), so the two are drawn in tree order however they
+    // overlap.
+    whileWaiting({
+      prepare(list, card) {
+        const other = /** @type {HTMLElement} */ (card.nextElementSibling);
+        for (const box of [card, other]) {
+          box.style.position = "relative";
+          box.style.zIndex = "-1";
+        }
+        lay(card, { width: 10, height: 10 });
+        other.getBoundingClientRect = () => clientRect(50, 0, 10, 10);
+      },
+      from: shifted(10),
+      to: shifted(45),
+      during(object) {
+        assert.equal(object.matrix.elements[12], 45, "drawn where it went");
+      },
+      after(object) {
+        assert.equal(object.matrix.elements[12], 45);
       },
     }));
 

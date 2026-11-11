@@ -65,9 +65,10 @@ would. An ancestor that is not a ray target takes neither.
 A ray meets an element where its box paints, where it is a ray target, or where it sits inside one.
 A box with no colour and no cursor outside anything clickable is not there for the ray, and a press
 on it lands on what is behind it, which is where a page's click would have bubbled to anyway. Inside
-a ray target every box takes the ray, as on a page: a transparent child laid over a nested button
-takes the press for the target around it, and so does a transparent child where it reaches past the
-target's own box.
+a ray target every box that takes pointer events takes the ray, as on a page: a transparent child
+laid over a nested button takes the press for the target around it, and so does a transparent child
+where it reaches past the target's own box. A blank box with `pointer-events: none` is passed
+through, to what is beneath it.
 
 **The grip** is the mouse's other button: a press of it, let go on the element it started on,
 arrives as `contextmenu`, which is where a page already flags a tile or opens a menu of its own. Not
@@ -497,8 +498,9 @@ dom(ctx, menu, [effects((panel) => panel.position.copy(position))], {
   change the order the panel is drawn in waits for the commit: one that makes the element a layer or
   stops it being one (a `translateZ`, a 3D rotation), one that changes whether it is placed by a
   matrix or which painting layer it is in (a transform appearing or going), or, for an element that
-  is not a layer, one that moves it onto or off a positioned or transformed sibling that is not a
-  layer either. Its transform is drawn from that commit on. An SVG element's transform, and one
+  is not a layer, one that moves it onto or off a sibling that is not a layer either, when one of
+  the two paints over the other: one of them is positioned or transformed with a `z-index` that is
+  not negative. Its transform is drawn from that commit on. An SVG element's transform, and one
   animated beside any other property, still lands with the update.
 - **`data-xr-busy`** is on the container while a panel has work it will do on a coming frame — an
   animation the clock is sampling, an update the pump has not yet brought into the scene — and comes

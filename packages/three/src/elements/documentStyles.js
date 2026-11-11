@@ -87,6 +87,8 @@ const listeners = new Set();
  *
  * @type {WeakMap<Element, StyleScope>}
  */
+// Not a nodeCache: keyed by the page's `<style>` and `<link>` elements, which
+// no mirror follows.
 const styleScopes = new WeakMap();
 
 /** @type {MutationObserver | null} */
@@ -874,8 +876,10 @@ function loadCallback(event) {
 }
 
 /**
- * Whether a sheet opens with an `@import`, which is the only place one can
- * be.
+ * Whether a sheet has an `@import`. Imports come before every other rule
+ * but `@layer` statements (`@layer theme, base;`), which may come first, and
+ * Tailwind's output opens with one. So the walk steps past those and stops
+ * at the first rule that is neither.
  *
  * @param {CSSStyleSheet} sheet
  * @returns {boolean}
@@ -883,9 +887,17 @@ function loadCallback(event) {
 function importsSheets(sheet) {
   try {
     // By the property, as `walkStyleRules` reads it, rather than by
-    // `instanceof`, which needs `CSSImportRule` to be a global.
-    const first = sheet.cssRules[0];
-    return first !== undefined && "styleSheet" in first;
+    // `instanceof`, which needs `CSSImportRule` and `CSSLayerStatementRule`
+    // to be globals.
+    for (const rule of sheet.cssRules) {
+      if ("styleSheet" in rule) {
+        return true;
+      }
+      if (!("nameList" in rule)) {
+        return false;
+      }
+    }
+    return false;
   } catch {
     return false;
   }

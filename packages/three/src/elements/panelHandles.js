@@ -275,6 +275,8 @@ export function createPanelHandles(ctx, options = {}) {
       };
       for (const { side, hit, bar } of strips) {
         const [x, y, sx, sy] = boxes[side];
+        // Not placed: the strips hang beside the panel, not under it, and
+        // three composes their matrices as it does any object's.
         hit.position.set(x * units, y * units, 0);
         hit.scale.set(Math.max(sx, 1e-3) * units, Math.max(sy, 1e-3) * units, 1);
         const across = side === "top" || side === "bottom";

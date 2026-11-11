@@ -373,7 +373,7 @@ const client = new THREE.Vector2();
  * A ray's pointer events say it is a mouse, which is what the mouse events
  * after them say too, and each hand is a pointer of its own, its
  * `pointerId` and the `buttons` it holds written in for each event by the
- * panel's forwarder (see `sendPointerAndMouse` in `pointerForwarding.js`);
+ * panel's forwarder (see `sendPointerAndMouse` in `pointerHands.js`);
  * each init below says none, for an event sent on no hand's behalf.
  *
  * @type {PointerEventInit}
@@ -406,7 +406,7 @@ const init = {
  * for its sender to place. An uncaptured release off its panel stays
  * there, nowhere. The crossings that take a pointer out of a panel its
  * ray has left say where the page last heard the pointer was instead
- * (`Hand.x` in `pointerForwarding.js`), and so do the crossings that take
+ * (`Hand.x` in `pointerHands.js`), and so do the crossings that take
  * it onto nothing on a panel another panel brings up to date (its
  * `bringUp`), as a browser's mouse leaving the window says where it left.
  * Not where the ray crosses the panel's plane, as a captured move is
@@ -514,7 +514,7 @@ export function isOnPanel(panel, e) {
  * like a press; but the ray may have wandered since the press, and only a
  * release on the element's own panel has a point on its page. A captured
  * hand's release takes its point from `placeCapturedRelease` in
- * `pointerForwarding.js` instead: the captor's panel, as its moves do, or
+ * `pointerHands.js` instead: the captor's panel, as its moves do, or
  * where the pointer last was.
  *
  * @param {Panel | null} panel
@@ -694,7 +694,7 @@ function outlineGhost(shown, width, height) {
  *   point of every drag event the press sends, `dragstart` to `dragend`,
  *   in client coordinates, as it goes out, since the page hears the
  *   pointer go on from the press through them (see `Hand.x` in
- *   `pointerForwarding.js`).
+ *   `pointerHands.js`).
  * @property {(controller: THREE.XRTargetRaySpace) => boolean} holding
  *   Whether the hand is holding something draggable: carrying it, or
  *   pressing it and not yet far enough from where it started for that to

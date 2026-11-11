@@ -4,6 +4,7 @@ import { rampUniforms } from "./gradient.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
 import { bandBase, PIECE_BAND } from "./elevation.js";
+import { markMoved } from "./place.js";
 import {
   createHalfPlaneUniforms,
   HALF_PLANES_FRAGMENT_GLSL,
@@ -393,7 +394,7 @@ class Draw {
     // built while the panel sat still, the run of a size that appears when a
     // row scrolls into view, would draw its instances at panel coordinates in
     // world space, somewhere off in the distance.
-    mesh.matrixWorldNeedsUpdate = true;
+    markMoved(mesh);
     this.mesh = mesh;
     this.parent.add(mesh);
   }

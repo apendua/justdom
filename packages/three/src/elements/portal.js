@@ -30,7 +30,7 @@ import { TextBatchContext } from "./textBatch.js";
 import { PaintBatch } from "./paintBatch.js";
 import { TextScaleContext, createTextScale } from "./textScale.js";
 import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
-import { keepSubtreeMatrices, placeAndScale } from "./place.js";
+import { keepSubtreeMatrices, markMoved, placeAndScale } from "./place.js";
 import { createPanelScrollDrags, ScrollDragsContext } from "./scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
@@ -570,6 +570,7 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /** @type {WeakMap<Node, Object3D>} */
+  // Not a nodeCache: one portal's own, gone with it.
   const nodeToObject = new WeakMap();
 
   /** @type {WeakMap<Object3D, Node>} */
@@ -630,6 +631,7 @@ function buildPortal(ctx, ownOptions = {}) {
   const depthQuad = createDepthQuad();
   depthQuad.renderOrder = HANDLE_RENDER_ORDER - 1;
   containerObject.add(depthQuad);
+  markMoved(depthQuad);
 
   // And the order its layers draw in from where the viewer stands, walked
   // each frame before the batches flush and cut after (`layerOrder.js`),
@@ -644,6 +646,7 @@ function buildPortal(ctx, ownOptions = {}) {
   ctx = LayerOrderContext.set(ctx, layerOrder);
   if (blocker) {
     containerObject.add(blocker);
+    markMoved(blocker);
     // Not a ray target yet: the raycast set is flat, so the container being
     // invisible would not shield the plane, and a loading panel would block
     // rays before there was anything visible to block them for. `markLoaded`
@@ -798,6 +801,7 @@ function buildPortal(ctx, ownOptions = {}) {
         return;
       }
       containerObject.add(loadingFrameObject.object);
+      markMoved(loadingFrameObject.object);
       loadingFrameObject.show(now);
       markDrawn();
     };
@@ -1387,7 +1391,7 @@ function buildPortal(ctx, ownOptions = {}) {
     const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
     if (object && parentObject) {
       getContentGroup(parentObject).add(object);
-      object.matrixWorldNeedsUpdate = true;
+      markMoved(object);
     }
   };
 

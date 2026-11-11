@@ -184,6 +184,11 @@ picture, a pseudo-element's box, the run, the caret, the checkbox's tick and the
 A mesh that did not register reads as `-Infinity`, so where a hit is on no panel the nearest wins as
 it was found.
 
+A blocker, the panel's or an overlay's, sits a little behind the box it covers, so that what the box
+draws is met first. A ray meets it where the ray crosses the box's own plane, and only inside the
+box (`meetAtBox` in `blocker.js`). Met on its own plane, a slanting ray that passes an overlay's
+edge would go on to the blocker behind it and give the overlay a press past its drawn edge.
+
 A split needs nothing on the ray side: a ray meets a plane at one point, and that point is on one
 side of every other plane. A piece behind the root's plane is farther along the ray than the root's
 box, so the root takes the press there.

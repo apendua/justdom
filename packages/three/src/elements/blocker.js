@@ -48,7 +48,52 @@ const material = new THREE.MeshBasicMaterial({
  * @returns {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>}
  */
 export function createBlocker() {
-  return new THREE.Mesh(geometry, material);
+  /** @type {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>} */
+  const blocker = new THREE.Mesh(geometry, material);
+  blocker.raycast = (raycaster, intersects) => meetAtBox(blocker, raycaster, intersects);
+  return blocker;
+}
+
+/** Scratch for `meetAtBox`, so a cast allocates nothing. */
+const toParent = new THREE.Matrix4();
+const parentRay = new THREE.Ray();
+const met = new THREE.Vector3();
+
+/**
+ * Raycast a blocker as the box it covers. A blocker sits a little behind
+ * the box (`coverBox`), so that what the box draws is met before it; but a
+ * slanting ray that passes the box's edge would still meet the plane behind
+ * it, and give the box a press where a page shows what is past its edge.
+ * So a hit counts only where the ray crosses the box's own plane, its
+ * parent's z = 0, inside the box, and it is moved there. Its distance stays
+ * the blocker's, behind what the box draws.
+ *
+ * @param {THREE.Mesh} blocker
+ * @param {THREE.Raycaster} raycaster
+ * @param {THREE.Intersection[]} intersects
+ * @returns {void}
+ */
+function meetAtBox(blocker, raycaster, intersects) {
+  const first = intersects.length;
+  THREE.Mesh.prototype.raycast.call(blocker, raycaster, intersects);
+  const { parent } = blocker;
+  if (intersects.length === first || !parent) {
+    return;
+  }
+  toParent.copy(parent.matrixWorld).invert();
+  parentRay.copy(raycaster.ray).applyMatrix4(toParent);
+  parentRay.at(-parentRay.origin.z / parentRay.direction.z, met);
+  const { position, scale } = blocker;
+  // A ray parallel to the plane meets it nowhere, and `met` is not finite.
+  const inside =
+    Math.abs(met.x - position.x) <= scale.x / 2 && Math.abs(met.y - position.y) <= scale.y / 2;
+  for (let index = intersects.length - 1; index >= first; index--) {
+    if (inside) {
+      intersects[index].point.copy(met).applyMatrix4(parent.matrixWorld);
+    } else {
+      intersects.splice(index, 1);
+    }
+  }
 }
 
 /** @returns {THREE.MeshBasicMaterial} */
@@ -103,7 +148,8 @@ export function isBlocker(object) {
  * @param {THREE.Object3D} blocker
  * @param {number} width
  * @param {number} height
- * @param {number} z How far behind the box's own content to sit.
+ * @param {number} z How far behind the box's own content to sit. A ray
+ *   still meets the blocker in the box's plane (`meetAtBox`).
  * @returns {void}
  */
 export function coverBox(blocker, width, height, z) {

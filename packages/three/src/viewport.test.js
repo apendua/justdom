@@ -95,9 +95,9 @@ describe("followSize", () => {
     /** @type {{ width: number; height: number }[]} */
     const reported = [];
 
-    const stop = followSize(renderer, camera, containerSize(el, resizes.Observer), (s) =>
-      reported.push({ width: s.width, height: s.height }),
-    );
+    const stop = followSize(renderer, camera, containerSize(el, resizes.Observer), {
+      onSize: (s) => reported.push({ width: s.width, height: s.height }),
+    });
     assert.deepEqual(sizes, [[400, 300]]);
     assert.equal(camera.aspect, 400 / 300);
 
@@ -131,7 +131,7 @@ describe("followSize", () => {
     const el = document.createElement("div");
     layOut(el, 400, 300);
     const resizes = fakeObserver();
-    followSize(renderer, camera, containerSize(el, resizes.Observer), () => {});
+    followSize(renderer, camera, containerSize(el, resizes.Observer), { onSize: () => {} });
 
     present(true);
     layOut(el, 600, 300);
@@ -143,11 +143,50 @@ describe("followSize", () => {
     assert.equal(camera.aspect, 2);
   });
 
+  test("a session's projection is taken off the camera when it ends", () => {
+    // three writes the headset's projection onto the flat camera, `fov` and
+    // `zoom` included, and leaves it there.
+    const { renderer, present } = fakeRenderer();
+    const camera = new THREE.PerspectiveCamera(50);
+    followSize(renderer, camera, windowSize(), { onSize: () => {} });
+    present(true);
+    camera.fov = 100;
+    camera.zoom = 2;
+    present(false);
+    assert.equal(camera.fov, 50);
+    assert.equal(camera.zoom, 1);
+    assert.equal(camera.projectionMatrix.elements[5], 1 / Math.tan((25 * Math.PI) / 180));
+  });
+
+  test("a resize is drawn in the same turn, and the first size is not", () => {
+    // A container's observer reports after the frame's draw and before its
+    // paint, and setting the size clears the canvas.
+    const { renderer, sizes, present } = fakeRenderer();
+    const el = document.createElement("div");
+    layOut(el, 400, 300);
+    const resizes = fakeObserver();
+    /** @type {number[]} */
+    const drawnAt = [];
+    followSize(renderer, new THREE.PerspectiveCamera(), containerSize(el, resizes.Observer), {
+      onSize: () => {},
+      draw: () => drawnAt.push(sizes.length),
+    });
+    assert.deepEqual(drawnAt, [], "no scene yet");
+    layOut(el, 200, 200);
+    resizes.resize(el);
+    assert.deepEqual(drawnAt, [2], "after the new size");
+    present(true);
+    resizes.resize(el);
+    assert.deepEqual(drawnAt, [2], "nothing while presenting");
+    present(false);
+    assert.deepEqual(drawnAt, [2, 3], "and the size put back at the end");
+  });
+
   test("the pixel ratio is read again on every resize", () => {
     const { renderer, ratios } = fakeRenderer();
     const before = window.devicePixelRatio;
     try {
-      followSize(renderer, new THREE.PerspectiveCamera(), windowSize(), () => {});
+      followSize(renderer, new THREE.PerspectiveCamera(), windowSize(), { onSize: () => {} });
       Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
       window.dispatchEvent(new Event("resize"));
       assert.deepEqual(ratios, [before, 2]);
@@ -159,7 +198,7 @@ describe("followSize", () => {
   test("without a container it is the window, as it always was", () => {
     const { renderer, sizes, ratios } = fakeRenderer();
     const camera = new THREE.PerspectiveCamera();
-    const stop = followSize(renderer, camera, windowSize(), () => {});
+    const stop = followSize(renderer, camera, windowSize(), { onSize: () => {} });
     assert.deepEqual(sizes, [[window.innerWidth, window.innerHeight]]);
     assert.deepEqual(ratios, [window.devicePixelRatio]);
     assert.equal(camera.aspect, window.innerWidth / window.innerHeight);

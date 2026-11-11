@@ -70,7 +70,8 @@ two attributes, `data-dragging` and `data-drop-marker`. The handlers write two s
 carried and which slot it would land in, and each row's attributes follow those.
 `node tests/drag-check.mjs` does both, the mouse on the page and the controller in the emulator, and
 prints the events and the order the todos ended up in; `SHOT=drag.png` photographs the drag half
-way.
+way. It launches the Chromium at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+`CHROMIUM=<path>` points it at one installed elsewhere.
 
 **Two things are there only in a session.** The frame rate, from justdom-three-ui's
 `useDiagnostics`, hangs in the upper left of the view. And the card grows an exit button in its

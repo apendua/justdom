@@ -188,6 +188,49 @@ A split needs nothing on the ray side: a ray meets a plane at one point, and tha
 side of every other plane. A piece behind the root's plane is farther along the ray than the root's
 box, so the root takes the press there.
 
+### Two hit tests, one order
+
+A panel finds the element under a ray in two ways. The cast above meets meshes, and serves presses
+and hover. The scan, `hitElement` in `input/dragAndDrop.js`, visits elements, and serves what has no
+mesh to meet: a drag's target each frame, the thumbstick's wheel on a list's gaps or the panel's
+background, and the missed-press note in development. Rule 3 holds for both, so the scan follows the
+cast's order. Its rules:
+
+- **What the scan is given.** A ray in world space, not a point. Each element's object is its own
+  border box, top-left origin and y down, in its own plane, so the ray meets each element at one
+  point and one distance along the ray. A ray parallel to an element's plane meets nothing there.
+- **What it visits.** Every element under the portal's root, last child first, a child before its
+  parent. An object the mirror has culled (`visible` false) is passed over with all it holds. What
+  is inside an `<svg>` is not visited: the `<svg>` is the target, as it is for a click.
+- **What makes a candidate.** The point where the ray meets the element's plane lies inside its
+  border box and inside its clip box (`getLocalClipBox`), the clip box's rounded corners included.
+  An element that `visibility` hides or that says `pointer-events: none` is not a candidate, and its
+  children still are.
+- **Which candidate wins.** The cast's rule, read per element. The nearest wins, unless candidates
+  within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element's draw
+  order is its box's: `getRenderBand`, its layer's base plus its level. Of two at one order, the
+  later in tree order wins, as on a page.
+- **Clips.** One predicate, `clipBoxContains` in `clip.js`, says whether a point in a clip box's
+  frame is inside it, corners included. `clipRaycast` trims the cast's hits with it and the scan
+  tests its candidates with it, so rule 5 holds at a rounded corner on both sides. An element's own
+  `border-radius` cuts neither: a page does not hit an element outside its rounded border, and
+  neither path follows it yet (see Open cases).
+- **A cut layer** needs nothing here, for the reason given above: a ray meets a plane at one point.
+- **What the scan cannot name.** It names elements, never meshes. A plugin's object stays the
+  cast's: a press or a wheel on one goes to the scene, and a drag over one is over the element the
+  scan finds beneath it. An SVG shape is its `<svg>`, and a field's caret is its field. A
+  self-drawing mesh competes with a box in the cast by its rung of the level (the table below), and
+  in the scan by its element's box.
+- **What it costs.** The scan visits every element of the panel, since a child can overflow its
+  parent. That is affordable for a drag's frames, a wheel on a gap and one note per missed press. It
+  is not for hover, which runs every frame for every ray. Presses and hover move to the scan only
+  once it reads a per-layer list of boxes in reverse paint order, kept with the batch, which sorts
+  that order already. That list is not built.
+
+Two cases are known where the two still disagree. Of two flow siblings level with each other, the
+cast takes the one it found first and the scan the later one. A run of text draws at its element's
+content level, a level past the box, and the scan orders the element by its box.
+
 ## Within a level: the rungs
 
 Some things share one integer level R and still have to draw in a set order. The table is the
@@ -223,6 +266,9 @@ shapes.
   says `hidden` and whose plane faces away is left out of the order.
 - **The drag ghost** (`takeSnapshot` in `ghostSnapshot.js`) renders the panel in the order of its
   last walk, from the headset's viewpoint, and not from the ghost camera's.
+- **An element's own rounded border.** A page does not hit an element outside its `border-radius`.
+  Neither hit test reads it: the cast meets the box's whole quad, and the scan its whole border box.
+  When it comes, it goes in `clipBoxContains` with the element's radii, for both at once.
 - **A plugin's own object.** A portal plugin may return any object, and the tree assumes every layer
   is flat. No plugin today returns anything but planar shapes, pictures and text. One that adds a 3D
   object makes it a scene object, drawn by distance with depth, and not a layer.

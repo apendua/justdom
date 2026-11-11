@@ -9,8 +9,17 @@ runs:
     # prebuilt binary comes from a GitHub release, and when that download
     # fails (it answered 504 on 2026-11-09) the build from source needs
     # cairo, pango and the image libraries, which the runner image lacks.
+    #
+    # The libraries are a fallback, so a mirror that cannot be reached
+    # does not stop the job: on 2026-11-11 the runners could not resolve
+    # the Ubuntu mirrors, and apt retried until each job's 30-minute
+    # timeout with no test run. Each command gets three minutes and a
+    # warning when it fails, and `rush install` goes on with the prebuilt
+    # binary, which is what it uses whenever the download works.
     - shell: bash
       run: |
-        sudo apt-get update -q
-        sudo apt-get install -y -q --no-install-recommends \
-          libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+        if ! timeout 180 sudo apt-get update -q ||
+          ! timeout 180 sudo apt-get install -y -q --no-install-recommends \
+            libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev; then
+          echo "::warning::canvas's build libraries were not installed; rush install relies on the prebuilt binary"
+        fi

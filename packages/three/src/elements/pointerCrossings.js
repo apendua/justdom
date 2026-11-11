@@ -8,7 +8,10 @@
  */
 
 import { isPortalRoot } from "./mirror/styleReads.js";
-import { ACTIVE_ATTRIBUTE, HOVER_ATTRIBUTE } from "./portalRoot.js";
+
+/**
+ * @import {ACTIVE_ATTRIBUTE, HOVER_ATTRIBUTE} from './portalRoot.js';
+ */
 
 /**
  * The events a browser sends as a pointer, or the mouse, crosses from one

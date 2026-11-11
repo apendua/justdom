@@ -100,7 +100,7 @@ says otherwise.
 stops when it ends, which leaves the browser tab silent until the headset goes on. The listener's
 context is usually made before the player has touched the page, and a browser keeps such a context
 suspended until it is resumed within a gesture, so the session asks it to through `unlockAudio`
-(below). Volume and output are followed live, so turning the music down takes the gain of the track
+(above). Volume and output are followed live, so turning the music down takes the gain of the track
 that is playing rather than starting it over from the top.
 
 ```js

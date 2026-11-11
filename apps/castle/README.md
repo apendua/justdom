@@ -42,14 +42,16 @@ check afterwards.
 `node tests/emulator-check.mjs` drives the same emulator harder: it aims the emulated controller's
 ray at the tray, pulls a brick off with the trigger, drops it snapped onto an empty cell, walks the
 history back, and fights a short siege — asserting the whole way through the panel's own DOM, which
-is what the panels being real DOM makes cheap. It also holds the page's `AudioContext` to Safari's
-autoplay rule, which automation otherwise waives, and checks that the soundtrack's context is
-running once the session has started. It is the one automated test of the drag itself; the pure grid
-arithmetic under it has unit tests of its own.
+is what the panels being real DOM makes cheap. It is the one automated test of the drag itself; the
+pure grid arithmetic under it has unit tests of its own. It also holds the page's `AudioContext` to
+Safari's autoplay rule, which automation otherwise waives: it enters the session with no gesture,
+checks the context is still suspended, taps, and checks it runs.
 
 The castle is saved to `localStorage` (key `castle:castle`) a moment after the last change. The
 soundtrack is `src/assets/glass_desk_habits.mp3`, started with the session and stopped with it —
-played by `@apendua/sound/xr`, which every headset app here shares.
+played by `@apendua/sound/xr`, which every headset app here shares. The page starts the audio
+context on its first tap or key press (`unlockAudio`), so the bricks' clicks sound on a page with no
+session too.
 
 A brick that lands clicks, from the cell it landed in — a knock with a little ring in it, the way
 two magnets sound when they meet. Both halves of that come from `@apendua/sound`: the waveform is

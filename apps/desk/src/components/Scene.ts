@@ -1,15 +1,7 @@
 import * as THREE from "three";
 import { enterSession } from "justdom-xr/session";
-import {
-  children,
-  cursors,
-  $,
-  dom,
-  getScene,
-  getXRSession,
-  placeAndScale,
-  Nothing,
-} from "justdom-three";
+import { whilePresenting } from "justdom-xr/scene";
+import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
 import { component, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 import type { MountedDesk } from "../desk.js";
@@ -168,43 +160,45 @@ export const Scene = (desk: Readable<MountedDesk>) =>
       }),
       children(
         ...lights(),
-        component(() => {
-          if (!getXRSession(ctx)) {
-            return Nothing();
-          }
-          const { look, elements } = desk.get();
-          return $(new THREE.Group(), [
-            effects(() => {
-              // For a VR session, where three honours it; the sky in `room`
-              // is for AR, where it does not.
-              getScene(ctx).background = new THREE.Color(look.room.backdrop);
-            }),
-            children(
-              $(room(look.room), [disposedWithIt]),
-              ...(look.mug ? [$(mug(), [disposedWithIt])] : []),
-              ...look.placements.flatMap((placement) => {
-                const element = elements.get(placement.id);
-                if (!element) {
-                  return [];
-                }
-                return [
-                  $(new THREE.Group(), [
-                    effects((group) => {
-                      pose(group, placement);
-                      placedGroups.set(placement.id, group);
-                      onCleanup(() => {
-                        if (placedGroups.get(placement.id) === group) {
-                          placedGroups.delete(placement.id);
-                        }
-                      });
-                    }),
-                    children(dom(ctx, element, [], placement.options)),
-                  ]),
-                ];
+        // A `component`, so that the room is built again if the desk changes
+        // its look during a session.
+        whilePresenting(
+          ctx,
+          component(() => {
+            const { look, elements } = desk.get();
+            return $(new THREE.Group(), [
+              effects(() => {
+                // For a VR session, where three honours it; the sky in `room`
+                // is for AR, where it does not.
+                getScene(ctx).background = new THREE.Color(look.room.backdrop);
               }),
-            ),
-          ]);
-        })(),
+              children(
+                $(room(look.room), [disposedWithIt]),
+                ...(look.mug ? [$(mug(), [disposedWithIt])] : []),
+                ...look.placements.flatMap((placement) => {
+                  const element = elements.get(placement.id);
+                  if (!element) {
+                    return [];
+                  }
+                  return [
+                    $(new THREE.Group(), [
+                      effects((group) => {
+                        pose(group, placement);
+                        placedGroups.set(placement.id, group);
+                        onCleanup(() => {
+                          if (placedGroups.get(placement.id) === group) {
+                            placedGroups.delete(placement.id);
+                          }
+                        });
+                      }),
+                      children(dom(ctx, element, [], placement.options)),
+                    ]),
+                  ];
+                }),
+              ),
+            ]);
+          }),
+        ),
         cursors(ctx, { color: "#ff5a3c" }),
       ),
     ]);

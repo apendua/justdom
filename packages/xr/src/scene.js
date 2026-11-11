@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
-import { $ } from "justdom-three";
+import { $, branch, getXRSession, Nothing } from "justdom-three";
 import { addDependency, component, effects, onCleanup, Stream } from "justdom-signal";
 import { backdropShown } from "./session.js";
 
 /**
  * @import { Component } from "justdom-three";
- * @import { Source } from "justdom-signal";
+ * @import { Source, Subscribable } from "justdom-signal";
  */
 
 const backdropGeometry = new THREE.SphereGeometry(10, 32, 16);
@@ -52,6 +52,67 @@ export const Backdrop = component(
     ]);
   },
 );
+
+/**
+ * Gives the renderer's canvas to the session: it is put in the page, over
+ * everything at `zIndex`, and shown only while a session is presenting.
+ *
+ * A headset shows the page nothing while presenting, and the page has its
+ * own DOM to show the rest of the time, so a scene rendered with
+ * `presentingOnly` has no use for its canvas between sessions. Under the
+ * emulator the session is drawn on the canvas, so the canvas covers the page
+ * for as long as one runs, which is what makes an emulated session
+ * watchable.
+ *
+ * Call it with the renderer `render()` emits. What it returns takes the
+ * canvas out again and stops listening.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {{ zIndex?: number }} [options] Where the canvas stands among the
+ *   page's own layers. 1 unless the page has layers above that.
+ * @returns {() => void}
+ */
+export function sessionCanvas(renderer, { zIndex = 1 } = {}) {
+  const canvas = renderer.domElement;
+  canvas.style.position = "fixed";
+  canvas.style.inset = "0";
+  canvas.style.zIndex = String(zIndex);
+  canvas.style.display = renderer.xr.isPresenting ? "block" : "none";
+  document.body.appendChild(canvas);
+  const show = () => {
+    canvas.style.display = "block";
+  };
+  const hide = () => {
+    canvas.style.display = "none";
+  };
+  renderer.xr.addEventListener("sessionstart", show);
+  renderer.xr.addEventListener("sessionend", hide);
+  return () => {
+    renderer.xr.removeEventListener("sessionstart", show);
+    renderer.xr.removeEventListener("sessionend", hide);
+    canvas.remove();
+  };
+}
+
+/**
+ * Mounts what `render()` makes for as long as a session is presenting, and
+ * takes it down when the session ends. Each session gets its own: `render`
+ * runs again as the next one starts.
+ *
+ * For a panel, mostly. Between sessions the page is all anyone sees, and a
+ * portal kept up behind it would go on mirroring every hover on the page
+ * into a scene nobody is looking at.
+ *
+ * @param {WeakKey} ctx
+ * @param {() => Subscribable<Component>} render
+ * @returns {Source<Component>}
+ */
+export function whilePresenting(ctx, render) {
+  return branch(
+    () => getXRSession(ctx),
+    (session) => (session ? render() : Nothing()),
+  );
+}
 
 /**
  * The models `render()` draws for the controllers and the tracked hands,

@@ -1,6 +1,6 @@
 import { render, createXRButton, canDrawHtmlInCanvas, makeReveal } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
-import { inputModels } from "justdom-xr/scene";
+import { inputModels, sessionCanvas } from "justdom-xr/scene";
 import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
 import type { MountedDesk } from "./desk.js";
@@ -47,19 +47,9 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
   }).subscribe({
     next: (renderer) => {
       // The canvas is the session's. Under the emulator the session is drawn
-      // on it, so it is put over the page for as long as one runs.
-      const canvas = renderer.domElement;
-      canvas.style.position = "fixed";
-      canvas.style.inset = "0";
-      canvas.style.display = "none";
-      canvas.style.zIndex = "60";
-      document.body.appendChild(canvas);
-      renderer.xr.addEventListener("sessionstart", () => {
-        canvas.style.display = "block";
-      });
-      renderer.xr.addEventListener("sessionend", () => {
-        canvas.style.display = "none";
-      });
+      // on it, so it is put over the page, above the desk's own layers, for
+      // as long as one runs.
+      sessionCanvas(renderer, { zIndex: 60 });
 
       if (query.has("trace")) {
         void import("./deskTrace.js").then(({ traceSessions }) =>

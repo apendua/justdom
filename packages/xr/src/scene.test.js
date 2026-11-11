@@ -2,7 +2,107 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import * as THREE from "three";
 import { Derived } from "justdom-signal";
-import { Backdrop, clientRect, inputModels } from "./scene.js";
+import { $, RendererContext } from "justdom-three";
+import { setupJsdom } from "@apendua/jsdom-env";
+import { Backdrop, clientRect, inputModels, sessionCanvas, whilePresenting } from "./scene.js";
+
+/**
+ * As much of a renderer as the session helpers read: a canvas, and an `xr`
+ * that says which session it has and announces one starting and ending.
+ */
+function fakeRenderer() {
+  /** @type {object | null} */
+  let session = null;
+  /** @type {THREE.EventDispatcher<{ sessionstart: {}; sessionend: {} }>} */
+  const events = new THREE.EventDispatcher();
+  const xr = Object.assign(events, { getSession: () => session });
+  Object.defineProperty(xr, "isPresenting", { get: () => session !== null });
+  return {
+    renderer: /** @type {THREE.WebGLRenderer} */ (
+      /** @type {unknown} */ ({ domElement: document.createElement("canvas"), xr })
+    ),
+    start: () => {
+      session = {};
+      xr.dispatchEvent({ type: "sessionstart" });
+    },
+    end: () => {
+      session = null;
+      xr.dispatchEvent({ type: "sessionend" });
+    },
+  };
+}
+
+describe("sessionCanvas", () => {
+  beforeEach(() => {
+    setupJsdom();
+  });
+
+  it("puts the canvas over the page, and shows it only while a session runs", () => {
+    const { renderer, start, end } = fakeRenderer();
+    const canvas = renderer.domElement;
+    sessionCanvas(renderer);
+    assert.equal(canvas.parentElement, document.body);
+    assert.equal(canvas.style.position, "fixed");
+    assert.equal(canvas.style.zIndex, "1");
+    assert.equal(canvas.style.display, "none");
+
+    start();
+    assert.equal(canvas.style.display, "block");
+    end();
+    assert.equal(canvas.style.display, "none");
+  });
+
+  it("stands where the page says, and shows at once in a session already running", () => {
+    const { renderer, start } = fakeRenderer();
+    start();
+    sessionCanvas(renderer, { zIndex: 60 });
+    assert.equal(renderer.domElement.style.zIndex, "60");
+    assert.equal(renderer.domElement.style.display, "block");
+  });
+
+  it("takes the canvas out and stops listening when it is undone", () => {
+    const { renderer, start } = fakeRenderer();
+    const canvas = renderer.domElement;
+    const undo = sessionCanvas(renderer);
+    undo();
+    assert.equal(canvas.parentElement, null);
+    start();
+    assert.equal(canvas.style.display, "none");
+  });
+});
+
+describe("whilePresenting", () => {
+  it("mounts what it renders for each session, and takes it down as the session ends", () => {
+    const { renderer, start, end } = fakeRenderer();
+    const ctx = RendererContext.set({}, renderer);
+    const parent = new THREE.Group();
+    let rendered = 0;
+    /** @type {(() => void) | undefined} */
+    let remove;
+    const subscription = whilePresenting(ctx, () => {
+      rendered += 1;
+      return $(new THREE.Object3D());
+    }).subscribe((component) => {
+      remove = component.addTo(parent);
+    });
+    assert.equal(parent.children.length, 0);
+    assert.equal(rendered, 0);
+
+    start();
+    assert.equal(parent.children.length, 1);
+    const first = parent.children[0];
+    end();
+    assert.equal(parent.children.length, 0);
+
+    start();
+    assert.equal(rendered, 2);
+    assert.notEqual(parent.children[0], first, "a new object for the new session");
+
+    remove?.();
+    subscription.unsubscribe();
+    assert.equal(parent.children.length, 0);
+  });
+});
 
 describe("Backdrop", () => {
   it("lets its material go when it is taken down", () => {

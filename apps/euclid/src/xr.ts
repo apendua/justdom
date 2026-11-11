@@ -1,6 +1,6 @@
 import { render, createXRButton } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
-import { inputModels } from "justdom-xr/scene";
+import { inputModels, sessionCanvas } from "justdom-xr/scene";
 import { svgElements } from "justdom-three/svg";
 import Scene, { type Mounts } from "./components/Scene";
 
@@ -23,23 +23,10 @@ export function offerXR(mounts: Mounts): void {
     portalPlugins: [svgElements()],
   }).subscribe({
     next: (renderer) => {
-      // The canvas is the session's, not the page's: a headset shows the
-      // page nothing while presenting, and the page has its own DOM to show
-      // the rest of the time. Under the emulator the session *is* drawn on
-      // the canvas, so it is put over the page for exactly as long as one
-      // is running, which is what makes the emulated session watchable.
-      const canvas = renderer.domElement;
-      canvas.style.position = "fixed";
-      canvas.style.inset = "0";
-      canvas.style.display = "none";
-      canvas.style.zIndex = "1";
-      document.body.appendChild(canvas);
-      renderer.xr.addEventListener("sessionstart", () => {
-        canvas.style.display = "block";
-      });
-      renderer.xr.addEventListener("sessionend", () => {
-        canvas.style.display = "none";
-      });
+      // The canvas is the session's, not the page's: shown over the page
+      // only while a session runs, which is what makes one under the
+      // emulator watchable.
+      sessionCanvas(renderer);
 
       createXRButton(renderer).then((button) => {
         document.body.appendChild(button);

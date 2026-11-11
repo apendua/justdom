@@ -13,7 +13,7 @@ import { matrixScratch, readMatrix, readNumber, scanned } from "./cssNumbers.js"
  * by `getBoxOffset`, which lives in `mirror/geometryReads.js` beside the
  * client-rect reader it stands in for. Text has no offsets, so it is
  * measured with the transforms briefly switched off, against a detached
- * clone, in `mirror.js`. This module keeps the matrices.
+ * clone, in `mirror/textLayout.js`. This module keeps the matrices.
  */
 
 /**

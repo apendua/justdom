@@ -6,12 +6,13 @@
  *
  * The paragraphs are those of `bench/lineBoxCopy.bench.mjs`, which counts the
  * copying work exactly under jsdom. jsdom lays nothing out, though, and in a
- * browser each copy put in the document is laid out before it can be
- * measured. This loads `src/elements/mirror.js` as it is, unbundled, into a
- * page served from the repository, and times the measurement there. The
- * numbers are milliseconds on whatever machine runs it: the median of
- * `REPEATS` runs, each on a fresh card and a fresh mirror, including letting
- * go of the layouts, which removes the copy they were measured in.
+ * browser each copy put in the document is laid out before it can be measured.
+ * This loads `src/elements/mirror.js` and the modules under
+ * `src/elements/mirror/` as they are, unbundled, into a page served from the
+ * repository, and times the measurement there. The numbers are milliseconds on
+ * whatever machine runs it: the median of `REPEATS` runs, each on a fresh card
+ * and a fresh mirror, including letting go of the layouts, which removes the
+ * copy they were measured in.
  *
  * The last table mounts the paragraph in a portal instead, as an app
  * mounts a panel, and times it until the portal stops loading. With
@@ -56,7 +57,8 @@ const PAGE = `<!doctype html>
 </style>
 <script type="module">
   import { Effect } from "justdom-signal";
-  import { createMirror, getTextLayout } from "/packages/three/src/elements/mirror.js";
+  import { createMirror } from "/packages/three/src/elements/mirror.js";
+  import { getTextLayout } from "/packages/three/src/elements/mirror/textLayout.js";
 
   function buildCard(sentences) {
     const card = document.createElement("div");

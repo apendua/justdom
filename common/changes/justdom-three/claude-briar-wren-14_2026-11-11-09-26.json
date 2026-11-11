@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the mirror's text layout and checkbox reads out of mirror.js",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

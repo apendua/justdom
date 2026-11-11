@@ -39,7 +39,8 @@ export function forgetNode(node) {
  * What one adopted node keeps between mutations: a signal per kind of change
  * that can happen *to it*. Nothing here fans out on its own — each is bumped
  * by the mirror's dispatch when a record names the node, and read by the
- * derived chains in `mirror.js`.
+ * derived chains in the read modules beside this one: `styleReads.js`,
+ * `geometryReads.js` and `textLayout.js`.
  */
 export class NodeRecord {
   /**

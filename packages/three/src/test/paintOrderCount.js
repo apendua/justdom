@@ -91,7 +91,7 @@ import * as THREE from "three";
  */
 import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
-import { getFirstLine, getTextLayout } from "../elements/mirror.js";
+import { getFirstLine, getTextLayout } from "../elements/mirror/textLayout.js";
 import {
   getBorderBoxSize,
   getBoxOffset,

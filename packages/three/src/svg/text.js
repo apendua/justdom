@@ -1,7 +1,7 @@
 import { Derived, effects, onCleanup } from "justdom-signal";
 import { keyedList } from "../core.js";
 import { children } from "../operators.js";
-import { counterpart } from "../elements/mirror.js";
+import { counterpart } from "../elements/mirror/textLayout.js";
 import { getReflowContext } from "../elements/mirror/geometryReads.js";
 import {
   getAttributeCached,

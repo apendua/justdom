@@ -2,7 +2,7 @@ import { Derived, flatMap, observable, selector } from "justdom-signal";
 import * as THREE from "three";
 import { $, children, Nothing } from "../operators.js";
 import { box } from "./div.js";
-import { getFirstLine } from "./mirror.js";
+import { getFirstLine } from "./mirror/textLayout.js";
 import { getBorderBoxSize, getInteriorClipBox, getScrollOffset } from "./mirror/geometryReads.js";
 import {
   getAttributeCached,

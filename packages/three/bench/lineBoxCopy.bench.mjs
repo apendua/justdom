@@ -5,7 +5,8 @@
  *   node --import ./src/test/setup-jsdom.js bench/lineBoxCopy.bench.mjs
  *
  * Text under a transform is measured in an untransformed copy of the box its
- * lines are laid out in (`measureTextLayout` in `src/elements/mirror.js`).
+ * lines are laid out in (`measureTextLayout` in
+ * `src/elements/mirror/textLayout.js`).
  * The copy holds everything that box lays out, so a copy made for each text
  * measured in a paragraph of `n` texts copies `n` nodes `n` times. These
  * tables count that work: the nodes cloned, the resolved styles copied onto
@@ -28,7 +29,8 @@
  * `<b>` instead of the `<p>`.
  */
 import { Effect } from "justdom-signal";
-import { createMirror, getTextLayout } from "../src/elements/mirror.js";
+import { createMirror } from "../src/elements/mirror.js";
+import { getTextLayout } from "../src/elements/mirror/textLayout.js";
 
 const SIZES = [10, 50, 100, 200, 400];
 

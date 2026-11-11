@@ -1,10 +1,11 @@
-import { NoValueError } from "justdom-signal";
+import { addDependency, fromEvent, NoValueError, Subject } from "justdom-signal";
+import { holdShared, shadowAccessor } from "../shadowAccessor.js";
 import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
 import { nodeCache } from "./nodeCaches.js";
 import { nodeDerived, probedRead, readRecordOf } from "./records.js";
 
 /**
- * @import {Derived} from 'justdom-signal';
+ * @import {Derived, Subscribable} from 'justdom-signal';
  */
 
 /**
@@ -493,6 +494,116 @@ export function getOpacity(element) {
       return parent ? opacity * getOpacity(parent) : opacity;
     });
     opacityCache.set(element, signal);
+  }
+  return signal.get();
+}
+
+/** @type {WeakMap<HTMLInputElement, Derived<boolean>>} */
+const checkedCache = nodeCache();
+
+/**
+ * The assignments to each checkbox's `checked`, one source per element
+ * however many readers follow it. Not a `nodeCache()`, and on purpose: it
+ * holds no signal of any mirror's, only what the element's own accessor
+ * announces, so a release has nothing in it to forget. Kept for the
+ * element's life, which is what lets a reader built before a release and
+ * one built after it share the one accessor (see `checkedAssignments`).
+ *
+ * @type {WeakMap<HTMLInputElement, Subscribable<void>>}
+ */
+// Not a nodeCache: the element's own accessor's, see above.
+const assignmentSources = new WeakMap();
+
+/**
+ * Every assignment to the element's `checked` that moved it, for as long as
+ * something listens. The first listener installs an own accessor that calls
+ * through to the browser's and then says so (`shadowAccessor`), the last
+ * one to leave takes it off again, and every listener between shares it
+ * (`holdShared`), as `trackValue` holds a field's `value`: a reader that
+ * installed its own accessor over another's would leave the first deaf, and
+ * one that took the accessor away would leave the rest deaf. An element
+ * that already carries an own `checked`, an app's or a library's, is left
+ * with it and followed through `change` alone.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {Subscribable<void>}
+ */
+function checkedAssignments(element) {
+  let source = assignmentSources.get(element);
+  if (!source) {
+    /** @type {Subject<void>} */
+    const assigned = new Subject();
+    const install = () =>
+      shadowAccessor(
+        element,
+        "checked",
+        /**
+         * @param {boolean} value
+         * @param {(value: boolean) => void} write
+         * @param {() => boolean} read
+         */
+        (value, write, read) => {
+          const before = read();
+          write(value);
+          if (read() !== before) {
+            assigned.next();
+          }
+        },
+      ) ?? (() => {});
+    source = {
+      subscribe(observer) {
+        const release = holdShared(element, "checked", install);
+        const subscription = assigned.subscribe(observer);
+        return {
+          unsubscribe() {
+            subscription.unsubscribe();
+            release();
+          },
+        };
+      },
+    };
+    assignmentSources.set(element, source);
+  }
+  return source;
+}
+
+/**
+ * Whether a checkbox is ticked, as something the scene can be drawn from.
+ *
+ * This is the one piece of state here that a MutationObserver cannot report.
+ * Ticking a box touches no attribute — the `checked` attribute says what the
+ * box starts out as, not what it is now — and code that assigns
+ * `input.checked = …` moves a property, which mutates nothing whatsoever. So
+ * the two ways it can move are watched one each: `change`, which the browser
+ * fires for the user's own toggles and for the synthetic click a ray sends,
+ * and the property itself, instrumented so that an assignment announces
+ * itself the way an attribute mutation would (`checkedAssignments`).
+ *
+ * The instrumentation is an own accessor that delegates to the one it shadows,
+ * so the element goes on behaving exactly as it did — including for anything
+ * else holding a reference to it. It is on the element while something reads
+ * this, and taken off once nothing does, so a page that mirrored a box and
+ * ended its session is left with the box as it was.
+ *
+ * @param {HTMLInputElement} element
+ * @returns {boolean}
+ */
+export function getCheckedCached(element) {
+  let signal = checkedCache.get(element);
+  if (!signal) {
+    // Two edges rather than one `merge` of them: a dependency is anything with
+    // a `subscribe`, and a node reading both is told by either. Both are built
+    // outside the derivation so that each evaluation reads the *same*
+    // dependency and keeps the edge it already has, rather than making a fresh
+    // one to attach and dropping the old.
+    const changed = fromEvent(element, "change");
+    const assigned = checkedAssignments(element);
+    signal = probedRead(element, () => {
+      addDependency(changed);
+      addDependency(assigned);
+      return element.checked;
+    });
+    checkedCache.set(element, signal);
   }
   return signal.get();
 }

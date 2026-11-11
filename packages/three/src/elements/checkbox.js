@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "justdom-signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
-import { getCheckedCached } from "./mirror.js";
+import { getCheckedCached } from "./mirror/styleReads.js";
 import { getComputedStyleCached } from "./mirror/styleReads.js";
 import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
 import { applyClip } from "./clip.js";

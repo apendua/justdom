@@ -1,5 +1,5 @@
 import { Derived, fromObservable, just, observable, Signal, Stream } from "justdom-signal";
-import { getTextLayout, trackCharacterEdges } from "./mirror.js";
+import { getTextLayout, nodeCache, trackCharacterEdges } from "./mirror.js";
 import { UNBOUNDED } from "./clip.js";
 
 /**
@@ -90,10 +90,17 @@ import { UNBOUNDED } from "./clip.js";
  *
  * @type {WeakMap<Text, RevealHandle>}
  */
+// Not a nodeCache: set by a reveal handle and deleted when it is released.
 const handles = new WeakMap();
 
-/** @type {WeakMap<Text, Derived<Cut>>} */
-const cuts = new WeakMap();
+/**
+ * The cut drawn for a node, built on the mirror's layout read, so a node that
+ * passes to another panel gets a new one (`getRevealCut` builds it from the
+ * handle, which stays).
+ *
+ * @type {WeakMap<Text, Derived<Cut>>}
+ */
+const cuts = nodeCache();
 
 /**
  * Where a run is cut, in its own layout frame: the cut x, the y below which

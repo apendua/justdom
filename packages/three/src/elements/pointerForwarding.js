@@ -61,7 +61,6 @@ import { takesTheTyping } from "./typing.js";
  * @import {Object3D, Vector2, Vector3, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
- * @import {Panel} from './dragAndDrop.js';
  * @import {ForwarderEntry} from './pointerHands.js';
  * @import {Flag} from './pointerCrossings.js';
  */

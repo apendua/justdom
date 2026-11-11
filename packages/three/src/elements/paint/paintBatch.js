@@ -4,7 +4,7 @@ import { rampUniforms } from "./gradient.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
 import { bandBase, PIECE_BAND } from "./elevation.js";
-import { markMoved } from "./place.js";
+import { markMoved } from "../place.js";
 import {
   createHalfPlaneUniforms,
   HALF_PLANES_FRAGMENT_GLSL,

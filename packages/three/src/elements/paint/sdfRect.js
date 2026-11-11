@@ -7,11 +7,11 @@ import {
 } from "./halfPlanes.js";
 import { RAMP_WIDTH, rampUniforms } from "./gradient.js";
 import { keepProgram } from "./programKeeper.js";
-import { MAX_BOX_SHADOWS } from "./shadows.js";
+import { MAX_BOX_SHADOWS } from "../shadows.js";
 
 /**
- * @import VisualProperties from './VisualProperties.js';
- * @import {ContentImage} from './image.js';
+ * @import VisualProperties from '../VisualProperties.js';
+ * @import {ContentImage} from '../image.js';
  * @import {RampSlot} from './gradient.js';
  * @import {ProgramKind} from './programKeeper.js';
  */
@@ -696,7 +696,7 @@ function setValue(uniform, value) {
  * can tell the batch only then (`BoxNumbers`).
  *
  * @param {Record<string, THREE.IUniform>} uniforms
- * @param {import('./clip.js').ClipBox} box
+ * @param {import('../clip.js').ClipBox} box
  * @returns {boolean}
  */
 export function writeClipUniforms(uniforms, box) {

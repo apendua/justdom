@@ -85,11 +85,11 @@ import * as THREE from "three";
 
 /**
  * @import {TextLine} from "../elements/textLines.js";
- * @import {Polygon} from "../elements/layerTree.js";
- * @import {PaintNode} from "../elements/elevation.js";
+ * @import {Polygon} from "../elements/paint/layerTree.js";
+ * @import {PaintNode} from "../elements/paint/elevation.js";
  * @import {Generated} from "../elements/pseudoElements.js";
  */
-import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
+import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/paint/elevation.js";
 import {
   composeTransform,
   getOwnTransform,
@@ -109,7 +109,7 @@ import {
   getTextDataCached,
   isVisibilityHidden,
 } from "../elements/mirror/styleReads.js";
-import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/layerTree.js";
+import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/paint/layerTree.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
 import { parseAlpha } from "../elements/css/cssColor.js";

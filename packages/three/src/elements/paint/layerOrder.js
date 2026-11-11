@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { createProperty } from "justdom-signal";
 import { bandBase, getElevation, PIECE_BAND, setLayerBase } from "./elevation.js";
-import { markMoved } from "./place.js";
+import { markMoved } from "../place.js";
 import {
   carryHalfPlanes,
   clearHalfPlanes,
@@ -10,8 +10,8 @@ import {
   writeHalfPlanes,
 } from "./halfPlanes.js";
 import { LayerTree } from "./layerTree.js";
-import { getBorderBoxSize } from "./mirror/geometryReads.js";
-import { isGenerated } from "./pseudoElements.js";
+import { getBorderBoxSize } from "../mirror/geometryReads.js";
+import { isGenerated } from "../pseudoElements.js";
 
 /**
  * @import {Polygon} from './layerTree.js';

@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Signal } from "justdom-signal";
-import { getBorderBoxSize, getBoxOffset, movesAgainstScroll } from "./mirror/geometryReads.js";
+import { getBorderBoxSize, getBoxOffset, movesAgainstScroll } from "../mirror/geometryReads.js";
 import {
   getChildNodes,
   getComputedStyleCached,
@@ -9,19 +9,19 @@ import {
   getTransformStyle,
   hasTransform,
   isTransformed,
-} from "./mirror/styleReads.js";
-import { nodeDerived } from "./mirror/records.js";
-import { nodeCache } from "./mirror/nodeCaches.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { composeTransform, getOwnTransform, hasDepthTransform } from "./css/cssTransform.js";
-import { isSvgElement } from "./plugins.js";
-import { getShadowBleed, parseTextShadow } from "./textHelpers.js";
-import { isTextInput } from "./typing.js";
-import { getPaintChildren, isGenerated } from "./pseudoElements.js";
+} from "../mirror/styleReads.js";
+import { nodeDerived } from "../mirror/records.js";
+import { nodeCache } from "../mirror/nodeCaches.js";
+import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { composeTransform, getOwnTransform, hasDepthTransform } from "../css/cssTransform.js";
+import { isSvgElement } from "../plugins.js";
+import { getShadowBleed, parseTextShadow } from "../textHelpers.js";
+import { isTextInput } from "../typing.js";
+import { getPaintChildren, isGenerated } from "../pseudoElements.js";
 
 /**
  * @import {Derived} from 'justdom-signal';
- * @import {Generated} from './pseudoElements.js';
+ * @import {Generated} from '../pseudoElements.js';
  */
 
 /**

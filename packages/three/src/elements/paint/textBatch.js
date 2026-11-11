@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createProperty } from "justdom-signal";
-import { TEXT_ANISOTROPY } from "./textHelpers.js";
+import { TEXT_ANISOTROPY } from "../textHelpers.js";
 import { grownCapacity } from "./instancing.js";
 
 /**

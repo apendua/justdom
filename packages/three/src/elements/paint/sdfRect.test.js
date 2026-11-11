@@ -8,8 +8,8 @@ import {
   writeImageUniforms,
   writeRectUniforms,
 } from "./sdfRect.js";
-import VisualProperties from "./VisualProperties.js";
-import { BoxNumbers } from "./boxNumbers.js";
+import VisualProperties from "../VisualProperties.js";
+import { BoxNumbers } from "../boxNumbers.js";
 import {
   GRADIENT_LINEAR,
   layoutGradient,
@@ -232,7 +232,7 @@ describe("the picture layer", () => {
   test("rewriting the picture allocates no new material state", () => {
     const material = createRectMaterial();
     const texture = new THREE.Texture();
-    /** @type {import('./image.js').ContentImage} */
+    /** @type {import('../image.js').ContentImage} */
     const image = {
       texture,
       opacity: 1,

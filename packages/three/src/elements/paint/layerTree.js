@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { getPaintLayer } from "./elevation.js";
-import { isGenerated } from "./pseudoElements.js";
+import { isGenerated } from "../pseudoElements.js";
 
 /**
  * @import {PaintNode} from './elevation.js';

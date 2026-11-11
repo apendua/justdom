@@ -13,9 +13,9 @@ import {
   PIECE_BAND,
   setLayerBase,
 } from "./elevation.js";
-import { createMirror } from "./mirror.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { clientRect } from "../test/clientRect.js";
+import { createMirror } from "../mirror.js";
+import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { clientRect } from "../../test/clientRect.js";
 
 /**
  * @param {string} cssText

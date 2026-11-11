@@ -4,8 +4,8 @@ import { Derived, effects, flatMap, just, on, set, observable, useEffects } from
 import { $, children, Nothing } from "../operators.js";
 import { interactions } from "../interactions.js";
 import VisualProperties from "./VisualProperties.js";
-import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "./sdfRect.js";
-import { RampSlot } from "./gradient.js";
+import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "./paint/sdfRect.js";
+import { RampSlot } from "./paint/gradient.js";
 import { backgroundImage, contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
 import {
@@ -33,14 +33,14 @@ import {
   overlapOrders,
   overlaps,
   paintedBoundsInto,
-} from "./elevation.js";
-import { LayerOrderContext } from "./layerOrder.js";
+} from "./paint/elevation.js";
+import { LayerOrderContext } from "./paint/layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
 import { markMoved, place } from "./place.js";
 import { BoxNumbers } from "./boxNumbers.js";
-import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
-import { TextBatchContext } from "./textBatch.js";
+import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./paint/boxBatch.js";
+import { TextBatchContext } from "./paint/textBatch.js";
 import {
   forwardListEvents,
   forwardPointerEvents,
@@ -86,7 +86,7 @@ export const MotionChannelContext = createProperty(
 /**
  * @import {Component, XREventMap} from '../core.js';
  * @import {ClipBox} from './clip.js';
- * @import {PaintedBounds, PaintLayer} from './elevation.js';
+ * @import {PaintedBounds, PaintLayer} from './paint/elevation.js';
  * @import {EntityEffect, Source, Subscribable} from 'justdom-signal';
  */
 
@@ -249,7 +249,7 @@ const committedPlacements = new WeakMap();
  *
  * @param {THREE.Mesh} mesh
  * @param {BoxNumbers['uniforms']} uniforms
- * @param {() => import('./boxBatch.js').BoxBatch | null} batch
+ * @param {() => import('./paint/boxBatch.js').BoxBatch | null} batch
  * @param {() => boolean} paints
  * @returns {EntityEffect<THREE.Mesh>[]}
  */
@@ -522,7 +522,7 @@ export function box(ctx, element, options = {}) {
    * above already makes for every other cost a picture brings, decided once
    * here rather than watched, because a tag never changes.
    *
-   * @type {import('./boxBatch.js').BoxBatch | null}
+   * @type {import('./paint/boxBatch.js').BoxBatch | null}
    */
   const panelBatch = image ? null : boxBatch;
 
@@ -533,7 +533,7 @@ export function box(ctx, element, options = {}) {
    * this is read where it decides something rather than once. A box without
    * one reads a memoized string to find out.
    *
-   * @returns {import('./boxBatch.js').BoxBatch | null}
+   * @returns {import('./paint/boxBatch.js').BoxBatch | null}
    */
   const batch = () => (drawsBackgroundPicture() ? null : panelBatch);
   /** The panel's order of its layers, null outside a portal. */
@@ -546,7 +546,7 @@ export function box(ctx, element, options = {}) {
    * effect of its own. Both batches hand what they hear to the panel's one
    * paint batch, which walks boxes and text together, and so does `moved`.
    *
-   * @type {import('./textBatch.js').TextBatch | null}
+   * @type {import('./paint/textBatch.js').TextBatch | null}
    */
   const textBatch = TextBatchContext.get(ctx);
 

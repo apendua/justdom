@@ -24,7 +24,7 @@ import {
 } from "./textHelpers.js";
 import { parseColor } from "./VisualProperties.js";
 import { applyClip, clipBoxEqual, intersectClipBoxes, toLocalClipBox } from "./clip.js";
-import { rectGeometry } from "./sdfRect.js";
+import { rectGeometry } from "./paint/sdfRect.js";
 import { placeAndScale } from "./place.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { surfaceRun } from "./surfaceRun.js";

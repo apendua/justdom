@@ -24,15 +24,15 @@ import {
   getLayer,
   getLayerBase,
   PIECE_BAND,
-} from "./elevation.js";
+} from "./paint/elevation.js";
 import { isBlocker } from "./blocker.js";
-import { halfPlanesOf } from "./halfPlanes.js";
-import { getLayerOrder, isProxy, PANEL_PIECES } from "./layerOrder.js";
-import { ARRAYS_PER_DRAW, PaintBatch } from "./paintBatch.js";
-import { LayerTree } from "./layerTree.js";
+import { halfPlanesOf } from "./paint/halfPlanes.js";
+import { getLayerOrder, isProxy, PANEL_PIECES } from "./paint/layerOrder.js";
+import { ARRAYS_PER_DRAW, PaintBatch } from "./paint/paintBatch.js";
+import { LayerTree } from "./paint/layerTree.js";
 import { createPortal } from "./portal.js";
 import { buffers, drawn, draws, watchBatch } from "../test/batchBuffers.js";
-import { rectGeometry } from "./sdfRect.js";
+import { rectGeometry } from "./paint/sdfRect.js";
 
 /**
  * @import { PageSpec, Rect } from "../test/pagePanel.js";
@@ -91,10 +91,10 @@ async function page(children, { rootStyle = "", opaqueToRays = true, manager: sh
      * @param {number} [x]
      * @param {number} [y]
      * @param {number} [z] How far in front, as a local -z.
-     * @returns {Promise<import("./layerOrder.js").LayerOrder>}
+     * @returns {Promise<import("./paint/layerOrder.js").LayerOrder>}
      */
     async walk(x = 200, y = 150, z = -2000) {
-      const order = /** @type {import("./layerOrder.js").LayerOrder} */ (getLayerOrder(root));
+      const order = /** @type {import("./paint/layerOrder.js").LayerOrder} */ (getLayerOrder(root));
       panel.updateWorldMatrix(true, true);
       const from = panel.localToWorld(new THREE.Vector3(x, y, z));
       order.walk(from);
@@ -802,7 +802,7 @@ describe("a panel drawn in paint order", () => {
       },
     ]);
     const card = g.get("card");
-    /** @param {import("./layerOrder.js").LayerOrder} order */
+    /** @param {import("./paint/layerOrder.js").LayerOrder} order */
     const cutBoxes = (order) => {
       assert.equal(order.pieces().filter((piece) => piece.layer === card).length, 2);
       return drawn(g.panel).filter((mesh) => {
@@ -2841,7 +2841,7 @@ describe("a panel drawn in paint order", () => {
       },
     ]);
     const card = g.get("card");
-    /** @param {import("./layerOrder.js").LayerOrder} order */
+    /** @param {import("./paint/layerOrder.js").LayerOrder} order */
     const places = (order) =>
       order.pieces().flatMap((piece, i) => (piece.layer === card ? [i] : []));
     const cutDraws = () =>
@@ -2915,7 +2915,7 @@ describe("a panel drawn in paint order", () => {
     // Two frames: the first is when each panel joins the renderer's.
     for (const time of [1, 2]) {
       for (const g of [near, far]) {
-        /** @type {import("./layerOrder.js").LayerOrder} */ (getLayerOrder(g.root)).frame(
+        /** @type {import("./paint/layerOrder.js").LayerOrder} */ (getLayerOrder(g.root)).frame(
           time,
           renderer,
           camera,

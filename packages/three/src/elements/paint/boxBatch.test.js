@@ -9,10 +9,10 @@ import {
 } from "./boxBatch.js";
 import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
-import { CARET_ORDER_BIAS } from "./textInput.js";
-import { place } from "./place.js";
-import { instanceVersions } from "../test/instanceVersions.js";
-import { paintBatch } from "../test/textRuns.js";
+import { CARET_ORDER_BIAS } from "../textInput.js";
+import { place } from "../place.js";
+import { instanceVersions } from "../../test/instanceVersions.js";
+import { paintBatch } from "../../test/textRuns.js";
 
 /**
  * A box as a portal builds one for a batch: the shared invisible material

@@ -7,7 +7,7 @@ import { isRunMesh } from "../test/runMesh.js";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
-import { batchedBoxMaterial, rectGeometry } from "./sdfRect.js";
+import { batchedBoxMaterial, rectGeometry } from "./paint/sdfRect.js";
 import { getGenerated, parseGeneratedContent } from "./pseudoElements.js";
 import {
   getDrawLevel,
@@ -17,12 +17,12 @@ import {
   getRenderBand,
   OVERLAY_LIFT,
   PIECE_BAND,
-} from "./elevation.js";
+} from "./paint/elevation.js";
 import { isBlocker } from "./blocker.js";
-import { getLayerOrder } from "./layerOrder.js";
-import { PaintBatch } from "./paintBatch.js";
+import { getLayerOrder } from "./paint/layerOrder.js";
+import { PaintBatch } from "./paint/paintBatch.js";
 import { buffers, watchBatch } from "../test/batchBuffers.js";
-import { comparePaintOrder } from "./layerTree.js";
+import { comparePaintOrder } from "./paint/layerTree.js";
 import { fakeClock } from "../test/clock.js";
 import { countEvaluations } from "../test/evaluations.js";
 import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
@@ -948,7 +948,9 @@ describe("an element's ::before and ::after in the paint order", () => {
    * @param {ReturnType<typeof generatedPanel>} panel
    */
   const walk = async (panel) => {
-    const order = /** @type {import("./layerOrder.js").LayerOrder} */ (getLayerOrder(panel.root));
+    const order = /** @type {import("./paint/layerOrder.js").LayerOrder} */ (
+      getLayerOrder(panel.root)
+    );
     panel.parent.updateWorldMatrix(true, true);
     order.walk(new THREE.Vector3(100, -50, 2000));
     await pump();

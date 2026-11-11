@@ -22,10 +22,10 @@ import {
 import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { markMoved, place } from "../elements/place.js";
-import { getContentRenderOrder } from "../elements/elevation.js";
-import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
+import { getContentRenderOrder } from "../elements/paint/elevation.js";
+import { BOX_BUCKET_BIAS } from "../elements/paint/boxBatch.js";
 import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
-import { RampSlot } from "../elements/gradient.js";
+import { RampSlot } from "../elements/paint/gradient.js";
 import { getBorderBoxSize, getInteriorClipBox } from "../elements/mirror/geometryReads.js";
 import {
   getAttributeCached,

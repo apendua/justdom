@@ -10,7 +10,7 @@ import {
   getParentElement,
   hidesVisibility,
 } from "./mirror/styleReads.js";
-import { getContentRenderOrder } from "./elevation.js";
+import { getContentRenderOrder } from "./paint/elevation.js";
 import {
   clipBoxEqual,
   toLocalClipBox,
@@ -19,7 +19,7 @@ import {
   UNCLIPPED,
 } from "./clip.js";
 import { place } from "./place.js";
-import { TextBatchContext } from "./textBatch.js";
+import { TextBatchContext } from "./paint/textBatch.js";
 import { textRun } from "./textRun.js";
 import { attachRevealNode, detachRevealNode, getRevealCut } from "./reveal.js";
 
@@ -35,7 +35,7 @@ export function text(ctx, textNode) {
    * The batch this run is drawn by, if the portal keeps one, told when
    * something it copied out of the run has changed.
    *
-   * @type {import('./textBatch.js').TextBatch | null}
+   * @type {import('./paint/textBatch.js').TextBatch | null}
    */
   const batch = TextBatchContext.get(ctx);
 

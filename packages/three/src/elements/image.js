@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { addDependency, Derived, fromEvent, onCleanup, Signal, withChannel } from "justdom-signal";
 import { getComputedStyleCached } from "./mirror/styleReads.js";
-import { layoutTile } from "./gradient.js";
+import { layoutTile } from "./paint/gradient.js";
 import { fitImage } from "./objectFit.js";
 
 /**

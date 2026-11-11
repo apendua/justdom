@@ -16,7 +16,7 @@ import { placeAndScale } from "./place.js";
 import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "./panelFrame.js";
 import { isSvgRoot } from "./plugins.js";
 import { DRAG_THRESHOLD, sampleRay } from "./scroll.js";
-import { createRectMaterial, rectGeometry } from "./sdfRect.js";
+import { createRectMaterial, rectGeometry } from "./paint/sdfRect.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
 
 /**

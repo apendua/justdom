@@ -1,10 +1,10 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { TEXT_ANISOTROPY } from "./textHelpers.js";
-import { place } from "./place.js";
-import { paintBatch, panel, run } from "../test/textRuns.js";
-import { instanceVersions } from "../test/instanceVersions.js";
+import { TEXT_ANISOTROPY } from "../textHelpers.js";
+import { place } from "../place.js";
+import { paintBatch, panel, run } from "../../test/textRuns.js";
+import { instanceVersions } from "../../test/instanceVersions.js";
 
 describe("text batch teardown", () => {
   test("the runs of a size share one draw, and it holds them all", () => {

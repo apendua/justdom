@@ -5,9 +5,9 @@ import VisualProperties from "./VisualProperties.js";
 import { getInteriorClipBox, getScrollOffset } from "./mirror/geometryReads.js";
 import { hidesVisibility } from "./mirror/styleReads.js";
 import { getGenerated, KIND_BITS, paintsBox } from "./pseudoElements.js";
-import { rectGeometry } from "./sdfRect.js";
+import { rectGeometry } from "./paint/sdfRect.js";
 import { BoxNumbers } from "./boxNumbers.js";
-import { RampSlot } from "./gradient.js";
+import { RampSlot } from "./paint/gradient.js";
 import { backgroundImage, contentImageEqual, placeContentImage } from "./image.js";
 import { toLocalClipBox } from "./clip.js";
 import {
@@ -16,11 +16,11 @@ import {
   getLayer,
   getRenderBand,
   OVERLAY_LIFT,
-} from "./elevation.js";
-import { LayerOrderContext } from "./layerOrder.js";
+} from "./paint/elevation.js";
+import { LayerOrderContext } from "./paint/layerOrder.js";
 import { placeAndScale } from "./place.js";
-import { BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
-import { TextBatchContext } from "./textBatch.js";
+import { BoxBatchContext, UNBATCHED_BOX_BIAS } from "./paint/boxBatch.js";
+import { TextBatchContext } from "./paint/textBatch.js";
 import { drawQuad } from "./div.js";
 import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
 import { surfaceRun } from "./surfaceRun.js";

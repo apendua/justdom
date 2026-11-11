@@ -4,7 +4,7 @@ import {
   HALF_PLANES_FRAGMENT_GLSL,
   HALF_PLANES_VERTEX_GLSL,
   passHalfPlaneWorld,
-} from "./halfPlanes.js";
+} from "./paint/halfPlanes.js";
 
 /**
  * @import {Raycaster, Intersection, Object3D} from 'three';

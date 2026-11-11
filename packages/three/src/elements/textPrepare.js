@@ -3,7 +3,7 @@ import { createProperty } from "justdom-signal";
 /**
  * @import {PortalPump, PortalScheduler} from './portalScheduler.js';
  * @import {Texture} from 'three';
- * @import {TextBatch} from './textBatch.js';
+ * @import {TextBatch} from './paint/textBatch.js';
  */
 
 /**

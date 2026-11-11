@@ -9,7 +9,7 @@ import {
   MAX_HALF_PLANES,
   writeHalfPlanes,
 } from "./halfPlanes.js";
-import { applyClip, applyReveal } from "./clip.js";
+import { applyClip, applyReveal } from "../clip.js";
 import { createRectMaterial } from "./sdfRect.js";
 
 /**

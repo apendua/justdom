@@ -1,10 +1,10 @@
 import * as THREE from "three";
-import { keepProgram } from "./programKeeper.js";
+import { keepProgram } from "./paint/programKeeper.js";
 import { SHADOW_LENGTH, splitShadowLayers } from "./shadows.js";
 
 /**
  * @import {TextLine} from './textLines.js';
- * @import {ProgramKind} from './programKeeper.js';
+ * @import {ProgramKind} from './paint/programKeeper.js';
  */
 
 /**

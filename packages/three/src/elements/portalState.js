@@ -3,9 +3,9 @@
  * @import {Effect, Signal, UpdateChannel} from 'justdom-signal';
  * @import {InteractionManager} from '../interactions.js';
  * @import {PortalPlugin} from './plugins.js';
- * @import {PaintBatch} from './paintBatch.js';
- * @import {BoxBatch} from './boxBatch.js';
- * @import {TextBatch} from './textBatch.js';
+ * @import {PaintBatch} from './paint/paintBatch.js';
+ * @import {BoxBatch} from './paint/boxBatch.js';
+ * @import {TextBatch} from './paint/textBatch.js';
  * @import {ScrollDrags} from './scroll.js';
  * @import {Forwarder} from './pointerForwarding.js';
  * @import {createTextScale} from './textScale.js';
@@ -13,7 +13,7 @@
  * @import {DomMirror} from './mirror.js';
  * @import {registerPanel} from './dragAndDrop.js';
  * @import {createBlocker, createDepthQuad} from './blocker.js';
- * @import {LayerOrder} from './layerOrder.js';
+ * @import {LayerOrder} from './paint/layerOrder.js';
  * @import {createFrameRequester} from './frameRequester.js';
  * @import {OutlineHost} from './outlines.js';
  * @import {PanelHandles} from './panelHandles.js';

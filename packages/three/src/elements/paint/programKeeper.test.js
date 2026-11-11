@@ -1,22 +1,22 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { RendererContext } from "../scene.js";
-import { countingManager } from "../test/portalHarness.js";
-import { stubGlRenderer } from "../test/stubGl.js";
-import { paintBatch, panel } from "../test/textRuns.js";
-import { createDepthQuad } from "./blocker.js";
-import { applyClip, applyReveal } from "./clip.js";
-import { createLoadingFrame } from "./loadingFrame.js";
-import { createPanelHandles } from "./panelHandles.js";
-import { place } from "./place.js";
+import { RendererContext } from "../../scene.js";
+import { countingManager } from "../../test/portalHarness.js";
+import { stubGlRenderer } from "../../test/stubGl.js";
+import { paintBatch, panel } from "../../test/textRuns.js";
+import { createDepthQuad } from "../blocker.js";
+import { applyClip, applyReveal } from "../clip.js";
+import { createLoadingFrame } from "../loadingFrame.js";
+import { createPanelHandles } from "../panelHandles.js";
+import { place } from "../place.js";
 import {
   batchedBoxMaterial,
   createRectMaterial,
   createRectUniforms,
   rectGeometry,
 } from "./sdfRect.js";
-import { createMarkMaterial } from "./textHelpers.js";
+import { createMarkMaterial } from "../textHelpers.js";
 
 /**
  * A scene drawn by three's own renderer over a context that counts what it

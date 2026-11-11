@@ -5,15 +5,15 @@ import {
   writeGradientUniforms,
   writeImageUniforms,
   writeRectUniforms,
-} from "./sdfRect.js";
+} from "./paint/sdfRect.js";
 
 /**
  * @import * as THREE from 'three';
  * @import VisualProperties from './VisualProperties.js';
  * @import {ContentImage} from './image.js';
- * @import {RampSlot} from './gradient.js';
+ * @import {RampSlot} from './paint/gradient.js';
  * @import {ClipBox} from './clip.js';
- * @import {BoxBatch} from './boxBatch.js';
+ * @import {BoxBatch} from './paint/boxBatch.js';
  */
 
 /**

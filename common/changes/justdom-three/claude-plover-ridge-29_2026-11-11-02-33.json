@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A moved or scrolled box no longer rebuilds its panel's batch: the batch writes the matrices under the moved object where its last rebuild put them.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

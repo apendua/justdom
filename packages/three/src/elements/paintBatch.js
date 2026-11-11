@@ -70,24 +70,28 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  * (`grownCapacity`); the ones a rebuild does not use go.
  *
  * A rebuild is the whole walk, the sort and every instance written again.
- * Most changes need less: a box whose numbers changed is drawn at the same
- * place in the same draw, and only its instances have to be written. So a
- * change is one of two kinds, and the batch is told which.
+ * Most changes need less: a box whose numbers changed, or that moved, is
+ * drawn at the same place in the same draw, and only its instances have to
+ * be written. So a change is one of three kinds, and the batch is told
+ * which.
  *
  * - Structural (`invalidate`): anything that can change which instances
  *   there are or where they sit in the order. A member added or removed, a
- *   `renderOrder` or a `visible` changed, a matrix changed, a run changing
- *   its size class, a layer becoming cut or uncut, a layer's base moving.
- *   A site that has not said which kind its change is calls this, and
- *   stays correct.
+ *   `renderOrder` or a `visible` changed, a run changing its size class, a
+ *   layer becoming cut or uncut, a layer's base moving. A site that has not
+ *   said which kind its change is calls this, and stays correct.
+ * - A move (`moved(object)`): an object's matrix changed, which moves every
+ *   box and run under it. A scroll is one, of the content group that
+ *   carries what scrolls. Order is by render order, not by place, so a move
+ *   changes no draw.
  * - A patch (`changed(mesh)`): a box's numbers changed. A box gaining or
  *   losing a shadow layer or an outline, or a shadow layer turning inset or
  *   outer, arrives this way too, since `BoxNumbers` sees only numbers: the
  *   check against the record below is what makes it a rebuild.
  *
- * What a rebuild leaves behind is a record: for each box it took, where its
- * instance and each of its decorations went, by draw and index. The record
- * holds until the next rebuild, which makes it again.
+ * What a rebuild leaves behind is a record: for each box and run it took,
+ * where its instance and each of a box's decorations went, by draw and
+ * index. The record holds until the next rebuild, which makes it again.
  *
  * A flush runs a rebuild when anything structural is pending. Otherwise it
  * checks every box marked changed against the record before it writes any.
@@ -99,7 +103,17 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  * any box fails, the flush runs a rebuild instead, so the patch path never
  * guesses. If all pass, it writes those boxes' instances where the record
  * says, and marks the draws they are in for upload. A rebuild, run for any
- * reason, drops what was marked changed, since it writes everything.
+ * reason, drops what was marked changed or moved, since it writes
+ * everything.
+ *
+ * A move walks the moved object's subtree as a rebuild walks the panel,
+ * from its parent's matrix in the container's frame, and writes the matrix
+ * of each box and run it meets to every slot the record has for it. An
+ * object under a hidden ancestor, or outside the container, is passed over,
+ * since nothing under it is drawn, and so is one under another moved
+ * object, which writes it. A box the walk meets with no record is a box the
+ * last rebuild did not draw and now would: the flush runs a rebuild. A run
+ * with no record draws itself, and is passed over too.
  *
  * The check also asks that the box is still a member with the same numbers,
  * is visible, and draws at the order the record has. Every writer of those
@@ -563,12 +577,23 @@ export class PaintBatch {
   #changed = [];
   /** @type {Set<Object3D>} */
   #changedSet = new Set();
+  /**
+   * The objects whose matrix changed since the last flush, and nothing
+   * else about them, each once.
+   *
+   * @type {Object3D[]}
+   */
+  #moved = [];
+  /** @type {Set<Object3D>} */
+  #movedSet = new Set();
+  /** The ancestors of a moved object, nearest first. @type {Object3D[]} */
+  #ancestors = [];
   #disposed = false;
 
   /**
-   * The record of the last rebuild: each box it took, by its mesh, against
-   * the index of its own instance in the walk's arrays below. Its
-   * decorations follow it there.
+   * The record of the last rebuild: each box and run it took, by its mesh,
+   * against the index of its own instance in the walk's arrays below. A
+   * box's decorations follow it there.
    *
    * @type {Map<Object3D, number>}
    */
@@ -748,6 +773,24 @@ export class PaintBatch {
     this.#schedule();
   }
 
+  /**
+   * An object's matrix changed, and nothing else about it: the next flush
+   * writes the matrix of every box and run under it where the last rebuild
+   * put them, unless anything structural is pending or the subtree no
+   * longer matches what the rebuild recorded (see the file's header). A
+   * scroll is this, of the content group that carries what scrolls.
+   *
+   * @param {Object3D} object
+   * @returns {void}
+   */
+  moved(object) {
+    if (!this.#movedSet.has(object)) {
+      this.#movedSet.add(object);
+      this.#moved.push(object);
+    }
+    this.#schedule();
+  }
+
   /** @returns {void} */
   #schedule() {
     if (this.#dirty || this.#disposed) {
@@ -775,12 +818,16 @@ export class PaintBatch {
   #clearChanged() {
     this.#changed.length = 0;
     this.#changedSet.clear();
+    this.#moved.length = 0;
+    this.#movedSet.clear();
   }
 
   /**
-   * Write the instances of the boxes marked changed where the last rebuild
-   * put them, if every one of them still matches the record; say whether
-   * it did.
+   * Write the matrices under the objects marked moved and the instances of
+   * the boxes marked changed where the last rebuild put them, if every one
+   * of them still matches the record; say whether it did. A move that does
+   * not match leaves matrices written, which the rebuild that follows
+   * writes again.
    *
    * @returns {boolean}
    */
@@ -792,7 +839,15 @@ export class PaintBatch {
       }
     }
     const touched = this.#touched;
-    let written = 0;
+    this.written = 0;
+    const moved = this.#moved;
+    for (let k = 0; k < moved.length; k++) {
+      if (!this.#move(moved[k])) {
+        touched.length = 0;
+        return false;
+      }
+    }
+    let written = this.written;
     for (let k = 0; k < changed.length; k++) {
       const first = this.#slots.get(changed[k]);
       if (first === undefined) {
@@ -808,12 +863,88 @@ export class PaintBatch {
         written += 1;
       }
     }
-    // A patch writes no matrix, so the matrices are not compared.
+    // A patch with no move writes no matrix, so the matrices are not
+    // compared.
     for (let k = 0; k < touched.length; k++) {
-      touched[k].markAttributes(false);
+      touched[k].markAttributes(moved.length > 0);
     }
     touched.length = 0;
     this.written = written;
+    return true;
+  }
+
+  /**
+   * Write the matrices of what `object` and its subtree draw where the last
+   * rebuild put them, from the matrix of its parent in the container's
+   * frame; say whether the subtree matched the record. An object the last
+   * walk could not reach, under a hidden ancestor or outside the container,
+   * draws nothing, and one under another moved object is written with it.
+   *
+   * @param {Object3D} object
+   * @returns {boolean}
+   */
+  #move(object) {
+    const ancestors = this.#ancestors;
+    ancestors.length = 0;
+    let parent = object.parent;
+    while (parent !== this.#container) {
+      if (
+        parent === null ||
+        !parent.visible ||
+        this.#movedSet.has(parent) ||
+        this.#drawMeshes.has(parent) ||
+        isProxy(parent)
+      ) {
+        return true;
+      }
+      ancestors.push(parent);
+      parent = parent.parent;
+    }
+    const depth = ancestors.length;
+    let matrix = stackAt(0).identity();
+    for (let k = depth - 1; k >= 0; k--) {
+      matrix = stackAt(depth - k).multiplyMatrices(matrix, ancestors[k].matrix);
+    }
+    ancestors.length = 0;
+    return this.#place(object, matrix, depth + 1);
+  }
+
+  /**
+   * The walk of `#walk`, over one subtree, writing each matrix to the
+   * record's slots rather than taking anything; false when it meets a box
+   * the record does not have.
+   *
+   * @param {Object3D} object
+   * @param {THREE.Matrix4} parentMatrix
+   * @param {number} depth
+   * @returns {boolean}
+   */
+  #place(object, parentMatrix, depth) {
+    if (!object.visible || this.#drawMeshes.has(object) || isProxy(object)) {
+      return true;
+    }
+    const matrix = stackAt(depth).multiplyMatrices(parentMatrix, object.matrix);
+    const first = this.#slots.get(object);
+    if (first !== undefined) {
+      const box = this.#boxes[first];
+      const end = box ? this.#boxes.length : first + 1;
+      for (let i = first; i < end && (i === first || this.#boxes[i] === box); i++) {
+        const draw = this.#draws[this.#drawAt[i]];
+        /** @type {THREE.InstancedMesh} */ (draw.mesh).setMatrixAt(this.#indexAt[i], matrix);
+        if (!this.#touched.includes(draw)) {
+          this.#touched.push(draw);
+        }
+        this.written += 1;
+      }
+    } else if (this.boxes.numbersOf(/** @type {THREE.Mesh} */ (object))) {
+      return false;
+    }
+    const children = object.children;
+    for (let i = 0; i < children.length; i++) {
+      if (!this.#place(children[i], matrix, depth + 1)) {
+        return false;
+      }
+    }
     return true;
   }
 
@@ -947,9 +1078,7 @@ export class PaintBatch {
     const box = this.boxes.take(mesh);
     const run = box ? null : this.runs.take(mesh);
     if (box || run) {
-      if (box) {
-        this.#slots.set(mesh, this.#orders.length);
-      }
+      this.#slots.set(mesh, this.#orders.length);
       const order = box ? mesh.renderOrder + BOX_BUCKET_BIAS : mesh.renderOrder;
       this.#take(order, box, run, 0, 0, matrix);
       if (box) {

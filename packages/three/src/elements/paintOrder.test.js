@@ -1753,6 +1753,168 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  /**
+   * Scroll `element` down by `top` px, as the page would, and say so.
+   *
+   * @param {HTMLElement} element
+   * @param {number} top
+   */
+  const scrollTo = (element, top) => {
+    Object.defineProperty(element, "scrollTop", { configurable: true, get: () => top });
+    element.dispatchEvent(new Event("scroll"));
+  };
+
+  test("a scroll writes the matrices of what scrolls, as a rebuild would", async () => {
+    // A scroller of cards beside a card that does not scroll: a scroll
+    // moves the content group alone, and the batch writes the matrices of
+    // the boxes under it where they are, and nothing else. Goes red with a
+    // scroll rebuilding the batch.
+    const g = await page([
+      {
+        id: "scroller",
+        style: "position: absolute; overflow: hidden",
+        at: [0, 0, 200, 300],
+        children: Array.from({ length: 10 }, (_, i) => ({
+          id: `card${i}`,
+          style: CARD,
+          at: /** @type {[number, number, number, number]} */ ([0, 40 + i * 20, 200, 20]),
+        })),
+      },
+      { id: "still", style: CARD, at: [250, 0, 100, 100] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    const moved = PaintBatch.prototype.moved;
+    let movedCalls = 0;
+    PaintBatch.prototype.moved = function (object) {
+      movedCalls += 1;
+      watched.batch = this;
+      return moved.call(this, object);
+    };
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("scroller")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(movedCalls > 0, "the content group moved");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      // Each card's matrix, and its numbers, since its clip is expressed
+      // against the scroll; not the card that stays put.
+      assert.equal(batch.written, 20, "two writes for each of the ten cards");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      PaintBatch.prototype.moved = moved;
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a move writes the matrices of the boxes and runs under the object", async () => {
+    // A card with a label in it, moved without the layout knowing, as a
+    // transform's motion step moves one: the batch writes the card's
+    // matrix and its label's where they are, and the buffers come out as a
+    // rebuild makes them.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+      { id: "other", style: CARD, at: [20, 100, 200, 40] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("other").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Mesh[]} */
+      const members = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object)) {
+          members.push(object);
+        }
+      });
+      const card = /** @type {THREE.Object3D} */ (members[0].parent);
+      const versions = () => draws(g.panel).map((draw) => draw.instanceMatrix.version);
+      const before = versions();
+      card.matrix.multiply(new THREE.Matrix4().makeTranslation(5, 7, 0));
+      batch.moved(card);
+      batch.flush();
+      assert.equal(batch.written, 2, "the card and its label");
+      assert.ok(
+        versions().some((version, d) => version > before[d]),
+        "the matrices are marked for upload",
+      );
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a move that meets a box the record does not have rebuilds the batch", async () => {
+    // A card shown past its writer's back, under a group then said to have
+    // moved: its box has no slot to write a matrix to, so the flush
+    // rebuilds rather than leave it undrawn. And a move under a hidden
+    // ancestor writes nothing, since nothing there is drawn.
+    const g = await page([
+      {
+        id: "group",
+        style: "position: absolute",
+        at: [0, 0, 400, 300],
+        children: Array.from({ length: 3 }, (_, i) => ({
+          id: `card${i}`,
+          style: CARD,
+          at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+        })),
+      },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card1").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Mesh[]} */
+      const members = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object)) {
+          members.push(object);
+        }
+      });
+      const mesh = members[members.length - 1];
+      const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+
+      mesh.visible = false;
+      batch.invalidate();
+      batch.flush();
+      const before = total();
+      mesh.visible = true;
+      batch.moved(/** @type {THREE.Object3D} */ (mesh.parent));
+      batch.flush();
+      assert.equal(total(), before + 1, "the card is drawn again");
+      assert.equal(batch.written, total(), "by a rebuild");
+
+      const parent = /** @type {THREE.Object3D} */ (mesh.parent);
+      parent.visible = false;
+      batch.invalidate();
+      batch.flush();
+      batch.moved(mesh);
+      batch.flush();
+      assert.equal(batch.written, 0, "a move under a hidden ancestor writes nothing");
+      parent.visible = true;
+      batch.invalidate();
+      batch.flush();
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
   test("after any run of restyles, the buffers are what a rebuild makes", async () => {
     // A seeded sequence of restyles of boxes among twenty, patched or
     // rebuilt as each flush decides. Some change only a box's numbers, and

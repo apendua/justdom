@@ -409,9 +409,22 @@ export class BoxBatch {
   }
 
   /**
+   * An object of the panel moved or scrolled, and nothing else about it
+   * changed: the one batch writes the matrices under it again where they
+   * are (`moved` in `paintBatch.js`).
+   *
+   * @param {THREE.Object3D} object
+   * @returns {void}
+   */
+  moved(object) {
+    this.#draw.moved(object);
+  }
+
+  /**
    * Something about the panel that the batch has copied down has changed in
-   * a way that needs a rebuild: a box moved, scrolled, appeared or went
-   * away. A change to a member's numbers alone is `changed`. The one batch
+   * a way that needs a rebuild: a box appeared, went away, or was shown or
+   * hidden. A change to a member's numbers alone is `changed`, and to an
+   * object's matrix alone `moved`. The one batch
    * coalesces it with everything else the panel changed (`invalidate` in
    * `paintBatch.js`).
    *

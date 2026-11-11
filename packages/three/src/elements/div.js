@@ -533,37 +533,42 @@ export function box(ctx, element, options = {}) {
   const layerOrder = LayerOrderContext.get(ctx);
 
   /**
-   * The text of this panel, which has to hear about this element moving even
-   * though it draws none of it.
-   *
-   * A box moving moves everything inside it, and a scroll is the case that
-   * makes the point: the content group slides, every descendant goes with it,
-   * and not one of those descendants re-runs an effect of its own — that
-   * invariance is what makes scrolling cheap. The batches recompute their
-   * instance matrices by walking the panel, so one of them being told is
-   * enough for its own contents and no use at all to the other's.
-   *
-   * Today the text inside a scroller would in fact notice, because its clip
-   * box is expressed against the scroll offset and so changes with it. That
-   * is a chain of reasoning three files long, and a silent desync — text left
-   * behind where the panel used to be — is what it costs when it breaks.
+   * The text of this panel, which has to hear about this element being
+   * shown or hidden even though it draws none of it: hiding a box hides
+   * everything inside it, and not one of those descendants re-runs an
+   * effect of its own. Both batches hand what they hear to the panel's one
+   * paint batch, which walks boxes and text together, and so does `moved`.
    *
    * @type {import('./textBatch.js').TextBatch | null}
    */
   const textBatch = TextBatchContext.get(ctx);
 
   /**
-   * Say that the box's object moved or was shown or hidden, which both
-   * batches copy as they walk. Cheap and coalesced: each rebuilds once
-   * however many boxes call it. The quad's own numbers are not told here:
-   * `BoxNumbers` tells the box batch itself, and only when a write changed
-   * one.
+   * Say that the box's object was shown or hidden, which both batches copy
+   * as they walk. Cheap and coalesced: each rebuilds once however many
+   * boxes call it. The quad's own numbers are not told here: `BoxNumbers`
+   * tells the box batch itself, and only when a write changed one.
    *
    * @returns {void}
    */
   const batchChanged = () => {
     batch()?.invalidate();
     textBatch?.invalidate();
+  };
+
+  /**
+   * Say that one of the box's objects moved, its own or its content group,
+   * and nothing else about it changed. The one batch that draws the panel's
+   * boxes and text writes the matrices under it again where they are,
+   * rather than rebuilding (`moved` in `paintBatch.js`). Through the
+   * panel's box batch, whether or not it draws this box: the box's text is
+   * under the same object.
+   *
+   * @param {THREE.Object3D} moved
+   * @returns {void}
+   */
+  const objectMoved = (moved) => {
+    boxBatch?.moved(moved);
   };
 
   /**
@@ -746,7 +751,7 @@ export function box(ctx, element, options = {}) {
         place(obj, at.x, at.y, at.z);
         placed = at;
         wroteMatrix = false;
-        batchChanged();
+        objectMoved(obj);
       }
       return;
     }
@@ -779,7 +784,7 @@ export function box(ctx, element, options = {}) {
     obj.matrixWorldNeedsUpdate = true;
     wroteMatrix = true;
     placed = null;
-    batchChanged();
+    objectMoved(obj);
   };
 
   /**
@@ -938,7 +943,13 @@ export function box(ctx, element, options = {}) {
       // axis would negate to back into 0.)
       if (!contentMatrix) {
         const scroll = getScrollOffset(element);
-        place(contentGroup, -scroll.left || 0, -scroll.top || 0, 0);
+        const x = -scroll.left || 0;
+        const y = -scroll.top || 0;
+        const { position } = contentGroup;
+        if (contentGroup.matrixAutoUpdate || position.x !== x || position.y !== y) {
+          place(contentGroup, x, y, 0);
+          objectMoved(contentGroup);
+        }
       }
       currentClipBox = getLocalClipBox(element);
       numbers.clip(currentClipBox);
@@ -946,8 +957,10 @@ export function box(ctx, element, options = {}) {
       // left to show is worth skipping wholesale — `visible` prunes it and
       // its descendants from the render traversal, and from the batch's walk,
       // which follows the same flag for the same reason.
-      obj.visible = shown.get();
-      batchChanged();
+      if (obj.visible !== shown.get()) {
+        obj.visible = shown.get();
+        batchChanged();
+      }
     }),
     // The motion effect, after the place effect so that its first run finds
     // a placement committed. Its own channel, so that a transform animating
@@ -984,7 +997,7 @@ export function box(ctx, element, options = {}) {
             // would otherwise stay where it was. Nothing SVG is batched
             // today, so this is for what a plugin may put under a content
             // matrix of its own.
-            batchChanged();
+            objectMoved(contentGroup);
           }),
         ]
       : []),

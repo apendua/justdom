@@ -54,19 +54,23 @@ export function createBlocker() {
   return blocker;
 }
 
-/** Scratch for `meetAtBox`, so a cast allocates nothing. */
+/** Scratch for `meetAtBox`, so a cast allocates only the hit it finds. */
 const toParent = new THREE.Matrix4();
 const parentRay = new THREE.Ray();
 const met = new THREE.Vector3();
+const behind = new THREE.Vector3();
 
 /**
  * Raycast a blocker as the box it covers. A blocker sits a little behind
- * the box (`coverBox`), so that what the box draws is met before it; but a
- * slanting ray that passes the box's edge would still meet the plane behind
- * it, and give the box a press where a page shows what is past its edge.
- * So a hit counts only where the ray crosses the box's own plane, its
- * parent's z = 0, inside the box, and it is moved there. Its distance stays
- * the blocker's, behind what the box draws.
+ * the box (`coverBox`), so that what the box draws is met before it. Its
+ * own quad is the wrong place to ask whether a ray meets it: a slanting
+ * ray can pass the box's edge and land on the quad behind it, or cross the
+ * box's plane inside the box and leave the quad's footprint before it
+ * reaches the quad's plane. So the ray meets a blocker wherever it crosses
+ * the box's own plane, its parent's z = 0, inside the box (the blocker's
+ * position and scale, which `coverBox` sets), and the hit is at that
+ * point. Its distance is to the blocker's plane, behind what the box draws.
+ * A blocker with no parent is its own box, and raycast as a mesh.
  *
  * @param {THREE.Mesh} blocker
  * @param {THREE.Raycaster} raycaster
@@ -74,26 +78,33 @@ const met = new THREE.Vector3();
  * @returns {void}
  */
 function meetAtBox(blocker, raycaster, intersects) {
-  const first = intersects.length;
-  THREE.Mesh.prototype.raycast.call(blocker, raycaster, intersects);
-  const { parent } = blocker;
-  if (intersects.length === first || !parent) {
+  const { parent, position, scale } = blocker;
+  if (!parent) {
+    THREE.Mesh.prototype.raycast.call(blocker, raycaster, intersects);
     return;
   }
   toParent.copy(parent.matrixWorld).invert();
   parentRay.copy(raycaster.ray).applyMatrix4(toParent);
-  parentRay.at(-parentRay.origin.z / parentRay.direction.z, met);
-  const { position, scale } = blocker;
-  // A ray parallel to the plane meets it nowhere, and `met` is not finite.
-  const inside =
-    Math.abs(met.x - position.x) <= scale.x / 2 && Math.abs(met.y - position.y) <= scale.y / 2;
-  for (let index = intersects.length - 1; index >= first; index--) {
-    if (inside) {
-      intersects[index].point.copy(met).applyMatrix4(parent.matrixWorld);
-    } else {
-      intersects.splice(index, 1);
-    }
+  const along = -parentRay.origin.z / parentRay.direction.z;
+  // Parallel to the plane, or crossing it behind the ray's origin.
+  if (!(along >= 0) || !Number.isFinite(along)) {
+    return;
   }
+  parentRay.at(along, met);
+  if (Math.abs(met.x - position.x) > scale.x / 2 || Math.abs(met.y - position.y) > scale.y / 2) {
+    return;
+  }
+  parentRay.at((position.z - parentRay.origin.z) / parentRay.direction.z, behind);
+  behind.applyMatrix4(parent.matrixWorld);
+  const distance = behind.distanceTo(raycaster.ray.origin);
+  if (distance < raycaster.near || distance > raycaster.far) {
+    return;
+  }
+  intersects.push({
+    distance,
+    point: met.clone().applyMatrix4(parent.matrixWorld),
+    object: blocker,
+  });
 }
 
 /** @returns {THREE.MeshBasicMaterial} */

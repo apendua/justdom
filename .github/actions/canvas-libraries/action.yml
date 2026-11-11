@@ -13,13 +13,17 @@ runs:
     # The libraries are a fallback, so a mirror that cannot be reached
     # does not stop the job: on 2026-11-11 the runners could not resolve
     # the Ubuntu mirrors, and apt retried until each job's 30-minute
-    # timeout with no test run. Each command gets three minutes and a
-    # warning when it fails, and `rush install` goes on with the prebuilt
-    # binary, which is what it uses whenever the download works.
+    # timeout with no test run. The update and the download each get
+    # three minutes and a warning when they fail, and `rush install` goes
+    # on with the prebuilt binary, which is what it uses whenever the
+    # download works. The install itself is not stopped part way, since a
+    # dpkg stopped mid-configure blocks every later apt command.
     - shell: bash
       run: |
-        if ! timeout 180 sudo apt-get update -q ||
-          ! timeout 180 sudo apt-get install -y -q --no-install-recommends \
-            libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev; then
+        packages=(libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev)
+        if timeout 180 sudo apt-get update -q &&
+          timeout 180 sudo apt-get install -y -q --no-install-recommends --download-only "${packages[@]}"; then
+          sudo apt-get install -y -q --no-install-recommends "${packages[@]}"
+        else
           echo "::warning::canvas's build libraries were not installed; rush install relies on the prebuilt binary"
         fi

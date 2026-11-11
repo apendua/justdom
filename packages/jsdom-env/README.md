@@ -23,8 +23,9 @@ the window knows of is the mouse's, whose id is 1, so capturing or releasing any
 it `HTMLCanvasElement.getContext("2d")` returns `null`. justdom-three measures text through that
 context, so 73 of its tests fail when `canvas` is missing. `canvas` installs a prebuilt binary from
 a GitHub release and builds from source when that download fails, which needs cairo, pango and the
-image libraries. CI installs them first with `.github/actions/canvas-libraries`; on a machine of
-your own, install the same packages that action names.
+image libraries. CI tries to install them first with `.github/actions/canvas-libraries`, and goes on
+without them when the Ubuntu mirrors fail; on a machine of your own, install the same packages that
+action names.
 
 ## Usage
 

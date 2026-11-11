@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { xrSession } from "justdom-xr/session";
+import { enterSession } from "justdom-xr/session";
 import {
   children,
   cursors,
@@ -148,7 +148,7 @@ export const placedGroups = new Map<string, THREE.Object3D>();
  * mirrored key is a click on the real one and a card dragged in the room is
  * dragged on the page. The room and the panels exist only while a session
  * presents: a session that starts builds them from the look the page is
- * showing then, and one that ends takes them down. `xrSession` tells the
+ * showing then, and one that ends takes them down. `enterSession` tells the
  * page first, so that it takes its staging off before anything is
  * measured.
  */
@@ -161,7 +161,7 @@ export const Scene = (desk: Readable<MountedDesk>) =>
     useEffects(getScene(ctx), [
       effects(() => {
         const session = getXRSession(ctx);
-        xrSession.set(session);
+        enterSession(session);
         if (session) {
           useDiagnostics(ctx, diagnostics);
         }

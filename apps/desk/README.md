@@ -6,6 +6,12 @@ from, and a paper to read. On a page it is a page. In a headset `justdom-three` 
 into a panel of its own and sets them out on a desk in a room; `?panels=texture` has the browser
 draw them into a texture instead (below).
 
+The page is written against the DOM itself. Each look is HTML, and the files under `src` find its
+elements, listen with `addEventListener` and keep their state in `justdom-signal` signals. Only the
+monitor's listing and the note keyboard are built with `justdom-core`. That is on purpose: it shows
+that `justdom-three` mirrors a page however the page was made. It also means this is not the app to
+copy for how to write components. [`apps/todo`](../todo) is that one.
+
 It is the sampler for what justdom-three can mirror, written as one scene rather than a grid of
 specimens. `apps/showcase` stays as it is, because its visual suite is a regression test for
 justdom-three and needs a scene that holds still. The three looks are the mockups in
@@ -31,13 +37,16 @@ one. Picking another from the menu swaps it in place and writes it into the addr
 a link opens the same desk. The menu is hidden while a session runs, which mirrors the look it
 started with.
 
-On a laptop there is no session to offer, so there is no button and no renderer. `?emulator`
-installs a headset in the browser (IWER, with its dev panels, from `justdom-xr`) and an Enter button
-appears at the bottom; `?emulator=bare` installs the runtime without the panels. On a phone
-`?emulator` installs `justdom-xr`'s touch layer instead of the panels (`?emulator=devui` keeps
-them), and `?touch` installs it anywhere: once the session is up, a drag turns the head, a tap
-presses what it lands on, a finger held still for 400 ms and then moved drags it, held and lifted is
-a long press, and two fingers pinch the view in and out.
+On a laptop there is no session to offer, so there is no button and no renderer, and `src/xr.ts`
+with the scene and three.js's renderer is never fetched: `main.ts` imports it through `offerHeadset`
+from `justdom-xr`, only where a session can be opened. The page does load three.js's core, about a
+quarter of a megabyte, for the maths in the helpers it takes from `justdom-three` (`makeReveal`,
+`scrollElementBy` and `getPortalRoot`). `?emulator` installs a headset in the browser (IWER, with
+its dev panels, from `justdom-xr`) and an Enter button appears at the bottom; `?emulator=bare`
+installs the runtime without the panels. On a phone `?emulator` installs `justdom-xr`'s touch layer
+instead of the panels (`?emulator=devui` keeps them), and `?touch` installs it anywhere: once the
+session is up, a drag turns the head, a tap presses what it lands on, a finger held still for 400 ms
+and then moved drags it, held and lifted is a long press, and two fingers pinch the view in and out.
 
 `?trace`, under the dev server, keeps a row for every frame of each session and saves them as the
 session ends (`src/deskTrace.ts`), the paint-order probe's trace (below) taken on the whole desk:

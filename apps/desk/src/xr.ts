@@ -1,8 +1,6 @@
 import { render, createXRButton, canDrawHtmlInCanvas } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
-import { installEmulator } from "justdom-xr/offer";
-import { canPresent } from "justdom-xr/session";
-import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
+import { inputModels } from "justdom-xr/scene";
 import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
 import type { MountedDesk } from "./desk.js";
@@ -12,15 +10,8 @@ import type { Panels } from "./texture/panels.js";
 /**
  * Offer the page a headset: a scene that mirrors the objects of whichever
  * look `desk` holds when a session starts, and justdom-three's Enter button.
- * Nothing happens on a platform that cannot present, so on a laptop the page
- * is the page and nothing else.
- *
- * `?emulator` installs a headset in the browser first, so that a session
- * can be driven by hand without one: with IWER's panels on a laptop, and
- * with the touch layer on a phone. `?emulator=bare` installs it without
- * the panels that drive it, for a harness photographing the scene, and
- * `?touch` with the touch layer anywhere (`installEmulator` in
- * `justdom-xr/offer`).
+ * Loaded by `offerHeadset` from `justdom-xr/offer` only on a platform that
+ * can present, so on a laptop the page is the page and nothing else.
  *
  * `?trace` records each session's frames and saves them as it ends
  * (`deskTrace.ts`), under the dev server.
@@ -34,22 +25,17 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
-  await installEmulator({ touch: {} });
-  if (!(await canPresent())) {
-    return;
-  }
   const scene = panels === "texture" ? await textureScene(desk) : await mirrorScene(desk);
   if (!scene) {
     return;
   }
 
-  // A tracked hand points and pinches without a model of its own, so there
-  // is none: three's hand models fetch theirs when the hand connects, and
-  // one that lands after the hand was replaced hangs in the room (see
+  // The controllers' models and not the hands'. A tracked hand points and
+  // pinches without a model of its own, so there is none: three's hand
+  // models fetch theirs when the hand connects, and one that lands after
+  // the hand was replaced hangs in the room (see
   // apps/paperwings-xr/src/hands.ts in apendua.dev).
-  const controllerModelFactory = new XRControllerModelFactory();
-  const createControllerModel =
-    controllerModelFactory.createControllerModel.bind(controllerModelFactory);
+  const { createControllerModel } = inputModels();
 
   render(scene.scene, {
     createControllerModel,

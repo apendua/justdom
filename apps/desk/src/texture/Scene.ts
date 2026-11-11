@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { xrSession } from "justdom-xr/session";
+import { enterSession } from "justdom-xr/session";
 import {
   $,
   children,
@@ -99,7 +99,7 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
 
     useEffects(getScene(ctx), [
       effects(() => {
-        xrSession.set(getXRSession(ctx));
+        enterSession(getXRSession(ctx));
       }),
       children(
         ...lights(),

@@ -8,12 +8,20 @@ import {
   getScene,
   list,
   PortalPluginsContext,
+  size,
   withPanelOptions,
   type PortalKeyboardOptions,
   type PortalPlugin,
 } from "justdom-three";
 import { $ as $dom, attr, children as domChildren } from "justdom-core";
-import { Signal, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
+import {
+  Signal,
+  effects,
+  effectsOnly,
+  fromObservable,
+  onCleanup,
+  useEffects,
+} from "justdom-signal";
 
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
 import { CARD_HEIGHT, CARD_WIDTH } from "./panels.js";
@@ -368,6 +376,8 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
     // centred on the group's origin, and the gap and the bar hang below it.
     const lift = ((GAP + BAR_HEIGHT) / 2) * PANEL_SCALE * scale;
 
+    const viewport = fromObservable(size(ctx));
+
     useEffects(getScene(ctx), [
       // The page view, outside a session: the field of view is set so that
       // the deck fits the window. Across, for a phone held upright, the card
@@ -378,31 +388,36 @@ const createScene = ({ initial, initialPlugins, onShow, panels = "mirror" }: Sce
       // page's buttons at the bottom (and as much at the top, since the deck
       // is centred). A session draws with the headset's own projection and
       // never reads this.
+      //
+      // The effect reads the size `render` draws at, `size(ctx)`, so it runs
+      // again on every resize, and needs no listener of its own on the
+      // window.
       effects(() => {
         if (everything) {
           return;
         }
+        const { width, height } = viewport.get();
+        if (width === 0 || height === 0) {
+          return;
+        }
         const camera = getCamera(ctx) as THREE.PerspectiveCamera;
-        // The field `render` gave the camera, put back when the deck goes.
+        // The field `render` gave the camera, put back when the deck goes
+        // and before each fit.
         const own = camera.fov;
         const metres = PANEL_SCALE * scale;
         const halfWidth = (CARD_WIDTH / 2 + PAGE_MARGIN) * metres;
         const halfHeight = ((CARD_HEIGHT + GAP + BAR_HEIGHT) / 2 + PAGE_MARGIN) * metres;
         const fieldFor = (half: number) =>
           2 * THREE.MathUtils.radToDeg(Math.atan(half / DECK_DISTANCE));
-        const fit = () => {
-          const height = window.innerHeight;
-          // The share of the page's height the deck may take. A page too
-          // short for the buttons and a deck at all gives the deck half.
-          const usable = Math.max(height - 2 * PAGE_BUTTONS, height / 2) / height;
-          camera.fov = Math.max(fieldFor(halfWidth / camera.aspect), fieldFor(halfHeight / usable));
-          camera.updateProjectionMatrix();
-        };
-        fit();
-        // After `render`'s own listener, which writes the new aspect.
-        window.addEventListener("resize", fit);
+        // The share of the page's height the deck may take. A page too
+        // short for the buttons and a deck at all gives the deck half.
+        const usable = Math.max(height - 2 * PAGE_BUTTONS, height / 2) / height;
+        camera.fov = Math.max(
+          fieldFor((halfWidth * height) / width),
+          fieldFor(halfHeight / usable),
+        );
+        camera.updateProjectionMatrix();
         onCleanup(() => {
-          window.removeEventListener("resize", fit);
           camera.fov = own;
           camera.updateProjectionMatrix();
         });

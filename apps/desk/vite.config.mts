@@ -31,9 +31,13 @@ export default defineConfig({
         warn(warning);
       },
       output: {
-        // three.js in a chunk of its own, cached apart from the app and kept
-        // out of its main chunk, which grows with justdom-three.
-        manualChunks: (id) => (id.includes("/node_modules/three/") ? "three" : undefined),
+        // three.js's core in a chunk of its own, cached apart from the app.
+        // The page loads it for the maths in the helpers it takes from
+        // justdom-three. The renderer, the rest of three.js, is left to
+        // Rollup, which puts it with the scene that `main.ts` imports only
+        // where a session can be opened.
+        manualChunks: (id) =>
+          id.includes("/node_modules/three/build/three.core") ? "three.core" : undefined,
       },
     },
   },

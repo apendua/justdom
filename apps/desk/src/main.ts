@@ -4,9 +4,8 @@ import { lookFromSearch, type Look } from "./looks.js";
 import { mountLookPicker } from "./lookPicker.js";
 import { presenting } from "./session.js";
 import { mountStage } from "./stage.js";
-import { canDrawHtmlInCanvas } from "justdom-three";
 import { panelsFromSearch } from "./texture/panels.js";
-import { offerXR } from "./xr.js";
+import { offerHeadset } from "justdom-xr/offer";
 import "./index.css";
 
 function find<T extends Element = HTMLElement>(selector: string): T {
@@ -60,10 +59,25 @@ find("[data-notes-toggle]").addEventListener("click", () => {
 });
 
 // And the headset, offered to a page that can open one: the scene mirrors
-// the very elements the page is showing.
-if (panels === "texture" && !canDrawHtmlInCanvas()) {
-  find("[data-panels-notice]").hidden = false;
+// the very elements the page is showing. `xr.ts` and three.js with it are
+// loaded only once a session is known to be possible, so a page that is
+// only ever a page fetches neither. `?emulator` and `?touch` install a
+// headset in the browser first (`installEmulator` in `justdom-xr/offer`).
+offerHeadset(() => import("./xr.js"), { touch: {} })
+  .then((xr) => xr?.offerXR(current, panels))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });
+
+// The texture variant needs HTML-in-Canvas, and the page says so where the
+// browser has none, headset or not. The test is justdom-three's, fetched
+// only for this variant.
+if (panels === "texture") {
+  import("justdom-three")
+    .then(({ canDrawHtmlInCanvas }) => {
+      find("[data-panels-notice]").hidden = canDrawHtmlInCanvas();
+    })
+    .catch((err) => {
+      console.error("Could not tell whether the browser draws HTML into a canvas:", err);
+    });
 }
-offerXR(current, panels).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});

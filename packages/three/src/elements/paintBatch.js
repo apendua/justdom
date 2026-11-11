@@ -4,6 +4,7 @@ import { rampUniforms } from "./gradient.js";
 import { markChanged } from "./instanceUploads.js";
 import { keepProgram } from "./programKeeper.js";
 import { bandBase, PIECE_BAND } from "./elevation.js";
+import { markMoved } from "./place.js";
 import {
   createHalfPlaneUniforms,
   HALF_PLANES_FRAGMENT_GLSL,
@@ -455,7 +456,7 @@ class Draw {
     // built while the panel sat still, the run of a size that appears when a
     // row scrolls into view, would draw its instances at panel coordinates in
     // world space, somewhere off in the distance.
-    mesh.matrixWorldNeedsUpdate = true;
+    markMoved(mesh);
     this.mesh = mesh;
     this.parent.add(mesh);
   }
@@ -578,8 +579,8 @@ export class PaintBatch {
   #structural = false;
   /**
    * The boxes and runs whose numbers changed since the last flush, and
-   * nothing else about them: each once, in a list walked by index, since a hover or a
-   * colour animation patches every frame.
+   * nothing else about them: each once, in a list walked by index, since a
+   * hover or a colour animation patches every frame.
    *
    * @type {Object3D[]}
    */
@@ -835,10 +836,10 @@ export class PaintBatch {
 
   /**
    * Write the matrices under the objects marked moved and the instances of
-   * the boxes and runs marked changed where the last rebuild put them, if every one
-   * of them still matches the record; say whether it did. A move that does
-   * not match leaves matrices written, which the rebuild that follows
-   * writes again.
+   * the boxes and runs marked changed where the last rebuild put them, if
+   * every one of them still matches the record; say whether it did. A move
+   * that does not match leaves matrices written, which the rebuild that
+   * follows writes again.
    *
    * @returns {boolean}
    */

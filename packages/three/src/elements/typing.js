@@ -98,6 +98,7 @@ const NUMBER_CHARACTERS = /^[0-9eE+\-.]$/;
  *
  * @type {WeakMap<HTMLInputElement, { text: string, valueAtDraft: string }>}
  */
+// Not a nodeCache: what was typed into the field, which holds no signal.
 const drafts = new WeakMap();
 
 /**
@@ -150,6 +151,7 @@ export function discardDraft(input) {
  *
  * @type {WeakMap<HTMLInputElement, { offset: number, shown: string }>}
  */
+// Not a nodeCache: where the field's caret is, which holds no signal.
 const carets = new WeakMap();
 
 /**

@@ -2541,6 +2541,52 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  test("a blank cover with pointer-events: none passes the press to the button", async () => {
+    // A page's hit test skips the cover, so the click reaches the button
+    // under it.
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 200, 100],
+        children: [
+          {
+            id: "button",
+            style: `position: absolute; ${POINTER}; background: rgb(0, 0, 255)`,
+            at: [40, 40, 40, 20],
+          },
+          {
+            id: "cover",
+            style: "position: absolute; pointer-events: none; cursor: auto",
+            at: [30, 30, 60, 40],
+          },
+        ],
+      },
+    ]);
+    assert.equal(g.press(60, 50), "button");
+    g.teardown();
+  });
+
+  test("a blank spill with pointer-events: none passes the press to the card beneath", async () => {
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 100, 100],
+        children: [
+          {
+            id: "spill",
+            style: "position: absolute; pointer-events: none",
+            at: [100, 40, 80, 30],
+          },
+        ],
+      },
+      { id: "other", style: CARD, at: [150, 20, 100, 100] },
+    ]);
+    assert.equal(g.press(170, 55), "other");
+    g.teardown();
+  });
+
   test("a box mounts its quad when it gains a colour and lets it go when it loses it", async () => {
     const g = await page([{ id: "blank", style: "position: absolute", at: [0, 0, 100, 100] }]);
     const quads = () => {

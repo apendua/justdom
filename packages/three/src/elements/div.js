@@ -14,6 +14,7 @@ import {
   getLocalClipBox,
   getParentElement,
   getScrollOffset,
+  isPortalRoot,
   isVisibilityHidden,
 } from "./mirror.js";
 import { getPaintChildren, isGenerated } from "./pseudoElements.js";
@@ -41,7 +42,12 @@ import { place } from "./place.js";
 import { BoxNumbers } from "./boxNumbers.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
-import { forwardListEvents, forwardPointerEvents, isRayTarget } from "./pointerForwarding.js";
+import {
+  forwardListEvents,
+  forwardPointerEvents,
+  isInRayTarget,
+  isRayTarget,
+} from "./pointerForwarding.js";
 import { lazyPanel, pressInit } from "./dragAndDrop.js";
 import { setContentGroup } from "./contentGroup.js";
 
@@ -236,9 +242,9 @@ const committedPlacements = new WeakMap();
  * A batched box that `paints` nothing (`VisualProperties.paints`) takes no
  * instance: it wears the batch's invisible material and stays out of the
  * batch until a style gives it a colour, through the same effect a picture
- * background takes it out by. Its mesh stays while the box is a ray target;
- * an element's box mounts none at all while it is neither (`hasQuad` in
- * `box`).
+ * background takes it out by. Its mesh stays while the box is a ray target
+ * or inside one; an element's box mounts none at all while it is none of
+ * these (`hasQuad` in `box`).
  *
  * @param {THREE.Mesh} mesh
  * @param {BoxNumbers['uniforms']} uniforms
@@ -815,28 +821,35 @@ export function box(ctx, element, options = {}) {
 
   /**
    * Whether this box has a use for its quad: something to draw, or a ray to
-   * take for the element. Most boxes on a page are wrappers that do neither,
-   * a layout `div` with no colour and no cursor, and those mount no quad at
-   * all, so the render list, the layer walk and the raycast never meet a
-   * mesh for them. A press over one lands on what is behind it. Outside a
-   * ray target that is where its events would have bubbled to, since only a
-   * ray target forwards anything (`isRayTarget`). Inside one it is not, in
-   * two cases: a transparent child that covers a nested ray target, which
-   * then takes the press a page would give the child and so the target
-   * around it, and a transparent child that reaches past the target's own
-   * box, which takes no press where it spills over.
+   * take. Most boxes on a page are wrappers that do neither, a layout `div`
+   * with no colour and no cursor outside anything clickable, and those mount
+   * no quad at all, so the render list, the layer walk and the raycast never
+   * meet a mesh for them. A press over one lands on what is behind it, which
+   * is where its events would have bubbled to, since only a ray target
+   * forwards anything (`isRayTarget`). A box inside a ray target keeps its
+   * quad however blank (`isInRayTarget`), so that a press on it goes where a
+   * page sends it: to the target around it, over a nested target it covers
+   * and past the target's own edge where it spills over.
    *
    * An `<img>` and a `url()` background are drawn by the quad whether or not
    * the box `paints` a colour of its own. A list that scrolls is grabbed by
    * its quad, between its rows.
    */
+  const insideRayTarget = () => {
+    if (isPortalRoot(element)) {
+      return false;
+    }
+    const parent = getParentElement(element);
+    return parent !== null && isInRayTarget(parent);
+  };
   const hasQuad = new Derived(
     () =>
       image !== null ||
       drawsBackgroundPicture() ||
       properties.paints ||
       clickable.get() ||
-      scrollable.get(),
+      scrollable.get() ||
+      insideRayTarget(),
   );
 
   /**

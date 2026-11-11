@@ -42,10 +42,10 @@ import { measureBoard, measureList } from "../test/benchCases.js";
  */
 const CEILINGS = {
   list: {
-    mount: { evaluations: 25926, rectReads: 203 },
-    "+1 row": { evaluations: 305, rectReads: 5 },
-    "insert top": { evaluations: 4311, rectReads: 106 },
-    hover: { evaluations: 34, rectReads: 0 },
+    mount: { evaluations: 26027, rectReads: 203 },
+    "+1 row": { evaluations: 307, rectReads: 5 },
+    "insert top": { evaluations: 4413, rectReads: 106 },
+    hover: { evaluations: 35, rectReads: 0 },
     "app attr": { evaluations: 381, rectReads: 106 },
     transform: { evaluations: 78, rectReads: 3 },
   },

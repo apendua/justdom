@@ -6,8 +6,9 @@ import { renderCamera, rendererParameters } from "./render.js";
 
 /**
  * A renderer that records what it is told, with an XR manager whose
- * `isPresenting` a test sets and whose `sessionend` a test fires, as three
- * fires it: after the flag is down.
+ * `isPresenting` a test sets and whose `sessionstart` and `sessionend` a
+ * test fires, as three fires them: after the flag is up, and after it is
+ * down.
  */
 function fakeRenderer() {
   const xr = /** @type {any} */ (
@@ -31,9 +32,7 @@ function fakeRenderer() {
     /** @param {boolean} on */
     present(on) {
       xr.isPresenting = on;
-      if (!on) {
-        xr.dispatchEvent({ type: "sessionend" });
-      }
+      xr.dispatchEvent({ type: on ? "sessionstart" : "sessionend" });
     },
   };
 }
@@ -149,13 +148,26 @@ describe("followSize", () => {
     const { renderer, present } = fakeRenderer();
     const camera = new THREE.PerspectiveCamera(50);
     followSize(renderer, camera, windowSize(), { onSize: () => {} });
+    // A zoom pinched before the session is the one it comes back to.
+    camera.zoom = 1.5;
     present(true);
     camera.fov = 100;
     camera.zoom = 2;
     present(false);
     assert.equal(camera.fov, 50);
-    assert.equal(camera.zoom, 1);
-    assert.equal(camera.projectionMatrix.elements[5], 1 / Math.tan((25 * Math.PI) / 180));
+    assert.equal(camera.zoom, 1.5);
+    assert.equal(camera.projectionMatrix.elements[5], (1.5 * 1) / Math.tan((25 * Math.PI) / 180));
+  });
+
+  test("a resize keeps the zoom and field of view the page set", () => {
+    const { renderer } = fakeRenderer();
+    const camera = new THREE.PerspectiveCamera(50);
+    followSize(renderer, camera, windowSize(), { onSize: () => {} });
+    camera.zoom = 2;
+    camera.fov = 60;
+    window.dispatchEvent(new Event("resize"));
+    assert.equal(camera.zoom, 2);
+    assert.equal(camera.fov, 60);
   });
 
   test("a resize is drawn in the same turn, and the first size is not", () => {

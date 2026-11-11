@@ -15,16 +15,16 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Signal, UpdateChannel, withChannel } from "justdom-signal";
 import { $, attr, children } from "justdom-core";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { getComputedStyleCached } from "./mirror/styleReads.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { getComputedStyleCached } from "../mirror/styleReads.js";
 import { getPortalRoot } from "./portalRoot.js";
-import { isBlocker } from "./blocker.js";
-import { withPanelOptions } from "./panelOptions.js";
-import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
-import { RendererContext } from "../scene.js";
-import { recordingSource } from "../test/rumble.js";
-import { clientRect } from "../test/clientRect.js";
-import { fakeClock } from "../test/clock.js";
+import { isBlocker } from "../blocker.js";
+import { withPanelOptions } from "../panelOptions.js";
+import { DEFAULT_HANDLE_WIDTH } from "../panelHandles.js";
+import { RendererContext } from "../../scene.js";
+import { recordingSource } from "../../test/rumble.js";
+import { clientRect } from "../../test/clientRect.js";
+import { fakeClock } from "../../test/clock.js";
 
 import {
   countingManager,
@@ -35,8 +35,8 @@ import {
   pageCard,
   pump,
   settle,
-} from "../test/portalHarness.js";
-import { withStart } from "../test/rays.js";
+} from "../../test/portalHarness.js";
+import { withStart } from "../../test/rays.js";
 
 describe("createPortal", () => {
   test("only clickable elements become ray targets, plus one blocker plane", async () => {
@@ -531,7 +531,7 @@ describe("createPortal", () => {
       const rootObject = /** @type {THREE.Object3D} */ (
         containerObject.children.find((child) => !(child instanceof THREE.Mesh))
       );
-      const object = /** @type {THREE.Object3D<import("../core.js").XREventMap>} */ (
+      const object = /** @type {THREE.Object3D<import("../../core.js").XREventMap>} */ (
         rootObject.children[0].children[0]
       );
       const { source, played } = recordingSource();
@@ -603,7 +603,7 @@ describe("mounting a tree justdom-core did not build", () => {
    * now occupies.
    *
    * @param {Node} node
-   * @returns {import('../core.js').Mountable}
+   * @returns {import('../../core.js').Mountable}
    */
   function mountableFor(node) {
     return {

@@ -1,5 +1,5 @@
-import { isSvgElement } from "./plugins.js";
-import { documentTime, sampleRenderingUpdates } from "./renderingUpdates.js";
+import { isSvgElement } from "../plugins.js";
+import { documentTime, sampleRenderingUpdates } from "../renderingUpdates.js";
 
 /**
  * The kinds of change the clock can announce, and the shape it announces

@@ -1,12 +1,12 @@
-import { labelledField, takesTheTyping } from "./input/typing.js";
+import { labelledField, takesTheTyping } from "../input/typing.js";
 
 /**
  * @import {Subscribable} from 'justdom-signal';
- * @import {Mountable} from '../core.js';
- * @import {InputFocus} from './controls/textInput.js';
- * @import {KeyPress} from './input/typing.js';
- * @import {KeyboardBinding, KeyboardHost} from './input/keyboardHost.js';
- * @import {KeyboardPreviewOptions} from './input/keyboardPreview.js';
+ * @import {Mountable} from '../../core.js';
+ * @import {InputFocus} from '../controls/textInput.js';
+ * @import {KeyPress} from '../input/typing.js';
+ * @import {KeyboardBinding, KeyboardHost} from '../input/keyboardHost.js';
+ * @import {KeyboardPreviewOptions} from '../input/keyboardPreview.js';
  */
 
 /**

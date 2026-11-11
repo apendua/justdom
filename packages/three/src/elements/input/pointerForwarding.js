@@ -16,7 +16,7 @@ import {
   probePanel,
   releaseInit,
 } from "./dragAndDrop.js";
-import { createFrameRequester } from "../frameRequester.js";
+import { createFrameRequester } from "../portal/frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import {
   getAttributeCached,
@@ -27,7 +27,7 @@ import {
 } from "../mirror/styleReads.js";
 import { nodeDerived } from "../mirror/records.js";
 import { nodeCache } from "../mirror/nodeCaches.js";
-import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "../portalRoot.js";
+import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "../portal/portalRoot.js";
 import { describeElement } from "../panelFrame.js";
 import { movesList, ScrollDragsContext } from "./scroll.js";
 import {

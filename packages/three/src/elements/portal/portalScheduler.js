@@ -1,10 +1,10 @@
 import { createProperty } from "justdom-signal";
-import { frames } from "../scene.js";
-import { sceneService } from "../sceneServices.js";
-import { createFrameShareBudget } from "../frameShare.js";
+import { frames } from "../../scene.js";
+import { sceneService } from "../../sceneServices.js";
+import { createFrameShareBudget } from "../../frameShare.js";
 
 /**
- * @import {SceneHost} from '../sceneServices.js';
+ * @import {SceneHost} from '../../sceneServices.js';
  */
 
 /**

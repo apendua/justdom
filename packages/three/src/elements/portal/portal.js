@@ -1,39 +1,39 @@
 import * as THREE from "three";
 import { batch, Effect, Signal, UpdateChannel, withChannel, withComputation } from "justdom-signal";
-import { MotionChannelContext, PortalReadyContext } from "./controls/div.js";
-import { InputFocusContext } from "./controls/textInput.js";
+import { MotionChannelContext, PortalReadyContext } from "../controls/div.js";
+import { InputFocusContext } from "../controls/textInput.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
-import { createKeyboardHost } from "./input/keyboardHost.js";
-import { keyboardSlotOf } from "./input/keyboardSlot.js";
-import { releaseImagesWithScene } from "./controls/image.js";
-import { sceneService } from "../sceneServices.js";
-import { createMirror } from "./mirror.js";
-import { getBorderBoxSize } from "./mirror/geometryReads.js";
+import { createKeyboardHost } from "../input/keyboardHost.js";
+import { keyboardSlotOf } from "../input/keyboardSlot.js";
+import { releaseImagesWithScene } from "../controls/image.js";
+import { sceneService } from "../../sceneServices.js";
+import { createMirror } from "../mirror.js";
+import { getBorderBoxSize } from "../mirror/geometryReads.js";
 import { createAnimationClock } from "./animationClock.js";
-import { watchDocumentStyles } from "./css/documentStyles.js";
-import { createBlocker, createDepthQuad } from "./blocker.js";
-import { LayerOrder, LayerOrderContext } from "./paint/layerOrder.js";
-import { pressInit, registerPanel } from "./input/dragAndDrop.js";
-import { watchPageGeometry } from "./panelFrame.js";
-import { BoxBatchContext } from "./paint/boxBatch.js";
-import { TextBatchContext } from "./paint/textBatch.js";
-import { PaintBatch } from "./paint/paintBatch.js";
-import { TextScaleContext, createTextScale } from "./textScale.js";
-import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
-import { keepSubtreeMatrices, markMoved } from "./place.js";
-import { createPanelScrollDrags, ScrollDragsContext } from "./input/scroll.js";
+import { watchDocumentStyles } from "../css/documentStyles.js";
+import { createBlocker, createDepthQuad } from "../blocker.js";
+import { LayerOrder, LayerOrderContext } from "../paint/layerOrder.js";
+import { pressInit, registerPanel } from "../input/dragAndDrop.js";
+import { watchPageGeometry } from "../panelFrame.js";
+import { BoxBatchContext } from "../paint/boxBatch.js";
+import { TextBatchContext } from "../paint/textBatch.js";
+import { PaintBatch } from "../paint/paintBatch.js";
+import { TextScaleContext, createTextScale } from "../textScale.js";
+import { createTextPreparer, TextPrepareContext } from "../textPrepare.js";
+import { keepSubtreeMatrices, markMoved } from "../place.js";
+import { createPanelScrollDrags, ScrollDragsContext } from "../input/scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
 import { createPortalScheduler, portalSchedulerOf } from "./portalScheduler.js";
-import { mergePanelOptions, resolveKeyboard } from "./panelOptions.js";
-import { PanelOptionsContext, PortalPluginsContext } from "../panelContexts.js";
-import { createHaptics, HapticsContext } from "./input/haptics.js";
-import { createPanelForwarder, PointerForwarderContext } from "./input/pointerForwarding.js";
-import { createPanelHandles, HANDLE_RENDER_ORDER } from "./panelHandles.js";
-import { CameraContext, frames, onLateFrame, RendererContext } from "../scene.js";
-import { InteractionContext } from "../interactions.js";
-import { registerOutlineHost } from "./outlines.js";
+import { mergePanelOptions, resolveKeyboard } from "../panelOptions.js";
+import { PanelOptionsContext, PortalPluginsContext } from "../../panelContexts.js";
+import { createHaptics, HapticsContext } from "../input/haptics.js";
+import { createPanelForwarder, PointerForwarderContext } from "../input/pointerForwarding.js";
+import { createPanelHandles, HANDLE_RENDER_ORDER } from "../panelHandles.js";
+import { CameraContext, frames, onLateFrame, RendererContext } from "../../scene.js";
+import { InteractionContext } from "../../interactions.js";
+import { registerOutlineHost } from "../outlines.js";
 import { claimRoot, createContainerElement, disconnect } from "./portalContainer.js";
 import {
   attach,
@@ -63,14 +63,14 @@ import {
 } from "./portalWatchers.js";
 
 /**
- * @import {Mountable} from '../core.js';
+ * @import {Mountable} from '../../core.js';
  * @import {Object3D, Texture} from 'three';
- * @import {HapticOptions} from './input/haptics.js';
+ * @import {HapticOptions} from '../input/haptics.js';
  * @import {LoadingFrameOptions} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
- * @import {PortalPlugin} from './plugins.js';
- * @import {PanelDragOptions} from './panelHandles.js';
+ * @import {PortalPlugin} from '../plugins.js';
+ * @import {PanelDragOptions} from '../panelHandles.js';
  * @import {PortalState} from './portalState.js';
  */
 

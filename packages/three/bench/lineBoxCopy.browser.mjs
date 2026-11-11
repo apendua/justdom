@@ -111,7 +111,7 @@ const PAGE = `<!doctype html>
   // time and measures it a frame budget at a time, so the texts of one
   // paragraph are measured across frames, a pass or more each.
   window.runPortalBench = async (sentences) => {
-    const { createPortal } = await import("/packages/three/src/elements/portal.js");
+    const { createPortal } = await import("/packages/three/src/elements/portal/portal.js");
     const { InteractionContext, InteractionManager } = await import(
       "/packages/three/src/interactions.js"
     );

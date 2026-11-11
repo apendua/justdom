@@ -7,17 +7,17 @@
 
 import * as THREE from "three";
 import { batch, withChannel } from "justdom-signal";
-import { div } from "./controls/div.js";
-import { getContentGroup } from "./contentGroup.js";
-import { text } from "./controls/text.js";
-import { checkbox } from "./controls/checkbox.js";
-import { markedBox } from "./controls/listMarker.js";
-import { textInput } from "./controls/textInput.js";
-import { isTextInput } from "./input/typing.js";
+import { div } from "../controls/div.js";
+import { getContentGroup } from "../contentGroup.js";
+import { text } from "../controls/text.js";
+import { checkbox } from "../controls/checkbox.js";
+import { markedBox } from "../controls/listMarker.js";
+import { textInput } from "../controls/textInput.js";
+import { isTextInput } from "../input/typing.js";
 import { ELEMENT_FLAGS } from "./portalRoot.js";
-import { markMoved } from "./place.js";
+import { markMoved } from "../place.js";
 import { finishTeardownOf, scheduleTeardown } from "./portalTeardown.js";
-import { isSvgElement, isSvgRoot, projectWithPlugins } from "./plugins.js";
+import { isSvgElement, isSvgRoot, projectWithPlugins } from "../plugins.js";
 
 /**
  * @import {PortalState} from './portalState.js';

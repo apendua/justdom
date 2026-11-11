@@ -2,29 +2,29 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { $, attr, children } from "justdom-core";
-import { InteractionContext, InteractionManager } from "../interactions.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
-import { withPanelOptions } from "./panelOptions.js";
+import { withPanelOptions } from "../panelOptions.js";
 import {
   createKeyboardSlot,
   dismissKeyboardAtSessionEnd,
   disposeKeyboardSlot,
   KeyboardSlotContext,
-} from "./input/keyboardSlot.js";
-import { CameraContext, RendererContext, SceneContext } from "../scene.js";
-import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
-import { stubCanvas } from "../test/stubCanvas.js";
-import { rectGeometry } from "./paint/sdfRect.js";
-import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "./controls/textInput.js";
-import { getObjectDrawOrder } from "../drawOrder.js";
-import { recordingSource } from "../test/rumble.js";
-import { PREVIEW_ATTRIBUTE } from "./input/keyboardPreview.js";
-import { withStart } from "../test/rays.js";
-import { getCaretOffset } from "./input/typing.js";
+} from "../input/keyboardSlot.js";
+import { CameraContext, RendererContext, SceneContext } from "../../scene.js";
+import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "../panelHandles.js";
+import { stubCanvas } from "../../test/stubCanvas.js";
+import { rectGeometry } from "../paint/sdfRect.js";
+import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "../controls/textInput.js";
+import { getObjectDrawOrder } from "../../drawOrder.js";
+import { recordingSource } from "../../test/rumble.js";
+import { PREVIEW_ATTRIBUTE } from "../input/keyboardPreview.js";
+import { withStart } from "../../test/rays.js";
+import { getCaretOffset } from "../input/typing.js";
 
 /**
  * @import {KeyboardTarget} from './portalKeyboard.js';
- * @import {PanelOptions} from './panelOptions.js';
+ * @import {PanelOptions} from '../panelOptions.js';
  * @import {PortalOptions} from './portal.js';
  */
 
@@ -101,7 +101,7 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
  * is one clickable key; what it is handed is recorded.
  *
  * @param {Configure} [configure]
- * @param {import('./input/keyboardSlot.js').KeyboardSlot} [slot] The scene's
+ * @param {import('../input/keyboardSlot.js').KeyboardSlot} [slot] The scene's
  *   keyboard, for panels that share one; without it the panel has its own.
  * @param {{ scene: THREE.Scene, camera: THREE.Camera, renderer?: object }} [room] A scene and a
  *   camera for the board to open in front of, and a renderer to carry it

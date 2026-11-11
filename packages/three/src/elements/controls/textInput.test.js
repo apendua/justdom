@@ -2,7 +2,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../../interactions.js";
-import { createPortal as createHeldPortal } from "../portal.js";
+import { createPortal as createHeldPortal } from "../portal/portal.js";
 import { stubCanvas, STUB_GLYPH_WIDTH } from "../../test/stubCanvas.js";
 import { isRunMesh } from "../../test/runMesh.js";
 

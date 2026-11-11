@@ -4,11 +4,11 @@
  * batches. `buildPortal` registers each of these with the state it built.
  */
 
-import { CameraContext, RendererContext } from "../scene.js";
-import { coverBox } from "./blocker.js";
-import { getBorderBoxSize } from "./mirror/geometryReads.js";
-import { isBookkeepingMutation, LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
-import { placeAndScale } from "./place.js";
+import { CameraContext, RendererContext } from "../../scene.js";
+import { coverBox } from "../blocker.js";
+import { getBorderBoxSize } from "../mirror/geometryReads.js";
+import { isBookkeepingMutation, LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
+import { placeAndScale } from "../place.js";
 import { markLoaded } from "./portalLoading.js";
 import { attach, detach, getOrCreateObjectForNode, projectChanges } from "./portalNodes.js";
 

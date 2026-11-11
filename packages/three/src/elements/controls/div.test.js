@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { UpdateChannel, withChannel } from "justdom-signal";
 import { InteractionContext } from "../../interactions.js";
 import { createMirror } from "../mirror.js";
-import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../portal/portalRoot.js";
 import { div } from "./div.js";
 import { getClearedSiblings, getContentRenderOrder } from "../paint/elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "../paint/gradient.js";

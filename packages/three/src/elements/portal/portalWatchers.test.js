@@ -9,15 +9,15 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "justdom-signal";
 import { $, attr, children, className, stylesheet } from "justdom-core";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
-import { getComputedStyleCached, getTransformStyle } from "./mirror/styleReads.js";
-import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
+import { getComputedStyleCached, getTransformStyle } from "../mirror/styleReads.js";
+import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
 import { getPortalRoot } from "./portalRoot.js";
-import { syntheticEvent } from "../test/events.js";
+import { syntheticEvent } from "../../test/events.js";
 
-import { enableOutlinesMode, outlinesReport } from "./outlines.js";
-import { createPortal, drain, pump, settle } from "../test/portalHarness.js";
+import { enableOutlinesMode, outlinesReport } from "../outlines.js";
+import { createPortal, drain, pump, settle } from "../../test/portalHarness.js";
 
 describe("createPortal", () => {
   test("mirroring a change asks for the rays to be cast again", async () => {

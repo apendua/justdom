@@ -1,4 +1,4 @@
-import { ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE, HOVER_ATTRIBUTE } from "../portalRoot.js";
+import { ACTIVE_ATTRIBUTE, FOCUS_ATTRIBUTE, HOVER_ATTRIBUTE } from "../portal/portalRoot.js";
 import { walkStyleRules } from "./styleRules.js";
 
 /**

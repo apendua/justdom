@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { Effect, Signal, UpdateChannel, withChannel } from "justdom-signal";
 import { createPortalPump, MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
-import { fakeClock } from "../test/clock.js";
+import { fakeClock } from "../../test/clock.js";
 
 /** A stand-in for a DOM node: the pump only keeps and hands them back. */
 const fakeNode = () => /** @type {Node} */ (/** @type {unknown} */ ({}));

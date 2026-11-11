@@ -1,9 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createAnimationClock } from "./animationClock.js";
-import { resetRenderingUpdatesForTests } from "./renderingUpdates.js";
-import { fakeClock } from "../test/clock.js";
-import { syntheticEvent } from "../test/events.js";
+import { resetRenderingUpdatesForTests } from "../renderingUpdates.js";
+import { fakeClock } from "../../test/clock.js";
+import { syntheticEvent } from "../../test/events.js";
 
 /**
  * @import {MutationBatch} from './animationClock.js';

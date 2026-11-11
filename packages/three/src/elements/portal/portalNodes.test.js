@@ -11,11 +11,11 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Signal, toObservable } from "justdom-signal";
 import { $, $$, attr, children, className } from "justdom-core";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { DomMirror } from "./mirror.js";
-import { getComputedStyleCached } from "./mirror/styleReads.js";
-import { clientRect } from "../test/clientRect.js";
-import { getContentGroup } from "./contentGroup.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { DomMirror } from "../mirror.js";
+import { getComputedStyleCached } from "../mirror/styleReads.js";
+import { clientRect } from "../../test/clientRect.js";
+import { getContentGroup } from "../contentGroup.js";
 
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import {
@@ -27,7 +27,7 @@ import {
   paintEveryBox,
   pump,
   settle,
-} from "../test/portalHarness.js";
+} from "../../test/portalHarness.js";
 
 describe("createPortal", () => {
   test("content mounted mid-build is not lost to an orphaned object", async () => {
@@ -819,7 +819,7 @@ describe("createPortal", () => {
     const rootObject = /** @type {THREE.Object3D} */ (
       containerObject.children.find((child) => !(child instanceof THREE.Mesh))
     );
-    const rowObject = /** @type {THREE.Object3D<import("../core.js").XREventMap>} */ (
+    const rowObject = /** @type {THREE.Object3D<import("../../core.js").XREventMap>} */ (
       rootObject.children[0].children[0]
     );
     let clicks = 0;

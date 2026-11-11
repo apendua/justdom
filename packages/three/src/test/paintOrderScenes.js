@@ -13,8 +13,8 @@
 
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "../elements/portal.js";
-import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
+import { createPortal } from "../elements/portal/portal.js";
+import { PORTAL_ATTRIBUTE } from "../elements/portal/portalRoot.js";
 import { makeCard, makeRow, relayout } from "./benchLayout.js";
 import { countPanel } from "./paintOrderCount.js";
 import { matrix3d } from "./matrix3d.js";

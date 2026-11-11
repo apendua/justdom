@@ -8,7 +8,7 @@ import { isUnder } from "../../test/rays.js";
 import { describeScroller } from "../../test/scroller.js";
 import { createDragAndDrop, dragAndDrop } from "./dragAndDrop.js";
 import { movesList } from "./scroll.js";
-import { createPortal } from "../portal.js";
+import { createPortal } from "../portal/portal.js";
 import { clientRect } from "../../test/clientRect.js";
 
 /**

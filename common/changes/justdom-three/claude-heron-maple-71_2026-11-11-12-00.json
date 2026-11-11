@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the portal modules into src/elements/portal/",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

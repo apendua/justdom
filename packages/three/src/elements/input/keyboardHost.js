@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { Effect, Signal, withChannel, withComputation } from "justdom-signal";
 import { getBorderBoxSize } from "../mirror/geometryReads.js";
-import { FOCUS_ATTRIBUTE } from "../portalRoot.js";
+import { FOCUS_ATTRIBUTE } from "../portal/portalRoot.js";
 import { place } from "../place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
 import { InputFocusContext, touchValue } from "../controls/textInput.js";
@@ -15,7 +15,7 @@ import { CameraContext, RendererContext, SceneContext } from "../../scene.js";
  * @import {Unsubscribable} from 'justdom-signal';
  * @import {Mountable} from '../../core.js';
  * @import {KeyPress} from './typing.js';
- * @import {KeyboardTarget, PortalKeyboardOptions} from '../portalKeyboard.js';
+ * @import {KeyboardTarget, PortalKeyboardOptions} from '../portal/portalKeyboard.js';
  * @import {KeyboardPreview} from './keyboardPreview.js';
  * @import {PanelHandles} from '../panelHandles.js';
  * @import {LevelPose} from '../../carry.js';

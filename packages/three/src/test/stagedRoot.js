@@ -1,5 +1,5 @@
 import { createMirror } from "../elements/mirror.js";
-import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../elements/portal/portalRoot.js";
 import { clientRect } from "./clientRect.js";
 
 /**

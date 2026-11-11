@@ -5,7 +5,7 @@ import { clientRect } from "../../test/clientRect.js";
 import { stubCanvas } from "../../test/stubCanvas.js";
 import { isRunMesh } from "../../test/runMesh.js";
 import { InteractionContext, InteractionManager } from "../../interactions.js";
-import { createPortal as createHeldPortal } from "../portal.js";
+import { createPortal as createHeldPortal } from "../portal/portal.js";
 import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
 import { batchedBoxMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { getGenerated, parseGeneratedContent } from "../pseudoElements.js";
@@ -30,7 +30,7 @@ import { getPanel } from "../input/dragAndDrop.js";
 import { layerDepth, listPaintOrder } from "../../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "../css/documentStyles.js";
 import { generatedHost, splitSelectorList } from "../css/styleRules.js";
-import { HOVER_ATTRIBUTE } from "../portalRoot.js";
+import { HOVER_ATTRIBUTE } from "../portal/portalRoot.js";
 
 /**
  * `createPortal` with the loading frame's timing off, so a mount loads the

@@ -5,8 +5,8 @@
  * as the page had it.
  */
 
-import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
-import { isPortalRoot } from "./mirror/styleReads.js";
+import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
+import { isPortalRoot } from "../mirror/styleReads.js";
 import { startUnlinking, takeDown, unlink } from "./portalNodes.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { finishTeardownOf } from "./portalTeardown.js";

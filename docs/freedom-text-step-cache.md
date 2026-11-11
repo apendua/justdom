@@ -3,7 +3,7 @@
 **Status:** implemented: held steps (PR 1 in section 6) and preparing ahead (PR 2). Sections 2 and 3
 describe and measure the package before them, so "today" there is that state. PR 3 (cheaper
 rasters), the byte cap of 5.5 and the profiling script are not built. **Scope:**
-`packages/three/src/elements/{textScale,controls/textRun,textHelpers,paint/textBatch,textPrepare,portalScheduler,portal}.js`.
+`packages/three/src/elements/{textScale,controls/textRun,textHelpers,paint/textBatch,textPrepare,portal/portalScheduler,portal/portal}.js`.
 **Follows:** [`freedom-atomic-panel-updates.md`](./freedom-atomic-panel-updates.md), which is why a
 panel's reading is budgeted and its writing lands in one frame.
 

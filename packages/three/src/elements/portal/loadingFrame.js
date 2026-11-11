@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { createRectMaterial, rectGeometry } from "./paint/sdfRect.js";
-import { placeAndScale } from "./place.js";
+import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
+import { placeAndScale } from "../place.js";
 
 /**
  * @typedef {object} LoadingFrameOptions

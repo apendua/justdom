@@ -4,7 +4,7 @@ import { InteractionContext } from "../../interactions.js";
 import { clipsOverflow } from "../mirror/geometryReads.js";
 import { getComputedStyleCached, getParentElement, isPortalRoot } from "../mirror/styleReads.js";
 import { getParentObject } from "../contentGroup.js";
-import { createFrameRequester } from "../frameRequester.js";
+import { createFrameRequester } from "../portal/frameRequester.js";
 import { sampleRenderingUpdates, scrollElementBy } from "../renderingUpdates.js";
 
 /**

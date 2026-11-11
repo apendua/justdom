@@ -5,8 +5,8 @@
  * hands each of these its `PortalState`.
  */
 
-import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
-import { isSvgElement } from "./plugins.js";
+import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
+import { isSvgElement } from "../plugins.js";
 import { projectChanges } from "./portalNodes.js";
 
 /**

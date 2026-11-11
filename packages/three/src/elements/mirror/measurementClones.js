@@ -1,5 +1,5 @@
 import { isSvgElement } from "../plugins.js";
-import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../portal/portalRoot.js";
 
 /**
  * A detached, untransformed copy of `element` to measure instead of the real

@@ -6,17 +6,17 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { clientRect } from "../test/clientRect.js";
-import { isUnder } from "../test/rays.js";
+import { clientRect } from "../../test/clientRect.js";
+import { isUnder } from "../../test/rays.js";
 import {
   countingManager,
   drain,
   flushFrame,
   nextMacrotask,
   settle,
-} from "../test/portalHarness.js";
+} from "../../test/portalHarness.js";
 import { createFrameRequester } from "./frameRequester.js";
-import { PaintBatch } from "./paint/paintBatch.js";
+import { PaintBatch } from "../paint/paintBatch.js";
 import { createPortal } from "./portal.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import {
@@ -32,7 +32,7 @@ import {
  * with no budget: the first pump offered a frame does one unit of work and
  * nothing more, so a test can count the frames a teardown takes.
  *
- * @returns {{ ctx: WeakKey, manager: import("../interactions.js").InteractionManager, targets: Set<THREE.Object3D> }}
+ * @returns {{ ctx: WeakKey, manager: import("../../interactions.js").InteractionManager, targets: Set<THREE.Object3D> }}
  */
 function scene() {
   const { ctx, manager, targets } = countingManager();

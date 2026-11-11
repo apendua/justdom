@@ -1,5 +1,5 @@
 import { createMirror } from "../elements/mirror.js";
-import { OBSERVER_OPTIONS } from "../elements/portal.js";
+import { OBSERVER_OPTIONS } from "../elements/portal/portal.js";
 
 /**
  * A mirror fed by an observer watching `root` as a portal watches its

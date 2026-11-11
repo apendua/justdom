@@ -13,9 +13,9 @@
 
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "../elements/portal.js";
+import { createPortal } from "../elements/portal/portal.js";
 import { LOADING_ATTRIBUTE } from "../elements/mirror/mutationRules.js";
-import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../elements/portal/portalRoot.js";
 import { countEvaluations } from "./evaluations.js";
 import { forgetStyle, makeCard, makeRow, pxOf, reads, relayout } from "./benchLayout.js";
 

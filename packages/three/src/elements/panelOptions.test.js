@@ -4,7 +4,7 @@ import { mergePanelOptions, resolveKeyboard, withPanelOptions } from "./panelOpt
 import { PanelOptionsContext } from "../panelContexts.js";
 
 /**
- * @import {PortalOptions} from './portal.js';
+ * @import {PortalOptions} from './portal/portal.js';
  * @import {PanelOptions} from './panelOptions.js';
  */
 

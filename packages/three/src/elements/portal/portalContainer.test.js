@@ -8,8 +8,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { $, attr, children } from "justdom-core";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
 import { getPortalRoot } from "./portalRoot.js";
 
 import {
@@ -20,7 +20,7 @@ import {
   nextMacrotask,
   pageCard,
   settle,
-} from "../test/portalHarness.js";
+} from "../../test/portalHarness.js";
 
 describe("createPortal", () => {
   test("the container is out of the page's way without hiding what it holds", async () => {

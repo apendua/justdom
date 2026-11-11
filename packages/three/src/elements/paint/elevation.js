@@ -12,7 +12,7 @@ import {
 } from "../mirror/styleReads.js";
 import { nodeDerived } from "../mirror/records.js";
 import { nodeCache } from "../mirror/nodeCaches.js";
-import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../portal/portalRoot.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "../css/cssTransform.js";
 import { isSvgElement } from "../plugins.js";
 import { getShadowBleed, parseTextShadow } from "../textHelpers.js";

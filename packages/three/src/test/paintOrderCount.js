@@ -111,7 +111,7 @@ import {
 } from "../elements/mirror/styleReads.js";
 import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/paint/layerTree.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
-import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../elements/portal/portalRoot.js";
 import { parseAlpha } from "../elements/css/cssColor.js";
 import { getDrawnBorderColor } from "../elements/borderColor.js";
 import { getListItemOrdinal, listMarkerText } from "../elements/controls/listMarker.js";

@@ -14,11 +14,11 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Effect, UpdateChannel } from "justdom-signal";
 import { $, children } from "justdom-core";
-import { getChildNodes, getComputedStyleCached } from "./mirror/styleReads.js";
-import { clientRect } from "../test/clientRect.js";
-import { fakeClock } from "../test/clock.js";
-import { syntheticEvent } from "../test/events.js";
-import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
+import { getChildNodes, getComputedStyleCached } from "../mirror/styleReads.js";
+import { clientRect } from "../../test/clientRect.js";
+import { fakeClock } from "../../test/clock.js";
+import { syntheticEvent } from "../../test/events.js";
+import { flicker, reportTransform, shifted, transformTransition } from "../../test/motion.js";
 
 import { MAX_BUILD_WAIT, MAX_COMMIT_WAIT } from "./portalPump.js";
 import {
@@ -29,7 +29,7 @@ import {
   frameCallbacks,
   nextMacrotask,
   settle,
-} from "../test/portalHarness.js";
+} from "../../test/portalHarness.js";
 
 describe("a panel that is always busy", () => {
   /**

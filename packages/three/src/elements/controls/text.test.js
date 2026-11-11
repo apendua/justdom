@@ -7,7 +7,7 @@ import { text } from "./text.js";
 import { TextBatchContext } from "../paint/textBatch.js";
 import { holdsStep, stepBelow, TextScaleContext } from "../textScale.js";
 import { createTextPreparer, TextPrepareContext } from "../textPrepare.js";
-import { createPortalScheduler } from "../portalScheduler.js";
+import { createPortalScheduler } from "../portal/portalScheduler.js";
 import { installRange } from "../../test/textRange.js";
 import { paintBatch } from "../../test/textRuns.js";
 

@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { flatMap, just, mountEach, onCleanup, Stream } from "justdom-signal";
-import { createPortal } from "./elements/portal.js";
+import { createPortal } from "./elements/portal/portal.js";
 
 /**
  * @import {EntityEffect, Source, Subscribable, Unsubscribable} from 'justdom-signal';
  * @import {Component,Mountable,XREventMap} from './core.js';
- * @import {PortalOptions} from './elements/portal.js';
+ * @import {PortalOptions} from './elements/portal/portal.js';
  */
 
 /**

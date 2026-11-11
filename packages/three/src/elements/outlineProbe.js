@@ -1,5 +1,5 @@
 import { Derived } from "justdom-signal";
-import { getPortalRoot } from "./portalRoot.js";
+import { getPortalRoot } from "./portal/portalRoot.js";
 
 /**
  * What outlines mode (`outlines.js`) counts, and the hooks the mirror calls

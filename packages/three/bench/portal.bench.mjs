@@ -11,7 +11,7 @@
 import * as THREE from "three";
 import { $, attr, children, text } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../src/interactions.js";
-import { createPortal } from "../src/elements/portal.js";
+import { createPortal } from "../src/elements/portal/portal.js";
 
 if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;

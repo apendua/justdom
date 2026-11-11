@@ -4,7 +4,7 @@ import { $, Nothing } from "../../operators.js";
 import { box } from "./div.js";
 import { getCheckedCached } from "../mirror/styleReads.js";
 import { getComputedStyleCached } from "../mirror/styleReads.js";
-import { CHECKED_ATTRIBUTE } from "../portalRoot.js";
+import { CHECKED_ATTRIBUTE } from "../portal/portalRoot.js";
 import { applyClip } from "../clip.js";
 import { place } from "../place.js";
 import { MARK_MATERIAL_SETTINGS } from "../textHelpers.js";

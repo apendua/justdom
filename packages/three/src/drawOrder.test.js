@@ -2,7 +2,7 @@ import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { createPortal } from "./elements/portal.js";
+import { createPortal } from "./elements/portal/portal.js";
 import { svgElements } from "./svg/index.js";
 import { getObjectDrawOrder } from "./drawOrder.js";
 import { BOX_BUCKET_BIAS, UNBATCHED_BOX_BIAS } from "./elements/paint/boxBatch.js";

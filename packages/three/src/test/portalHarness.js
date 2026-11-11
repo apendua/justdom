@@ -13,7 +13,7 @@
  */
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { runFrame } from "../scene.js";
-import { createPortal as createHeldPortal } from "../elements/portal.js";
+import { createPortal as createHeldPortal } from "../elements/portal/portal.js";
 
 if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;

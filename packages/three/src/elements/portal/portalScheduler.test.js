@@ -5,8 +5,8 @@ import {
   PortalSchedulerContext,
   portalSchedulerOf,
 } from "./portalScheduler.js";
-import { testScene } from "../test/sceneHost.js";
-import { runFrame } from "../scene.js";
+import { testScene } from "../../test/sceneHost.js";
+import { runFrame } from "../../scene.js";
 
 /**
  * A pump that counts its units of work, honouring the contract: at least one

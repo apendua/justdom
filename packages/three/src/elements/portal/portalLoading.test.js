@@ -8,11 +8,11 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Signal, toObservable, UpdateChannel, withChannel } from "justdom-signal";
 import { $, $$, attr, children } from "justdom-core";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
-import { acquireImage, releaseImage } from "./controls/image.js";
-import { fakeClock } from "../test/clock.js";
-import { syntheticEvent } from "../test/events.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
+import { acquireImage, releaseImage } from "../controls/image.js";
+import { fakeClock } from "../../test/clock.js";
+import { syntheticEvent } from "../../test/events.js";
 
 import {
   createPortal,
@@ -24,7 +24,7 @@ import {
   paintEveryBox,
   pump,
   settle,
-} from "../test/portalHarness.js";
+} from "../../test/portalHarness.js";
 
 describe("createPortal", () => {
   test("a panel of pictures announces them once, not once each", async () => {

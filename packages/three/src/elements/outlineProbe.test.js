@@ -11,7 +11,7 @@ import {
   takeTallies,
   unprobed,
 } from "./outlineProbe.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "./portal/portalRoot.js";
 
 /**
  * A panel's container element, as a portal marks it, in the document and

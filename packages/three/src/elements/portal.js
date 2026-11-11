@@ -60,6 +60,15 @@ import { registerOutlineHost } from "./outlines.js";
  * @import {PortalKeyboardOptions} from './portalKeyboard.js';
  * @import {PortalPlugin} from './plugins.js';
  * @import {PanelDragOptions} from './panelHandles.js';
+ * @import {InteractionManager} from '../interactions.js';
+ * @import {ScrollDrags} from './scroll.js';
+ * @import {Forwarder} from './pointerForwarding.js';
+ * @import {OutlineHost} from './outlines.js';
+ * @import {PanelHandles} from './panelHandles.js';
+ * @import {KeyboardHost} from './keyboardHost.js';
+ * @import {DomMirror} from './mirror.js';
+ * @import {BoxBatch} from './boxBatch.js';
+ * @import {TextBatch} from './textBatch.js';
  */
 
 /**
@@ -364,6 +373,71 @@ function claimRoot(root) {
  */
 
 /**
+ * What one panel keeps while it is up: everything `buildPortal` builds that
+ * its functions read after the build. The functions themselves stay in the
+ * closure. Construction-only values, such as most of the options, stay local
+ * to it.
+ *
+ * @typedef {object} PortalState
+ * @property {WeakKey} ctx The context the panel's nodes are built with,
+ *   derived from the caller's as the build goes.
+ * @property {HTMLElement | undefined} root The element the page handed
+ *   over, if it did.
+ * @property {boolean} atomic
+ * @property {((loading: boolean) => void) | undefined} onLoadingChanged
+ * @property {InteractionManager} interactionManager
+ * @property {THREE.Group} containerObject
+ * @property {readonly PortalPlugin[]} plugins
+ * @property {PaintBatch} paintBatch
+ * @property {BoxBatch} boxBatch
+ * @property {TextBatch} textBatch
+ * @property {ScrollDrags} panelScrolls
+ * @property {Forwarder} forwarder
+ * @property {ReturnType<typeof createTextScale> | null} textScale
+ * @property {TextPreparer | null} textPreparer
+ * @property {() => void} stopFlushing
+ * @property {WeakMap<Node, Object3D>} nodeToObject
+ * @property {WeakMap<Object3D, Node>} objectToNode
+ * @property {WeakMap<Object3D, () => void>} objectToCleanup
+ * @property {DomMirror} mirror
+ * @property {HTMLElement} containerElement
+ * @property {() => void} unregisterPanel
+ * @property {ReturnType<typeof createBlocker> | null} blocker
+ * @property {ReturnType<typeof createDepthQuad>} depthQuad
+ * @property {LayerOrder} layerOrder
+ * @property {ReturnType<typeof createFrameRequester>} requestFrames
+ * @property {boolean} hasFrames
+ * @property {OutlineHost | null} outlines
+ * @property {boolean} clockSampling
+ * @property {boolean} pumpQueued
+ * @property {PanelHandles | null} handles
+ * @property {Signal<boolean>} drawn
+ * @property {ReturnType<typeof createLoadingFrame> | null} loadingFrameObject
+ * @property {() => void} stopLoadingFrame
+ * @property {() => void} showLoadingFrame
+ * @property {() => void} startLoadingFrame
+ * @property {UpdateChannel | null} channel
+ * @property {UpdateChannel | null} motionChannel
+ * @property {PortalScheduler | null} sceneScheduler
+ * @property {KeyboardHost | null} ownKeyboardHost
+ * @property {ReturnType<typeof bindPortalKeyboard> | null} portalKeyboard
+ * @property {WeakSet<Node>} templateNodes
+ * @property {boolean} sawContent
+ * @property {Set<Node>} pendingAttachments
+ * @property {Set<Node>} pendingRemovals
+ * @property {ReturnType<typeof createPortalPump> | null} pump
+ * @property {Effect} resizeEffect
+ * @property {MutationObserver} mutationObserver
+ * @property {ReturnType<typeof createAnimationClock>} animationClock
+ * @property {() => void} stopWatchingPage
+ * @property {(() => void) | null} loadFrame
+ * @property {Set<Node>} loaded
+ * @property {() => void} stopWatchingStyles
+ * @property {boolean} released
+ * @property {Signal<boolean>} loading
+ */
+
+/**
  * @param {WeakKey} ctx
  * @param {PortalOptions} [options]
  */
@@ -407,23 +481,34 @@ function buildPortal(ctx, ownOptions = {}) {
   // take it off — refusing every later claim, the right one included.
   const interactionManager = InteractionContext.get(ctx);
 
+  /**
+   * What the panel keeps for as long as it is up, and what the functions
+   * below read (see `PortalState`). Each field is written where the code
+   * below builds it, and nothing reads a field before it is written.
+   */
+  const state = /** @type {PortalState} */ ({
+    ctx,
+    root,
+    atomic,
+    onLoadingChanged,
+    interactionManager,
+  });
+
   // The context this panel was built from, before it derives its own below:
   // what a panel this one builds — its keyboard — starts from, so that the
   // two keep their batches apart.
-  const baseCtx = ctx;
-  const containerObject = new THREE.Group();
+  const baseCtx = state.ctx;
+  state.containerObject = new THREE.Group();
 
   /**
    * Who is asked about an element before the portal's own dispatch: this
    * panel's plugins first, then the scene's. Resolved once, here — the list
    * does not change for the life of the panel, and the dispatch runs once
    * per element built.
-   *
-   * @type {readonly PortalPlugin[]}
    */
-  const plugins = ownPlugins.length
-    ? [...ownPlugins, ...PortalPluginsContext.get(ctx)]
-    : PortalPluginsContext.get(ctx);
+  state.plugins = ownPlugins.length
+    ? [...ownPlugins, ...PortalPluginsContext.get(state.ctx)]
+    : PortalPluginsContext.get(state.ctx);
 
   // Visible from the start, and not because there is anything to see. The
   // container used to hide until the initial mount was done, or the panel
@@ -436,7 +521,7 @@ function buildPortal(ctx, ownOptions = {}) {
   // The panel's perimeter. Everything the portal draws hangs off this, and
   // everything it draws keeps its own matrices; this is what makes that hold
   // whatever the scene above the panel does about its own.
-  keepSubtreeMatrices(containerObject);
+  keepSubtreeMatrices(state.containerObject);
 
   /**
    * The one batch that draws the panel's boxes and its runs together, in the
@@ -446,7 +531,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * It keeps a layer cut in pieces apart, by the panel's order, made further
    * down.
    */
-  const paintBatch = new PaintBatch(containerObject);
+  state.paintBatch = new PaintBatch(state.containerObject);
 
   /**
    * The boxes of this panel, which the one batch takes from. Kept apart from
@@ -454,35 +539,35 @@ function buildPortal(ctx, ownOptions = {}) {
    * numbers, a run by pixels, in arrays of exactly-sized runs rather than a
    * texture apiece.
    */
-  const boxBatch = paintBatch.boxes;
+  state.boxBatch = state.paintBatch.boxes;
 
   /** And its text. */
-  const textBatch = paintBatch.runs;
+  state.textBatch = state.paintBatch.runs;
 
   // Everything this portal projects is built with the batches in scope. The
   // context is derived rather than mutated, so a second portal built from the
   // same `ctx` gets its own and neither can see the other's.
-  ctx = BoxBatchContext.set(ctx, boxBatch);
-  ctx = TextBatchContext.set(ctx, textBatch);
+  state.ctx = BoxBatchContext.set(state.ctx, state.boxBatch);
+  state.ctx = TextBatchContext.set(state.ctx, state.textBatch);
   // Resolved once for the panel: the pulses are worked out here, and an
   // element's handler pays for the call and nothing else.
-  ctx = HapticsContext.set(ctx, createHaptics(haptics));
+  state.ctx = HapticsContext.set(state.ctx, createHaptics(haptics));
   /**
    * The scroll gesture every node of this panel shares, set here with the
    * batches so that there is one per panel however the context is derived
    * below. Disposed with the panel, so that a hand that was moving a list on
    * it is let go of and the scene stops asking it (see `movesList`).
    */
-  const panelScrolls = createPanelScrollDrags(ctx);
-  ctx = ScrollDragsContext.set(ctx, panelScrolls);
+  state.panelScrolls = createPanelScrollDrags(state.ctx);
+  state.ctx = ScrollDragsContext.set(state.ctx, state.panelScrolls);
   /**
    * What sends the rays' events back to the page, one per panel, listening
    * on its container: every element a ray acts on registers with it, and
    * nothing else listens (see `createPanelForwarder`). After the scroll
    * gesture and the haptics, which it reads from the context.
    */
-  const forwarder = createPanelForwarder(ctx, containerObject, { thumbstickWheel });
-  ctx = PointerForwarderContext.set(ctx, forwarder);
+  state.forwarder = createPanelForwarder(state.ctx, state.containerObject, { thumbstickWheel });
+  state.ctx = PointerForwarderContext.set(state.ctx, state.forwarder);
 
   /**
    * How finely this panel's text is worth rasterizing, measured off what the
@@ -490,10 +575,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * there is nothing to measure against — a portal on a plain page, or under
    * a test runner — and the runs then fall back to the page's own device
    * pixel ratio, which is the right answer when the panel *is* the page.
-   *
-   * @type {ReturnType<typeof createTextScale> | null}
    */
-  let textScale = null;
+  state.textScale = null;
   /**
    * What sends an array the panel built ahead of a step to the GPU, before
    * the step that draws from it is shown. Null with no renderer, where no
@@ -506,15 +589,18 @@ function buildPortal(ctx, ownOptions = {}) {
    * What draws the panel's runs ahead of the step it is about to show, in
    * the time the panels' own pumps leave in a frame. Made below, once there
    * is a scheduler to pace it; null where there is no step to prepare.
-   *
-   * @type {TextPreparer | null}
    */
-  let textPreparer = null;
+  state.textPreparer = null;
   try {
-    const renderer = RendererContext.get(ctx);
-    textScale = createTextScale(containerObject, renderer, CameraContext.get(ctx), maxTextScale);
+    const renderer = RendererContext.get(state.ctx);
+    state.textScale = createTextScale(
+      state.containerObject,
+      renderer,
+      CameraContext.get(state.ctx),
+      maxTextScale,
+    );
     uploadTexture = (texture) => renderer.initTexture(texture);
-    ctx = TextScaleContext.set(ctx, textScale);
+    state.ctx = TextScaleContext.set(state.ctx, state.textScale);
   } catch {
     // No renderer or camera on this context. Same shape of absence the late
     // frame hook below is written for, and the same answer: the panel does
@@ -525,17 +611,15 @@ function buildPortal(ctx, ownOptions = {}) {
    * Whether the panel is still mounting its initial content. True from the
    * start; flipped exactly once, by `markLoaded`, when everything the first
    * mount brought has been built and the reactive graph over it has settled.
-   *
-   * @type {Signal<boolean>}
    */
-  const loading = Signal.of(true);
+  state.loading = Signal.of(true);
 
   // Interactive elements ask this before registering as ray targets. The
   // raycast set is flat — an ancestor's `visible` shields nothing that
   // registered itself — so hiding the container above is only half of the
   // loading state; the other half is the buttons holding off until the panel
   // is actually there to press.
-  ctx = PortalReadyContext.set(ctx, () => !loading.get());
+  state.ctx = PortalReadyContext.set(state.ctx, () => !state.loading.get());
 
   // What a batch owes gets paid at the end of the frame, before anything is
   // drawn. Most of what invalidates a batch arrives as its own task and is
@@ -545,26 +629,25 @@ function buildPortal(ctx, ownOptions = {}) {
   /** @param {number} time */
   const flushBatches = (time) => {
     // The layers' order first, which moves what the batches draw.
-    const renderer = RendererContext.get(ctx);
-    const camera = CameraContext.get(ctx);
+    const renderer = RendererContext.get(state.ctx);
+    const camera = CameraContext.get(state.ctx);
     if (renderer && camera) {
-      layerOrder.frame(time, renderer, camera);
+      state.layerOrder.frame(time, renderer, camera);
     }
     // First, so that a step the panel has just crossed is one the runs
     // re-rasterize against rather than one they find out about next frame.
-    textScale?.measure();
+    state.textScale?.measure();
     // And the step it is preparing, which that measurement may have moved.
-    if (textScale) {
-      textPreparer?.retarget(textScale.prepared());
+    if (state.textScale) {
+      state.textPreparer?.retarget(state.textScale.prepared());
     }
-    paintBatch.flush();
+    state.paintBatch.flush();
     // And the layers cut in pieces, once their draws are this frame's.
-    layerOrder.cut();
+    state.layerOrder.cut();
   };
-  /** @type {() => void} */
-  let stopFlushing = () => {};
+  state.stopFlushing = () => {};
   try {
-    stopFlushing = onLateFrame(ctx, flushBatches);
+    state.stopFlushing = onLateFrame(state.ctx, flushBatches);
   } catch {
     // No renderer to take frames from — a portal on a plain page, or under a
     // test runner. Nothing invalidates a batch from inside a frame there,
@@ -572,15 +655,12 @@ function buildPortal(ctx, ownOptions = {}) {
     // and is enough on its own.
   }
 
-  /** @type {WeakMap<Node, Object3D>} */
   // Not a nodeCache: one portal's own, gone with it.
-  const nodeToObject = new WeakMap();
+  state.nodeToObject = new WeakMap();
 
-  /** @type {WeakMap<Object3D, Node>} */
-  const objectToNode = new WeakMap();
+  state.objectToNode = new WeakMap();
 
-  /** @type {WeakMap<Object3D, () => void>} */
-  const objectToCleanup = new WeakMap();
+  state.objectToCleanup = new WeakMap();
 
   /**
    * The reactive state of everything this portal projects. Every mutation,
@@ -589,7 +669,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * settles once — and every cached read the element components make comes
    * back out of it.
    */
-  const mirror = createMirror();
+  state.mirror = createMirror();
 
   // The DOM root everything this portal projects lives under, and the root
   // of the object tree it is projected into. The portal's own unless the
@@ -597,21 +677,22 @@ function buildPortal(ctx, ownOptions = {}) {
   // it stands — and the same thing to everything below either way: the
   // attribute is what the mirror walks up to, and nothing here asks who put
   // it there.
-  const containerElement = root ? claimRoot(root) : createContainerElement();
-  mirror.adopt(containerElement);
-  nodeToObject.set(containerElement, containerObject);
-  objectToNode.set(containerObject, containerElement);
+  state.containerElement = state.root ? claimRoot(state.root) : createContainerElement();
+  state.mirror.adopt(state.containerElement);
+  state.nodeToObject.set(state.containerElement, state.containerObject);
+  state.objectToNode.set(state.containerObject, state.containerElement);
 
   // What a ray asks of this panel. A drag and drop asks which element is
   // under it, any element and not only the ray targets, since a list that
   // takes drops is rarely a button (see `elementAt`), and which object draws
   // an element, for a picture of what is dragged. A press asks where the
   // ray is on the page (see `pressInit`).
-  const { panel, unregister: unregisterPanel } = registerPanel(
-    containerObject,
-    containerElement,
-    (node) => nodeToObject.get(node),
+  const { panel, unregister } = registerPanel(
+    state.containerObject,
+    state.containerElement,
+    (node) => state.nodeToObject.get(node),
   );
+  state.unregisterPanel = unregister;
 
   // With only clickable elements as ray targets (see div.js), the portal
   // still has to be opaque to rays as a whole — a panel should block the
@@ -623,7 +704,7 @@ function buildPortal(ctx, ownOptions = {}) {
   // altogether rather than with an unregistered one: nothing hits it, so
   // there is no background to cover and nothing to keep in step with the
   // panel's size.
-  const blocker = opaqueToRays ? createBlocker() : null;
+  state.blocker = opaqueToRays ? createBlocker() : null;
 
   // Nothing the panel draws writes depth, so the panel would
   // hide nothing drawn after it. One quad over the root writes it, in the
@@ -631,25 +712,25 @@ function buildPortal(ctx, ownOptions = {}) {
   // its elements draw in and short of the strips at `HANDLE_RENDER_ORDER`.
   // Last and not first, so that a layer behind the root's plane is not cut
   // by the root's own depth.
-  const depthQuad = createDepthQuad();
-  depthQuad.renderOrder = HANDLE_RENDER_ORDER - 1;
-  containerObject.add(depthQuad);
-  markMoved(depthQuad);
+  state.depthQuad = createDepthQuad();
+  state.depthQuad.renderOrder = HANDLE_RENDER_ORDER - 1;
+  state.containerObject.add(state.depthQuad);
+  markMoved(state.depthQuad);
 
   // And the order its layers draw in from where the viewer stands, walked
   // each frame before the batches flush and cut after (`layerOrder.js`),
   // which moves the depth quad to the end of the panel's slot.
-  const layerOrder = new LayerOrder({
-    container: containerObject,
-    root: containerElement,
-    objectOf: (node) => nodeToObject.get(node),
-    batch: paintBatch,
-    depthQuad,
+  state.layerOrder = new LayerOrder({
+    container: state.containerObject,
+    root: state.containerElement,
+    objectOf: (node) => state.nodeToObject.get(node),
+    batch: state.paintBatch,
+    depthQuad: state.depthQuad,
   });
-  ctx = LayerOrderContext.set(ctx, layerOrder);
-  if (blocker) {
-    containerObject.add(blocker);
-    markMoved(blocker);
+  state.ctx = LayerOrderContext.set(state.ctx, state.layerOrder);
+  if (state.blocker) {
+    state.containerObject.add(state.blocker);
+    markMoved(state.blocker);
     // Not a ray target yet: the raycast set is flat, so the container being
     // invisible would not shield the plane, and a loading panel would block
     // rays before there was anything visible to block them for. `markLoaded`
@@ -671,8 +752,8 @@ function buildPortal(ctx, ownOptions = {}) {
     // With the point the ray met, as a click on a button carries it: a page
     // with a `<canvas>` board, which is not `cursor: pointer`, takes its
     // clicks through here and finds the square from the point.
-    blocker.addEventListener("select", (e) => {
-      containerElement.dispatchEvent(new MouseEvent("click", pressInit(panel, e, false)));
+    state.blocker.addEventListener("select", (e) => {
+      state.containerElement.dispatchEvent(new MouseEvent("click", pressInit(panel, e, false)));
     });
   }
 
@@ -680,7 +761,7 @@ function buildPortal(ctx, ownOptions = {}) {
   // told about something: the pump below, the animation clock, which samples
   // styles while they move, and the images further down, which have arrived
   // and want announcing once rather than each.
-  const requestFrames = createFrameRequester(ctx);
+  state.requestFrames = createFrameRequester(state.ctx);
 
   // Whether this environment can hand out frames at all. Slicing work across
   // frames only makes sense where frames exist; under a test runner with
@@ -689,25 +770,25 @@ function buildPortal(ctx, ownOptions = {}) {
   // mounting synchronously, exactly as it did before it learned to slice.
   let hasRenderer = false;
   try {
-    frames(ctx);
+    frames(state.ctx);
     hasRenderer = true;
   } catch {
     // Neither here nor below: a page's own loop is enough to slice by, but
     // not to carry by, which follows the hand in the renderer's frames.
   }
-  const hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
+  state.hasFrames = hasRenderer || typeof requestAnimationFrame === "function";
 
   /**
    * Where this panel draws its outlines while outlines mode is on (see
    * `outlines.js`). Told of each commit taken and each one forced. Null
    * where there are no frames, which is where there is no commit either.
    */
-  const outlines = hasFrames
+  state.outlines = state.hasFrames
     ? registerOutlineHost({
-        containerElement,
-        containerObject,
-        objectOf: (node) => nodeToObject.get(node),
-        requestFrames,
+        containerElement: state.containerElement,
+        containerObject: state.containerObject,
+        objectOf: (node) => state.nodeToObject.get(node),
+        requestFrames: state.requestFrames,
       })
     : null;
 
@@ -720,12 +801,12 @@ function buildPortal(ctx, ownOptions = {}) {
    * sample there is given none and never stops, and nothing it holds will
    * be drawn.
    */
-  let clockSampling = false;
-  let pumpQueued = false;
+  state.clockSampling = false;
+  state.pumpQueued = false;
   const showBusy = () => {
-    const busy = hasFrames && (clockSampling || pumpQueued);
-    if (busy !== containerElement.hasAttribute(BUSY_ATTRIBUTE)) {
-      containerElement.toggleAttribute(BUSY_ATTRIBUTE, busy);
+    const busy = state.hasFrames && (state.clockSampling || state.pumpQueued);
+    if (busy !== state.containerElement.hasAttribute(BUSY_ATTRIBUTE)) {
+      state.containerElement.toggleAttribute(BUSY_ATTRIBUTE, busy);
     }
   };
 
@@ -735,7 +816,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * panel and `placeContainer` goes on centring it. Built with the context
    * the panel was built from, whose interactions and frames are the scene's.
    */
-  const handles =
+  state.handles =
     draggable && hasRenderer
       ? createPanelHandles(baseCtx, draggable === true ? {} : draggable)
       : null;
@@ -745,10 +826,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * once loaded. Until then there is nothing for the strips to be around.
    * Goes true once and stays.
    */
-  const drawn = Signal.of(false);
+  state.drawn = Signal.of(false);
   const markDrawn = () => {
-    handles?.setShown(true);
-    drawn.set(true);
+    state.handles?.setShown(true);
+    state.drawn.set(true);
   };
 
   /**
@@ -772,9 +853,9 @@ function buildPortal(ctx, ownOptions = {}) {
    * over before anything could be drawn, and a frame built to be torn down
    * in the same task is not worth building.
    */
-  const loadingFrameObject = loadingFrame && hasFrames ? createLoadingFrame(loadingFrame) : null;
-  /** @type {() => void} */
-  let stopLoadingFrame = () => {};
+  state.loadingFrameObject =
+    loadingFrame && state.hasFrames ? createLoadingFrame(loadingFrame) : null;
+  state.stopLoadingFrame = () => {};
   /**
    * Put the frame in the scene and start its clock, if the mount has been
    * running for longer than the frame's `delay`. Called by the pump's
@@ -784,51 +865,48 @@ function buildPortal(ctx, ownOptions = {}) {
    * never waits for one: a frame nobody saw has nothing to hold the panel
    * for. Until then the ticks below only place and size things, so the
    * frame is right the moment it is shown.
-   *
-   * @type {() => void}
    */
-  let showLoadingFrame = () => {};
+  state.showLoadingFrame = () => {};
   /**
    * Start the ticks. From the first content the observer reports, not from
    * construction: a portal given nothing to mount has nothing to stand in
    * for, and would otherwise measure, place and lay out every frame for
    * its whole life. Idempotent, and `stopLoadingFrame` ends it.
-   *
-   * @type {() => void}
    */
-  let startLoadingFrame = () => {};
+  state.startLoadingFrame = () => {};
+  const loadingFrameObject = state.loadingFrameObject;
   if (loadingFrameObject) {
-    showLoadingFrame = () => {
+    state.showLoadingFrame = () => {
       const now = performance.now();
       if (loadingFrameObject.isShown() || !loadingFrameObject.isOverdue(now)) {
         return;
       }
-      containerObject.add(loadingFrameObject.object);
+      state.containerObject.add(loadingFrameObject.object);
       markMoved(loadingFrameObject.object);
       loadingFrameObject.show(now);
       markDrawn();
     };
     /** @type {(() => void) | null} */
     let stopFrames = null;
-    startLoadingFrame = () => {
+    state.startLoadingFrame = () => {
       if (stopFrames) {
         return;
       }
       // The mount starts here, and the frame's delay with it.
       loadingFrameObject.begin(performance.now());
-      stopFrames = requestFrames(() => {
-        const size = getBorderBoxSize(containerElement);
+      stopFrames = state.requestFrames(() => {
+        const size = getBorderBoxSize(state.containerElement);
         placeContainer(size.width, size.height);
         loadingFrameObject.layout(size.width, size.height);
         loadingFrameObject.tick(performance.now());
       });
     };
-    stopLoadingFrame = () => {
+    state.stopLoadingFrame = () => {
       stopFrames?.();
       stopFrames = null;
       loadingFrameObject.dispose();
-      startLoadingFrame = () => {};
-      stopLoadingFrame = () => {};
+      state.startLoadingFrame = () => {};
+      state.stopLoadingFrame = () => {};
     };
   }
 
@@ -865,15 +943,13 @@ function buildPortal(ctx, ownOptions = {}) {
    *
    * Null where there are no frames — see above — and every `withChannel`
    * below degrades to the default channel, which is synchronous mounting.
-   *
-   * @type {UpdateChannel | null}
    */
-  const channel = hasFrames
+  state.channel = state.hasFrames
     ? new UpdateChannel({
         name: "portal",
         order: 1,
         manual: true,
-        atomic,
+        atomic: state.atomic,
         maxStalePasses: Infinity,
       })
     : null;
@@ -889,21 +965,19 @@ function buildPortal(ctx, ownOptions = {}) {
    * panel's channel committed and the matrices composed from it agree by the
    * time the frame is drawn. Null with no frames, where every effect is in
    * the default channel and runs at once.
-   *
-   * @type {UpdateChannel | null}
    */
-  const motionChannel = hasFrames ? new UpdateChannel({ name: "motion", order: 2 }) : null;
-  ctx = MotionChannelContext.set(ctx, motionChannel);
+  state.motionChannel = state.hasFrames ? new UpdateChannel({ name: "motion", order: 2 }) : null;
+  state.ctx = MotionChannelContext.set(state.ctx, state.motionChannel);
 
   /**
    * The scene's scheduler, if this portal is under one. Besides pacing the
    * panel, it is what takes the panel's objects down after it closes, since
    * it outlives the panel (see `portalTeardown.js`).
    */
-  const sceneScheduler = portalSchedulerOf(ctx);
+  state.sceneScheduler = portalSchedulerOf(state.ctx);
   // The pictures the panel loads stay cached after it closes; the scene
   // lets go of the idle ones when it goes.
-  sceneService(ctx, releaseImagesWithScene);
+  sceneService(state.ctx, releaseImagesWithScene);
 
   /**
    * Who paces this portal. The scene's scheduler, whenever
@@ -918,22 +992,22 @@ function buildPortal(ctx, ownOptions = {}) {
    *
    * @type {PortalScheduler | null}
    */
-  const scheduler = !hasFrames
+  const scheduler = !state.hasFrames
     ? null
-    : (sceneScheduler ??
+    : (state.sceneScheduler ??
       createPortalScheduler({
         budget,
-        requestFrames,
+        requestFrames: state.requestFrames,
       }));
 
-  if (textScale && uploadTexture && scheduler) {
-    textPreparer = createTextPreparer({
+  if (state.textScale && uploadTexture && scheduler) {
+    state.textPreparer = createTextPreparer({
       scheduler,
-      batch: textBatch,
-      holds: textScale.holds,
+      batch: state.textBatch,
+      holds: state.textScale.holds,
       upload: uploadTexture,
     });
-    ctx = TextPrepareContext.set(ctx, textPreparer);
+    state.ctx = TextPrepareContext.set(state.ctx, state.textPreparer);
   }
 
   /**
@@ -947,7 +1021,7 @@ function buildPortal(ctx, ownOptions = {}) {
    *
    * @param {() => void} fn
    */
-  const projectChanges = (fn) => withChannel(channel, () => batch(fn));
+  const projectChanges = (fn) => withChannel(state.channel, () => batch(fn));
 
   /**
    * The keyboard this panel offers its fields, if it was given one: what a
@@ -957,16 +1031,15 @@ function buildPortal(ctx, ownOptions = {}) {
    * with it. Fields find it through the context; without one they get the
    * default, which answers that nothing is focused and takes no press.
    */
-  /** @type {import('./keyboardHost.js').KeyboardHost | null} */
-  let ownKeyboardHost = null;
-  const portalKeyboard = keyboard
+  state.ownKeyboardHost = null;
+  state.portalKeyboard = keyboard
     ? bindPortalKeyboard(
         (() => {
-          const slot = keyboardSlotOf(ctx);
+          const slot = keyboardSlotOf(state.ctx);
           if (slot) {
             return (slot.host ??= createKeyboardHost({ createPortal, ctx: slot.ctx }));
           }
-          return (ownKeyboardHost = createKeyboardHost({ createPortal }));
+          return (state.ownKeyboardHost = createKeyboardHost({ createPortal }));
         })(),
         {
           // Without the scene's panel options: the board is the portal's, not
@@ -981,19 +1054,23 @@ function buildPortal(ctx, ownOptions = {}) {
             haptics: haptics === false ? false : { hover: true, ...haptics },
           }),
           options: keyboard,
-          containerObject,
+          containerObject: state.containerObject,
           // A draggable panel's frame, where the board moves with the panel
           // and a ray on its keys is not a ray on the panel.
           hangFrom: () =>
-            handles ? (handles.frame.parent ? handles.frame : null) : containerObject.parent,
-          containerElement,
+            state.handles
+              ? state.handles.frame.parent
+                ? state.handles.frame
+                : null
+              : state.containerObject.parent,
+          containerElement: state.containerElement,
           scale: PANEL_SCALE,
-          placeEffect: (fn, name) => withChannel(channel, () => new Effect(fn, { name })),
+          placeEffect: (fn, name) => withChannel(state.channel, () => new Effect(fn, { name })),
         },
       )
     : null;
-  if (portalKeyboard) {
-    ctx = InputFocusContext.set(ctx, portalKeyboard.focus);
+  if (state.portalKeyboard) {
+    state.ctx = InputFocusContext.set(state.ctx, state.portalKeyboard.focus);
   }
 
   /**
@@ -1052,11 +1129,11 @@ function buildPortal(ctx, ownOptions = {}) {
    * @param {Unlinked} unlinked
    */
   function unlink(node, unlinked) {
-    portalKeyboard?.released(node);
+    state.portalKeyboard?.released(node);
     const index = unlinked.nodes.push(node) - 1;
     unlinked.starts.push(unlinked.teardowns.length);
     unlinked.ends.push(unlinked.teardowns.length);
-    if (root && node.nodeType === Node.ELEMENT_NODE) {
+    if (state.root && node.nodeType === Node.ELEMENT_NODE) {
       // A panel over the page's own element, letting go of a node the page
       // keeps: the whole panel closing, or a row that left it. Every flag the
       // portal wrote on the node comes off now, a closing panel's with the
@@ -1068,19 +1145,19 @@ function buildPortal(ctx, ownOptions = {}) {
         /** @type {Element} */ (node).removeAttribute(flag);
       }
     }
-    const object = nodeToObject.get(node);
+    const object = state.nodeToObject.get(node);
     if (object) {
-      const teardown = objectToCleanup.get(object);
+      const teardown = state.objectToCleanup.get(object);
       if (teardown) {
         unlinked.teardowns.push(teardown);
-        objectToCleanup.delete(object);
+        state.objectToCleanup.delete(object);
       }
-      nodeToObject.delete(node);
-      objectToNode.delete(object);
+      state.nodeToObject.delete(node);
+      state.objectToNode.delete(object);
       // Nothing is taken down during the walk, so the children are read as
       // they stand.
       for (const child of getContentGroup(object).children) {
-        const childNode = objectToNode.get(child);
+        const childNode = state.objectToNode.get(child);
         // A child whose node is still in the tree was moved out of this
         // subtree, not removed with it: its object sits here only until the
         // commit places it under its new parent, and what is under it moved
@@ -1088,7 +1165,7 @@ function buildPortal(ctx, ownOptions = {}) {
         // was, which is what the commit is for. Whatever the tree does hold
         // is the other walk's, so this skips nothing that is anybody's to
         // clean.
-        if (childNode && !containerElement.contains(childNode)) {
+        if (childNode && !state.containerElement.contains(childNode)) {
           unlink(childNode, unlinked);
         }
       }
@@ -1101,7 +1178,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // portal, and a node kept in them keeps this mirror's signals under it.
     // The element the page owns is the one that comes back — see
     // `forgetNode` in mirror/records.js.
-    mirror.forget(node);
+    state.mirror.forget(node);
   }
 
   /**
@@ -1124,10 +1201,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * @param {Unlinked} unlinked
    */
   function takeDown(unlinked) {
-    if (sceneScheduler) {
+    if (state.sceneScheduler) {
       scheduleTeardown({
-        scheduler: sceneScheduler,
-        requestFrames,
+        scheduler: state.sceneScheduler,
+        requestFrames: state.requestFrames,
         teardowns: unlinked.teardowns,
         nodes: unlinked.nodes,
         starts: unlinked.starts,
@@ -1156,18 +1233,16 @@ function buildPortal(ctx, ownOptions = {}) {
    * nothing for them, and a plugin draws them where something refers to
    * them. They are adopted by the mirror all the same, so that an edit to a
    * marker's path or a symbol's children reaches whatever draws it.
-   *
-   * @type {WeakSet<Node>}
    */
-  const templateNodes = new WeakSet();
+  state.templateNodes = new WeakSet();
 
   /**
    * @param {Node} node
    * @returns {void}
    */
   function adoptTemplate(node) {
-    mirror.adopt(node);
-    templateNodes.add(node);
+    state.mirror.adopt(node);
+    state.templateNodes.add(node);
     node.childNodes.forEach(adoptTemplate);
   }
 
@@ -1185,23 +1260,23 @@ function buildPortal(ctx, ownOptions = {}) {
     // to be taken down, and their teardowns write to what this build will
     // own.
     finishTeardownOf(node);
-    mirror.adopt(node);
+    state.mirror.adopt(node);
     const parent = node.parentNode;
-    if (parent && templateNodes.has(parent)) {
+    if (parent && state.templateNodes.has(parent)) {
       // Inside an SVG subtree no plugin drew, such as a `<marker>` in its
       // `<defs>`: a template, followed but never built on its own.
       adoptTemplate(node);
       return undefined;
     }
     // Built after all, having been moved out of a template.
-    templateNodes.delete(node);
+    state.templateNodes.delete(node);
     /** @type {import("justdom-signal").Subscribable<THREE.Object3D> | undefined} */
     let object$;
     if (node.nodeType === Node.ELEMENT_NODE) {
       const element = /** @type {HTMLElement} */ (node);
       // A plugin is asked first, about every element: it may have something
       // to say about an `<input>` or a `<canvas>` as much as about a shape.
-      const claimed = projectWithPlugins(plugins, ctx, element);
+      const claimed = projectWithPlugins(state.plugins, state.ctx, element);
       if (claimed) {
         object$ = claimed;
       } else if (isSvgElement(element) && !isSvgRoot(element)) {
@@ -1223,14 +1298,14 @@ function buildPortal(ctx, ownOptions = {}) {
             // a colour swatch — and a box is what `div` draws.
             object$ =
               input.type === "checkbox"
-                ? checkbox(ctx, input)
+                ? checkbox(state.ctx, input)
                 : isTextInput(input)
-                  ? textInput(ctx, input)
-                  : div(ctx, element);
+                  ? textInput(state.ctx, input)
+                  : div(state.ctx, element);
             break;
           }
           default: {
-            object$ = markedBox(ctx, element);
+            object$ = markedBox(state.ctx, element);
           }
         }
       }
@@ -1244,7 +1319,7 @@ function buildPortal(ctx, ownOptions = {}) {
       if (parent && isSvgElement(parent)) {
         return undefined;
       }
-      object$ = text(ctx, /** @type {Text} */ (node));
+      object$ = text(state.ctx, /** @type {Text} */ (node));
     }
     if (!object$) {
       return undefined;
@@ -1259,9 +1334,9 @@ function buildPortal(ctx, ownOptions = {}) {
     if (!object) {
       throw new Error("Failed to create Object3D for node");
     }
-    nodeToObject.set(node, object);
-    objectToNode.set(object, node);
-    objectToCleanup.set(object, () => {
+    state.nodeToObject.set(node, object);
+    state.objectToNode.set(object, node);
+    state.objectToCleanup.set(object, () => {
       subscription.unsubscribe();
     });
     return object;
@@ -1272,8 +1347,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * @returns {THREE.Object3D | undefined}
    */
   function getOrCreateObjectForNode(node) {
-    if (nodeToObject.has(node)) {
-      return nodeToObject.get(node);
+    if (state.nodeToObject.has(node)) {
+      return state.nodeToObject.get(node);
     }
     const object = createObjectForNode(node);
     if (!object) {
@@ -1299,7 +1374,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * loaded would show a blank panel and register its blocker over whatever
    * is behind it.
    */
-  let sawContent = false;
+  state.sawContent = false;
 
   /**
    * Nodes whose objects are built and not yet where they belong in the
@@ -1319,10 +1394,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * object to place and nowhere to put it at the time it is listed. By the
    * commit the parent is built, since the commit waits for the queue, and
    * `node.parentNode` says where the object goes.
-   *
-   * @type {Set<Node>}
    */
-  const pendingAttachments = new Set();
+  state.pendingAttachments = new Set();
 
   /**
    * Nodes that left the tree and whose objects are still in the scene, for
@@ -1333,10 +1406,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * tree by then was moved, not removed, and keeps its object. The same
    * exception as above: a portal that is not atomic commits these without
    * waiting for the rows that close over the gap.
-   *
-   * @type {Set<Node>}
    */
-  const pendingRemovals = new Set();
+  state.pendingRemovals = new Set();
 
   /**
    * Whether anything is held for the commit. The one spelling of it: the
@@ -1345,7 +1416,8 @@ function buildPortal(ctx, ownOptions = {}) {
    *
    * @returns {boolean}
    */
-  const hasPendingCommit = () => pendingAttachments.size > 0 || pendingRemovals.size > 0;
+  const hasPendingCommit = () =>
+    state.pendingAttachments.size > 0 || state.pendingRemovals.size > 0;
 
   /**
    * Whether `commit` would be taken now. Not while the mount is built but
@@ -1355,7 +1427,11 @@ function buildPortal(ctx, ownOptions = {}) {
    * time bounds force a long frame only while it answers true.
    */
   const commitDue = () =>
-    !(loading.get() && loadingFrameObject && !loadingFrameObject.isDue(performance.now()));
+    !(
+      state.loading.get() &&
+      state.loadingFrameObject &&
+      !state.loadingFrameObject.isDue(performance.now())
+    );
 
   /**
    * Put a node's object under its parent's: now, or at the commit if there
@@ -1365,8 +1441,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * @param {Node} node
    */
   const attach = (node) => {
-    if (pump) {
-      pendingAttachments.add(node);
+    if (state.pump) {
+      state.pendingAttachments.add(node);
       return;
     }
     place(node);
@@ -1397,12 +1473,12 @@ function buildPortal(ctx, ownOptions = {}) {
    * @param {Node} node
    */
   const place = (node) => {
-    const object = nodeToObject.get(node);
-    const parentObject = node.parentNode ? nodeToObject.get(node.parentNode) : undefined;
+    const object = state.nodeToObject.get(node);
+    const parentObject = node.parentNode ? state.nodeToObject.get(node.parentNode) : undefined;
     if (object && parentObject) {
       getContentGroup(parentObject).add(object);
       markMoved(object);
-      paintBatch.invalidate();
+      state.paintBatch.invalidate();
     }
   };
 
@@ -1448,12 +1524,12 @@ function buildPortal(ctx, ownOptions = {}) {
    * @param {Node} node
    */
   const detach = (node) => {
-    if (pump && nodeToObject.has(node)) {
-      mirror.release(node);
-      pendingRemovals.add(node);
+    if (state.pump && state.nodeToObject.has(node)) {
+      state.mirror.release(node);
+      state.pendingRemovals.add(node);
       return;
     }
-    nodeToObject.get(node)?.removeFromParent();
+    state.nodeToObject.get(node)?.removeFromParent();
     cleanup(node);
   };
 
@@ -1488,13 +1564,13 @@ function buildPortal(ctx, ownOptions = {}) {
     }
     projectChanges(() => {
       const changed = hasPendingCommit();
-      for (const node of pendingAttachments) {
-        if (containerElement.contains(node)) {
+      for (const node of state.pendingAttachments) {
+        if (state.containerElement.contains(node)) {
           place(node);
         }
       }
-      pendingAttachments.clear();
-      if (pendingRemovals.size > 0) {
+      state.pendingAttachments.clear();
+      if (state.pendingRemovals.size > 0) {
         takeDownRemovals();
       }
       if (changed) {
@@ -1504,10 +1580,10 @@ function buildPortal(ctx, ownOptions = {}) {
         // found nothing where it now hangs. Without this the new boxes stayed
         // out of the draw until something unrelated restyled the panel, while
         // whatever draws itself appeared at once: text over no card.
-        paintBatch.invalidate();
+        state.paintBatch.invalidate();
       }
     });
-    outlines?.commit();
+    state.outlines?.commit();
     return true;
   };
 
@@ -1529,9 +1605,9 @@ function buildPortal(ctx, ownOptions = {}) {
      * @type {THREE.Group | null}
      */
     let hold = null;
-    for (const node of pendingRemovals) {
-      if (!containerElement.contains(node)) {
-        const object = nodeToObject.get(node);
+    for (const node of state.pendingRemovals) {
+      if (!state.containerElement.contains(node)) {
+        const object = state.nodeToObject.get(node);
         if (object) {
           if (!hold) {
             hold = new THREE.Group();
@@ -1542,7 +1618,7 @@ function buildPortal(ctx, ownOptions = {}) {
         unlink(node, removed);
       }
     }
-    pendingRemovals.clear();
+    state.pendingRemovals.clear();
     if (hold) {
       // And let go of them last, so that a row taken down is out of
       // everything, as it was when it was taken down on the spot.
@@ -1561,22 +1637,22 @@ function buildPortal(ctx, ownOptions = {}) {
    * would be worse than any frame they cost.
    */
   const markLoaded = () => {
-    if (!sawContent || !loading.get()) {
+    if (!state.sawContent || !state.loading.get()) {
       return;
     }
     // The frame goes in the tick that attached the content, so the panel
     // takes its place in the same drawn frame — see `commit`, which the pump
     // runs just before this.
-    stopLoadingFrame();
-    containerElement.removeAttribute(LOADING_ATTRIBUTE);
+    state.stopLoadingFrame();
+    state.containerElement.removeAttribute(LOADING_ATTRIBUTE);
     // The blocker before the flip: flipping `loading` is what lets the
     // panel's own controls register, and the background should be in the
     // raycast set before the things drawn in front of it.
-    if (blocker) {
-      interactionManager.add(blocker);
+    if (state.blocker) {
+      state.interactionManager.add(state.blocker);
     }
-    loading.set(false);
-    onLoadingChanged?.(false);
+    state.loading.set(false);
+    state.onLoadingChanged?.(false);
     // Whether or not a frame stood in for it, the panel is drawn now.
     markDrawn();
   };
@@ -1616,12 +1692,12 @@ function buildPortal(ctx, ownOptions = {}) {
    * @returns {boolean} whether anything was genuinely built
    */
   const buildQueuedNode = (node) => {
-    if (!containerElement.contains(node)) {
+    if (!state.containerElement.contains(node)) {
       // A stale entry — the node left the tree between being queued and its
       // turn. Nothing was built for it, so there is nothing to take down.
       return false;
     }
-    const object = nodeToObject.get(node) ?? createObjectForNode(node);
+    const object = state.nodeToObject.get(node) ?? createObjectForNode(node);
     if (!object) {
       // In the tree but nothing to draw — a comment, and in particular the
       // markers `children()` fences its segments with.
@@ -1631,11 +1707,11 @@ function buildPortal(ctx, ownOptions = {}) {
       attach(node);
     }
     node.childNodes.forEach((childNode) => {
-      const childObject = nodeToObject.get(childNode);
+      const childObject = state.nodeToObject.get(childNode);
       if (!childObject) {
         // Never built (or a comment, which builds to nothing either way):
         // queue it, and its own turn will attach it — its parent exists now.
-        pump?.enqueue(childNode);
+        state.pump?.enqueue(childNode);
       } else if (!childObject.parent) {
         // Built before this parent was — the observer reported it directly,
         // out of tree order — and left loose. Adopt it, subtree and all: its
@@ -1662,10 +1738,10 @@ function buildPortal(ctx, ownOptions = {}) {
    * where there are no frames, in which case everything mounts synchronously
    * and `markLoaded` is called from the mutation callback instead.
    */
-  const pump =
-    channel && scheduler
+  state.pump =
+    state.channel && scheduler
       ? createPortalPump({
-          channel,
+          channel: state.channel,
           scheduler,
           priority,
           // What the observer holds and has not delivered: a handler a ray's
@@ -1673,7 +1749,7 @@ function buildPortal(ctx, ownOptions = {}) {
           // the portal's own bookkeeping are skipped here as they are when
           // the observer delivers them.
           beforeTick: () => {
-            const records = mutationObserver.takeRecords();
+            const records = state.mutationObserver.takeRecords();
             if (records.length > 0) {
               mutationCallback(records);
             }
@@ -1684,27 +1760,27 @@ function buildPortal(ctx, ownOptions = {}) {
           // after the mount goes in as soon as it is, rather than when a
           // busy channel happens to empty. The mount itself still arrives
           // whole.
-          commitsEarly: () => !atomic && !loading.get(),
+          commitsEarly: () => !state.atomic && !state.loading.get(),
           commitDue,
           hasPendingCommit,
-          onForced: () => outlines?.forced(),
+          onForced: () => state.outlines?.forced(),
           onSettled: markLoaded,
           onQueued: (queued) => {
-            pumpQueued = queued;
+            state.pumpQueued = queued;
             showBusy();
           },
           // Content appeared or moved under whatever rays are resting on
           // the panel.
           afterTick: (settled) => {
-            if (!settled && loading.get()) {
+            if (!settled && state.loading.get()) {
               // The mount needs another frame. Once it has needed them for
               // longer than the frame's delay, the player is looking at
               // nothing where a panel should be, and the frame takes that
               // place — from this tick on, and for its minimum time.
-              showLoadingFrame();
+              state.showLoadingFrame();
             }
-            motionChannel?.flush({ budget: Infinity });
-            interactionManager.updateIntersections();
+            state.motionChannel?.flush({ budget: Infinity });
+            state.interactionManager.updateIntersections();
           },
         })
       : null;
@@ -1733,28 +1809,28 @@ function buildPortal(ctx, ownOptions = {}) {
     // recomposed its own — an object that auto-updates sets the flag that
     // forces the whole subtree beneath it — so a container left to itself
     // would hand the entire panel the work its boxes just opted out of.
-    containerObject.rotation.set(Math.PI, 0, 0);
-    placeAndScale(containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
+    state.containerObject.rotation.set(Math.PI, 0, 0);
+    placeAndScale(state.containerObject, -sizeX / 2, sizeY / 2, 0, scale, scale, scale);
     // The strips go where the edges are, from the same writes: a mount's
     // frame ticks move the panel as well as the commit does.
-    handles?.layout(width, height, scale);
+    state.handles?.layout(width, height, scale);
   }
 
   function resizeCallback() {
-    const size = getBorderBoxSize(containerElement);
+    const size = getBorderBoxSize(state.containerElement);
     placeContainer(size.width, size.height);
     // The measurement wants the middle of the panel, and the middle moves
     // with the size. In the container's own pixels, which is the frame it is
     // handed back through.
-    textScale?.setPanelSize(size.width, size.height);
+    state.textScale?.setPanelSize(size.width, size.height);
     // Container-local px units, y down; content sits at negative local z
     // (toward the viewer after the flip above), so +1 puts the blocker just
     // behind everything the portal draws.
-    if (blocker) {
-      coverBox(blocker, size.width, size.height, 1);
+    if (state.blocker) {
+      coverBox(state.blocker, size.width, size.height, 1);
     }
-    if (depthQuad) {
-      coverBox(depthQuad, size.width, size.height, 0);
+    if (state.depthQuad) {
+      coverBox(state.depthQuad, size.width, size.height, 0);
     }
   }
 
@@ -1765,8 +1841,8 @@ function buildPortal(ctx, ownOptions = {}) {
   // waiting for the commit. The height of a panel centred on its own origin
   // is exactly what the player sees move. As an effect the callback is the
   // write, and writes wait for the sweep with everything else.
-  const resizeEffect = withChannel(
-    channel,
+  state.resizeEffect = withChannel(
+    state.channel,
     () => new Effect(resizeCallback, { name: "portal-resize" }),
   );
 
@@ -1786,12 +1862,12 @@ function buildPortal(ctx, ownOptions = {}) {
       return false;
     }
     projectChanges(() => {
-      mirror.ingest(mutationList);
+      state.mirror.ingest(mutationList);
       for (const mutation of mutationList) {
         if (mutation.type !== "childList") {
           continue;
         }
-        sawContent = true;
+        state.sawContent = true;
         mutation.addedNodes.forEach((node) => {
           // A node the portal has never seen goes to the queue and gets
           // built when the pump reaches it — that is the slicing. One it
@@ -1801,9 +1877,9 @@ function buildPortal(ctx, ownOptions = {}) {
           // flush, a spinner made and dropped between two reads, has
           // nothing to build, and queueing it would count it as an arrival
           // towards `MAX_BUILD_WAIT`.
-          if (pump && !nodeToObject.has(node)) {
-            if (containerElement.contains(node)) {
-              pump.enqueue(node);
+          if (state.pump && !state.nodeToObject.has(node)) {
+            if (state.containerElement.contains(node)) {
+              state.pump.enqueue(node);
             }
             return;
           }
@@ -1822,18 +1898,18 @@ function buildPortal(ctx, ownOptions = {}) {
         mutation.removedNodes.forEach((node) => {
           // Moved if the tree still holds it; gone otherwise, however many
           // times the flush put it back in between.
-          if (!containerElement.contains(node)) {
+          if (!state.containerElement.contains(node)) {
             detach(node);
           }
         });
       }
     });
     contentChanged();
-    if (!pumpQueued) {
+    if (!state.pumpQueued) {
       // A flush that left the panel nothing to do, such as a write of what
       // was already there, has no commit coming. The panel already shows
       // all of it, so what the flush counted goes up in outlines mode now.
-      outlines?.commit();
+      state.outlines?.commit();
     }
     return true;
   };
@@ -1851,21 +1927,21 @@ function buildPortal(ctx, ownOptions = {}) {
     // events that would announce it are dispatched with the rendering
     // updates the session has suspended. Observer callbacks are microtasks
     // and keep arriving, so this is where the clock gets to look.
-    animationClock.sweep();
-    if (sawContent && loading.get()) {
+    state.animationClock.sweep();
+    if (state.sawContent && state.loading.get()) {
       // The mount is under way: say so where the DOM can see it, and start
       // placing the panel and the frame that may stand in for it. Both end
       // with `markLoaded`. The flag is written once, not on every flush of
       // the mount, since the observer reports a write of the value already
       // there as a record of its own. Such a record does not lead back here:
       // `mutationCallback` skips a flush made only of the portal's flags.
-      if (!containerElement.hasAttribute(LOADING_ATTRIBUTE)) {
-        containerElement.setAttribute(LOADING_ATTRIBUTE, "");
+      if (!state.containerElement.hasAttribute(LOADING_ATTRIBUTE)) {
+        state.containerElement.setAttribute(LOADING_ATTRIBUTE, "");
       }
-      startLoadingFrame();
+      state.startLoadingFrame();
     }
-    if (pump) {
-      pump.schedule();
+    if (state.pump) {
+      state.pump.schedule();
     } else {
       // No frames to slice across: everything above was built synchronously,
       // so the first flush that carried content is also the moment the panel
@@ -1874,17 +1950,17 @@ function buildPortal(ctx, ownOptions = {}) {
     }
   };
 
-  const mutationObserver = new MutationObserver((records) => {
+  state.mutationObserver = new MutationObserver((records) => {
     // Every hand's hit is worked out only when that hand moves, so a menu
     // that opens under a ray resting on the button that opened it would go
     // on reporting the button as hovered until the player twitched. The
     // scene changed under them; ask for the rays to be cast again. A change
     // the pump's tick takes in is cast by the tick, once it has built.
     if (mutationCallback(records)) {
-      interactionManager.updateIntersections();
+      state.interactionManager.updateIntersections();
     }
   });
-  mutationObserver.observe(containerElement, OBSERVER_OPTIONS);
+  state.mutationObserver.observe(state.containerElement, OBSERVER_OPTIONS);
 
   /**
    * What the animation clock's batches mean in the mirror's vocabulary:
@@ -1900,16 +1976,16 @@ function buildPortal(ctx, ownOptions = {}) {
     projectChanges(() => {
       for (const animationBatch of batches) {
         if (animationBatch.types.has("animated") && animationBatch.targets) {
-          mirror.animatedStyles(animationBatch.targets);
+          state.mirror.animatedStyles(animationBatch.targets);
         }
         if (animationBatch.types.has("animatedSelf") && animationBatch.targets) {
-          mirror.animatedStyles(animationBatch.targets, { subtree: false });
+          state.mirror.animatedStyles(animationBatch.targets, { subtree: false });
         }
         if (animationBatch.types.has("transformed") && animationBatch.targets) {
-          mirror.transformed(animationBatch.targets);
+          state.mirror.transformed(animationBatch.targets);
         }
         if (animationBatch.types.has("reflow")) {
-          mirror.reflowed(animationBatch.targets);
+          state.mirror.reflowed(animationBatch.targets);
         }
       }
     });
@@ -1919,27 +1995,27 @@ function buildPortal(ctx, ownOptions = {}) {
   // the styles move while the DOM holds still — so the observer above never
   // hears about them. The clock samples the animating elements once per
   // frame instead, and requests no frames at all while nothing animates.
-  const animationClock = createAnimationClock(
-    containerElement,
+  state.animationClock = createAnimationClock(
+    state.containerElement,
     (batches) => {
       applyAnimationBatches(batches);
       // Animated content moves under a stationary ray just like mutated
       // content does.
-      interactionManager.updateIntersections();
+      state.interactionManager.updateIntersections();
     },
     (tick) => {
-      const stop = requestFrames(tick);
-      clockSampling = true;
+      const stop = state.requestFrames(tick);
+      state.clockSampling = true;
       showBusy();
       return () => {
         stop();
-        clockSampling = false;
+        state.clockSampling = false;
         showBusy();
       };
     },
     // Nobody sees the panel until it loads, and the mount reads each style
     // as it builds it; see `held` in `animationClock.js`.
-    { held: () => loading.get() },
+    { held: () => state.loading.get() },
   );
 
   /**
@@ -1959,7 +2035,7 @@ function buildPortal(ctx, ownOptions = {}) {
       return;
     }
     projectChanges(() => {
-      mirror.scrolled(target);
+      state.mirror.scrolled(target);
     });
     // A scroll settles synchronously, budget or no budget. Everything the
     // offset moves is arithmetic on cached values, cheap by the mirror's own
@@ -1973,33 +2049,29 @@ function buildPortal(ctx, ownOptions = {}) {
     // consequences and leave another's — which is the accepted cost of a
     // hand on the panel, and no more than every scroll cost before the panel
     // learned to defer at all.
-    channel?.flush({ budget: Infinity });
-    motionChannel?.flush({ budget: Infinity });
+    state.channel?.flush({ budget: Infinity });
+    state.motionChannel?.flush({ budget: Infinity });
     // Content has moved out from under a ray that did not move with it. The
     // manager only recasts when a hand moves or when it is told the scene
     // changed, and this is the second case.
-    interactionManager.updateIntersections();
+    state.interactionManager.updateIntersections();
   };
-  containerElement.addEventListener("scroll", scrollCallback, true);
-  const stopWatchingPage = watchPageGeometry();
+  state.containerElement.addEventListener("scroll", scrollCallback, true);
+  state.stopWatchingPage = watchPageGeometry();
 
   /**
    * A frame asked for to announce images that have arrived, and the way to
    * take the request back; null while nothing is waiting to be announced.
-   *
-   * @type {(() => void) | null}
    */
-  let loadFrame = null;
+  state.loadFrame = null;
 
   /**
    * The images waiting to be announced. Kept rather than counted, because
    * where a picture landed decides how far the news travels: one inside a
    * list moves that list's rows, and the panel around it only if the list
    * resized.
-   *
-   * @type {Set<Node>}
    */
-  const loaded = new Set();
+  state.loaded = new Set();
 
   /**
    * Say that images have arrived — once for however many of them did.
@@ -2017,14 +2089,14 @@ function buildPortal(ctx, ownOptions = {}) {
     // The frame sources this can draw on — the renderer's loop and
     // `requestAnimationFrame` — both deliver asynchronously, so the handle is
     // always in place by the time this reads it.
-    loadFrame?.();
-    loadFrame = null;
-    const arrived = [...loaded];
-    loaded.clear();
+    state.loadFrame?.();
+    state.loadFrame = null;
+    const arrived = [...state.loaded];
+    state.loaded.clear();
     projectChanges(() => {
-      mirror.contentLoaded(arrived);
+      state.mirror.contentLoaded(arrived);
     });
-    interactionManager.updateIntersections();
+    state.interactionManager.updateIntersections();
   };
 
   /**
@@ -2050,18 +2122,18 @@ function buildPortal(ctx, ownOptions = {}) {
     if (isSvgElement(target)) {
       return;
     }
-    loaded.add(target);
-    if (!loadFrame) {
-      loadFrame = requestFrames(announceLoads);
+    state.loaded.add(target);
+    if (!state.loadFrame) {
+      state.loadFrame = state.requestFrames(announceLoads);
     }
   };
-  containerElement.addEventListener("load", loadCallback, true);
+  state.containerElement.addEventListener("load", loadCallback, true);
 
   function fontLoadingCallback() {
     // Fonts arriving restyle and re-measure everything at once; there is no
     // node to scope that to.
     projectChanges(() => {
-      mirror.fontsLoaded();
+      state.mirror.fontsLoaded();
     });
   }
   if (document.fonts) {
@@ -2074,12 +2146,12 @@ function buildPortal(ctx, ownOptions = {}) {
   // the class name it is behind mutates nothing this panel can see. When the
   // watcher can name the classes the changed rules start from, this panel
   // restyles only if they can reach it; otherwise it restyles regardless.
-  const stopWatchingStyles = watchDocumentStyles((classes) => {
+  state.stopWatchingStyles = watchDocumentStyles((classes) => {
     projectChanges(() => {
       if (classes) {
-        mirror.classRulesChanged(containerElement, classes);
+        state.mirror.classRulesChanged(state.containerElement, classes);
       } else {
-        mirror.documentStylesChanged();
+        state.mirror.documentStylesChanged();
       }
     });
   });
@@ -2106,24 +2178,24 @@ function buildPortal(ctx, ownOptions = {}) {
   // included: the mark was written before the content was ever read, and a
   // page left carrying one with no portal behind it is refused every later
   // claim, the right one included.
-  if (root) {
+  if (state.root) {
     queueMicrotask(() => {
-      if (released || !containerElement.firstChild) {
+      if (state.released || !state.containerElement.firstChild) {
         return;
       }
       try {
         projectChanges(() => {
-          sawContent = true;
-          for (let node = containerElement.firstChild; node; node = node.nextSibling) {
-            if (pump) {
-              pump.enqueue(node);
+          state.sawContent = true;
+          for (let node = state.containerElement.firstChild; node; node = node.nextSibling) {
+            if (state.pump) {
+              state.pump.enqueue(node);
             } else if (getOrCreateObjectForNode(node)) {
               attach(node);
             }
           }
         });
         contentChanged();
-        interactionManager.updateIntersections();
+        state.interactionManager.updateIntersections();
       } catch (err) {
         disconnect();
         throw err;
@@ -2135,7 +2207,7 @@ function buildPortal(ctx, ownOptions = {}) {
    * Whether `disconnect` has run. The first look above checks it, and a
    * second `disconnect` is a no-op rather than a second walk.
    */
-  let released = false;
+  state.released = false;
 
   /**
    * Take the panel down. Everything that could change it stops, and the
@@ -2151,17 +2223,17 @@ function buildPortal(ctx, ownOptions = {}) {
    * rules.
    */
   function disconnect() {
-    if (released) {
+    if (state.released) {
       return;
     }
-    released = true;
+    state.released = true;
     const unlinked = startUnlinking();
     takeDownContainer(unlinked);
-    unlink(containerElement, unlinked);
-    if (root) {
-      containerElement.removeAttribute(PORTAL_ATTRIBUTE);
-      containerElement.removeAttribute(LOADING_ATTRIBUTE);
-      containerElement.removeAttribute(BUSY_ATTRIBUTE);
+    unlink(state.containerElement, unlinked);
+    if (state.root) {
+      state.containerElement.removeAttribute(PORTAL_ATTRIBUTE);
+      state.containerElement.removeAttribute(LOADING_ATTRIBUTE);
+      state.containerElement.removeAttribute(BUSY_ATTRIBUTE);
     }
     takeDown(unlinked);
   }
@@ -2176,71 +2248,71 @@ function buildPortal(ctx, ownOptions = {}) {
   function takeDownContainer(unlinked) {
     // First: the board is a panel of its own hanging off this one's parent,
     // and it comes down before the parent is left.
-    portalKeyboard?.dispose();
-    ownKeyboardHost?.dispose();
-    pump?.dispose();
-    textPreparer?.dispose();
-    panelScrolls.dispose();
-    forwarder.dispose();
-    unregisterPanel();
+    state.portalKeyboard?.dispose();
+    state.ownKeyboardHost?.dispose();
+    state.pump?.dispose();
+    state.textPreparer?.dispose();
+    state.panelScrolls.dispose();
+    state.forwarder.dispose();
+    state.unregisterPanel();
     // A panel closed before it finished mounting still had a frame up.
-    stopLoadingFrame();
+    state.stopLoadingFrame();
     // Nothing is waiting for a commit that is not going to come. Both lists
     // are collected here by name, because an object can be in neither
     // place the walks look — built for a commit, then its node left — and
     // `unlink` is idempotent for the ones that are. An object built for an
     // arrival hangs off no parent yet, so nothing above it is hidden with
     // the container: it is hidden itself.
-    for (const node of pendingAttachments) {
-      const object = nodeToObject.get(node);
+    for (const node of state.pendingAttachments) {
+      const object = state.nodeToObject.get(node);
       if (object) {
         object.visible = false;
       }
       unlink(node, unlinked);
     }
-    pendingAttachments.clear();
-    for (const node of pendingRemovals) {
+    state.pendingAttachments.clear();
+    for (const node of state.pendingRemovals) {
       unlink(node, unlinked);
     }
-    pendingRemovals.clear();
-    if (blocker) {
+    state.pendingRemovals.clear();
+    if (state.blocker) {
       // Removing is safe whether `markLoaded` ever added it.
-      interactionManager.remove(blocker);
+      state.interactionManager.remove(state.blocker);
     }
     // The portal's own container goes with it. One the page handed over is
     // the page's, and stays exactly where it is; `disconnect` takes the
     // portal's marks off it.
-    if (!root && containerElement.parentNode) {
-      containerElement.parentNode.removeChild(containerElement);
+    if (!state.root && state.containerElement.parentNode) {
+      state.containerElement.parentNode.removeChild(state.containerElement);
     }
-    if (containerObject.parent) {
-      containerObject.parent.remove(containerObject);
+    if (state.containerObject.parent) {
+      state.containerObject.parent.remove(state.containerObject);
     }
     // Out of the raycast as well as the scene: every object under the
     // container stays registered as a ray target until its teardown runs,
     // and the manager casts none whose parents include a hidden one.
-    containerObject.visible = false;
-    handles?.dispose();
+    state.containerObject.visible = false;
+    state.handles?.dispose();
     if (document.fonts) {
       document.fonts.removeEventListener("loadingdone", fontLoadingCallback);
     }
-    stopWatchingStyles();
-    containerElement.removeEventListener("scroll", scrollCallback, true);
-    stopWatchingPage();
-    containerElement.removeEventListener("load", loadCallback, true);
+    state.stopWatchingStyles();
+    state.containerElement.removeEventListener("scroll", scrollCallback, true);
+    state.stopWatchingPage();
+    state.containerElement.removeEventListener("load", loadCallback, true);
     // A frame asked for by an image that landed just as the portal came down.
-    loadFrame?.();
-    resizeEffect.dispose();
-    outlines?.dispose();
-    mutationObserver.disconnect();
-    animationClock.dispose();
+    state.loadFrame?.();
+    state.resizeEffect.dispose();
+    state.outlines?.dispose();
+    state.mutationObserver.disconnect();
+    state.animationClock.dispose();
     // After the observer, so nothing can ask for a rebuild on the way out.
-    stopFlushing();
-    layerOrder.dispose();
-    paintBatch.dispose();
-    depthQuad.material.dispose();
-    boxBatch.dispose();
-    textBatch.dispose();
+    state.stopFlushing();
+    state.layerOrder.dispose();
+    state.paintBatch.dispose();
+    state.depthQuad.material.dispose();
+    state.boxBatch.dispose();
+    state.textBatch.dispose();
   }
 
   return {
@@ -2248,11 +2320,11 @@ function buildPortal(ctx, ownOptions = {}) {
      * @param {Object3D} parent
      */
     addTo(parent) {
-      if (handles) {
-        parent.add(handles.frame);
-        handles.face.add(containerObject);
+      if (state.handles) {
+        parent.add(state.handles.frame);
+        state.handles.face.add(state.containerObject);
       } else {
-        parent.add(containerObject);
+        parent.add(state.containerObject);
       }
     },
     /**
@@ -2264,17 +2336,17 @@ function buildPortal(ctx, ownOptions = {}) {
      * @param {Mountable} mountable
      */
     mount(mountable) {
-      if (root) {
+      if (state.root) {
         throw new Error(
           "This portal mirrors an element the page owns and does not mount into it; " +
             "put the content in the element and the portal will follow it.",
         );
       }
-      if (containerElement.firstChild && containerElement.lastChild) {
-        mountable.replace([containerElement.firstChild, containerElement.lastChild]);
+      if (state.containerElement.firstChild && state.containerElement.lastChild) {
+        mountable.replace([state.containerElement.firstChild, state.containerElement.lastChild]);
       } else {
         const placeholder = document.createComment("");
-        containerElement.appendChild(placeholder);
+        state.containerElement.appendChild(placeholder);
         mountable.replace([placeholder, placeholder]);
       }
     },
@@ -2285,7 +2357,7 @@ function buildPortal(ctx, ownOptions = {}) {
      * does exactly once, true to false.
      */
     isLoading() {
-      return loading.get();
+      return state.loading.get();
     },
     /**
      * Whether anything of the panel is drawn: its loading frame, or the
@@ -2293,7 +2365,7 @@ function buildPortal(ctx, ownOptions = {}) {
      * draggable panel's strips wait for.
      */
     isDrawn() {
-      return drawn.get();
+      return state.drawn.get();
     },
     /**
      * How big the panel is, in its px: its container's border box, which
@@ -2302,7 +2374,7 @@ function buildPortal(ctx, ownOptions = {}) {
      * the portal's keyboard is placed below it — follows the panel's size.
      */
     size() {
-      return getBorderBoxSize(containerElement);
+      return getBorderBoxSize(state.containerElement);
     },
   };
 }

@@ -15,6 +15,7 @@ import {
 import { placeAndScale } from "../place.js";
 import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "../panelFrame.js";
 import { isSvgRoot } from "../plugins.js";
+import { clipBoxContains } from "../clip.js";
 import { DRAG_THRESHOLD, sampleRay } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
@@ -191,7 +192,8 @@ const scratch = new THREE.Vector3();
  * it, found the way a page hit-tests: a later sibling is over an earlier
  * one, a child is over its parent, an element that `visibility` hides or
  * that says `pointer-events: none` is passed through to what is beneath,
- * and nothing is hit where an overflow-clipping ancestor cut it off.
+ * and nothing is hit where an overflow-clipping ancestor cut it off,
+ * rounded corners included (`clipBoxContains`).
  *
  * Asked in the same frames the mirror draws in: each element's object is
  * its own border box, top-left origin and y down, so the point is taken
@@ -238,10 +240,7 @@ function elementAt(element, objectOf, point) {
     scratch.y < 0 ||
     scratch.x > size.width ||
     scratch.y > size.height ||
-    scratch.x < clip.left ||
-    scratch.y < clip.top ||
-    scratch.x > clip.right ||
-    scratch.y > clip.bottom
+    !clipBoxContains(clip, scratch.x, scratch.y)
   ) {
     return null;
   }

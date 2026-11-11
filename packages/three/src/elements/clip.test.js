@@ -5,6 +5,7 @@ import {
   applyClip,
   applyReveal,
   clipRadiiUniform,
+  clipBoxContains,
   clipBoxEqual,
   clipBoxShows,
   clipRaycast,
@@ -109,6 +110,45 @@ describe("clip boxes", () => {
   });
 });
 
+describe("clipBoxContains", () => {
+  test("a square box holds its edges and nothing past them", () => {
+    const square = box(10, 20, 110, 70);
+    assert.ok(clipBoxContains(square, 10, 20));
+    assert.ok(clipBoxContains(square, 110, 70));
+    assert.ok(!clipBoxContains(square, 9.9, 40));
+    assert.ok(!clipBoxContains(square, 60, 70.1));
+  });
+
+  test("each corner is cut by its own radius, as the clip patch cuts it", () => {
+    const rounded = { ...box(0, 0, 100, 100), topLeft: 30, bottomRight: 10 };
+    // The top left arc is centred at (30, 30).
+    assert.ok(!clipBoxContains(rounded, 5, 5));
+    assert.ok(clipBoxContains(rounded, 12, 12));
+    // The top right corner is square.
+    assert.ok(clipBoxContains(rounded, 99, 1));
+    // The bottom right arc is centred at (90, 90).
+    assert.ok(!clipBoxContains(rounded, 98, 98));
+    assert.ok(clipBoxContains(rounded, 95, 95));
+  });
+
+  test("a radius past half the box is held to it", () => {
+    // A 40px tall box rounded by 100 is a pill: its ends are half circles.
+    const pill = box(0, 0, 200, 40, 100);
+    assert.ok(clipBoxContains(pill, 20, 20));
+    assert.ok(!clipBoxContains(pill, 3, 3));
+    assert.ok(clipBoxContains(pill, 100, 0));
+  });
+
+  test("an empty box holds nothing", () => {
+    assert.ok(!clipBoxContains(box(50, 50, 40, 40), 45, 45));
+    assert.ok(!clipBoxContains(box(50, 50, 40, 40, 5), 45, 45));
+  });
+
+  test("the unclipped box holds everything a panel lays out", () => {
+    assert.ok(clipBoxContains(UNCLIPPED, -5000, 5000));
+  });
+});
+
 describe("clipRaycast", () => {
   /**
    * A 100x40 quad in the portal's coordinates: origin top left, y down, which
@@ -194,6 +234,17 @@ describe("clipRaycast", () => {
     // Read at every cast, so a matrix written later is the one that counts.
     matrix.value.identity();
     assert.equal(hitsAt(mesh, 20, 25), 1);
+  });
+
+  test("a rounded corner drops the hits outside its arc", () => {
+    // A row in a list whose corners are rounded by 20px: the drawing is
+    // cut along the arc, and so is the ray.
+    const mesh = setup();
+    clipRaycast(mesh, () => box(0, 0, 100, 40, 20));
+    assert.equal(hitsAt(mesh, 2, 2), 0, "outside the top left arc");
+    assert.equal(hitsAt(mesh, 98, 38), 0, "outside the bottom right arc");
+    assert.equal(hitsAt(mesh, 8, 8), 1, "inside the arc");
+    assert.equal(hitsAt(mesh, 50, 1), 1, "on the straight edge between corners");
   });
 
   test("hits already in the list are left alone", () => {

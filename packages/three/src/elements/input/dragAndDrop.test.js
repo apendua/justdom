@@ -705,6 +705,33 @@ describe("drag and drop in a panel", () => {
     s.trigger("selectend");
     s.teardown();
   });
+
+  test("is over nothing of a list outside its rounded corner", async () => {
+    const s = await sortableList();
+    // Corner by corner, as the browser computes the shorthand: jsdom does
+    // not expand it.
+    for (const corner of ["top-left", "top-right", "bottom-right", "bottom-left"]) {
+      s.list.style.setProperty(`border-${corner}-radius`, "30px");
+    }
+    await drain();
+
+    s.aim(150, 60);
+    s.trigger("selectstart");
+    s.aim(150, 100);
+    s.events.length = 0;
+    // Inside the first row's box, and outside the list's corner, which
+    // cuts the row as it cuts its drawing. The list's own corner does not
+    // cut the list (see Open cases in docs/freedom-paint-order.md), so the
+    // drag is over the list.
+    s.aim(3, 3);
+    assert.deepEqual(s.events, ["drag b", "dragenter list", "dragleave c", "dragover list"]);
+    s.events.length = 0;
+    // Just inside the corner's arc, the row is there again.
+    s.aim(12, 12);
+    assert.deepEqual(s.events, ["drag b", "dragenter a", "dragleave list", "dragover a"]);
+    s.trigger("selectend");
+    s.teardown();
+  });
 });
 
 /**

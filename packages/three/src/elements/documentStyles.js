@@ -42,6 +42,9 @@
  * announces itself with a `load`, the one event a `<link>` has, and that is
  * worth having, because the panel that mounted before its own stylesheet
  * landed is otherwise wrong forever.
+ * A `<style>` that opens with an `@import` is heard the same way: it was
+ * read when it arrived, with the imported sheet still empty, and its `load`
+ * comes when the import has landed.
  *
  * Theming mode (`enableThemingMode`) covers the rest by looking instead of
  * listening. While it is on and a panel is watching, a timer reads every
@@ -618,6 +621,7 @@ function announce(scope) {
 function notify(scope) {
   refreshGeneratedSelectors();
   siblingReach = null;
+  unreadableSheets = new WeakSet();
   // A copy, because a listener is free to stop watching from inside the call —
   // a portal disposed by something a restyle triggered would otherwise mutate
   // the set being iterated.
@@ -714,9 +718,12 @@ function readGeneratedSelectors() {
  * reads. An announcement drops it. So does a change in how many sheets the
  * document has, or how many top-level rules any of them has, which an
  * announcement does not report: a rule added through `insertRule`, or a
- * sheet adopted (see the header). A rule edited in place through the CSSOM
- * goes unseen, as it does for every other read here, until theming mode or
- * the next announcement. It is not a signal: the dispatch reads it while it
+ * sheet adopted (see the header). A change that keeps every count goes
+ * unseen, as it does for every other read here, until theming mode or the
+ * next announcement: a rule edited in place through the CSSOM, a
+ * `deleteRule` followed by an `insertRule`, a `replaceSync` on an adopted
+ * sheet, or `adoptedStyleSheets` set to a new array with a sheet of the same
+ * size swapped in. It is not a signal: the dispatch reads it while it
  * routes an invalidation, and nothing recomputes when it changes. A rule
  * that newly reaches a sibling restyles what it matches by its own
  * announcement, and the reach decides only what a later change restyles.
@@ -770,12 +777,28 @@ function sheetShape() {
  * @returns {number}
  */
 function ruleCount(sheet) {
+  if (unreadableSheets.has(sheet)) {
+    return -1;
+  }
   try {
     return sheet.cssRules.length;
   } catch {
+    unreadableSheets.add(sheet);
     return -1;
   }
 }
+
+/**
+ * The sheets whose rules `ruleCount` found it cannot read, so that it does
+ * not throw and catch a `SecurityError` for each of them on every read: a
+ * cross-origin sheet, such as a font service's `<link>`, never becomes
+ * readable. A same-origin `<link>` still loading throws too, and is readable
+ * once it loads, which is announced (`loadCallback`), so an announcement
+ * forgets them all.
+ *
+ * @type {WeakSet<CSSStyleSheet>}
+ */
+let unreadableSheets = new WeakSet();
 
 /**
  * @returns {ReadonlySet<string> | null}
@@ -829,11 +852,42 @@ function isSelector(selector) {
  */
 function loadCallback(event) {
   const target = event.target;
-  if (target instanceof Node && isStylesheetLink(target)) {
+  if (!(target instanceof Node)) {
+    return;
+  }
+  if (isStylesheetLink(target)) {
     // A linked sheet's rules are readable only once it has loaded.
     const sheet = /** @type {HTMLLinkElement} */ (target).sheet;
     rewriteRules(sheet ? [sheet] : []);
     announce(null);
+  } else if (target.nodeName === "STYLE") {
+    // A `<style>` was announced when it arrived, with the sheets it imports
+    // still empty, and their rules arriving later move no count of its own.
+    // Its `load` comes once they have loaded. One that imports nothing was
+    // read whole when it arrived, and is passed over.
+    const sheet = /** @type {HTMLStyleElement} */ (target).sheet;
+    if (sheet && importsSheets(sheet)) {
+      rewriteRules([sheet]);
+      announce(null);
+    }
+  }
+}
+
+/**
+ * Whether a sheet opens with an `@import`, which is the only place one can
+ * be.
+ *
+ * @param {CSSStyleSheet} sheet
+ * @returns {boolean}
+ */
+function importsSheets(sheet) {
+  try {
+    // By the property, as `walkStyleRules` reads it, rather than by
+    // `instanceof`, which needs `CSSImportRule` to be a global.
+    const first = sheet.cssRules[0];
+    return first !== undefined && "styleSheet" in first;
+  } catch {
+    return false;
   }
 }
 
@@ -882,8 +936,8 @@ export function watchDocumentStyles(listener) {
       subtree: true,
       characterData: true,
     });
-    // Capturing: `load` does not bubble, and the target is a `<link>` several
-    // levels down from nothing in particular.
+    // Capturing: `load` does not bubble, and the target is a `<link>` or a
+    // `<style>` several levels down from nothing in particular.
     document.head.addEventListener("load", loadCallback, true);
   }
   return () => {

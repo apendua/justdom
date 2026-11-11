@@ -83,6 +83,13 @@ const LEGACY_PSEUDO_ELEMENTS = new Set(["before", "after", "first-line", "first-
 const NAME = /^-?[_a-zA-Z\u0080-￿][-_a-zA-Z0-9\u0080-￿]*/;
 
 /**
+ * The start of a class or an id. An escape counts: the CSSOM writes a name
+ * that starts with a digit with a hex escape, so Tailwind's `.2xl\:flex`
+ * reads back as `.\32 xl\:flex`, and `#123` as `#\31 23`.
+ */
+const NAME_START = /^-?(?:[_a-zA-Z\u0080-￿]|\\)/;
+
+/**
  * The attribute names through which `selector` can restyle a sibling,
  * lowercased: an empty set for a selector with no sibling combinator, and
  * null for one with a pseudo-class this cannot answer by name.
@@ -113,9 +120,9 @@ export function siblingReachOf(selector) {
       siblings = true;
     } else if (c === "[") {
       i = readAttribute(selector, i, names);
-    } else if (c === "." && NAME.test(selector.slice(i + 1))) {
+    } else if (c === "." && NAME_START.test(selector.slice(i + 1))) {
       names.add("class");
-    } else if (c === "#" && NAME.test(selector.slice(i + 1))) {
+    } else if (c === "#" && NAME_START.test(selector.slice(i + 1))) {
       names.add("id");
     } else if (c === ":") {
       if (selector[i + 1] === ":") {

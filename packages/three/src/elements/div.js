@@ -244,7 +244,9 @@ const committedPlacements = new WeakMap();
  * A batched box that `paints` nothing (`VisualProperties.paints`) takes no
  * instance: it wears the batch's invisible material and stays out of the
  * batch until a style gives it a colour, through the same effect a picture
- * background takes it out by. Its mesh stays, for the ray.
+ * background takes it out by. Its mesh stays while the box is a ray target;
+ * an element's box mounts none at all while it is neither (`hasQuad` in
+ * `box`).
  *
  * @param {THREE.Mesh} mesh
  * @param {ReturnType<typeof createRectUniforms>} uniforms
@@ -269,7 +271,8 @@ export function drawQuad(mesh, uniforms, batch, paints) {
       // and not with a place in the batch, which a box that paints nothing
       // does not take. It is safe by the same token: nothing consults the
       // answer. (What remains is three's per-mesh geometry bookkeeping,
-      // which only leaving the mesh out of the scene would avoid.)
+      // which only leaving the mesh out of the scene avoids, as `box` does
+      // for a box that is no ray target either.)
       mesh.frustumCulled = !drawnBy;
       if (drawnBy) {
         // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
@@ -806,7 +809,96 @@ export function box(ctx, element, options = {}) {
    */
   const draggability = forwardListEvents(ctx, element, object, () => isPanelReady() && shown.get());
 
+  /**
+   * Whether this box has a use for its quad: something to draw, or a ray to
+   * take for the element. Most boxes on a page are wrappers that do neither,
+   * a layout `div` with no colour and no cursor, and those mount no quad at
+   * all, so the render list, the layer walk and the raycast never meet a
+   * mesh for them. A press over one lands on what is behind it, which is
+   * where its events would have bubbled to: only a ray target forwards
+   * anything (`isRayTarget`), and an element that is not one hands a press
+   * on to the nearest one around it.
+   *
+   * An `<img>` and a `url()` background are drawn by the quad whether or not
+   * the box `paints` a colour of its own. A list that scrolls is grabbed by
+   * its quad, between its rows.
+   */
+  const hasQuad = new Derived(
+    () =>
+      image !== null ||
+      drawsBackgroundPicture() ||
+      properties.paints ||
+      clickable.get() ||
+      scrollable.get(),
+  );
+
+  /**
+   * The quad, with everything that writes it. Built each time it mounts.
+   *
+   * @returns {Source<Component>}
+   */
+  const quad = () =>
+    $(boxMesh, [
+      ...drawQuad(boxMesh, uniforms, batch, () => properties.paints),
+      // The quad is the element's own painting, so it goes when the element
+      // is hidden — out of the draw, out of the batch's walk and out of the
+      // raycast, all three of which follow this flag — while the content
+      // group beside it stays for any child that says `visible`.
+      effects((obj) => {
+        obj.visible = !hidden();
+        batchChanged();
+      }),
+      // Lets go of the ramp row when the box goes, and not before.
+      effects(() => {
+        onCleanup(() => {
+          rampSlot.release();
+        });
+      }),
+      effects((obj) => {
+        writeRectUniforms(uniforms, properties);
+        writeGradientUniforms(uniforms, properties, rampSlot);
+        // A quad scaled to nothing has no surface to draw or hit, and a
+        // zero scale is not invertible; an empty box is better described
+        // as very small — same convention as the blocker. It is level with
+        // its object, and drawn in front of what it covers by the order
+        // alone.
+        placeAndScale(
+          obj,
+          0,
+          0,
+          0,
+          Math.max(properties.totalWidth, 1e-6),
+          Math.max(properties.totalHeight, 1e-6),
+          1,
+        );
+        // A batched box's order is the one the batch lays it at, with the
+        // bias added there. One that draws itself takes its own, behind its
+        // integer, since its origin, level with the container's, cannot
+        // order it against the text.
+        obj.renderOrder = properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS);
+        batchChanged();
+      }),
+      // Its own effect: a texture arriving late must not look like a reason
+      // to rewrite the box, and the box moving must not look like a reason
+      // to rebind a texture.
+      effects(() => {
+        writeImageUniforms(uniforms, shownPicture());
+      }),
+    ]);
+
   return just(object, [
+    // A box that is a layer's root is one of the planes the panel's walk
+    // orders (`layerOrder.js`), for as long as it is one, whether or not it
+    // has a quad of its own.
+    effects(() => {
+      if (!layerOrder || getLayer(element) !== element) {
+        return;
+      }
+      layerOrder.addLayer(element);
+      onCleanup(() => {
+        layerOrder.removeLayer(element);
+      });
+    }),
     // `cursor: pointer` is a live stylesheet decision — a button gets disabled,
     // a card becomes clickable — so interactivity follows it rather than being
     // fixed at the moment the element was first projected into the scene.
@@ -928,65 +1020,11 @@ export function box(ctx, element, options = {}) {
       // The whole box — background and border ring both — is one quad and a
       // distance field. Geometry is shared and never rebuilt: a resize is a
       // scale write, everything else a uniform write, which is what makes a
-      // layout animation affordable and a style change nearly free.
-      $(boxMesh, [
-        ...drawQuad(boxMesh, uniforms, batch, () => properties.paints),
-        // A box that is a layer's root is one of the planes the panel's walk
-        // orders (`layerOrder.js`), for as long as it is one.
-        effects(() => {
-          if (!layerOrder || getLayer(element) !== element) {
-            return;
-          }
-          layerOrder.addLayer(element);
-          onCleanup(() => {
-            layerOrder.removeLayer(element);
-          });
-        }),
-        // The quad is the element's own painting, so it goes when the element
-        // is hidden — out of the draw, out of the batch's walk and out of the
-        // raycast, all three of which follow this flag — while the content
-        // group beside it stays for any child that says `visible`.
-        effects((obj) => {
-          obj.visible = !hidden();
-          batchChanged();
-        }),
-        // Lets go of the ramp row when the box goes, and not before.
-        effects(() => {
-          onCleanup(() => {
-            rampSlot.release();
-          });
-        }),
-        effects((obj) => {
-          writeRectUniforms(uniforms, properties);
-          writeGradientUniforms(uniforms, properties, rampSlot);
-          // A quad scaled to nothing has no surface to draw or hit, and a
-          // zero scale is not invertible; an empty box is better described
-          // as very small — same convention as the blocker. It is level with
-          // its object, and drawn in front of what it covers by the order
-          // alone.
-          placeAndScale(
-            obj,
-            0,
-            0,
-            0,
-            Math.max(properties.totalWidth, 1e-6),
-            Math.max(properties.totalHeight, 1e-6),
-            1,
-          );
-          // A batched box's order is the one the batch lays it at, with the
-          // bias added there. One that draws itself takes its own, behind its
-          // integer, since its origin, level with the container's, cannot
-          // order it against the text.
-          obj.renderOrder = properties.renderOrder + (batch() ? 0 : UNBATCHED_BOX_BIAS);
-          batchChanged();
-        }),
-        // Its own effect: a texture arriving late must not look like a reason
-        // to rewrite the box, and the box moving must not look like a reason
-        // to rebind a texture.
-        effects(() => {
-          writeImageUniforms(uniforms, shownPicture());
-        }),
-      ]),
+      // layout animation affordable and a style change nearly free. Mounted
+      // only while the box has a use for it (`hasQuad`).
+      flatMap((/** @type {boolean} */ mounted) => (mounted ? quad() : Nothing()))(
+        observable(() => hasQuad.get()),
+      ),
       ...content({
         properties,
         contentRenderOrder: () => getContentRenderOrder(element),

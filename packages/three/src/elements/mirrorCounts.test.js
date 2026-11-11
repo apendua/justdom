@@ -36,14 +36,16 @@ import { measureBoard, measureList } from "../test/benchCases.js";
  * restyling the siblings no rule could carry it to (`getSiblingReach`).
  * "mount", "+1 row" and "insert top" rose by one evaluation a box when a
  * box that paints nothing stopped taking an instance: the
- * `VisualProperties.paints` memo that decides it.
+ * `VisualProperties.paints` memo that decides it. Those three and "hover"
+ * came down again when such a box, if it takes no ray either, stopped
+ * mounting a quad at all, and with it the effects that write one.
  */
 const CEILINGS = {
   list: {
-    mount: { evaluations: 30332, rectReads: 203 },
-    "+1 row": { evaluations: 356, rectReads: 5 },
-    "insert top": { evaluations: 4562, rectReads: 106 },
-    hover: { evaluations: 36, rectReads: 0 },
+    mount: { evaluations: 25926, rectReads: 203 },
+    "+1 row": { evaluations: 305, rectReads: 5 },
+    "insert top": { evaluations: 4311, rectReads: 106 },
+    hover: { evaluations: 34, rectReads: 0 },
     "app attr": { evaluations: 381, rectReads: 106 },
     transform: { evaluations: 78, rectReads: 3 },
   },

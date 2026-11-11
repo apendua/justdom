@@ -3085,6 +3085,9 @@ describe("createPortal", () => {
     // The probe span measures 0 in jsdom, so a re-measure would be both
     // invisible and value-equal — and a value that never changes stops the
     // invalidation from travelling. Give it a height that moves.
+    // The metric is read by a box's quad, and a box that paints nothing has
+    // none, so the boxes are given a colour.
+    const painted = paintEveryBox();
     const originalRect = window.Element.prototype.getBoundingClientRect;
     let probeHeight = 50;
     let probeReads = 0;
@@ -3149,6 +3152,7 @@ describe("createPortal", () => {
       second.portal.disconnect();
     } finally {
       window.Element.prototype.getBoundingClientRect = originalRect;
+      painted.remove();
     }
   });
 
@@ -3508,7 +3512,7 @@ describe("mounting a tree justdom-core did not build", () => {
           throw new Error("Cannot replace a segment that is not in a tree.");
         }
         parent.insertBefore(node, first);
-        for (let current = /** @type {Node | null} */ (first); current;) {
+        for (let current = /** @type {Node | null} */ (first); current; ) {
           const next = current.nextSibling;
           parent.removeChild(current);
           current = current === last ? null : next;

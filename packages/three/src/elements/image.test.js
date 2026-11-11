@@ -680,11 +680,18 @@ describe("an image projected through the element path", () => {
   });
 
   test("an ordinary div pays nothing for a feature it will never use", () => {
-    const { node } = element("div");
+    const { node } = element("div", { backgroundColor: "rgb(255, 0, 0)" });
     const { object, subscription } = project(/** @type {HTMLElement} */ (node));
     const material = boxMaterialOf(object);
     assert.equal(material.uniforms.uImageOpacity.value, 0);
     assert.equal(material.uniforms.uImage.value, null);
+    subscription.unsubscribe();
+  });
+
+  test("a div that paints nothing builds no quad at all", () => {
+    const { node } = element("div");
+    const { object, subscription } = project(/** @type {HTMLElement} */ (node));
+    assert.throws(() => boxMaterialOf(object), /no box mesh/);
     subscription.unsubscribe();
   });
 });

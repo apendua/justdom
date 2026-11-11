@@ -1,4 +1,4 @@
-import { getPortalRoot } from "./portalRoot.js";
+import { getPortalRoot } from "./portal/portalRoot.js";
 import { matrixScratch, readMatrix } from "./css/cssNumbers.js";
 
 /**

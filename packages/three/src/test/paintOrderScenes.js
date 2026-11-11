@@ -13,8 +13,8 @@
 
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "../elements/portal.js";
-import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
+import { createPortal } from "../elements/portal/portal.js";
+import { PORTAL_ATTRIBUTE } from "../elements/portal/portalRoot.js";
 import { makeCard, makeRow, relayout } from "./benchLayout.js";
 import { countPanel } from "./paintOrderCount.js";
 import { matrix3d } from "./matrix3d.js";
@@ -41,15 +41,23 @@ function nextMacrotask() {
 }
 
 /**
- * Mount a portal and let `build` fill its root.
+ * Mount a portal and let `build` fill its root. The interaction manager the
+ * panel registers its ray targets with, and the panel's object, come back
+ * with it, for a test that casts.
  *
  * @param {(root: HTMLElement) => void} build
- * @returns {Promise<{ root: HTMLElement, dispose: () => void }>}
+ * @returns {Promise<{
+ *   root: HTMLElement,
+ *   manager: InteractionManager,
+ *   panel: THREE.Object3D,
+ *   dispose: () => void,
+ * }>}
  */
 export async function mountScene(build) {
   const manager = new InteractionManager();
   const portal = createPortal(InteractionContext.set({}, manager));
-  portal.addTo(new THREE.Group());
+  const scene = new THREE.Group();
+  portal.addTo(scene);
   const roots = document.querySelectorAll(`[${PORTAL_ATTRIBUTE}]`);
   const root = /** @type {HTMLElement} */ (roots[roots.length - 1]);
   build(root);
@@ -57,6 +65,8 @@ export async function mountScene(build) {
   await nextMacrotask();
   return {
     root,
+    manager,
+    panel: scene.children[0],
     dispose() {
       portal.disconnect();
       root.remove();

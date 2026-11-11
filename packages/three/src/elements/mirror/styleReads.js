@@ -1,6 +1,6 @@
 import { addDependency, fromEvent, NoValueError, Subject } from "justdom-signal";
 import { holdShared, shadowAccessor } from "../shadowAccessor.js";
-import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../portal/portalRoot.js";
 import { nodeCache } from "./nodeCaches.js";
 import { nodeDerived, probedRead, readRecordOf } from "./records.js";
 

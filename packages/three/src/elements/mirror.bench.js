@@ -49,8 +49,8 @@
 import * as THREE from "three";
 import { Signal } from "justdom-signal";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "./portal.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { createPortal } from "./portal/portal.js";
+import { PORTAL_ATTRIBUTE } from "./portal/portalRoot.js";
 import { makeReveal } from "./reveal.js";
 import { relayout } from "../test/benchLayout.js";
 import { measureBoard, measureList, nextMacrotask, sample } from "../test/benchCases.js";

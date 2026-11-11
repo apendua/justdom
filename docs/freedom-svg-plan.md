@@ -403,8 +403,8 @@ region that `pointer-events` lets a ray hit but that paints nothing, such as `fi
 clickable one, because a ray walks everything under a registered object. A shape under
 `pointer-events: none` inside a clickable `<svg>` lets the press through, as a page does.
 
-`forwardPointerEvents` in `elements/pointerForwarding.js` takes the portal context as well as the
-element and object, since the scroll gesture it starts on a press needs it. `isClickable` moved
+`forwardPointerEvents` in `elements/input/pointerForwarding.js` takes the portal context as well as
+the element and object, since the scroll gesture it starts on a press needs it. `isClickable` moved
 there with it. A press that becomes a drag had to learn to walk out of an SVG subtree: a `<g>` has
 no content group, so the walk from the element to its scroller now asks `getParentObject` in
 `elements/contentGroup.js` for each step.

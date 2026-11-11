@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "../elements/portal.js";
+import { createPortal } from "../elements/portal/portal.js";
 import { clientRect } from "./clientRect.js";
 import { settle } from "./portalHarness.js";
 
 /**
- * @import { PortalOptions } from "../elements/portal.js";
+ * @import { PortalOptions } from "../elements/portal/portal.js";
  */
 
 /** @typedef {readonly [number, number, number, number]} Rect */

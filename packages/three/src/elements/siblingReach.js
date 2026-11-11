@@ -1,4 +1,4 @@
-import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
+import { CHECKED_ATTRIBUTE } from "./portal/portalRoot.js";
 
 /**
  * Which attributes a selector can carry from one element to a sibling.

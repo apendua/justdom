@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { flushFrame, frameCallbacks, nextMacrotask, pump, settle } from "../test/portalHarness.js";
 import { clientRect } from "../test/clientRect.js";
-import { createPortal } from "./portal.js";
+import { createPortal } from "./portal/portal.js";
 import { getContentPosition } from "./mirror/geometryReads.js";
 import { stagedRoot } from "../test/stagedRoot.js";
 import { frameFor } from "./panelFrame.js";

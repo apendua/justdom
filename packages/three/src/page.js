@@ -14,6 +14,6 @@ export {
   FOCUS_ATTRIBUTE,
   HOVER_ATTRIBUTE,
   getPortalRoot,
-} from "./elements/portalRoot.js";
+} from "./elements/portal/portalRoot.js";
 export { followUserActions } from "./elements/css/documentStyles.js";
 export { scrollElementBy } from "./elements/renderingUpdates.js";

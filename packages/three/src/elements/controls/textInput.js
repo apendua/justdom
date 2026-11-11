@@ -28,7 +28,7 @@ import { rectGeometry } from "../paint/sdfRect.js";
 import { placeAndScale } from "../place.js";
 import { registerDrawOrder } from "../../drawOrder.js";
 import { surfaceRun } from "../surfaceRun.js";
-import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "../typing.js";
+import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "../input/typing.js";
 import { holdShared, shadowAccessor } from "../shadowAccessor.js";
 
 /**

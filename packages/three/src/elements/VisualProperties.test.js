@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { Derived } from "justdom-signal";
 import VisualProperties from "./VisualProperties.js";
 import { parseAlpha } from "./css/cssColor.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "./portal/portalRoot.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and
 // `VisualProperties` will not measure text until `document.fonts` says the

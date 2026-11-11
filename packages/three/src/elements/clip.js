@@ -392,10 +392,37 @@ export function applyReveal(material, clip, cut) {
   material.customProgramCacheKey = () => "freedom-clip-matrix-reveal";
 }
 
+/**
+ * Whether a point in a clip box's frame is inside the box, its rounded
+ * corners included: the distance the clip patch measures, at or below
+ * zero. The cast (`clipRaycast`) and the scan that hit-tests elements
+ * (`hitElement` in `input/dragAndDrop.js`) both ask this, so a ray is cut
+ * where the drawing is.
+ *
+ * @param {ClipBox} box
+ * @param {number} x
+ * @param {number} y
+ * @returns {boolean}
+ */
+export function clipBoxContains(box, x, y) {
+  const halfX = 0.5 * (box.right - box.left);
+  const halfY = 0.5 * (box.bottom - box.top);
+  const px = x - 0.5 * (box.left + box.right);
+  const py = y - 0.5 * (box.top + box.bottom);
+  let r =
+    px < 0 ? (py < 0 ? box.topLeft : box.bottomLeft) : py < 0 ? box.topRight : box.bottomRight;
+  r = Math.min(r, halfX, halfY);
+  const dx = Math.abs(px) - halfX + r;
+  const dy = Math.abs(py) - halfY + r;
+  const distance = Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - r;
+  return distance <= 0;
+}
+
 const localPoint = new THREE.Vector3();
 
 /**
- * Trim a mesh's hits to the part of it that is actually drawn.
+ * Trim a mesh's hits to the part of it that is actually drawn, rounded
+ * corners included (`clipBoxContains`).
  *
  * Nothing about clipping reaches the raycaster on its own: `Raycaster`
  * consults neither a fragment discard, nor material clipping planes, nor even
@@ -435,12 +462,7 @@ export function clipRaycast(mesh, getClipBox, frame = mesh, matrix = IDENTITY_CL
       frame.worldToLocal(localPoint);
       localPoint.z = 1;
       localPoint.applyMatrix3(matrix.value);
-      if (
-        localPoint.x < box.left ||
-        localPoint.y < box.top ||
-        localPoint.x > box.right ||
-        localPoint.y > box.bottom
-      ) {
+      if (!clipBoxContains(box, localPoint.x, localPoint.y)) {
         intersects.splice(index, 1);
       }
     }

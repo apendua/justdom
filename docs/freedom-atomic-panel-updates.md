@@ -3,7 +3,7 @@
 **Status:** implemented. `UpdateChannel({ atomic })`, `Effect.warm()` and a two-phase pass in
 `UpdateQueue`; the portal's channel is atomic, and the portal holds arrivals and departures for the
 same frame. **Scope:** `packages/signal/src/{Effect,UpdateChannel,UpdateQueue}.js`,
-`packages/three/src/elements/{portal,portalPump}.js`. **Follows:**
+`packages/three/src/elements/portal/{portal,portalPump}.js`. **Follows:**
 [`signal-update-channels-design.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/signal-update-channels-design.md)
 (what a channel is) and
 [`signal-pull-model.md`](https://github.com/apendua/apendua.dev/blob/develop/docs/signal-pull-model.md)
@@ -432,7 +432,7 @@ the constructor, inside the pump's budgeted node build — and a caller who does
 | a running effect is warm                                        | "counts a running effect as warm"                                                |
 | non-atomic channels are untouched                               | "a channel that is not atomic is not warmed by its flush"                        |
 
-`packages/three/src/elements/portalNodes.test.js`:
+`packages/three/src/elements/portal/portalNodes.test.js`:
 
 | behaviour                                                                      | test                                                                           |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -447,8 +447,8 @@ the constructor, inside the pump's budgeted node build — and a caller who does
 | a built, unattached object is taken down with the panel                        | "an object built for a commit that never came is taken down with the panel"    |
 | shared-budget accounting, counted at the build rather than the scene           | "portals under one scheduler share one budget…"                                |
 
-`packages/three/src/elements/portalAlwaysBusy.test.js`, "a panel that is always busy", for section
-4.5:
+`packages/three/src/elements/portal/portalAlwaysBusy.test.js`, "a panel that is always busy", for
+section 4.5:
 
 | behaviour                                                                  | test                                                                                         |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |

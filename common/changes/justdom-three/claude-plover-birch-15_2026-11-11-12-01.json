@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the outline debugging modules into src/elements/dev/",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

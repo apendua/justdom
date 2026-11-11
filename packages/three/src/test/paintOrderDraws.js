@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getPanel } from "../elements/dragAndDrop.js";
+import { getPanel } from "../elements/input/dragAndDrop.js";
 import { isProxy } from "../elements/paint/layerOrder.js";
 import { panelName } from "./paintOrderCount.js";
 

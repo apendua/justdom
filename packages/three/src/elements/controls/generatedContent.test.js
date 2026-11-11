@@ -5,7 +5,7 @@ import { clientRect } from "../../test/clientRect.js";
 import { stubCanvas } from "../../test/stubCanvas.js";
 import { isRunMesh } from "../../test/runMesh.js";
 import { InteractionContext, InteractionManager } from "../../interactions.js";
-import { createPortal as createHeldPortal } from "../portal.js";
+import { createPortal as createHeldPortal } from "../portal/portal.js";
 import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
 import { batchedBoxMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { getGenerated, parseGeneratedContent } from "../pseudoElements.js";
@@ -26,11 +26,15 @@ import { comparePaintOrder } from "../paint/layerTree.js";
 import { fakeClock } from "../../test/clock.js";
 import { countEvaluations } from "../../test/evaluations.js";
 import { flicker, reportTransform, shifted, transformTransition } from "../../test/motion.js";
-import { getPanel } from "../dragAndDrop.js";
+import { getPanel, hitElement } from "../input/dragAndDrop.js";
 import { layerDepth, listPaintOrder } from "../../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "../css/documentStyles.js";
 import { generatedHost, splitSelectorList } from "../css/styleRules.js";
-import { HOVER_ATTRIBUTE } from "../portalRoot.js";
+import { HOVER_ATTRIBUTE } from "../portal/portalRoot.js";
+
+/**
+ * @import { Panel } from "../input/dragAndDrop.js";
+ */
 
 /**
  * `createPortal` with the loading frame's timing off, so a mount loads the
@@ -371,7 +375,8 @@ function removePseudoStubs() {
  * @param {Parameters<typeof createPortal>[1]} [options]
  */
 function generatedPanel(markup, options = {}) {
-  const ctx = InteractionContext.set({}, new InteractionManager());
+  const manager = new InteractionManager();
+  const ctx = InteractionContext.set({}, manager);
   const root = document.createElement("div");
   root.innerHTML = markup;
   document.body.appendChild(root);
@@ -382,6 +387,7 @@ function generatedPanel(markup, options = {}) {
     portal,
     root,
     parent,
+    manager,
     /**
      * The quads of the generated boxes, which carry their pseudo-element's
      * name.
@@ -1179,6 +1185,131 @@ describe("an element's ::before and ::after in the paint order", () => {
     assert.equal(comparePaintOrder(after, before), -1, "the higher paint layer last");
     assert.equal(comparePaintOrder(before, next), -1, "the next sibling after all of it");
 
+    panel.cleanup();
+  });
+
+  for (const css of ["position: absolute", "position: absolute; z-index: 1"]) {
+    test(`a drag over a ::after (${css}) is over its element`, async () => {
+      // The ::after reaches 8 px above its element, and is drawn over the
+      // element's child where the two meet.
+      pseudoRule(".card", "after", '""', `${css}; background-color: red`);
+      const panel = generatedPanel(`
+        <div class="card" style="position: relative" data-rect="0,0,200,40" data-after="150,-8,40,16">
+          <div class="child" data-rect="0,0,200,40"></div>
+        </div>
+      `);
+      await settle(panel.portal);
+      const object = panel.parent.children[0];
+      const registered = /** @type {Panel} */ (getPanel(object));
+      object.updateWorldMatrix(true, true);
+      /**
+       * @param {number} x
+       * @param {number} y
+       * @returns {string | undefined}
+       */
+      const over = (x, y) => {
+        const target = object.localToWorld(new THREE.Vector3(x, y, 0));
+        const origin = target.clone().add(new THREE.Vector3(0, 0, 1));
+        const ray = new THREE.Ray(origin, target.sub(origin).normalize());
+        return hitElement(registered, ray)?.className;
+      };
+      assert.equal(over(170, -4), "card", "past the element's box");
+      assert.equal(over(170, 4), "card", "over the child");
+      assert.equal(over(100, 4), "child", "beside the ::after");
+      panel.cleanup();
+    });
+  }
+
+  /**
+   * What a drag at a point is over, on a panel `markup` builds.
+   *
+   * @param {ReturnType<typeof generatedPanel>} panel
+   * @param {number} x
+   * @param {number} y
+   * @returns {string | undefined}
+   */
+  function dragOver(panel, x, y) {
+    const object = panel.parent.children[0];
+    object.updateWorldMatrix(true, true);
+    const target = object.localToWorld(new THREE.Vector3(x, y, 0));
+    const origin = target.clone().add(new THREE.Vector3(0, 0, 1));
+    const ray = new THREE.Ray(origin, target.sub(origin).normalize());
+    return hitElement(/** @type {Panel} */ (getPanel(object)), ray)?.className;
+  }
+
+  for (const [name, rule, markup, expected] of [
+    [
+      "a ::before",
+      ["before", "position: absolute; background-color: red"],
+      `<div class="card" style="position: relative" data-rect="0,0,200,40" data-before="150,-8,40,16"></div>`,
+      "card",
+    ],
+    [
+      "a ::after its element clips",
+      ["after", "position: absolute; background-color: red"],
+      `<div class="card" style="position: relative; overflow: hidden" data-rect="0,0,200,40" data-after="150,-8,40,16"></div>`,
+      undefined,
+    ],
+    [
+      "a ::after with pointer-events: none",
+      ["after", "position: absolute; pointer-events: none; background-color: red"],
+      `<div class="card" style="position: relative" data-rect="0,0,200,40" data-after="150,-8,40,16"></div>`,
+      undefined,
+    ],
+    [
+      "a ::after hidden by visibility",
+      ["after", "position: absolute; visibility: hidden; background-color: red"],
+      `<div class="card" style="position: relative" data-rect="0,0,200,40" data-after="150,-8,40,16"></div>`,
+      undefined,
+    ],
+    [
+      "an input's ::after, which no panel draws",
+      ["after", "position: absolute; background-color: red"],
+      `<input class="card" style="position: relative" data-rect="0,0,200,40" data-after="150,-8,40,16">`,
+      undefined,
+    ],
+  ]) {
+    test(`a drag past the element's box over ${name} is over ${expected ?? "nothing"}`, async () => {
+      const [kind, css] = /** @type {["before" | "after", string]} */ (rule);
+      pseudoRule(".card", kind, '""', css);
+      const panel = generatedPanel(/** @type {string} */ (markup));
+      await settle(panel.portal);
+      assert.equal(dragOver(panel, 170, -4), expected);
+      panel.cleanup();
+    });
+  }
+
+  test("a ray on an in-flow ::after over its element's child meets the ::after", async () => {
+    // The two draw at one order, and a page paints the ::after after the
+    // child, so the cast breaks the tie to it (`isLaterInTree`).
+    pseudoRule(".card", "after", '""', "display: block; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative; cursor: pointer" data-rect="0,0,200,40" data-after="50,0,20,16">
+        <div class="child" style="cursor: pointer; background-color: green" data-rect="0,0,100,40"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+    const object = panel.parent.children[0];
+    object.updateWorldMatrix(true, true);
+    /** @param {number} x */
+    const meets = (x) => {
+      const target = object.localToWorld(new THREE.Vector3(x, 8, 0));
+      const controller = /** @type {THREE.XRTargetRaySpace} */ (
+        /** @type {unknown} */ (new THREE.Object3D())
+      );
+      controller.position.copy(target).add(new THREE.Vector3(0, 0, 1));
+      controller.lookAt(controller.position.clone().multiplyScalar(2).sub(target));
+      controller.updateMatrixWorld(true);
+      return panel.manager.getIntersection(controller)?.object.name;
+    };
+    assert.equal(meets(60), "::after");
+    assert.notEqual(meets(30), "::after");
+    // The scan agrees: a drag there is over the card.
+    const target = object.localToWorld(new THREE.Vector3(60, 8, 0));
+    const origin = target.clone().add(new THREE.Vector3(0, 0, 1));
+    const ray = new THREE.Ray(origin, target.sub(origin).normalize());
+    const registered = /** @type {Panel} */ (getPanel(object));
+    assert.equal(hitElement(registered, ray)?.className, "card");
     panel.cleanup();
   });
 });

@@ -84,15 +84,32 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # The packages that take `three` as a peer, built and tested against each
-  # end of the range their package.json gives (`>=0.185.0 <0.188.0`): the
-  # floor, and the newest three tested. Raise the second, and the ceiling
-  # with it, when a newer three passes. justdom-three's README says why the
-  # range is closed.
-  three-range:
+  # The two ends of the peer range on `three` in packages/three's
+  # package.json: its floor, and the newest three on npm inside it. Read
+  # from the range, so the matrix moves when the range does.
+  three-range-ends:
     if: >-
       github.head_ref != 'release/version-bump'
       && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      versions: ${{ steps.ends.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - id: ends
+        run: echo "versions=$(node common/scripts/swap-three.mjs --ends)" >> "$GITHUB_OUTPUT"
+
+  # The packages that take `three` as a peer, built and tested against each
+  # end of their range. The swap stops when their ranges disagree.
+  # justdom-three's README says why the range is closed.
+  three-range:
+    needs: three-range-ends
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -100,7 +117,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        three: ["0.185.0", "0.187.0"]
+        three: ${{ fromJSON(needs.three-range-ends.outputs.versions) }}
     steps:
       - uses: actions/checkout@v7
         with:

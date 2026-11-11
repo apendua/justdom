@@ -15,12 +15,14 @@ npm install justdom-three justdom-signal three
 
 `three` and `justdom-signal` are peer dependencies. The range for `three` is closed at both ends,
 `>=0.185.0 <0.188.0`, because the package leans on three's internals: it overrides
-`updateMatrixWorld`, patches three's shader chunks and relies on how the render list treats
-`material.visible`. A release of three can change any of these without a major version. CI runs the
-tests of every package that takes `three` as a peer against both ends of the range (the
-`three-range` job in `.github/workflows/ci.yml`). The floor is where they pass: before 0.185,
-`ShapePath.toShapes` did not read the fill rule the SVG plugin writes. The ceiling is the next minor
-above the newest version tested, and moves up when a newer three is added to that job.
+`updateMatrixWorld`, rewrites three's built-in shaders at their chunk includes, and relies on how
+the render list treats `material.visible`. A release of three can change any of these without a
+major version. CI runs the tests of every package that takes `three` as a peer against both ends of
+the range: its floor and the newest three on npm inside it (the `three-range` job in
+`.github/workflows/ci.yml`, which reads both from this package's range). The floor is where they
+pass: before 0.185, `ShapePath.toShapes` did not read the fill rule the SVG plugin writes. The
+ceiling is the next minor above the newest version tested; raising it puts the newer three in the
+job.
 
 The package has three entry points: `justdom-three`, `justdom-three/page` for the parts that import
 nothing from three.js, and `justdom-three/svg` for the inline SVG plugin.

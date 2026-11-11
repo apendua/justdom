@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory.js";
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
-import { $, branch, getXRSession, Nothing } from "justdom-three";
+import { $, getXRSession, when } from "justdom-three";
 import { addDependency, component, effects, onCleanup, Stream } from "justdom-signal";
 import { backdropShown } from "./session.js";
 
@@ -108,10 +108,7 @@ export function sessionCanvas(renderer, { zIndex = 1 } = {}) {
  * @returns {Source<Component>}
  */
 export function whilePresenting(ctx, render) {
-  return branch(
-    () => getXRSession(ctx),
-    (session) => (session ? render() : Nothing()),
-  );
+  return when(() => getXRSession(ctx), render);
 }
 
 /**

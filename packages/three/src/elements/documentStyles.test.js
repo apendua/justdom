@@ -805,26 +805,37 @@ describe("getSiblingReach", () => {
     }
   });
 
-  test("a `<style>` whose import lands after it was read is read again on its load", async () => {
-    const watcher = watch();
-    const style = document.createElement("style");
-    style.textContent = "@import url('data:text/css,'); .row { color: red; }";
-    document.head.appendChild(style);
-    await flush();
-    try {
-      assert.deepEqual(reach(), []);
-      // The import's rules arriving, which moves no count of the sheet's own.
+  for (const [name, layered] of [
+    ["", false],
+    [" behind an `@layer` statement", true],
+  ]) {
+    test(`a \`<style>\` whose import${name} lands after it was read is read again on its load`, async () => {
+      const watcher = watch();
+      const style = document.createElement("style");
+      style.textContent = "@import url('data:text/css,'); .row { color: red; }";
+      document.head.appendChild(style);
+      await flush();
       const sheet = /** @type {CSSStyleSheet} */ (style.sheet);
-      const imported = /** @type {CSSImportRule} */ (sheet.cssRules[0]).styleSheet;
-      assert.ok(imported);
-      imported.insertRule("[data-open] ~ li { color: red; }", 0);
-      style.dispatchEvent(new window.Event("load"));
-      assert.deepEqual(reach(), ["data-open"]);
-    } finally {
-      style.remove();
-      watcher.stop();
-    }
-  });
+      if (layered) {
+        // jsdom drops `@layer` statements, so the sheet the load reads is
+        // given one in front of its import, as Tailwind's output has.
+        const rules = [{ nameList: ["theme", "base"] }, ...sheet.cssRules];
+        Object.defineProperty(style, "sheet", { value: { cssRules: rules } });
+      }
+      try {
+        assert.deepEqual(reach(), []);
+        // The import's rules arriving, which moves no count of the sheet's own.
+        const imported = /** @type {CSSImportRule} */ (sheet.cssRules[0]).styleSheet;
+        assert.ok(imported);
+        imported.insertRule("[data-open] ~ li { color: red; }", 0);
+        style.dispatchEvent(new window.Event("load"));
+        assert.deepEqual(reach(), ["data-open"]);
+      } finally {
+        style.remove();
+        watcher.stop();
+      }
+    });
+  }
 
   test("a sheet that cannot be read is tried once until the next announcement", async () => {
     const watcher = watch();

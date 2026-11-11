@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "justdom-signal";
+import { noteMatrixChange } from "../matrixEpoch.js";
 import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import {
@@ -87,6 +88,7 @@ function mountInto(parent, source) {
       (/** @type {THREE.Object3D} */ child) =>
         new Stream(() => {
           parent.add(child);
+          noteMatrixChange();
           return () => {
             parent.remove(child);
           };

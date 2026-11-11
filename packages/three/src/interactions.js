@@ -10,6 +10,7 @@ import {
   withComputation,
 } from "justdom-signal";
 import { getObjectDrawOrder } from "./drawOrder.js";
+import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
  * @import { Source, Subscribable } from "justdom-signal";
@@ -892,6 +893,7 @@ export function interactions(ctx) {
 export function setLocalMatrix(object, matrix) {
   matrix.decompose(object.position, object.quaternion, object.scale);
   object.updateMatrix();
+  noteMatrixChange();
 }
 
 /** Scratch for `setWorldMatrix`, which a carry calls once a frame. */

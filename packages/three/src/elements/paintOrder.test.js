@@ -1528,6 +1528,48 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  test("a blank child of a draggable card takes the press past the card's edge", async () => {
+    // On a page the child spills past its card and takes the press there,
+    // for the card. It draws nothing and has no cursor, so it is its being
+    // inside a ray target that keeps its quad; without it the press falls
+    // through to the root.
+    const g = await page([
+      {
+        id: "card",
+        style: "position: absolute; background: rgb(255, 255, 255)",
+        at: [20, 20, 100, 100],
+        children: [{ id: "spill", style: "position: absolute", at: [100, 40, 80, 30] }],
+      },
+    ]);
+    g.get("card").setAttribute("draggable", "true");
+    await g.settle();
+    assert.equal(g.press(150, 55), "card", "where the child spills past it");
+    g.teardown();
+  });
+
+  test("a blank cover over a card's button takes the press, as on a page", async () => {
+    // The cover comes after the button, so a page's hit test finds it
+    // first and the click goes to the card, not the button. Without the
+    // cover's quad the press reaches the button.
+    const g = await page([
+      {
+        id: "card",
+        style: CARD,
+        at: [20, 20, 200, 100],
+        children: [
+          {
+            id: "button",
+            style: `position: absolute; ${POINTER}; background: rgb(0, 0, 255)`,
+            at: [40, 40, 40, 20],
+          },
+          { id: "cover", style: "position: absolute", at: [30, 30, 60, 40] },
+        ],
+      },
+    ]);
+    assert.equal(g.press(60, 50), "card");
+    g.teardown();
+  });
+
   test("a box mounts its quad when it gains a colour and lets it go when it loses it", async () => {
     const g = await page([{ id: "blank", style: "position: absolute", at: [0, 0, 100, 100] }]);
     const quads = () => {

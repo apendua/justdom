@@ -1,4 +1,5 @@
 import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "../clip.js";
+import { isSvgElement } from "../plugins.js";
 import { frameFor, getGeometryGeneration, measureClientRect } from "../panelFrame.js";
 import { nodeCache } from "./nodeCaches.js";
 import { nodeDerived, probedRead, readRecordOf } from "./records.js";
@@ -1042,4 +1043,74 @@ export function getInteriorClipBox(element) {
  */
 export function getLocalClipBox(element) {
   return getClipPair(element).local;
+}
+
+/**
+ * HTML elements whose inline box is atomic whatever their computed `display`
+ * says. Replaced elements and form controls are laid out as one box on one
+ * line, so their size is a true measure of what they moved, and whatever is
+ * inside them is laid out inside that box rather than on the lines around
+ * it.
+ */
+const ATOMIC_INLINE_TAGS = new Set([
+  "audio",
+  "button",
+  "canvas",
+  "embed",
+  "iframe",
+  "img",
+  "input",
+  "object",
+  "select",
+  "textarea",
+  "video",
+]);
+
+/**
+ * Whether the element's box is laid out in pieces across line boxes, so that
+ * its size is no measure of what it moved. An inline box's border box is the
+ * union of its fragments, and text rewritten on its last line moves where it
+ * ends, and the inline content after it, without changing that union. A box
+ * with `display: contents` has no box at all. Either way the change belongs
+ * to the element the line boxes are in, and the climb goes on to it.
+ *
+ * Read defensively, as `getFlowMode` reads: an engine that reports no
+ * `display` is reporting the initial value, `inline`.
+ *
+ * An atomic inline box never splits, and some compute to `inline` all the
+ * same. Every SVG element does: an `<svg>` root is one box in the HTML flow,
+ * and what is inside it is placed in user space rather than on lines. So do
+ * the replaced elements in `ATOMIC_INLINE_TAGS`. A browser gives the form
+ * controls there `inline-block`, so they need the list only where an engine
+ * reports no `display` or the page sets `display: inline` on one. A label
+ * rewritten every frame inside an SVG gauge ends the climb at the `<svg>`,
+ * as it would at any box that kept its size.
+ *
+ * `display: contents` is read first, because it removes the box from any of
+ * those. Its children flow in the parent's line boxes, as a `<button>`'s do,
+ * and on the other tags it renders as `none`, with no box to measure.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+export function splitsAcrossLines(element) {
+  return displaySplitsAcrossLines(element, getComputedStyleCached(element).display);
+}
+
+/**
+ * `splitsAcrossLines` for a `display` the caller has read itself, as the
+ * line box copy does without subscribing to it (`dressLaidOut`).
+ *
+ * @param {Element} element
+ * @param {string} display
+ * @returns {boolean}
+ */
+export function displaySplitsAcrossLines(element, display) {
+  if (display === "contents") {
+    return true;
+  }
+  if (isSvgElement(element) || ATOMIC_INLINE_TAGS.has(element.localName)) {
+    return false;
+  }
+  return display === "" || display === "inline";
 }

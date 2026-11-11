@@ -12,12 +12,12 @@ import { createKeyboardHost } from "./keyboardHost.js";
 import { keyboardSlotOf } from "./keyboardSlot.js";
 import { releaseImagesWithScene } from "./image.js";
 import { sceneService } from "../sceneServices.js";
+import { createMirror } from "./mirror.js";
 import {
   BUSY_ATTRIBUTE,
-  createMirror,
   isBookkeepingMutation,
   LOADING_ATTRIBUTE,
-} from "./mirror.js";
+} from "./mirror/mutationRules.js";
 import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { isPortalRoot } from "./mirror/styleReads.js";
 import { ELEMENT_FLAGS, PORTAL_ATTRIBUTE } from "./portalRoot.js";
@@ -83,8 +83,8 @@ export const OBSERVER_OPTIONS = {
   // `fill` or `transform`, and an app's own `[data-off]` selector. What
   // keeps the ray's hover and press cheap is not a filter here but the
   // ingest, which tells those flags apart by name (see
-  // `PRESENTATIONAL_ATTRIBUTES` in mirror.js) and drops the portal's own
-  // markers on the container.
+  // `PRESENTATIONAL_ATTRIBUTES` in `mirror/mutationRules.js`) and drops the
+  // portal's own markers on the container.
   attributes: true,
   // The old values are what let the mirror tell a write from a change: the
   // hover handlers re-assert `data-xr-*` on every pointer event, and a

@@ -178,7 +178,7 @@ function kebab(name) {
  * Anything unrecognized — including a missing name — is assumed to move
  * layout, the class that invalidates most. The mirror asks `classify` the
  * same question of an inline `style` write, and then whether the box is out
- * of the flow (`keepsToOwnBox` in mirror.js).
+ * of the flow (`keepsToOwnBox` in `mirror/mutationRules.js`).
  *
  * @param {string} [property]
  * @returns {AnimationClass}

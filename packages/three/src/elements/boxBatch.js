@@ -344,6 +344,31 @@ export class BoxBatch {
   }
 
   /**
+   * The numbers a member is drawn from, or undefined for a mesh that is not
+   * one. Unlike `take`, marks nothing.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {Record<string, THREE.IUniform> | undefined}
+   */
+  numbersOf(mesh) {
+    return this.#members.get(mesh);
+  }
+
+  /**
+   * A member's numbers changed, and nothing else about it: the one batch
+   * writes its instances again where they are (`changed` in
+   * `paintBatch.js`). A mesh that is not a member is drawn by nothing here.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {void}
+   */
+  changed(mesh) {
+    if (this.#members.has(mesh)) {
+      this.#draw.changed(mesh);
+    }
+  }
+
+  /**
    * Take this box into the batch: it stops drawing itself, and the one batch
    * starts drawing it. Idempotent.
    *
@@ -384,8 +409,9 @@ export class BoxBatch {
   }
 
   /**
-   * Something about the panel that the batch has copied down has changed: a
-   * box moved, was restyled, scrolled, appeared or went away. The one batch
+   * Something about the panel that the batch has copied down has changed in
+   * a way that needs a rebuild: a box moved, scrolled, appeared or went
+   * away. A change to a member's numbers alone is `changed`. The one batch
    * coalesces it with everything else the panel changed (`invalidate` in
    * `paintBatch.js`).
    *

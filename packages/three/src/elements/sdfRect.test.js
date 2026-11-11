@@ -295,18 +295,26 @@ describe("the gradient layer", () => {
 });
 
 describe("BoxNumbers", () => {
-  /** @returns {{ numbers: BoxNumbers, mesh: THREE.Mesh, marks: () => number }} */
+  /**
+   * A box whose batch counts what it is told: `changed` for the numbers,
+   * `invalidate` for the mesh.
+   */
   const box = () => {
     const mesh = new THREE.Mesh(rectGeometry);
-    let marked = 0;
-    const numbers = new BoxNumbers(mesh, () => {
-      marked += 1;
-    });
-    return { numbers, mesh, marks: () => marked };
+    /** @type {string[]} */
+    const told = [];
+    const batch = /** @type {import('./boxBatch.js').BoxBatch} */ (
+      /** @type {unknown} */ ({
+        changed: () => told.push("changed"),
+        invalidate: () => told.push("invalidate"),
+      })
+    );
+    const numbers = new BoxNumbers(mesh, () => batch);
+    return { numbers, mesh, told, marks: () => told.length };
   };
 
   test("each write tells the batch when it changed something, and only then", () => {
-    const { numbers, mesh, marks } = box();
+    const { numbers, mesh, told, marks } = box();
     const slot = new RampSlot();
     const blue = propertiesOf({ width: "20px", height: "10px", background: "rgb(0, 0, 255)" });
     const clip = {
@@ -319,18 +327,19 @@ describe("BoxNumbers", () => {
       bottomRight: 0,
       bottomLeft: 0,
     };
-    /** @type {[string, () => void][]} */
+    /** @type {[string, string, () => void][]} */
     const writes = [
-      ["paint", () => numbers.paint(blue, slot)],
-      ["clip", () => numbers.clip(clip)],
-      ["place", () => numbers.place(1, 2, 20, 10)],
-      ["order", () => numbers.order(3)],
-      ["show", () => numbers.show(false)],
+      ["paint", "changed", () => numbers.paint(blue, slot)],
+      ["clip", "changed", () => numbers.clip(clip)],
+      ["place", "invalidate", () => numbers.place(1, 2, 20, 10)],
+      ["order", "invalidate", () => numbers.order(3)],
+      ["show", "invalidate", () => numbers.show(false)],
     ];
-    for (const [name, write] of writes) {
+    for (const [name, kind, write] of writes) {
       const before = marks();
       write();
-      assert.equal(marks(), before + 1, `${name}: a new value is marked`);
+      assert.equal(marks(), before + 1, `${name}: a new value is told`);
+      assert.equal(told[before], kind, `${name}: as ${kind}`);
       write();
       assert.equal(marks(), before + 1, `${name}: the same value again is not`);
     }

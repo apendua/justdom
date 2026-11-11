@@ -493,7 +493,7 @@ export function box(ctx, element, options = {}) {
    * which the batch copies into its instance buffers. Written through
    * `BoxNumbers`, which tells the batch when a write changed anything.
    */
-  const numbers = new BoxNumbers(boxMesh, () => batch()?.invalidate());
+  const numbers = new BoxNumbers(boxMesh, () => batch());
   clipRaycast(boxMesh, () => currentClipBox, object);
 
   /**

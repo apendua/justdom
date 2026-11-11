@@ -1469,10 +1469,61 @@ describe("a panel drawn in paint order", () => {
     canvas.restore();
   });
 
+  /**
+   * Count what the panel's batch is told, and keep the batch, until
+   * `restore`.
+   */
+  const watchBatch = () => {
+    const { invalidate, changed } = PaintBatch.prototype;
+    const watched = {
+      invalidate: 0,
+      changed: 0,
+      /** @type {PaintBatch | null} */
+      batch: null,
+      restore() {
+        PaintBatch.prototype.invalidate = invalidate;
+        PaintBatch.prototype.changed = changed;
+      },
+    };
+    PaintBatch.prototype.invalidate = function () {
+      watched.invalidate += 1;
+      watched.batch = this;
+      return invalidate.call(this);
+    };
+    PaintBatch.prototype.changed = function (mesh) {
+      watched.changed += 1;
+      watched.batch = this;
+      return changed.call(this, mesh);
+    };
+    return watched;
+  };
+
+  /**
+   * Every buffer of every draw the panel has, over the instances each draws.
+   *
+   * @param {THREE.Object3D} panel
+   * @returns {number[][]}
+   */
+  const buffers = (panel) =>
+    draws(panel).flatMap((draw) => [
+      Array.from(draw.instanceMatrix.array.subarray(0, draw.count * 16)),
+      ...Object.values(draw.geometry.attributes)
+        .filter((attribute) => attribute instanceof THREE.InstancedBufferAttribute)
+        .map((attribute) =>
+          Array.from(
+            /** @type {Float32Array} */ (attribute.array).subarray(
+              0,
+              draw.count * attribute.itemSize,
+            ),
+          ),
+        ),
+    ]);
+
   test("a restyle reaches the batch only when it changes what a box draws", async () => {
-    // Every box writes its numbers through `BoxNumbers`, which asks the
-    // batch to lay its draws again only when a write changed one. A text
-    // colour on a box with no text changes none of them.
+    // Every box writes its numbers through `BoxNumbers`, which tells the
+    // batch only when a write changed one. A text colour on a box with no
+    // text changes none of them, and a background colour is a box's numbers
+    // alone, which the batch writes where the box already is.
     const g = await page([{ id: "card", style: CARD, at: [40, 40, 200, 150] }]);
     await g.walk();
     const fill = () => {
@@ -1483,24 +1534,160 @@ describe("a panel drawn in paint order", () => {
       return [color.getX(0), color.getY(0), color.getZ(0)];
     };
     assert.deepEqual(fill(), [1, 1, 1]);
-    const invalidate = PaintBatch.prototype.invalidate;
-    let asked = 0;
-    PaintBatch.prototype.invalidate = function () {
-      asked += 1;
-      return invalidate.call(this);
-    };
+    const watched = watchBatch();
     try {
       g.get("card").style.color = "rgb(255, 0, 0)";
       await g.settle();
-      assert.equal(asked, 0, "nothing the box draws changed");
+      assert.deepEqual([watched.invalidate, watched.changed], [0, 0], "nothing it draws changed");
       g.get("card").style.background = "rgb(0, 0, 255)";
       await g.settle();
-      assert.ok(asked > 0, "a background colour is asked for");
+      assert.deepEqual([watched.invalidate, watched.changed], [0, 1], "its numbers changed");
+      assert.equal(watched.batch?.written, 1, "and only its instance is written");
     } finally {
-      PaintBatch.prototype.invalidate = invalidate;
+      watched.restore();
     }
-    await g.walk();
     assert.deepEqual(fill(), [0, 0, 1], "and drawn");
+    g.teardown();
+  });
+
+  test("a box restyled among many writes its own instances, as a rebuild would", async () => {
+    // One card's colour changing among a hundred writes that card's
+    // instance and its decorations, not a hundred, and the buffers come out
+    // as a rebuild from scratch makes them.
+    const g = await page(
+      Array.from({ length: 100 }, (_, i) => ({
+        id: `card${i}`,
+        style: `${CARD}; box-shadow: rgb(0, 0, 0) 0px 2px 4px; outline-style: solid; outline-width: 1px; outline-color: rgb(0, 0, 0)`,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card42").style.background = "rgb(0, 128, 0)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0);
+      assert.equal(batch.written, 3, "the box, its shadow and its outline");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.equal(batch.written, 300);
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a change a patch cannot write rebuilds the batch", async () => {
+    // Each structural case of the batch's rules (`paintBatch.js`'s header)
+    // that reaches the batch as a change to a box's numbers: a shadow
+    // layer or an outline gained or lost, and a shadow turning inset. Each
+    // rebuilds, and leaves the buffers a rebuild from scratch would.
+    const g = await page(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    const watched = watchBatch();
+    const card = g.get("card3");
+    try {
+      for (const [style, value] of /** @type {[string, string][]} */ ([
+        ["boxShadow", "rgb(0, 0, 0) 0px 2px 4px"],
+        ["boxShadow", "rgb(0, 0, 0) 0px 2px 4px inset"],
+        ["boxShadow", "rgb(0, 0, 0) 0px 2px 4px inset, rgb(0, 0, 0) 0px 1px 2px"],
+        ["boxShadow", "none"],
+        ["outlineStyle", "solid"],
+        ["outlineWidth", "1px"],
+        ["outlineStyle", "none"],
+      ])) {
+        card.style.setProperty(
+          style.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`),
+          value,
+        );
+        await g.settle();
+        const batch = /** @type {PaintBatch} */ (watched.batch);
+        const count = draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+        assert.equal(batch.written, count, `${style}: ${value} rebuilds`);
+        const flushed = buffers(g.panel);
+        batch.rebuild();
+        assert.deepEqual(flushed, buffers(g.panel), `${style}: ${value}`);
+      }
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("after any run of restyles, the buffers are what a rebuild makes", async () => {
+    // A seeded sequence of restyles of boxes among twenty, patched or
+    // rebuilt as each flush decides, compared after each with a rebuild
+    // from scratch.
+    const g = await page(
+      Array.from({ length: 20 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([
+          (i % 4) * 90,
+          Math.floor(i / 4) * 50,
+          80,
+          40,
+        ]),
+      })),
+    );
+    await g.walk();
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const pick = (/** @type {string[]} */ values) => values[Math.floor(random() * values.length)];
+    const changes = [
+      [
+        "background",
+        ["rgb(255, 0, 0)", "rgb(0, 0, 255)", "rgba(0, 0, 0, 0.5)", "rgb(255, 255, 255)"],
+      ],
+      ["border-width", ["0px", "2px", "4px"]],
+      ["border-style", ["none", "solid"]],
+      ["border-color", ["rgb(0, 0, 0)", "rgb(0, 128, 0)"]],
+      ["border-top-left-radius", ["0px", "4px", "12px"]],
+      ["box-shadow", ["none", "rgb(0, 0, 0) 0px 2px 4px", "rgb(0, 0, 0) 0px 1px 2px inset"]],
+      ["outline-style", ["none", "solid"]],
+      ["outline-width", ["0px", "1px", "3px"]],
+      ["outline-color", ["rgb(255, 0, 0)", "rgb(0, 0, 255)"]],
+      ["opacity", ["1", "0.5"]],
+    ];
+    const watched = watchBatch();
+    let patched = 0;
+    try {
+      for (let step = 0; step < 40; step++) {
+        const touched = 1 + Math.floor(random() * 3);
+        for (let k = 0; k < touched; k++) {
+          const [name, values] = /** @type {[string, string[]]} */ (
+            changes[Math.floor(random() * changes.length)]
+          );
+          g.get(`card${Math.floor(random() * 20)}`).style.setProperty(name, pick(values));
+        }
+        await g.settle();
+        const batch = watched.batch;
+        if (!batch) {
+          continue;
+        }
+        const flushed = buffers(g.panel);
+        const written = batch.written;
+        batch.rebuild();
+        if (written < batch.written) {
+          patched += 1;
+        }
+        assert.deepEqual(flushed, buffers(g.panel), `step ${step}`);
+      }
+    } finally {
+      watched.restore();
+    }
+    assert.ok(patched > 10, `most steps patch, ${patched} did`);
     g.teardown();
   });
 

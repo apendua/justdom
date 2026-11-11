@@ -13,14 +13,20 @@ import {
  * @import {ContentImage} from './image.js';
  * @import {RampSlot} from './gradient.js';
  * @import {ClipBox} from './clip.js';
+ * @import {BoxBatch} from './boxBatch.js';
  */
 
 /**
  * The one writer of what the panel's batch copies out of a box's quad: its
  * uniforms, and the size, order and visibility of its mesh. Each write
- * compares before it writes, and calls `mark` when it changed anything, so a
- * box cannot change what the batch draws without telling it, and an effect
- * that runs again with the same values tells it nothing.
+ * compares before it writes, and tells the batch only when it changed
+ * anything, so a box cannot change what the batch draws without telling it,
+ * and an effect that runs again with the same values tells it nothing.
+ *
+ * Which kind of change it tells the batch is decided here
+ * (`paintBatch.js`'s header): a change to the numbers alone is `changed`,
+ * which writes the box's instances again where they are, and a change to
+ * the mesh's place, order or visibility is `invalidate`, a rebuild.
  *
  * What it does not cover is written elsewhere and told the batch there: the
  * matrix of the box's object, which the motion step and the place effect in
@@ -39,17 +45,27 @@ export class BoxNumbers {
   /** @type {THREE.Mesh} */
   #mesh;
 
-  /** @type {() => void} */
-  #mark;
+  /** @type {() => BoxBatch | null} */
+  #batch;
 
   /**
    * @param {THREE.Mesh} mesh The quad the numbers are drawn on.
-   * @param {() => void} mark Tells whatever copies the numbers that they
-   *   changed.
+   * @param {() => BoxBatch | null} batch The batch that draws the quad now,
+   *   or none while it draws itself.
    */
-  constructor(mesh, mark) {
+  constructor(mesh, batch) {
     this.#mesh = mesh;
-    this.#mark = mark;
+    this.#batch = batch;
+  }
+
+  /** The numbers changed, and nothing else. */
+  #changed() {
+    this.#batch()?.changed(this.#mesh);
+  }
+
+  /** The mesh's place, order or visibility changed. */
+  #moved() {
+    this.#batch()?.invalidate();
   }
 
   /**
@@ -62,7 +78,7 @@ export class BoxNumbers {
   paint(properties, slot) {
     const rect = writeRectUniforms(this.uniforms, properties);
     if (writeGradientUniforms(this.uniforms, properties, slot) || rect) {
-      this.#mark();
+      this.#changed();
     }
   }
 
@@ -71,7 +87,7 @@ export class BoxNumbers {
    */
   clip(box) {
     if (writeClipUniforms(this.uniforms, box)) {
-      this.#mark();
+      this.#changed();
     }
   }
 
@@ -80,7 +96,7 @@ export class BoxNumbers {
    */
   image(image) {
     if (writeImageUniforms(this.uniforms, image)) {
-      this.#mark();
+      this.#changed();
     }
   }
 
@@ -112,7 +128,7 @@ export class BoxNumbers {
       return;
     }
     placeAndScale(mesh, x, y, 0, scaleX, scaleY, 1);
-    this.#mark();
+    this.#moved();
   }
 
   /**
@@ -121,7 +137,7 @@ export class BoxNumbers {
   order(order) {
     if (this.#mesh.renderOrder !== order) {
       this.#mesh.renderOrder = order;
-      this.#mark();
+      this.#moved();
     }
   }
 
@@ -134,7 +150,7 @@ export class BoxNumbers {
   show(visible) {
     if (this.#mesh.visible !== visible) {
       this.#mesh.visible = visible;
-      this.#mark();
+      this.#moved();
     }
   }
 }

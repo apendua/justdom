@@ -237,7 +237,7 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
   // Named for the pseudo-element, which is all that tells it from its
   // element's quad in a scene's tree.
   mesh.name = pseudo;
-  const numbers = new BoxNumbers(mesh, () => batch()?.invalidate());
+  const numbers = new BoxNumbers(mesh, () => batch());
   const rampSlot = new RampSlot();
   surface.clipMesh(mesh);
   const background = backgroundImage(properties);

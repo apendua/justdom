@@ -239,7 +239,9 @@ const SUSPECTS = {
   "raycast (three)": (f) => f.functionName === "raycast" || f.functionName === "intersectObject",
   "animation sweep": (f) => f.functionName === "sweep" || f.functionName === "buildBatches",
   "mirror restyle": (f) =>
-    f.url?.includes("elements/mirror.js") || f.url?.includes("VisualProperties.js"),
+    // The mirror is `mirror.js` and the modules split out of it into
+    // `mirror/`.
+    f.url?.includes("elements/mirror") || f.url?.includes("VisualProperties.js"),
   "signal graph": (f) => f.url?.includes("packages/signal/src"),
   "text batching": (f) => f.url?.includes("textBatch.js") || f.url?.includes("textHelpers.js"),
   "three render": (f) =>

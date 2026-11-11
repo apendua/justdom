@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Derived, effects, onCleanup } from "justdom-signal";
 import { children } from "../operators.js";
 import { acquireImage, releaseImage } from "../elements/image.js";
-import { getAttributeCached, getComputedStyleCached } from "../elements/mirror.js";
+import { getAttributeCached, getComputedStyleCached } from "../elements/mirror/styleReads.js";
 import { parsePreserveAspectRatio, viewportMatrix } from "./geometry.js";
 import { isDrawnHidden, svgNode, viewportSize } from "./shape.js";
 import { parseLengthIn, parsePointerEvents, readProperty } from "./style.js";

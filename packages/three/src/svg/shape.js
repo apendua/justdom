@@ -26,17 +26,16 @@ import { getContentRenderOrder } from "../elements/elevation.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
 import { RampSlot } from "../elements/gradient.js";
+import { getBorderBoxSize, getInteriorClipBox } from "../elements/mirror.js";
 import {
   getAttributeCached,
-  getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
-  getInteriorClipBox,
   getOpacity,
   getParentElement,
   hidesVisibility,
   isVisibilityHidden,
-} from "../elements/mirror.js";
+} from "../elements/mirror/styleReads.js";
 import { nodeCache } from "../elements/mirror/nodeCaches.js";
 import {
   findSvgElement,

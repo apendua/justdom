@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getTransformStyle, hasTransform, isTransformed } from "./mirror.js";
+import { getTransformStyle, hasTransform, isTransformed } from "./mirror/styleReads.js";
 import { matrixScratch, readMatrix, readNumber, scanned } from "./cssNumbers.js";
 
 /**

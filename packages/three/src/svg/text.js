@@ -1,14 +1,13 @@
 import { Derived, effects, onCleanup } from "justdom-signal";
 import { keyedList } from "../core.js";
 import { children } from "../operators.js";
+import { counterpart, getReflowContext } from "../elements/mirror.js";
 import {
-  counterpart,
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
-  getReflowContext,
   getTextDataCached,
-} from "../elements/mirror.js";
+} from "../elements/mirror/styleReads.js";
 import { nodeDerived } from "../elements/mirror/records.js";
 import { withMeasuringRange } from "../elements/mirror/textLayout.js";
 import { createMeasurementClone } from "../elements/mirror/measurementClones.js";

@@ -11,7 +11,8 @@ import {
 } from "justdom-signal";
 import { fromEvent, store } from "justdom-signal";
 import { filtered, Subject } from "justdom-signal";
-import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror.js";
+import { getComputedStyleCached, getOpacity } from "./mirror/styleReads.js";
 import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 

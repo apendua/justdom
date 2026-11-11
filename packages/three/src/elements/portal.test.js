@@ -4,14 +4,8 @@ import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "justdom-signal";
 import { $, $$, attr, children, className, stylesheet } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import {
-  BUSY_ATTRIBUTE,
-  DomMirror,
-  getChildNodes,
-  getComputedStyleCached,
-  getTransformStyle,
-  LOADING_ATTRIBUTE,
-} from "./mirror.js";
+import { BUSY_ATTRIBUTE, DomMirror, LOADING_ATTRIBUTE } from "./mirror.js";
+import { getChildNodes, getComputedStyleCached, getTransformStyle } from "./mirror/styleReads.js";
 import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal } from "./portal.js";

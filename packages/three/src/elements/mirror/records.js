@@ -99,7 +99,7 @@ export class NodeRecord {
   /**
    * This node's child list changed. The portal's own reconciliation reads
    * the DOM directly while ingesting; this signal is for reactive reads
-   * that follow the list — `getChildNodes` in `mirror.js`.
+   * that follow the list — `getChildNodes` in `mirror/styleReads.js`.
    *
    * @type {Signal<number>}
    */

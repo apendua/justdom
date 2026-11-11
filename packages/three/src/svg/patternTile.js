@@ -5,7 +5,7 @@ import {
   getChildNodes,
   getComputedStyleCached,
   getTextDataCached,
-} from "../elements/mirror.js";
+} from "../elements/mirror/styleReads.js";
 import { findSvgElement } from "../elements/plugins.js";
 import { invert, matrixScale, multiply } from "./geometry.js";
 import { parseUrlReference, readProperty } from "./style.js";

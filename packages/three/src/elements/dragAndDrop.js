@@ -5,14 +5,13 @@ import { InteractionContext } from "../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { RendererContext } from "../scene.js";
+import { getBorderBoxSize, getLocalClipBox } from "./mirror.js";
 import {
-  getBorderBoxSize,
   getComputedStyleCached,
-  getLocalClipBox,
   getParentElement,
   isPortalRoot,
   isVisibilityHidden,
-} from "./mirror.js";
+} from "./mirror/styleReads.js";
 import { placeAndScale } from "./place.js";
 import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "./panelFrame.js";
 import { isSvgRoot } from "./plugins.js";

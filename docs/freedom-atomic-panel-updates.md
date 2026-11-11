@@ -274,13 +274,13 @@ back empty, a rect of zeros, a `Range` with no boxes. Every box, run and raster 
 again from that, for a commit about to take it out. Emptying a list of 400 rows in Chromium cost a
 frame of about 200 ms, and the commit waited 60 frames while the panel's channel drew rows nobody
 was going to see. So `detach` has the mirror let go of the subtree at once (`DomMirror.release`),
-and a read of a node let go of keeps the value it had (`keptWhileAway` in `mirror.js`): it returns
-that value, depends only on its record's `reparented`, which nothing bumps until the node is taken
-back, and its readers hear no change. Nothing that happens in the panel afterwards reaches those
-reads, a font arriving included. The commit takes the row out of the scene, and under `render()` its
-teardown runs over the frames after, the row waiting hidden (`portalTeardown.js`). A node with
-nothing drawn for it — a comment marker, a node that left before its turn — is cleaned up at once
-and holds no frame.
+and a read of a node let go of keeps the value it had (`keptWhileAway` in `mirror/records.js`): it
+returns that value, depends only on its record's `reparented`, which nothing bumps until the node is
+taken back, and its readers hear no change. Nothing that happens in the panel afterwards reaches
+those reads, a font arriving included. The commit takes the row out of the scene, and under
+`render()` its teardown runs over the frames after, the row waiting hidden (`portalTeardown.js`). A
+node with nothing drawn for it — a comment marker, a node that left before its turn — is cleaned up
+at once and holds no frame.
 
 A child that _moved_ out of the removed subtree is still in the tree with its new place pending, and
 its object still sits under the old parent's content group; the commit's arrivals-before-departures

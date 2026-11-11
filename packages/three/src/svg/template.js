@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, just, Stream, use } from "justdom-signal";
 import { noteMatrixChange } from "../matrixEpoch.js";
-import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
+import {
+  getAttributeCached,
+  getChildNodes,
+  getComputedStyleCached,
+} from "../elements/mirror/styleReads.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import {
   IDENTITY,

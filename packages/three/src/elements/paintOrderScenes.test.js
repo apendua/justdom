@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { BENCH_SCENES, LAYER_SCENES, mountScene } from "../test/paintOrderScenes.js";
 import { countPanel } from "../test/paintOrderCount.js";
-import { getParentElement } from "./mirror.js";
+import { getParentElement } from "./mirror/styleReads.js";
 import { getClearedSiblings, getDrawLevel, getLayer } from "./elevation.js";
 import { getPaintChildren, isGenerated } from "./pseudoElements.js";
 import { getLayerOrder } from "./layerOrder.js";

@@ -5,20 +5,22 @@ import { batch, Computation, Derived, Effect, selector, toObservable } from "jus
 import {
   createMirror,
   getCheckedCached,
-  getChildNodes,
   getBorderBoxSize,
-  getComputedStyleCached,
   getContentPosition,
   getInteriorClipBox,
   getLocalClipBox,
   getObjectPosition,
   getTextLayout,
-  getTransformStyle,
-  isTransformed,
-  isVisibilityHidden,
   trackCharacterEdges,
   tracksCharacterEdges,
 } from "./mirror.js";
+import {
+  getChildNodes,
+  getComputedStyleCached,
+  getTransformStyle,
+  isTransformed,
+  isVisibilityHidden,
+} from "./mirror/styleReads.js";
 import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { hasDepthTransform } from "./cssTransform.js";

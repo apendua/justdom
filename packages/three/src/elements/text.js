@@ -2,15 +2,13 @@ import * as THREE from "three";
 import { Derived, effects, just, onCleanup, selector } from "justdom-signal";
 import { children } from "../operators.js";
 import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
+import { getInteriorClipBox, getScrollOffset, getTextLayout } from "./mirror.js";
 import {
   getComputedStyleCached,
-  getInteriorClipBox,
   getOpacity,
   getParentElement,
-  getScrollOffset,
-  getTextLayout,
   hidesVisibility,
-} from "./mirror.js";
+} from "./mirror/styleReads.js";
 import { getContentRenderOrder } from "./elevation.js";
 import {
   clipBoxEqual,

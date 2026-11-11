@@ -2,16 +2,13 @@ import { Derived, flatMap, observable, selector } from "justdom-signal";
 import * as THREE from "three";
 import { $, children, Nothing } from "../operators.js";
 import { box } from "./div.js";
+import { getBorderBoxSize, getFirstLine, getInteriorClipBox, getScrollOffset } from "./mirror.js";
 import {
   getAttributeCached,
-  getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
-  getFirstLine,
-  getInteriorClipBox,
   getParentElement,
-  getScrollOffset,
-} from "./mirror.js";
+} from "./mirror/styleReads.js";
 import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import {

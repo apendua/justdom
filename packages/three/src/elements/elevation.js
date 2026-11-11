@@ -1,8 +1,7 @@
 import * as THREE from "three";
 import { Signal } from "justdom-signal";
+import { getBorderBoxSize, getBoxOffset, movesAgainstScroll } from "./mirror.js";
 import {
-  getBorderBoxSize,
-  getBoxOffset,
   getChildNodes,
   getComputedStyleCached,
   getParentElement,
@@ -10,8 +9,7 @@ import {
   getTransformStyle,
   hasTransform,
   isTransformed,
-  movesAgainstScroll,
-} from "./mirror.js";
+} from "./mirror/styleReads.js";
 import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";

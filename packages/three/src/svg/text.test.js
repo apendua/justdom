@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { batch } from "justdom-signal";
-import { getComputedStyleCached } from "../elements/mirror.js";
+import { getComputedStyleCached } from "../elements/mirror/styleReads.js";
 import { observedMirror } from "../test/observedMirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";

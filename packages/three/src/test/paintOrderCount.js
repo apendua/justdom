@@ -94,16 +94,18 @@ import { composeTransform, getOwnTransform, hasDepthTransform } from "../element
 import {
   getBorderBoxSize,
   getBoxOffset,
+  getFirstLine,
+  getScrollOffset,
+  getTextLayout,
+} from "../elements/mirror.js";
+import {
   getChildNodes,
   getComputedStyleCached,
-  getFirstLine,
   getOpacity,
   getParentElement,
-  getScrollOffset,
   getTextDataCached,
-  getTextLayout,
   isVisibilityHidden,
-} from "../elements/mirror.js";
+} from "../elements/mirror/styleReads.js";
 import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/layerTree.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";

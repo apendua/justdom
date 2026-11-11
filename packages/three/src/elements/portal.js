@@ -17,9 +17,9 @@ import {
   createMirror,
   getBorderBoxSize,
   isBookkeepingMutation,
-  isPortalRoot,
   LOADING_ATTRIBUTE,
 } from "./mirror.js";
+import { isPortalRoot } from "./mirror/styleReads.js";
 import { ELEMENT_FLAGS, PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { createAnimationClock } from "./animationClock.js";
 import { watchDocumentStyles } from "./documentStyles.js";

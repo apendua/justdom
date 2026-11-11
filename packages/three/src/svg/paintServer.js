@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { colorAt } from "../elements/gradient.js";
-import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
+import {
+  getAttributeCached,
+  getChildNodes,
+  getComputedStyleCached,
+} from "../elements/mirror/styleReads.js";
 import { serializePatternContent } from "./patternTile.js";
 import { findSvgElement } from "../elements/plugins.js";
 import { matrixEqual, parseTransformList } from "./geometry.js";

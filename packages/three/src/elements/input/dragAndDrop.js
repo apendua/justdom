@@ -19,7 +19,7 @@ import { clipBoxContains } from "../clip.js";
 import { controllerRay, DRAG_THRESHOLD, sampleRay } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { BOX_BUCKET_BIAS } from "../paint/boxBatch.js";
-import { getDrawLevel, getRenderBand } from "../paint/elevation.js";
+import { getBoxRenderOrder } from "../paint/elevation.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
 
 /**
@@ -210,16 +210,14 @@ const orders = [];
 
 /**
  * The order an element's box is drawn at, the number the cast compares for
- * its mesh (`getBoxDrawOrder`). An element whose box has no mesh mounted
- * draws nothing and is no ray target; it reads as a batched box would.
+ * its mesh (`getBoxDrawOrder`). An element whose box draws nothing and is
+ * no ray target has no box mesh mounted; it reads as a batched box would.
  *
  * @param {HTMLElement} element
  * @returns {number}
  */
 function boxOrder(element) {
-  return (
-    getBoxDrawOrder(element) ?? getRenderBand(element) + getDrawLevel(element) + BOX_BUCKET_BIAS
-  );
+  return getBoxDrawOrder(element) ?? getBoxRenderOrder(element) + BOX_BUCKET_BIAS;
 }
 
 /**

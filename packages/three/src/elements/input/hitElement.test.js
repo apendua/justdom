@@ -88,6 +88,22 @@ describe("the scan", () => {
     assert.equal(await scanned(page, (panel) => rayAt(panel, 150, 50)), "root");
   });
 
+  test("orders a box that draws nothing by its level, as if it were batched", async () => {
+    // The wrapper paints nothing and is no ray target, so it has no box mesh
+    // mounted, and reads at its level plus a batched box's rung: a level
+    // past the card it sits in, so it is over the card.
+    const page = [
+      {
+        id: "card",
+        style: "background: red",
+        at: /** @type {const} */ ([0, 0, 200, 100]),
+        children: [{ id: "wrapper", at: /** @type {const} */ ([50, 0, 100, 100]) }],
+      },
+    ];
+    assert.equal(await scanned(page, (panel) => rayAt(panel, 100, 50)), "wrapper");
+    assert.equal(await scanned(page, (panel) => rayAt(panel, 20, 50)), "card");
+  });
+
   test("finds nothing on a plane behind the ray's origin", async () => {
     const page = [
       { id: "row", style: "background: blue", at: /** @type {const} */ ([0, 0, 200, 100]) },

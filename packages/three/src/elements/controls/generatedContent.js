@@ -11,10 +11,9 @@ import { RampSlot } from "../paint/gradient.js";
 import { backgroundImage, contentImageEqual, placeContentImage } from "./image.js";
 import { toLocalClipBox } from "../clip.js";
 import {
+  getBoxRenderOrder,
   getContentRenderOrder,
-  getDrawLevel,
   getLayer,
-  getRenderBand,
   OVERLAY_LIFT,
 } from "../paint/elevation.js";
 import { LayerOrderContext } from "../paint/layerOrder.js";
@@ -299,9 +298,7 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
       const corner = frame();
       numbers.place(x - corner.x, y - corner.y, properties.totalWidth, properties.totalHeight);
       numbers.clip(toLocalClipBox(getInteriorClipBox(element), x, y));
-      numbers.order(
-        getRenderBand(generated) + getDrawLevel(generated) + (batch() ? 0 : UNBATCHED_BOX_BIAS),
-      );
+      numbers.order(getBoxRenderOrder(generated) + (batch() ? 0 : UNBATCHED_BOX_BIAS));
       numbers.show(!surface.hidden());
     }),
     effects(() => {

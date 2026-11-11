@@ -189,6 +189,19 @@ export function getLayer(element) {
 }
 
 /**
+ * Where `element`'s box sits in the scene's draw order: its layer's base
+ * (`getRenderBand`) plus its level in the layer (`getDrawLevel`). A
+ * batched box draws half a level after it (`BOX_BUCKET_BIAS` in
+ * `boxBatch.js`), and its content a level after it.
+ *
+ * @param {HTMLElement | Generated} element
+ * @returns {number}
+ */
+export function getBoxRenderOrder(element) {
+  return getRenderBand(element) + getDrawLevel(element);
+}
+
+/**
  * Where content belonging to `element` sits in the scene's draw order: one
  * level after the element's own box, which `VisualProperties.renderOrder`
  * puts at its layer's base plus `getDrawLevel`. That is the level of a
@@ -202,7 +215,7 @@ export function getLayer(element) {
  * @returns {number}
  */
 export function getContentRenderOrder(element) {
-  return getRenderBand(element) + getDrawLevel(element) + 1;
+  return getBoxRenderOrder(element) + 1;
 }
 
 /**

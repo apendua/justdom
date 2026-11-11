@@ -218,8 +218,8 @@ The scan's rules:
   drawn at its box's rung, the number the cast compares for the box's mesh: its `renderOrder`,
   `getRenderBand` (the layer's base) plus `getDrawLevel`, and then `BOX_BUCKET_BIAS` (R + 1/2) for a
   batched box, or `UNBATCHED_BOX_BIAS` (R + 1/4) for one that draws itself, a picture's. An element
-  with no box mesh mounted, which draws nothing and is no ray target, reads as a batched box would.
-  Of two at one rung, the later in tree order wins, as on a page.
+  with no box mesh mounted, whose box draws nothing and is no ray target, reads as a batched box
+  would. Of two at one rung, the later in tree order wins, as on a page.
 - **Clips.** One predicate, `clipBoxContains` in `clip.js`, says whether a point in a clip box's
   frame is inside it, corners included. `clipRaycast` trims the cast's hits with it and the scan
   tests its candidates with it, so rule 5 holds at a rounded corner on both sides. An element's own

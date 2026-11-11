@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "render() takes a container to draw in, camera planes and field of view, and WebGLRenderer parameters; the size, pixel ratio and aspect are read again on every resize and when a session ends",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

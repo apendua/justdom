@@ -1,11 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  mergePanelOptions,
-  PanelOptionsContext,
-  resolveKeyboard,
-  withPanelOptions,
-} from "./panelOptions.js";
+import { mergePanelOptions, resolveKeyboard, withPanelOptions } from "./panelOptions.js";
+import { PanelOptionsContext } from "../panelContexts.js";
 
 /**
  * @import {PortalOptions} from './portal.js';

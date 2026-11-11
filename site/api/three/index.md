@@ -41,9 +41,11 @@ Named here so that nothing public goes unmentioned; each has its JSDoc.
 - `size(ctx)` is the renderer's size as a source. `InteractionContext` and `InteractionManager` are
   the manager behind `interactions(ctx)`, for a test or a scene that drives one by hand.
   `setLocalMatrix` and `setWorldMatrix` put an object at a matrix without allocating.
-- `PortalPluginsContext`, `PanelOptionsContext` and `PortalSchedulerContext` are the properties
-  `render()` sets from `portalPlugins`, `panelOptions` and `portalBudget`, for a scene built without
-  `render()`; `createPortalScheduler` and `createFrameShareBudget` are what it installs there.
+- `PortalPluginsContext` and `PanelOptionsContext` are the properties `render()` sets from
+  `portalPlugins` and `panelOptions`, and `PortalSchedulerContext` holds the scheduler every panel
+  under it shares, for a scene built without `render()`. A scene `render()` made has one of its own,
+  made for its first panel from `portalBudget`; `createPortalScheduler` and `createFrameShareBudget`
+  are what it is made with.
 - `getContentGroup(object)` is where a node's projected children hang, and where a plugin attaches
   its own. `isTextInput(node)` is the rule the portal draws a field by. `solveCut(layout, cursor)`
   is the arithmetic behind `makeReveal`.

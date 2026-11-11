@@ -1,498 +1,54 @@
 import * as THREE from "three";
-import {
-  addDependency,
-  Computation,
-  createProperty,
-  Derived,
-  fromEvent,
-  fromObservable,
-  observable,
-  Signal,
-  Stream,
-  Subject,
-  useEffect,
-  withComputation,
-} from "justdom-signal";
+import { observable, Signal, Stream, withComputation } from "justdom-signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
-import {
-  createFrameShareBudget,
-  createPortalScheduler,
-  PortalSchedulerContext,
-} from "./elements/portalScheduler.js";
-import { releaseIdleImages } from "./elements/image.js";
-import { PortalPluginsContext } from "./elements/plugins.js";
-import { withPanelOptions } from "./elements/panelOptions.js";
-import {
-  createKeyboardSlot,
-  dismissKeyboardAtSessionEnd,
-  disposeKeyboardSlot,
-  KeyboardSlotContext,
-} from "./elements/keyboardSlot.js";
+import { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
+import { createSceneHost } from "./sceneServices.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 import { mouse, renderPointer } from "./mouse.js";
 import { addToParent } from "./operators.js";
+import { containerSize, followSize, putCanvasIn, windowSize } from "./viewport.js";
+import {
+  CameraContext,
+  ControllersContext,
+  createControllerHandle,
+  lateListeners,
+  onLateFrame,
+  RendererContext,
+  RendererSizeContext,
+  runFrame,
+  SceneContext,
+} from "./scene.js";
 
 /**
  * @import { Source, Subscribable } from "justdom-signal";
  */
 
-export const RendererContext = createProperty(
-  /**
-   * @returns {THREE.WebGLRenderer}
-   */
-  () => {
-    throw new Error("RendererContext not set");
-  },
-);
-
-export const RendererSizeContext = createProperty(
-  /**
-   * @returns {{
-   *   width: Source<number>;
-   *   height: Source<number>;
-   * }}
-   */
-  () => {
-    throw new Error("RendererSizeContext not set");
-  },
-);
-
 /**
- * The size the renderer is drawing at.
+ * The `WebGLRenderer`'s own parameters, less the two that would hand it a
+ * canvas or a context, since `render()` makes the canvas and the page puts
+ * it where it likes, and less `antialias`, which is `render()`'s own option
+ * of that name: one setting is said in one place.
  *
- * `combineLatest` said this before, and a derivation says it for nothing: each
- * side is read through a node, a node with no value yet throws `NoValueError`,
- * and a reading effect waits — which is the "not until both have spoken" that
- * `combineLatest` was here for.
- *
- * @param {WeakKey} ctx
- * @returns {Source<{ width: number; height: number }>}
+ * @typedef {Omit<THREE.WebGLRendererParameters, "canvas" | "context" | "antialias">} RendererParameters
  */
-export function size(ctx) {
-  const { width, height } = RendererSizeContext.get(ctx);
-  const widthNode = fromObservable(width);
-  const heightNode = fromObservable(height);
-  return observable(() => ({ width: widthNode.get(), height: heightNode.get() }));
-}
-
-export const CameraContext = createProperty(
-  /**
-   * @returns {THREE.Camera}
-   */
-  () => {
-    throw new Error("CameraContext not set");
-  },
-);
-
-/**
- * The camera this context renders through.
- *
- * The one of these getters with nothing to depend on. `render` builds a camera
- * and keeps it for the life of the renderer — a resize adjusts the one that is
- * there rather than replacing it — so there is no event that could change this
- * answer and nothing a reader could usefully be told about. It is still a
- * getter rather than a bare `CameraContext.get` so that it reads like the
- * others, and so that giving it something to depend on later would not change
- * how a single caller asks.
- *
- * @param {WeakKey} ctx
- * @returns {THREE.Camera}
- */
-export function getCamera(ctx) {
-  return CameraContext.get(ctx);
-}
-
-export const SceneContext = createProperty(
-  /**
-   * @returns {THREE.Scene}
-   */
-  () => {
-    throw new Error("SceneContext not set");
-  },
-);
-
-/**
- * The scene this context is drawing.
- *
- * `render` owns it, the same way it owns the renderer and the camera: it is
- * built before anything that could ask for it and kept for the life of the
- * renderer, so this needs no more invalidation than `getCamera` does.
- *
- * It did not used to. The tree handed a scene *back* — `render(fn)` subscribed
- * to whatever `fn(ctx)` emitted and drew that — which made the scene the one
- * piece of the rendering context assembled in the wrong direction: everything
- * else was threaded down through `ctx`, and this one came up. Nothing wanted
- * the freedom that bought. Every app built exactly one scene, immediately,
- * and then spent its root component decorating it, which is what the root
- * still does — it just no longer has to make one first.
- *
- * @param {WeakKey} ctx
- * @returns {THREE.Scene}
- */
-export function getScene(ctx) {
-  return SceneContext.get(ctx);
-}
-
-/**
- * The session the renderer is presenting to, or `null` while it is presenting
- * to the page.
- *
- * A reactive getter, which is what this question always wanted to be. There is
- * one session at a time and every reader asks the same thing of it — am I in a
- * session, and which one — so the answer is a value to read, and the two events
- * that can change it are what the reader depends on. Read it from an `effects`
- * and the block re-runs when a session starts and again when it ends; guard on
- * `null` and the guarded half is the part that only holds inside one, with its
- * `onCleanup` running as the session goes.
- *
- * The stream this replaces said the same thing in three layers — an outer
- * observable of inner observables, the inner one completing on `sessionend` —
- * so every caller opened with the same pair of `switchMap`s before reaching
- * what it actually wanted to do. Nothing was ever done with the nesting except
- * flatten it.
- *
- * @param {WeakKey} ctx
- * @returns {XRSession | null}
- */
-export function getXRSession(ctx) {
-  const { xr } = RendererContext.get(ctx);
-  // Both, always: one says a session has begun and the other that it has
-  // ended, and which of them is the interesting one depends on the answer
-  // this read is about to give.
-  addDependency(fromEvent(xr, "sessionstart"));
-  addDependency(fromEvent(xr, "sessionend"));
-  return xr.getSession();
-}
-
-/**
- * One of the player's hands, as three.js models it: where it points, where it
- * holds, the joints it is made of when it is a tracked hand, and which input
- * source is currently driving it.
- *
- * @typedef {object} ControllerHandle
- * @property {number} index Position in the renderer's controller list.
- * @property {THREE.XRTargetRaySpace} controller Target ray space: origin at the
- *   controller, -Z pointing where it aims.
- * @property {THREE.XRGripSpace} grip Grip space: where a held object sits.
- * @property {THREE.Object3D} ray The line drawn down the target ray, a child
- *   of `controller`, cut at whatever the ray is on. Hiding it hides the line
- *   and nothing else: the hand still points, hovers and presses, and its
- *   cursor still shows on what it points at.
- * @property {THREE.XRHandSpace} hand Hand space: `joints` are the twenty-five
- *   `XRHandJoint`s three fills in every frame while a tracked hand drives
- *   this slot, each an `Object3D` in the reference space. Empty and hidden
- *   while a controller does.
- * @property {Signal<XRInputSource | null>} inputSource The connected input
- *   source, or null while the hand is not being tracked. Carries the gamepad
- *   and the handedness.
- * @property {() => "controller" | "hand" | null} tracked What is driving the
- *   slot: a controller, the hand itself, or nothing. Reactive — read it in an
- *   effect and the effect re-runs when the player puts the controllers down.
- * @property {() => boolean} pinching Whether a tracked hand has its index tip
- *   and thumb tip together, by three's own measure (within 20 mm, with 5 mm
- *   of hysteresis). Reactive, and always false for a controller. This is
- *   state, not input: the runtime already turns a pinch into `selectstart` /
- *   `selectend` on the target ray, and that is what `makeInteractive` hears.
- */
-
-export const ControllersContext = createProperty(
-  /**
-   * @returns {ControllerHandle[]}
-   */
-  () => {
-    throw new Error("ControllersContext not set");
-  },
-);
-
-/**
- * The player's hands. Interaction events already say which controller they came
- * from, so this is for the things that cannot wait to be pointed at: anything
- * driven by where a hand *is* — held objects, two-handed gestures, proximity.
- *
- * @param {WeakKey} ctx
- * @returns {ControllerHandle[]}
- */
-export function controllers(ctx) {
-  return ControllersContext.get(ctx);
-}
-
-/**
- * Exported for its tests; `controllers(ctx)` is how an app gets these.
- *
- * @param {number} index
- * @param {THREE.XRTargetRaySpace} controller
- * @param {THREE.XRGripSpace} grip
- * @param {THREE.XRHandSpace} hand
- * @param {THREE.Object3D} ray
- * @returns {ControllerHandle}
- */
-export function createControllerHandle(index, controller, grip, hand, ray) {
-  /** @type {Signal<XRInputSource | null>} */
-  const inputSource = Signal.of(/** @type {XRInputSource | null} */ (null));
-  controller.addEventListener("connected", (event) => {
-    inputSource.set(event.data);
-  });
-  controller.addEventListener("disconnected", () => {
-    inputSource.set(null);
-  });
-  // Derived rather than read straight off the source, so that an effect
-  // watching *what* is in the hand is not re-run by every other change to
-  // the source signal — and so that the answer is the one three itself
-  // uses: a source with a `hand` is a hand, whatever its profiles say.
-  const tracked = new Derived(() => {
-    const source = inputSource.get();
-    if (!source) {
-      return null;
-    }
-    return source.hand ? "hand" : "controller";
-  });
-  // three dispatches these on every space of the controller as it measures
-  // the pinch each frame; the hand space is the one that means it.
-  const pinching = Signal.of(false);
-  hand.addEventListener("pinchstart", () => {
-    pinching.set(true);
-  });
-  hand.addEventListener("pinchend", () => {
-    pinching.set(false);
-  });
-  // A controller replacing the hand never sends `pinchend`; the pinch ends
-  // with the hand.
-  controller.addEventListener("disconnected", () => {
-    pinching.set(false);
-  });
-  return {
-    index,
-    controller,
-    grip,
-    ray,
-    hand,
-    inputSource,
-    tracked: () => tracked.get(),
-    pinching: () => pinching.get(),
-  };
-}
-
-/** @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} */
-const listeners = new WeakMap();
-
-/**
- * Callbacks that run after every ordinary frame callback, once the scene has
- * settled and its world matrices have been brought up to date. Raycasting
- * lives here: a ray cast any earlier is cast against where things were on the
- * previous frame, which is exactly one frame of lag in whatever is drawn at
- * the hit. So does a panel's batch rebuild, for the same reason from the other
- * end — a rebuild any earlier copies down a panel that the rest of this frame
- * is still moving.
- *
- * @type {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>}
- */
-const lateListeners = new WeakMap();
-
-/**
- * Put `fn` on a renderer's frame callbacks and hand back the way off again.
- *
- * What it means to be a frame callback, written once: `useFrame` owns one of
- * these through an effect, `onLateFrame` hands one straight back to the caller,
- * and the two differ in nothing but who holds the lifetime.
- *
- * @param {THREE.WebGLRenderer} renderer
- * @param {XRFrameRequestCallback} fn
- * @param {WeakMap<THREE.WebGLRenderer, Set<XRFrameRequestCallback>>} registry
- * @param {(err: unknown) => void} onError
- * @return {() => void}
- */
-function registerListener(renderer, fn, registry, onError) {
-  // We wrap fn with manual signal to ensure that potential dependencies are keep tracked of and properly cached (if needed).
-  const compoutation = new Computation();
-  const listener = compoutation.bind(fn);
-  let set = registry.get(renderer);
-  if (!set) {
-    set = new Set();
-    registry.set(renderer, set);
-  }
-  const subscription = compoutation.subscribe({
-    error: onError,
-  });
-  set.add(listener);
-  return () => {
-    subscription.unsubscribe();
-    set.delete(listener);
-    if (set.size === 0) {
-      registry.delete(renderer);
-    }
-  };
-}
-
-/**
- * Where a frame callback's failure goes when the caller has not said. Rethrown
- * from a fresh task, which is where an unhandled observable error landed back
- * when the late phase was an observable: the global handler stays the last
- * word, and a failure nobody is watching is still loud.
- *
- * @param {unknown} err
- * @returns {void}
- */
-function reportListenerError(err) {
-  setTimeout(() => {
-    throw err;
-  });
-}
-
-/** @type {WeakMap<THREE.WebGLRenderer, Subject<{ time: number, frame: XRFrame }>>} */
-const frameSubject = new WeakMap();
-
-/**
- * A renderer's frames, whether or not its loop has been installed yet.
- *
- * Created on demand rather than when the loop is set up, because the order
- * those two things happen in is not one a caller can see and not one worth
- * asking them to know. A scene is *built* before the loop is installed — the
- * tree has to exist for there to be anything to draw — so everything the
- * scene constructs, portals included, asks for frames strictly before the
- * loop that will emit them exists. Handing out the subject early and filling
- * it in later makes that a non-question.
- *
- * It was a question once, and an expensive one: a portal that asked too
- * early was told there were no frames here, fell back to the browser's own,
- * and worked perfectly everywhere except inside an immersive session — where
- * the page is not being rendered, `requestAnimationFrame` never fires, and a
- * mirror waiting on one stops updating entirely.
- *
- * @param {THREE.WebGLRenderer} renderer
- * @returns {Subject<{ time: number, frame: XRFrame }>}
- */
-function frameSubjectFor(renderer) {
-  let subject = frameSubject.get(renderer);
-  if (!subject) {
-    subject = new Subject();
-    frameSubject.set(renderer, subject);
-  }
-  return subject;
-}
-
-/**
- * A frame's ordinary work for a renderer: what `frames(ctx)` emits, then
- * every `useFrame` callback, in that order. `render()`'s loop runs it before
- * the late callbacks and the draw. Exported so that a test can run a frame
- * for a renderer it made up, which is all a carry or a panel's pump needs to
- * see one.
- *
- * @param {THREE.WebGLRenderer} renderer
- * @param {number} time
- * @param {XRFrame} frame
- * @returns {void}
- */
-export function runFrame(renderer, time, frame) {
-  frameSubjectFor(renderer).next({ time, frame });
-  const set = listeners.get(renderer);
-  if (set) {
-    for (const fn of set) {
-      fn(time, frame);
-    }
-  }
-}
-
-/**
- * Run `fn` on every frame, for as long as the surrounding computation stands.
- *
- * This used to be a pair — an `animate(ctx, fn)` observable handed to `use`,
- * which subscribed an `Effect` to it — and between them they only ever had one
- * thing to say: start on the way in, stop on the way out. Nothing was emitted
- * through that observable and nothing subscribed to it twice, so the effect is
- * the whole of it. It registers the callback, its teardown takes the callback
- * off again, and `useEffect` ties its life to the computation that asked.
- *
- * A frame callback is not the effect's body, so a value it reads while drawing
- * does not re-run any of this. Those reads are tracked by a `Computation` of
- * their own — as they always were — which keeps whatever the callback pulls
- * out of the graph awake and cached between frames without turning a moving
- * value into a re-registration.
- *
- * @param {WeakKey} ctx
- * @param {XRFrameRequestCallback} fn
- * @returns {void}
- */
-export function useFrame(ctx, fn) {
-  const renderer = RendererContext.get(ctx);
-  // Something the callback reads can fail long after this run has returned,
-  // and there is no value left to draw with when it does. `fail` is the
-  // effect's own channel for exactly that: it fails the effect, which runs the
-  // teardown `registerListener` handed back and so takes the callback off the
-  // frame loop.
-  useEffect(({ fail }) => registerListener(renderer, fn, listeners, fail), { name: "frame" });
-}
-
-/**
- * Like `useFrame`, but at the end of the frame: after everything that moves the
- * scene has moved it and before any of it is drawn. Hands the teardown back
- * rather than tying it to the surrounding computation, because none of the
- * callers here has one to tie it to — a portal disposes what it built from its
- * own teardown, and the interaction manager is handed this as a function
- * because it holds no context to ask for frames with.
- *
- * That is also why this is not `useLateFrame`. `useFrame` could drop its
- * lifetime on the computation that asked because every one of its callers is a
- * component being built inside one; the late phase's callers own themselves,
- * and an effect they had to dispose by hand would be the long way round to
- * this.
- *
- * Ordering is the whole reason to be here rather than in `useFrame`. What runs
- * over `frames(ctx)` — an animation clock sampling a running CSS animation, a
- * scroll drag following a hand — subscribes when it starts and unsubscribes
- * when it stops, so anything that has to see the result of a tick cannot get
- * there by subscribing to frames itself: it would be registered first, before
- * the things whose work it is waiting on, and would run a frame behind them
- * forever. This phase is defined by when it runs rather than by when it was
- * asked for, which is what makes it safe to ask for early.
- *
- * @param {WeakKey} ctx
- * @param {XRFrameRequestCallback} fn
- * @param {(err: unknown) => void} [onError] What to do when something the
- *   callback reads fails, which is terminal: there is no value left to draw
- *   with, so the callback comes off the loop either way and this only says
- *   where the failure is reported. `reportListenerError` by default.
- * @return {() => void} Takes the callback off the loop again. Safe to call
- *   more than once, and after a failure has already taken it off.
- */
-export function onLateFrame(ctx, fn, onError = reportListenerError) {
-  const renderer = RendererContext.get(ctx);
-  // Declared before it is assigned so the handler below can close over it. A
-  // callback cannot fail before it has run and cannot run before this has
-  // returned, so by the time the handler wants it, it is there.
-  /** @type {(() => void) | undefined} */
-  let stop;
-  stop = registerListener(renderer, fn, lateListeners, (err) => {
-    // A failure is terminal — there is no value left to draw with — so the
-    // callback comes off the loop, which is where the observable form ended up
-    // too once its subscriber was told. The teardown is idempotent, so the
-    // caller's own `stop()` later is still fine.
-    stop?.();
-    onError(err);
-  });
-  return stop;
-}
-
-/**
- * @param {WeakKey} ctx
- * @returns {Source<{ time: number, frame: XRFrame }>}
- */
-export function frames(ctx) {
-  const subject = frameSubjectFor(RendererContext.get(ctx));
-  // The `asObservable()` of a subject that is not RxJS's: a read-only view,
-  // and the `subscribe(fn)` form callers use. The subject itself is multicast
-  // and outlives every view of it, so a fresh wrapper per call costs nothing
-  // and hands nobody a `next`.
-  return new Stream((subscriber) => {
-    const subscription = subject.subscribe({
-      next: (value) => subscriber.next(value),
-    });
-    return () => subscription.unsubscribe();
-  });
-}
 
 /**
  * @typedef {object} RenderOptions
+ * @property {HTMLElement} [container] The element to draw in: the canvas is
+ *   put in it, fills its content box and follows it as it is laid out again,
+ *   and is taken out of it when the renderer goes. The element needs a size
+ *   of its own, from the page's layout, since the canvas takes the size it
+ *   is given. Without one the canvas is the window's size and the page puts
+ *   it where it likes, which is what a headset app wants.
+ * @property {{ fov?: number; near?: number; far?: number }} [camera] The
+ *   flat camera's field of view in degrees, from bottom to top, and its near
+ *   and far planes in metres: 70, 0.1 and 20 unless they are given. A
+ *   session draws with the headset's own cameras instead, which take only
+ *   the near and far planes from this one.
+ * @property {RendererParameters} [renderer] Handed to the `WebGLRenderer`,
+ *   over `render()`'s own default of `powerPreference: "high-performance"`.
+ *   Antialiasing is the `antialias` option's.
  * @property {(grip: THREE.XRGripSpace) => THREE.Object3D} [createControllerModel]
  * @property {(hand: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
  *   Something to draw for a tracked hand, given its hand space: three's
@@ -502,7 +58,8 @@ export function frames(ctx) {
  *   a tracked hand still points and pinches; it is just not drawn.
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
- * @property {boolean} [antialias] On unless it is turned off; see `render`.
+ * @property {boolean} [antialias] On unless it is turned off; see
+ *   `rendererParameters`.
  * @property {number} [foveation] Fixed foveation for the headset's layer, from
  *   0 (every pixel at full resolution) to 1 (the most the browser will blur
  *   towards the edges). Off unless it is turned up; see `render`.
@@ -555,6 +112,40 @@ export function frames(ctx) {
  */
 
 /**
+ * What `render` builds its `WebGLRenderer` with: the caller's `renderer`
+ * parameters over a default of its own, and `antialias` from the option of
+ * that name.
+ *
+ * Antialiasing is on by default, which is the opposite of three's own
+ * default. Every scene here is flat-shaded blocks and thin lines — the two
+ * things aliasing is least kind to — and in a headset the edges sit still in
+ * the world while your head moves, so they crawl. three hands these
+ * attributes to the XRWebGLLayer, so this is 4x MSAA on the headset rather
+ * than a flat-canvas nicety.
+ *
+ * @param {RenderOptions} options
+ * @returns {THREE.WebGLRendererParameters}
+ */
+export function rendererParameters(options) {
+  return {
+    powerPreference: "high-performance",
+    ...options.renderer,
+    antialias: options.antialias ?? true,
+  };
+}
+
+/**
+ * The flat camera `render` draws with: 70 degrees, 0.1 and 20 metres unless
+ * `options` says otherwise. Its aspect is the size source's to set.
+ *
+ * @param {RenderOptions["camera"]} [options]
+ * @returns {THREE.PerspectiveCamera}
+ */
+export function renderCamera(options = {}) {
+  return new THREE.PerspectiveCamera(options.fov ?? 70, 1, options.near ?? 0.1, options.far ?? 20);
+}
+
+/**
  * What `render` mounts on its scene: the mouse its `pointer` option asks for
  * (`renderPointer`), then the app's tree. The mouse goes first so that it is
  * the oldest on the canvas: the one mounted last drives, so a `mouse(ctx)`
@@ -588,44 +179,34 @@ export function mountScene(scene, ctx, fn, option) {
  */
 export function render(fn, options = {}) {
   return new Stream((subscriber) => {
-    const renderer = new THREE.WebGLRenderer({
-      // On by default, which is the opposite of three's own default. Every
-      // scene here is flat-shaded blocks and thin lines — the two things
-      // aliasing is least kind to — and in a headset the edges sit still in
-      // the world while your head moves, so they crawl. three hands these
-      // attributes to the XRWebGLLayer, so this is 4x MSAA on the headset
-      // rather than a flat-canvas nicety.
-      antialias: options.antialias ?? true,
-      powerPreference: "high-performance",
-    });
+    const renderer = new THREE.WebGLRenderer(rendererParameters(options));
     // `BehaviorSubject` was two things at once here: somewhere to announce a
     // resize from, and somewhere to read the current size back. A `Signal` is
     // the announcement, `observable(() => …)` below is the view of it the
-    // context carries, and the window is where the numbers come from — read
-    // once per resize rather than out of the signal, so that nothing here is a
-    // tracked read in whatever computation happened to subscribe.
-    const width = Signal.of(window.innerWidth);
-    const height = Signal.of(window.innerHeight);
+    // context carries, and the size source is where the numbers come from —
+    // read once per resize rather than out of the signal, so that nothing
+    // here is a tracked read in whatever computation happened to subscribe.
+    const width = Signal.of(0);
+    const height = Signal.of(0);
 
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    const camera = renderCamera(options.camera);
 
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 20);
-
-    function onResize() {
-      const nextWidth = window.innerWidth;
-      const nextHeight = window.innerHeight;
-      width.set(nextWidth);
-      height.set(nextHeight);
-      camera.aspect = nextWidth / nextHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(nextWidth, nextHeight);
+    const { container } = options;
+    subscriber.add(
+      followSize(renderer, camera, container ? containerSize(container) : windowSize(), {
+        onSize: (next) => {
+          width.set(next.width);
+          height.set(next.height);
+        },
+        // The scene as it stands, so a resize is not shown as a cleared
+        // canvas. Not with `presentingOnly`, which draws nothing outside a
+        // session. `scene` is declared below; no draw comes before it is.
+        draw: options.presentingOnly ? undefined : () => renderer.render(scene, camera),
+      }),
+    );
+    if (container) {
+      subscriber.add(putCanvasIn(container, renderer.domElement));
     }
-
-    window.addEventListener("resize", onResize);
-    subscriber.add(() => {
-      window.removeEventListener("resize", onResize);
-    });
 
     renderer.xr.enabled = true;
     // Off by default, which is again the opposite of three's, whose default
@@ -651,37 +232,8 @@ export function render(fn, options = {}) {
       ctx = PortalPluginsContext.set(ctx, options.portalPlugins);
     }
     if (options.panelOptions) {
-      ctx = withPanelOptions(ctx, options.panelOptions);
+      ctx = PanelOptionsContext.set(ctx, options.panelOptions);
     }
-    // One keyboard for every panel in the scene, made by the first panel
-    // that offers one and taken down with the scene.
-    const keyboardSlot = createKeyboardSlot();
-    ctx = KeyboardSlotContext.set(ctx, keyboardSlot);
-    subscriber.add(dismissKeyboardAtSessionEnd(keyboardSlot, renderer.xr));
-    subscriber.add(() => {
-      disposeKeyboardSlot(keyboardSlot);
-    });
-    // A share of the frame rather than a fixed slice of it: the sessions ask
-    // for the headset's fastest rate now, and a number of milliseconds that
-    // was a third of a frame at 60 Hz is three fifths of one at 120. Fed from
-    // the animation loop below.
-    const portalBudget = createFrameShareBudget();
-
-    // One scheduler per rendering context is what makes the portal budget
-    // global: every panel in this scene draws frame time from the same pool,
-    // however many are mounting at once. The closure reads `ctx` when the
-    // first portal schedules work, by which point the contexts above are all
-    // in place.
-    ctx = PortalSchedulerContext.set(
-      ctx,
-      createPortalScheduler({
-        budget: options.portalBudget ?? portalBudget.budget,
-        requestFrames: (tick) => {
-          const subscription = frames(ctx).subscribe(() => tick());
-          return () => subscription.unsubscribe();
-        },
-      }),
-    );
 
     // Add simple rays to controllers. This will need to be revisited.
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
@@ -734,9 +286,12 @@ export function render(fn, options = {}) {
 
     ctx = ControllersContext.set(ctx, handles);
 
-    // The context is whole now; the keyboard looks for the scene, the camera
-    // and the renderer here.
-    keyboardSlot.ctx = ctx;
+    // The context is whole now. What the panels keep per scene (their
+    // scheduler, the keyboard, the image cache's release) is made on the
+    // host when a panel first asks, and finds the scene, the camera and the
+    // renderer in this context (`sceneServices.js`).
+    const [sceneCtx, sceneHost] = createSceneHost(ctx, renderer, options);
+    ctx = sceneCtx;
 
     scene.add(camera);
     for (const { controller, grip, hand } of handles) {
@@ -746,8 +301,6 @@ export function render(fn, options = {}) {
     for (const mounted of mountScene(scene, ctx, fn, options.pointer)) {
       subscriber.add(mounted);
     }
-
-    let previousFrameTime = 0;
 
     /**
      * @param {number} time
@@ -804,10 +357,7 @@ export function render(fn, options = {}) {
      * @param {XRFrame} frame
      */
     function drawFrame(time, frame) {
-      if (previousFrameTime) {
-        portalBudget.sample(time - previousFrameTime);
-      }
-      previousFrameTime = time;
+      sceneHost.frame(time);
       options.onBeforeRender?.(renderer);
       runFrame(renderer, time, frame);
       const lateSet = lateListeners.get(renderer);
@@ -834,10 +384,7 @@ export function render(fn, options = {}) {
 
     return () => {
       renderer.setAnimationLoop(null);
-      // Free what the texture cache keeps idle as the renderer goes. The
-      // cache is shared, so this also drops pictures another live
-      // `render()` could have reused; it would load them again.
-      releaseIdleImages();
+      sceneHost.dispose();
       renderer.dispose();
       interactionManager.cleanup();
     };

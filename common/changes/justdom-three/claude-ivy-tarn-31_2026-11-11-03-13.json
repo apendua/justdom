@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A test fails on an import that runs up the package's layers or closes a cycle",
+      "type": "none",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

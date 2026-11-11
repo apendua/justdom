@@ -12,7 +12,7 @@
  * stop. The drivers below then spend those frames a portal at a time.
  */
 import { InteractionContext, InteractionManager } from "../interactions.js";
-import { runFrame } from "../render.js";
+import { runFrame } from "../scene.js";
 
 if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;

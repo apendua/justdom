@@ -2,8 +2,8 @@
 /// <reference path="./types/three.d.ts" preserve="true" />
 export { children, fragment, copy, Nothing, $, layoutEffects } from "./operators.js";
 export { list, keyedList } from "./core.js";
+export { render } from "./render.js";
 export {
-  render,
   useFrame,
   size,
   getCamera,
@@ -12,7 +12,7 @@ export {
   controllers,
   RendererContext,
   runFrame,
-} from "./render.js";
+} from "./scene.js";
 export {
   InteractionContext,
   InteractionManager,
@@ -48,17 +48,14 @@ export {
 } from "./elements/portalRoot.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
-export { PortalPluginsContext } from "./elements/plugins.js";
-export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
+export { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
+export { withPanelOptions } from "./elements/panelOptions.js";
 export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js";
 export { box } from "./elements/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
-export {
-  createFrameShareBudget,
-  createPortalScheduler,
-  PortalSchedulerContext,
-} from "./elements/portalScheduler.js";
+export { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
+export { createFrameShareBudget } from "./frameShare.js";
 export {
   isRenderingSuspended,
   sampleRenderingUpdates,
@@ -98,7 +95,7 @@ export {
  */
 
 /**
- * @typedef {import('./render.js').ControllerHandle} ControllerHandle
+ * @typedef {import('./scene.js').ControllerHandle} ControllerHandle
  */
 
 /**

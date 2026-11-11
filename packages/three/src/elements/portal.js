@@ -9,7 +9,9 @@ import { InputFocusContext, textInput } from "./textInput.js";
 import { isTextInput } from "./typing.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
-import { KeyboardSlotContext } from "./keyboardSlot.js";
+import { keyboardSlotOf } from "./keyboardSlot.js";
+import { releaseImagesWithScene } from "./image.js";
+import { sceneService } from "../sceneServices.js";
 import {
   BUSY_ATTRIBUTE,
   createMirror,
@@ -35,14 +37,15 @@ import { createPanelScrollDrags, ScrollDragsContext } from "./scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { createLoadingFrame } from "./loadingFrame.js";
 import { createPortalPump } from "./portalPump.js";
-import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
+import { createPortalScheduler, portalSchedulerOf } from "./portalScheduler.js";
 import { finishTeardownOf, scheduleTeardown } from "./portalTeardown.js";
-import { isSvgElement, isSvgRoot, PortalPluginsContext, projectWithPlugins } from "./plugins.js";
-import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panelOptions.js";
+import { isSvgElement, isSvgRoot, projectWithPlugins } from "./plugins.js";
+import { mergePanelOptions, resolveKeyboard } from "./panelOptions.js";
+import { PanelOptionsContext, PortalPluginsContext } from "../panelContexts.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { createPanelHandles, HANDLE_RENDER_ORDER } from "./panelHandles.js";
-import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
+import { CameraContext, frames, onLateFrame, RendererContext } from "../scene.js";
 import { InteractionContext } from "../interactions.js";
 import { registerOutlineHost } from "./outlines.js";
 
@@ -893,14 +896,17 @@ function buildPortal(ctx, ownOptions = {}) {
   ctx = MotionChannelContext.set(ctx, motionChannel);
 
   /**
-   * The scheduler `render()` installed, if this portal is under one. Besides
-   * pacing the panel, it is what takes the panel's objects down after it
-   * closes, since it outlives the panel (see `portalTeardown.js`).
+   * The scene's scheduler, if this portal is under one. Besides pacing the
+   * panel, it is what takes the panel's objects down after it closes, since
+   * it outlives the panel (see `portalTeardown.js`).
    */
-  const sceneScheduler = PortalSchedulerContext.get(ctx);
+  const sceneScheduler = portalSchedulerOf(ctx);
+  // The pictures the panel loads stay cached after it closes; the scene
+  // lets go of the idle ones when it goes.
+  sceneService(ctx, releaseImagesWithScene);
 
   /**
-   * Who paces this portal. The scheduler `render()` installed, whenever
+   * Who paces this portal. The scene's scheduler, whenever
    * there is one — that is what makes the budget global, one pool of frame
    * time divided across every panel in the scene, because the frame the
    * budget guards is shared and three panels each honouring a private five
@@ -956,7 +962,7 @@ function buildPortal(ctx, ownOptions = {}) {
   const portalKeyboard = keyboard
     ? bindPortalKeyboard(
         (() => {
-          const slot = KeyboardSlotContext.get(ctx);
+          const slot = keyboardSlotOf(ctx);
           if (slot) {
             return (slot.host ??= createKeyboardHost({ createPortal, ctx: slot.ctx }));
           }

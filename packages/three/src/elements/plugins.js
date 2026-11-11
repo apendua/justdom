@@ -1,5 +1,3 @@
-import { createProperty } from "justdom-signal";
-
 /**
  * @import {Subscribable} from 'justdom-signal';
  * @import {Object3D} from 'three';
@@ -118,19 +116,6 @@ export function readBBox(element) {
  * @property {(ctx: WeakKey, element: Element) => Subscribable<Object3D> | null} element
  *   The object tree for an element this plugin claims, or `null`.
  */
-
-/**
- * The plugins in scope for the portals under a context. `render()` sets it
- * from `RenderOptions.portalPlugins`; a portal prepends its own
- * `PortalOptions.plugins`. Empty by default, which is the portal exactly as
- * it was.
- */
-export const PortalPluginsContext = createProperty(
-  /**
-   * @returns {readonly PortalPlugin[]}
-   */
-  () => [],
-);
 
 /**
  * The first plugin's answer for an element, or `null` when none claims it.

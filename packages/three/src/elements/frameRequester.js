@@ -1,4 +1,4 @@
-import { frames } from "../render.js";
+import { frames } from "../scene.js";
 
 /**
  * Frames for the parts of a portal that have to sample something rather than

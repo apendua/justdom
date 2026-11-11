@@ -2,7 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "justdom-signal";
-import VisualProperties, { parseAlpha } from "./VisualProperties.js";
+import VisualProperties from "./VisualProperties.js";
+import { parseAlpha } from "./cssColor.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 
 // Same stub as div.test.js: jsdom has no Font Loading API, and

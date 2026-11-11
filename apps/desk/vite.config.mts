@@ -31,11 +31,11 @@ export default defineConfig({
         warn(warning);
       },
       output: {
-        // three.js's core in a chunk of its own, cached apart from the app.
-        // The page loads it for the maths in the helpers it takes from
-        // justdom-three. The renderer, the rest of three.js, is left to
-        // Rollup, which puts it with the scene that `main.ts` imports only
-        // where a session can be opened.
+        // three.js's core in a chunk of its own, apart from the renderer.
+        // The scene loads both, where a session can be opened. A page under
+        // `?panels=texture` loads the core alone, for the test of
+        // HTML-in-Canvas (`src/texture/support.ts`). The page without the
+        // flag loads neither.
         manualChunks: (id) =>
           id.includes("/node_modules/three/build/three.core") ? "three.core" : undefined,
       },

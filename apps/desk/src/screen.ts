@@ -1,7 +1,7 @@
 import { children, text } from "justdom-core";
-import { component, effect, just, observable } from "justdom-signal";
-import type { Readable } from "./session.js";
-import { makeReveal, scrollElementBy } from "justdom-three";
+import { component, Derived, effect, just, observable } from "justdom-signal";
+import type { MakeReveal, Readable } from "./session.js";
+import { scrollElementBy } from "justdom-three/page";
 import { revealedCount, type Terminal } from "./terminal.js";
 
 /**
@@ -12,10 +12,17 @@ import { revealedCount, type Terminal } from "./terminal.js";
  * and `makeReveal` draws as much of it as is typed, so a tick is a uniform
  * write rather than a re-measured, re-rasterized run. The terminal's state
  * is the same for both; only the node the listing is in changes, when a
- * session starts or ends. `revealing` says which of the two it is: whether
- * a session mirrors the desk, for a desk mirrored by `justdom-three`.
+ * session starts or ends. `revealing` says which of the two it is: it holds
+ * `makeReveal` while a session mirrors the desk, for a desk mirrored by
+ * `justdom-three`, and null otherwise. It is handed in rather than imported
+ * because `makeReveal` brings the mirror and three.js with it, which the
+ * page does not otherwise load (`revealer` in `session.ts`).
  */
-export function mountScreen(screen: HTMLElement, terminal: Terminal, revealing: Readable<boolean>) {
+export function mountScreen(
+  screen: HTMLElement,
+  terminal: Terminal,
+  revealing: Readable<MakeReveal | null>,
+) {
   const program = screen.querySelector<HTMLElement>("[data-program]");
   const prompt = screen.querySelector<HTMLElement>("[data-prompt]");
   if (!program || !prompt) {
@@ -24,11 +31,21 @@ export function mountScreen(screen: HTMLElement, terminal: Terminal, revealing: 
 
   const listing = observable(() => terminal.listing.get());
   const typedPart = observable(() => terminal.listing.get().slice(0, terminal.typed.get()));
-  const reveal = makeReveal(() => revealedCount(terminal.listing.get(), terminal.typed.get()));
+  // One reveal for as long as `revealing` holds the same function, so a
+  // second session draws with the first one's.
+  const reveal = new Derived(
+    () =>
+      revealing.get()?.(() => revealedCount(terminal.listing.get(), terminal.typed.get())) ?? null,
+  );
 
   const subscriptions = [
     just(program, [
-      children(component(() => (revealing.get() ? reveal.text`${listing}` : text`${typedPart}`))()),
+      children(
+        component(() => {
+          const revealed = reveal.get();
+          return revealed ? revealed.text`${listing}` : text`${typedPart}`;
+        })(),
+      ),
     ]).subscribe({ error: (err) => console.error("Could not draw the listing:", err) }),
     just(prompt, [children(text`${observable(() => terminal.console.get())}`)]).subscribe({
       error: (err) => console.error("Could not draw the prompt:", err),

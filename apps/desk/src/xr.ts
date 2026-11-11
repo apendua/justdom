@@ -1,10 +1,10 @@
-import { render, createXRButton, canDrawHtmlInCanvas } from "justdom-three";
+import { render, createXRButton, canDrawHtmlInCanvas, makeReveal } from "justdom-three";
 import { followOutlinesQuery, followThemingQuery } from "justdom-xr/theming";
 import { inputModels } from "justdom-xr/scene";
 import Scene from "./components/Scene.js";
 import NoteKeyboard from "./components/NoteKeyboard.js";
 import type { MountedDesk } from "./desk.js";
-import type { Readable } from "./session.js";
+import { revealer, type Readable } from "./session.js";
 import type { Panels } from "./texture/panels.js";
 
 /**
@@ -25,6 +25,9 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
   const query = new URLSearchParams(location.search);
   followThemingQuery(query);
   followOutlinesQuery(query);
+  // What the monitor reveals its listing with in a session. Handed to the
+  // page from here, so that the page does not import the mirror itself.
+  revealer.set(makeReveal);
   const scene = panels === "texture" ? await textureScene(desk) : await mirrorScene(desk);
   if (!scene) {
     return;

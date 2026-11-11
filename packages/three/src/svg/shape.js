@@ -21,7 +21,7 @@ import {
 } from "../elements/clip.js";
 import { PortalReadyContext } from "../elements/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
-import { place } from "../elements/place.js";
+import { markMoved, place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/elevation.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
@@ -36,6 +36,7 @@ import {
   getParentElement,
   hidesVisibility,
   isVisibilityHidden,
+  nodeCache,
 } from "../elements/mirror.js";
 import {
   findSvgElement,
@@ -832,7 +833,7 @@ function withOwnTransform(element, matrix, instance) {
 export function commitMatrix(object, matrix) {
   object.matrixAutoUpdate = false;
   toMatrix4(matrix, object.matrix);
-  object.matrixWorldNeedsUpdate = true;
+  markMoved(object);
 }
 
 /**
@@ -1261,7 +1262,7 @@ function paintOrderEqual(a, b) {
 }
 
 /** @type {WeakMap<Element, Derived<PaintOrder>>} */
-const paintOrders = new WeakMap();
+const paintOrders = nodeCache();
 
 /**
  * The document order of the shapes and images under an `<svg>` root, or

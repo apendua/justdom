@@ -142,7 +142,7 @@ the mirror's child-list signals, so a `<g>` reorder is a render-order write, not
   invisible to it. It now follows any element, and classifies the SVG paint properties (`fill`,
   `stroke`, `stroke-dashoffset`, `d`, `r`, …) as _paint_, so a marching-ants animation re-reads one
   element's style per frame rather than re-measuring the panel.
-- **`mirror/geometryReads.js`, `cssTransform.js`** — the transformed-chain measurement used
+- **`mirror/geometryReads.js`, `css/cssTransform.js`** — the transformed-chain measurement used
   `offsetWidth`/`offsetLeft`, which an `<svg>` root does not have; it now falls back to
   `clientWidth` plus borders and to client-rect deltas.
 

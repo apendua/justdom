@@ -805,6 +805,60 @@ describe("getSiblingReach", () => {
     }
   });
 
+  test("a `<style>` whose import lands after it was read is read again on its load", async () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    style.textContent = "@import url('data:text/css,'); .row { color: red; }";
+    document.head.appendChild(style);
+    await flush();
+    try {
+      assert.deepEqual(reach(), []);
+      // The import's rules arriving, which moves no count of the sheet's own.
+      const sheet = /** @type {CSSStyleSheet} */ (style.sheet);
+      const imported = /** @type {CSSImportRule} */ (sheet.cssRules[0]).styleSheet;
+      assert.ok(imported);
+      imported.insertRule("[data-open] ~ li { color: red; }", 0);
+      style.dispatchEvent(new window.Event("load"));
+      assert.deepEqual(reach(), ["data-open"]);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
+  test("a sheet that cannot be read is tried once until the next announcement", async () => {
+    const watcher = watch();
+    const style = document.createElement("style");
+    let tries = 0;
+    const unreadable = {
+      get cssRules() {
+        tries += 1;
+        throw new DOMException("cross-origin", "SecurityError");
+      },
+    };
+    try {
+      withAdopted([unreadable], () => {
+        assert.equal(getSiblingReach(), null);
+        const after = tries;
+        assert.equal(getSiblingReach(), null);
+        assert.equal(tries, after, "a second read throws nothing");
+      });
+      // An announcement, after which every sheet is tried again: a
+      // same-origin `<link>` that threw while it loaded is readable now.
+      style.textContent = ".row { color: red; }";
+      document.head.appendChild(style);
+      await flush();
+      const before = tries;
+      withAdopted([unreadable], () => {
+        assert.equal(getSiblingReach(), null);
+      });
+      assert.ok(tries > before);
+    } finally {
+      style.remove();
+      watcher.stop();
+    }
+  });
+
   test("a sheet whose rules cannot be read, or a pseudo-class with no name, reaches all", () => {
     const watcher = watch();
     try {

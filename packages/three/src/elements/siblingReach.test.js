@@ -61,6 +61,13 @@ describe("siblingReachOf", () => {
     assert.deepEqual(reach("[ data-x = '1' ] + li"), ["data-x"]);
   });
 
+  test("a class or an id whose name starts with an escape is one", () => {
+    assert.deepEqual(reach(".\\32 xl\\:flex + li"), ["class"]);
+    assert.deepEqual(reach("#\\31 23 + li"), ["id"]);
+    assert.deepEqual(reach(".-\\32 + li"), ["class"]);
+    assert.deepEqual(reach("li + .\\32 xl\\:flex"), ["class"]);
+  });
+
   test("an escaped combinator, dot or hash is part of a name", () => {
     assert.deepEqual(reach(".a\\+b"), []);
     assert.deepEqual(reach(".w-1\\.5 > li"), []);

@@ -93,9 +93,9 @@ jobs:
           key: playwright-${{ runner.os }}-${{
             hashFiles('./common/config/rush/pnpm-lock.yaml') }}
       - name: Install Chromium
-        # Chromium needs its system libraries, and apt waits on a mirror
-        # that does not answer until the job times out. With nothing to
-        # fall back on, the step fails at ten minutes, under its own name.
+        # Chromium needs its system libraries, and when a mirror does not
+        # answer, apt waits until the job times out. With nothing to fall
+        # back on, the step fails at ten minutes, under its own name.
         timeout-minutes: 10
         run: node packages/xr/node_modules/playwright-core/cli.js install --with-deps chromium
       # The checks launch the Chromium a development container keeps under

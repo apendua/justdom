@@ -13,7 +13,7 @@ import {
 import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { composeTransform, getOwnTransform, hasDepthTransform } from "./cssTransform.js";
+import { composeTransform, getOwnTransform, hasDepthTransform } from "./css/cssTransform.js";
 import { isSvgElement } from "./plugins.js";
 import { getShadowBleed, parseTextShadow } from "./textHelpers.js";
 import { isTextInput } from "./typing.js";

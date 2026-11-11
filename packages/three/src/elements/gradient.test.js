@@ -23,7 +23,7 @@ import {
   resolveStops,
   splitTopLevel,
 } from "./gradient.js";
-import { parseCssColor } from "./cssColor.js";
+import { parseCssColor } from "./css/cssColor.js";
 
 /**
  * @import {BackgroundBox, GradientLayout} from './gradient.js';

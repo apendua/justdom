@@ -1,5 +1,5 @@
 import { NoValueError, onCleanup } from "justdom-signal";
-import { GENERATED_COPY_ATTRIBUTE, withGeneratedCopyRule } from "../documentStyles.js";
+import { GENERATED_COPY_ATTRIBUTE, withGeneratedCopyRule } from "../css/documentStyles.js";
 import {
   buildCharacterEdges,
   collapseLineOffsets,

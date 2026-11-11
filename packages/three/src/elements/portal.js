@@ -10,7 +10,7 @@ import { sceneService } from "../sceneServices.js";
 import { createMirror } from "./mirror.js";
 import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { createAnimationClock } from "./animationClock.js";
-import { watchDocumentStyles } from "./documentStyles.js";
+import { watchDocumentStyles } from "./css/documentStyles.js";
 import { createBlocker, createDepthQuad } from "./blocker.js";
 import { LayerOrder, LayerOrderContext } from "./layerOrder.js";
 import { pressInit, registerPanel } from "./dragAndDrop.js";

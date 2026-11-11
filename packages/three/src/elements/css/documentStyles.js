@@ -66,7 +66,7 @@
 import { Signal } from "justdom-signal";
 import { originalSelector, restoreUserActions, rewriteUserActions } from "./userActionRules.js";
 import { generatedHost, resolveNested, splitSelectorList, walkStyleRules } from "./styleRules.js";
-import { siblingReachOf } from "./siblingReach.js";
+import { siblingReachOf } from "../siblingReach.js";
 
 /**
  * What a style change can restyle: the classes every changed rule starts

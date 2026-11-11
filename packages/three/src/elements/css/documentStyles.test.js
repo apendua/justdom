@@ -10,7 +10,7 @@ import {
   watchDocumentStyles,
   withGeneratedCopyRule,
 } from "./documentStyles.js";
-import { forgetComputedStyles } from "../test/computedStyles.js";
+import { forgetComputedStyles } from "../../test/computedStyles.js";
 import { CLASS_NAME, stylesheet } from "justdom-core";
 import { Signal, toObservable } from "justdom-signal";
 

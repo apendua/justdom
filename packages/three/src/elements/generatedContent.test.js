@@ -28,8 +28,8 @@ import { countEvaluations } from "../test/evaluations.js";
 import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
 import { getPanel } from "./dragAndDrop.js";
 import { layerDepth, listPaintOrder } from "../test/paintOrderCount.js";
-import { getGeneratedSelectors } from "./documentStyles.js";
-import { generatedHost, splitSelectorList } from "./styleRules.js";
+import { getGeneratedSelectors } from "./css/documentStyles.js";
+import { generatedHost, splitSelectorList } from "./css/styleRules.js";
 import { HOVER_ATTRIBUTE } from "./portalRoot.js";
 
 /**

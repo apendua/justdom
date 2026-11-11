@@ -6,7 +6,7 @@ import {
   rewriteSelector,
   rewriteUserActions,
 } from "./userActionRules.js";
-import { forgetComputedStyles } from "../test/computedStyles.js";
+import { forgetComputedStyles } from "../../test/computedStyles.js";
 
 describe("rewriteSelector", () => {
   test("names the flag beside each user-action pseudo-class", () => {

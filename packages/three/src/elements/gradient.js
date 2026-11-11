@@ -6,7 +6,7 @@ import {
   parseCssColor,
   srgbTo,
   toSrgb,
-} from "./cssColor.js";
+} from "./css/cssColor.js";
 
 /**
  * CSS gradients as a background layer, drawn by the same quad and shader as
@@ -59,9 +59,9 @@ import {
  */
 
 /**
- * @typedef {import('./cssColor.js').RGBA} RGBA
- * @typedef {import('./cssColor.js').ColorSpace} ColorSpace
- * @typedef {import('./cssColor.js').HueMethod} HueMethod
+ * @typedef {import('./css/cssColor.js').RGBA} RGBA
+ * @typedef {import('./css/cssColor.js').ColorSpace} ColorSpace
+ * @typedef {import('./css/cssColor.js').HueMethod} HueMethod
  */
 
 /**

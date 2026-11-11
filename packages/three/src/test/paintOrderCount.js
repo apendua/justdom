@@ -90,7 +90,11 @@ import * as THREE from "three";
  * @import {Generated} from "../elements/pseudoElements.js";
  */
 import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
-import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
+import {
+  composeTransform,
+  getOwnTransform,
+  hasDepthTransform,
+} from "../elements/css/cssTransform.js";
 import { getFirstLine, getTextLayout } from "../elements/mirror/textLayout.js";
 import {
   getBorderBoxSize,
@@ -108,7 +112,7 @@ import {
 import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/layerTree.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
-import { parseAlpha } from "../elements/cssColor.js";
+import { parseAlpha } from "../elements/css/cssColor.js";
 import { getDrawnBorderColor } from "../elements/borderColor.js";
 import { getListItemOrdinal, listMarkerText } from "../elements/listMarker.js";
 import {

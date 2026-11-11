@@ -17,7 +17,7 @@ import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { getDrawLevel, getRenderBand } from "./elevation.js";
-import { parseAlpha, parseCssColor } from "./cssColor.js";
+import { parseAlpha, parseCssColor } from "./css/cssColor.js";
 import { getDrawnBorderColor } from "./borderColor.js";
 import { parseBoxShadow } from "./shadows.js";
 import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradient.js";

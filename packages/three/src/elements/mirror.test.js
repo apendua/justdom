@@ -21,12 +21,12 @@ import {
 } from "./mirror/styleReads.js";
 import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { hasDepthTransform } from "./cssTransform.js";
+import { hasDepthTransform } from "./css/cssTransform.js";
 import { getPaintLayer } from "./elevation.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
 import { stagedRoot } from "../test/stagedRoot.js";
-import { watchDocumentStyles } from "./documentStyles.js";
+import { watchDocumentStyles } from "./css/documentStyles.js";
 
 /**
  * @param {Element} element

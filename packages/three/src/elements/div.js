@@ -32,20 +32,21 @@ import {
   getPaintLayer,
   isOverlay,
   OVERLAY_LIFT,
+  overlapOrders,
   overlaps,
   paintedBoundsInto,
 } from "./elevation.js";
 import { LayerOrderContext } from "./layerOrder.js";
 import { registerDrawOrder } from "../drawOrder.js";
 import { isScrollable } from "./scroll.js";
-import { place } from "./place.js";
+import { markMoved, place, placeAndScale } from "./place.js";
 import { BoxNumbers } from "./boxNumbers.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./boxBatch.js";
 import { TextBatchContext } from "./textBatch.js";
 import {
   forwardListEvents,
   forwardPointerEvents,
-  isInRayTarget,
+  pressesForRayTarget,
   isRayTarget,
 } from "./pointerForwarding.js";
 import { lazyPanel, pressInit } from "./dragAndDrop.js";
@@ -162,6 +163,8 @@ function placementEqual(a, b) {
  *
  * @type {WeakMap<Element, Signal<Placement | null>>}
  */
+// Not a nodeCache: set and deleted by the box that commits it, in whichever
+// panel.
 const committedPlacements = new WeakMap();
 
 /**
@@ -680,32 +683,43 @@ export function box(ctx, element, options = {}) {
   /**
    * Whether every sibling the element overlapped, by the bounds its order
    * was written from, it still overlaps at `bounds`, and no other: tested
-   * against the bounds each sibling's order was written from. A sibling that
-   * is a layer is skipped, since an overlap with it changes no draw level
-   * (`getDrawLevel`). One in the flow is not: the element clears it
-   * (`getClearedSiblings`). The parent's `::before` and `::after` are
-   * siblings too (`getPaintChildren`), skipped as well while lifted
-   * (`getLayer`), and otherwise tested against the box measured for them:
-   * neither moves but with its element's layout, which the commit brings.
+   * against the bounds each sibling's order was written from. Only the
+   * siblings whose overlap with the element decides a draw level count
+   * (`overlapOrders`), by the painting layers committed with the bounds. A
+   * sibling that is a layer is skipped as well, since `getDrawLevel` skips
+   * it: its committed placement has no bounds. The parent's `::before` and
+   * `::after` are siblings too (`getPaintChildren`), skipped as well while
+   * lifted (`getLayer`), and otherwise tested against the box measured for
+   * them: neither moves but with its element's layout, which the commit
+   * brings.
    *
    * @param {PaintedBounds} was
+   * @param {PaintLayer} layer the painting layer committed with `was`
    * @param {PaintedBounds} bounds
    * @returns {boolean}
    */
-  const keepsOverlaps = (was, bounds) => {
+  const keepsOverlaps = (was, layer, bounds) => {
     const parent = getParentElement(element);
     if (!parent) {
       return true;
     }
     for (const node of getPaintChildren(parent)) {
+      if (node === element) {
+        continue;
+      }
       /** @type {PaintedBounds | null | undefined} */
       let theirs;
+      /** @type {PaintLayer | undefined} */
+      let theirLayer;
       if (isGenerated(node)) {
         theirs = getLayer(node) === node ? null : getPaintedBounds(node);
-      } else if (node !== element && node.nodeType === Node.ELEMENT_NODE) {
-        theirs = committedPlacements.get(/** @type {Element} */ (node))?.get()?.bounds;
+        theirLayer = getPaintLayer(node);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const committed = committedPlacements.get(/** @type {Element} */ (node))?.get();
+        theirs = committed?.bounds;
+        theirLayer = committed?.paintLayer;
       }
-      if (!theirs) {
+      if (!theirs || theirLayer === undefined || !overlapOrders(layer, theirLayer)) {
         continue;
       }
       if (overlaps(bounds, theirs) !== overlaps(was, theirs)) {
@@ -768,7 +782,7 @@ export function box(ctx, element, options = {}) {
         own ? ownMatrix : null,
         ownOrigin,
       );
-      if (!keepsOverlaps(at.bounds, bounds)) {
+      if (!keepsOverlaps(at.bounds, at.paintLayer, bounds)) {
         return;
       }
     }
@@ -782,7 +796,7 @@ export function box(ctx, element, options = {}) {
     }
     obj.matrixAutoUpdate = false;
     obj.matrix.copy(nextMatrix);
-    obj.matrixWorldNeedsUpdate = true;
+    markMoved(obj);
     wroteMatrix = true;
     placed = null;
     batchChanged();
@@ -821,22 +835,17 @@ export function box(ctx, element, options = {}) {
    * no quad at all, so the render list, the layer walk and the raycast never
    * meet a mesh for them. A press over one lands on what is behind it, which
    * is where its events would have bubbled to, since only a ray target
-   * forwards anything (`isRayTarget`). A box inside a ray target keeps its
-   * quad however blank (`isInRayTarget`), so that a press on it goes where a
-   * page sends it: to the target around it, over a nested target it covers
-   * and past the target's own edge where it spills over.
+   * forwards anything (`isRayTarget`). A box inside a ray target that takes
+   * pointer events keeps its quad however blank (`pressesForRayTarget`), so
+   * that a press on it goes where a page sends it: to the target around it,
+   * over a nested target it covers and past the target's own edge where it
+   * spills over. A blank box with `pointer-events: none` mounts none, and a
+   * press passes through it, as on a page.
    *
    * An `<img>` and a `url()` background are drawn by the quad whether or not
    * the box `paints` a colour of its own. A list that scrolls is grabbed by
    * its quad, between its rows.
    */
-  const insideRayTarget = () => {
-    if (isPortalRoot(element)) {
-      return false;
-    }
-    const parent = getParentElement(element);
-    return parent !== null && isInRayTarget(parent);
-  };
   const hasQuad = new Derived(
     () =>
       image !== null ||
@@ -844,7 +853,7 @@ export function box(ctx, element, options = {}) {
       properties.paints ||
       clickable.get() ||
       scrollable.get() ||
-      insideRayTarget(),
+      pressesForRayTarget(element),
   );
 
   /**
@@ -991,7 +1000,7 @@ export function box(ctx, element, options = {}) {
             contentGroup.matrix.premultiply(
               scrollTranslation.makeTranslation(-scroll.left || 0, -scroll.top || 0, 0),
             );
-            contentGroup.matrixWorldNeedsUpdate = true;
+            markMoved(contentGroup);
             // The batches copy instance matrices by walking the panel, and
             // re-walk only when told; anything batched under this group
             // would otherwise stay where it was. Nothing SVG is batched

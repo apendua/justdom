@@ -1,5 +1,5 @@
 import { getPortalRoot } from "./portalRoot.js";
-import { matrixScratch, readMatrix } from "./cssNumbers.js";
+import { matrixScratch, readMatrix } from "./css/cssNumbers.js";
 
 /**
  * Every client rect justdom-three reads, and the frame it is read in.

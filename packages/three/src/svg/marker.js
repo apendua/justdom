@@ -1,5 +1,5 @@
 import { EllipseCurve, LineCurve } from "three";
-import { getAttributeCached } from "../elements/mirror.js";
+import { getAttributeCached } from "../elements/mirror/styleReads.js";
 import {
   apply,
   multiply,

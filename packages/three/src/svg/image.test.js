@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createMirror } from "../elements/mirror.js";
 import { clipMatrixOf } from "../test/clipUniforms.js";
-import { acquireImage, releaseIdleImages, releaseImage } from "../elements/image.js";
+import { acquireImage, releaseIdleImages, releaseImage } from "../elements/controls/image.js";
 import { parsePreserveAspectRatio } from "./geometry.js";
 import {
   buildImageGeometry,
@@ -19,7 +19,7 @@ import { shape } from "./shape.js";
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
  */
 
-// As in `elements/image.test.js`, each test starts from an empty texture
+// As in `elements/controls/image.test.js`, each test starts from an empty texture
 // cache, with no picture left idle by the test before.
 afterEach(() => releaseIdleImages());
 

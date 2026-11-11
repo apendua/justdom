@@ -5,7 +5,7 @@
  * through to the browser's and then says so. This module is that accessor,
  * and the count that keeps one per element however many panels follow it:
  * a field's `value` (`trackValue` in `textInput.js`) and a checkbox's
- * `checked` (`getCheckedCached` in `mirror.js`).
+ * `checked` (`getCheckedCached` in `mirror/styleReads.js`).
  */
 
 /**

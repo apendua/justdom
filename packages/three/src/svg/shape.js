@@ -19,25 +19,24 @@ import {
   UNCLIPPED,
   writeClip,
 } from "../elements/clip.js";
-import { PortalReadyContext } from "../elements/div.js";
+import { PortalReadyContext } from "../elements/controls/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { markMoved, place } from "../elements/place.js";
-import { getContentRenderOrder } from "../elements/elevation.js";
-import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
+import { getContentRenderOrder } from "../elements/paint/elevation.js";
+import { BOX_BUCKET_BIAS } from "../elements/paint/boxBatch.js";
 import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
-import { RampSlot } from "../elements/gradient.js";
+import { RampSlot } from "../elements/paint/gradient.js";
+import { getBorderBoxSize, getInteriorClipBox } from "../elements/mirror/geometryReads.js";
 import {
   getAttributeCached,
-  getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
-  getInteriorClipBox,
   getOpacity,
   getParentElement,
   hidesVisibility,
   isVisibilityHidden,
-  nodeCache,
-} from "../elements/mirror.js";
+} from "../elements/mirror/styleReads.js";
+import { nodeCache } from "../elements/mirror/nodeCaches.js";
 import {
   findSvgElement,
   isSvgElement,
@@ -526,10 +525,10 @@ const DESCRIPTIVE_TAGS = new Set(["title", "desc", "metadata"]);
  * Not followed, and so not clipped: any other `<clipPath>`, a basic shape
  * such as `inset()`, and a `clip-path` on the `<clipPath>` or its rect. A
  * `<clipPath>` outside the panel is read as it was first read, as a
- * `<marker>` is (see `readRecordOf` in `mirror.js`). The lookup by id is
- * not a cached read, so a `<clipPath>` added after the element was drawn is
- * found the next time the element's chain is read, such as when the element
- * is restyled.
+ * `<marker>` is (see `readRecordOf` in `mirror/records.js`). The lookup by
+ * id is not a cached read, so a `<clipPath>` added after the element was
+ * drawn is found the next time the element's chain is read, such as when
+ * the element is restyled.
  *
  * Exported for the templates in `template.js`, whose own `clip-path` the
  * walk in `readChain` stops short of.

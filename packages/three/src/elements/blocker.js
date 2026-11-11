@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { placeAndScale } from "./place.js";
-import { keepProgram } from "./programKeeper.js";
+import { keepProgram } from "./paint/programKeeper.js";
 
 /**
  * @import {XREventMap} from '../core.js';
- * @import {ProgramKind} from './programKeeper.js';
+ * @import {ProgramKind} from './paint/programKeeper.js';
  */
 
 /**

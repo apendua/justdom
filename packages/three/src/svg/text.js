@@ -1,17 +1,17 @@
 import { Derived, effects, onCleanup } from "justdom-signal";
 import { keyedList } from "../core.js";
 import { children } from "../operators.js";
+import { counterpart } from "../elements/mirror/textLayout.js";
+import { getReflowContext } from "../elements/mirror/geometryReads.js";
 import {
-  counterpart,
-  createMeasurementClone,
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
-  getReflowContext,
   getTextDataCached,
-  nodeDerived,
-  withMeasuringRange,
-} from "../elements/mirror.js";
+} from "../elements/mirror/styleReads.js";
+import { nodeDerived } from "../elements/mirror/records.js";
+import { withMeasuringRange } from "../elements/mirror/textLayout.js";
+import { createMeasurementClone } from "../elements/mirror/measurementClones.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   generateTextTexture,
@@ -260,9 +260,10 @@ function arraysEqual(a, b) {
  * when any of them changes. The portal adopts a `<text>`'s children only
  * after the `<text>` is built, so the first reads of them come before their
  * records, and are read again once the portal's walk adopts them
- * (`readRecordOf` in `mirror.js`). A pumped portal therefore collects a
- * `<text>`'s runs twice as it mounts it. The second finds the same runs,
- * and the gate on `runs` stops it there, so what it costs is the walk.
+ * (`readRecordOf` in `mirror/records.js`). A pumped portal therefore
+ * collects a `<text>`'s runs twice as it mounts it. The second finds the
+ * same runs, and the gate on `runs` stops it there, so what it costs is the
+ * walk.
  *
  * @param {Element} element
  * @param {(element: Element) => readonly string[]} layoutStyle The element's

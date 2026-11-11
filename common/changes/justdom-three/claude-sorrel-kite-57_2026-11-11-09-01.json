@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the mirror's node records into elements/mirror/records.js, with no change in behaviour.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

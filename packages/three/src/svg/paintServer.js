@@ -1,6 +1,10 @@
 import * as THREE from "three";
-import { colorAt } from "../elements/gradient.js";
-import { getAttributeCached, getChildNodes, getComputedStyleCached } from "../elements/mirror.js";
+import { colorAt } from "../elements/paint/gradient.js";
+import {
+  getAttributeCached,
+  getChildNodes,
+  getComputedStyleCached,
+} from "../elements/mirror/styleReads.js";
 import { serializePatternContent } from "./patternTile.js";
 import { findSvgElement } from "../elements/plugins.js";
 import { matrixEqual, parseTransformList } from "./geometry.js";
@@ -51,7 +55,7 @@ import {
 
 /** @typedef {import('./style.js').Paint} Paint */
 /** @typedef {import('./geometry.js').Matrix2D} Matrix2D */
-/** @typedef {import('../elements/gradient.js').ResolvedRamp} ResolvedRamp */
+/** @typedef {import('../elements/paint/gradient.js').ResolvedRamp} ResolvedRamp */
 
 /** How a gradient carries on past its ends, as the shader numbers it. */
 export const SPREAD_PAD = 0;

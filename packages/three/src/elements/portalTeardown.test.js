@@ -16,7 +16,7 @@ import {
   settle,
 } from "../test/portalHarness.js";
 import { createFrameRequester } from "./frameRequester.js";
-import { PaintBatch } from "./paintBatch.js";
+import { PaintBatch } from "./paint/paintBatch.js";
 import { createPortal } from "./portal.js";
 import { createPortalScheduler, PortalSchedulerContext } from "./portalScheduler.js";
 import {

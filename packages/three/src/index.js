@@ -38,7 +38,7 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal } from "./elements/portal.js";
-export { enableThemingMode, followUserActions } from "./elements/documentStyles.js";
+export { enableThemingMode, followUserActions } from "./elements/css/documentStyles.js";
 export { enableOutlinesMode, outlinesReport } from "./elements/outlines.js";
 export {
   ACTIVE_ATTRIBUTE,
@@ -51,7 +51,7 @@ export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
 export { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
 export { withPanelOptions } from "./elements/panelOptions.js";
 export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js";
-export { box } from "./elements/div.js";
+export { box } from "./elements/controls/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
 export { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
@@ -155,11 +155,11 @@ export {
  */
 
 /**
- * @typedef {import('./elements/div.js').BoxOptions} BoxOptions
+ * @typedef {import('./elements/controls/div.js').BoxOptions} BoxOptions
  */
 
 /**
- * @typedef {import('./elements/div.js').BoxSurface} BoxSurface
+ * @typedef {import('./elements/controls/div.js').BoxSurface} BoxSurface
  */
 
 /**

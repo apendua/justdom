@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the panel's container claim and release out of portal.js into portalContainer.js",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

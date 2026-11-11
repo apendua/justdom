@@ -264,7 +264,7 @@ describe("markers", () => {
     assert.ok(object);
     // The walk reaches the defs after the line is drawn, and what read the
     // marker before then comes round a microtask after it does
-    // (`announceAdoption` in `mirror.js`).
+    // (`announceAdoption` in `mirror/records.js`).
     adopt(/** @type {Element} */ (root.lastElementChild));
     await Promise.resolve();
     const copyMeshes = () =>

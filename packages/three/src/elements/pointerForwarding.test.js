@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { shape } from "../svg/shape.js";
 import { getContentGroup } from "./contentGroup.js";
-import { box } from "./div.js";
+import { box } from "./controls/div.js";
 import { dragAndDrop, registerPanel } from "./dragAndDrop.js";
 import { createMirror } from "./mirror.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";

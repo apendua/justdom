@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { RAMP_WIDTH, rampKeyOf, rampUniforms } from "../elements/gradient.js";
-import { GRADIENT_GLSL } from "../elements/sdfRect.js";
+import { RAMP_WIDTH, rampKeyOf, rampUniforms } from "../elements/paint/gradient.js";
+import { GRADIENT_GLSL } from "../elements/paint/sdfRect.js";
 import { IDENTITY, invert, multiply } from "./geometry.js";
 import { SPREAD_PAD } from "./paintServer.js";
 
@@ -32,7 +32,7 @@ import { SPREAD_PAD } from "./paintServer.js";
 
 /** @typedef {import('./geometry.js').Matrix2D} Matrix2D */
 /** @typedef {import('./paintServer.js').GradientServer} GradientServer */
-/** @typedef {import('../elements/gradient.js').RampSlot} RampSlot */
+/** @typedef {import('../elements/paint/gradient.js').RampSlot} RampSlot */
 
 const PAINT_FLAT = 0;
 const PAINT_LINEAR = 1;

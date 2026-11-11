@@ -1,20 +1,17 @@
 import { Derived } from "justdom-signal";
-import { getGeneratedSelectors } from "./documentStyles.js";
-import {
-  describeStillStyle,
-  getBorderBoxSize,
-  getChildNodes,
-  getComputedStyleCached,
-  measureGeneratedBox,
-  nodeCache,
-  nodeDerived,
-} from "./mirror.js";
-import { ownedImage } from "./image.js";
-import { parseAlpha } from "./cssColor.js";
+import { getGeneratedSelectors } from "./css/documentStyles.js";
+import { measureGeneratedBox } from "./mirror/textLayout.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
+import { getChildNodes, getComputedStyleCached } from "./mirror/styleReads.js";
+import { nodeDerived } from "./mirror/records.js";
+import { nodeCache } from "./mirror/nodeCaches.js";
+import { describeStillStyle } from "./mirror/measurementClones.js";
+import { ownedImage } from "./controls/image.js";
+import { parseAlpha } from "./css/cssColor.js";
 import { getDrawnBorderColor } from "./borderColor.js";
 
 /**
- * @import {ClientBox, GeneratedLayout} from './mirror.js';
+ * @import {ClientBox, GeneratedLayout} from './mirror/textLayout.js';
  */
 
 /*

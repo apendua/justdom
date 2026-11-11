@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the mirror's geometry reads into elements/mirror/geometryReads.js",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

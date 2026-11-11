@@ -4,8 +4,8 @@
  * a rebuild writes. And a watch on what the batch is told.
  */
 import * as THREE from "three";
-import { isProxy } from "../elements/layerOrder.js";
-import { PaintBatch } from "../elements/paintBatch.js";
+import { isProxy } from "../elements/paint/layerOrder.js";
+import { PaintBatch } from "../elements/paint/paintBatch.js";
 
 /**
  * Every mesh the panel draws: visible, with a material that draws, and with

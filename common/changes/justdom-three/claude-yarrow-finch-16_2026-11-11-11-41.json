@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the hands' pointer state and capture out of pointerForwarding.js into pointerHands.js",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

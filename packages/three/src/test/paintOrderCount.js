@@ -85,31 +85,36 @@ import * as THREE from "three";
 
 /**
  * @import {TextLine} from "../elements/textLines.js";
- * @import {Polygon} from "../elements/layerTree.js";
- * @import {PaintNode} from "../elements/elevation.js";
+ * @import {Polygon} from "../elements/paint/layerTree.js";
+ * @import {PaintNode} from "../elements/paint/elevation.js";
  * @import {Generated} from "../elements/pseudoElements.js";
  */
-import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
-import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
+import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/paint/elevation.js";
+import {
+  composeTransform,
+  getOwnTransform,
+  hasDepthTransform,
+} from "../elements/css/cssTransform.js";
+import { getFirstLine, getTextLayout } from "../elements/mirror/textLayout.js";
 import {
   getBorderBoxSize,
   getBoxOffset,
+  getScrollOffset,
+} from "../elements/mirror/geometryReads.js";
+import {
   getChildNodes,
   getComputedStyleCached,
-  getFirstLine,
   getOpacity,
   getParentElement,
-  getScrollOffset,
   getTextDataCached,
-  getTextLayout,
   isVisibilityHidden,
-} from "../elements/mirror.js";
-import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/layerTree.js";
+} from "../elements/mirror/styleReads.js";
+import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/paint/layerTree.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
-import { parseAlpha } from "../elements/cssColor.js";
+import { parseAlpha } from "../elements/css/cssColor.js";
 import { getDrawnBorderColor } from "../elements/borderColor.js";
-import { getListItemOrdinal, listMarkerText } from "../elements/listMarker.js";
+import { getListItemOrdinal, listMarkerText } from "../elements/controls/listMarker.js";
 import {
   contentBox,
   getRunRenderStyle,
@@ -118,7 +123,7 @@ import {
   measureTextRun,
   px,
 } from "../elements/textHelpers.js";
-import { PASSWORD_BULLET } from "../elements/textInput.js";
+import { PASSWORD_BULLET } from "../elements/controls/textInput.js";
 import { getShownValue, isTextInput } from "../elements/typing.js";
 import { getPaintChildren, isGenerated, paintsBox } from "../elements/pseudoElements.js";
 import { MARKABLE_TAGS, markerVertices } from "../svg/marker.js";

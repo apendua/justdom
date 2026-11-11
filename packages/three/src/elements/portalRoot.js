@@ -11,7 +11,7 @@ export const PORTAL_ATTRIBUTE = "data-xr-portal";
  * The flags the portal writes on the elements it mirrors, for a stylesheet to
  * answer as it would the pseudo-class each stands for. Here for the same
  * reasons, and the mirror's contract sets (`PRESENTATIONAL_ATTRIBUTES` in
- * `mirror.js`) and every writer take the names from here.
+ * `mirror/mutationRules.js`) and every writer take the names from here.
  */
 
 /**

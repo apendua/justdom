@@ -2,31 +2,31 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { batch, Computation, Derived, Effect, selector, toObservable } from "justdom-signal";
+import { createMirror } from "./mirror.js";
+import { getCheckedCached } from "./mirror/styleReads.js";
+import { getTextLayout, trackCharacterEdges, tracksCharacterEdges } from "./mirror/textLayout.js";
 import {
-  createMirror,
-  getCheckedCached,
-  getChildNodes,
   getBorderBoxSize,
-  getComputedStyleCached,
   getContentPosition,
   getInteriorClipBox,
   getLocalClipBox,
   getObjectPosition,
-  getTextLayout,
+} from "./mirror/geometryReads.js";
+import {
+  getChildNodes,
+  getComputedStyleCached,
   getTransformStyle,
   isTransformed,
   isVisibilityHidden,
-  resetMeasuringRangeForTests,
-  trackCharacterEdges,
-  tracksCharacterEdges,
-} from "./mirror.js";
+} from "./mirror/styleReads.js";
+import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { hasDepthTransform } from "./cssTransform.js";
-import { getPaintLayer } from "./elevation.js";
+import { hasDepthTransform } from "./css/cssTransform.js";
+import { getPaintLayer } from "./paint/elevation.js";
 import { UNCLIPPED } from "./clip.js";
 import { SVG_NAMESPACE } from "./plugins.js";
 import { stagedRoot } from "../test/stagedRoot.js";
-import { watchDocumentStyles } from "./documentStyles.js";
+import { watchDocumentStyles } from "./css/documentStyles.js";
 
 /**
  * @param {Element} element
@@ -88,14 +88,14 @@ function stubMeasuringRange({ onSelect, rect } = {}) {
  * @param {Text} text
  */
 function holdTextLayout(text) {
-  /** @type {import("./mirror.js").TextLayout | undefined} */
+  /** @type {import("./mirror/textLayout.js").TextLayout | undefined} */
   let layout;
   const effect = new Effect(() => {
     layout = getTextLayout(text);
   });
   return {
     get layout() {
-      return /** @type {import("./mirror.js").TextLayout} */ (layout);
+      return /** @type {import("./mirror/textLayout.js").TextLayout} */ (layout);
     },
     dispose: () => effect.dispose(),
   };
@@ -3888,7 +3888,7 @@ describe("character edges", () => {
   /**
    * @param {string} content
    * @param {boolean} tracked
-   * @returns {{ layout: import('./mirror.js').TextLayout, rects: number }}
+   * @returns {{ layout: import('./mirror/textLayout.js').TextLayout, rects: number }}
    */
   function measure(content, tracked) {
     let rects = 0;

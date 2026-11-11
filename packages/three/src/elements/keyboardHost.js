@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { Effect, Signal, withChannel, withComputation } from "justdom-signal";
-import { getBorderBoxSize } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { FOCUS_ATTRIBUTE } from "./portalRoot.js";
 import { place } from "./place.js";
 import { moveCaretToEnd, typeIntoInput } from "./typing.js";
-import { InputFocusContext, touchValue } from "./textInput.js";
+import { InputFocusContext, touchValue } from "./controls/textInput.js";
 import { createKeyboardPreview } from "./keyboardPreview.js";
 import { DEFAULT_KEYBOARD_SCALE, shouldReuse, viewerPose } from "./keyboardPlacement.js";
 import { createPanelHandles } from "./panelHandles.js";

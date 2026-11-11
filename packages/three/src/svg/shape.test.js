@@ -13,14 +13,14 @@ import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { observedMirror } from "../test/observedMirror.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { buildFillGeometry, buildShapePath, fillBox, group, paintSlot, shape } from "./shape.js";
-import { RAMP_WIDTH, rampAtlas, rampUniforms } from "../elements/gradient.js";
-import { releaseIdleImages } from "../elements/image.js";
+import { RAMP_WIDTH, rampAtlas, rampUniforms } from "../elements/paint/gradient.js";
+import { releaseIdleImages } from "../elements/controls/image.js";
 import { deferredLoader } from "../test/deferredLoader.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { parsePoints } from "./style.js";
-import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
-import { getContentRenderOrder } from "../elements/elevation.js";
-import { LayerOrderContext } from "../elements/layerOrder.js";
+import { BOX_BUCKET_BIAS } from "../elements/paint/boxBatch.js";
+import { getContentRenderOrder } from "../elements/paint/elevation.js";
+import { LayerOrderContext } from "../elements/paint/layerOrder.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";

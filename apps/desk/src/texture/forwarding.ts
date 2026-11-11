@@ -75,7 +75,7 @@ function zIndexOf(element: Element): number {
  * How many hands hold each flag on each element. Two hands on one key are
  * two hovers, and the first to leave or let go takes neither the other's
  * hover nor its press off it, as the mirror's flags count them
- * (`createFlag` in `justdom-three`'s `pointerForwarding.js`).
+ * (`createFlag` in `justdom-three`'s `pointerCrossings.js`).
  */
 const holders = new Map<string, WeakMap<Element, number>>();
 

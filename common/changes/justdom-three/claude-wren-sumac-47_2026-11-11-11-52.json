@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the paint and batching modules into src/elements/paint/",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

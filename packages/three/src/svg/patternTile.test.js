@@ -1,7 +1,7 @@
 import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { Derived } from "justdom-signal";
-import { releaseIdleImages } from "../elements/image.js";
+import { releaseIdleImages } from "../elements/controls/image.js";
 import { deferredLoader } from "../test/deferredLoader.js";
 import { apply } from "./geometry.js";
 import { patternLayout, serializePatternContent, TileHold } from "./patternTile.js";

@@ -15,5 +15,5 @@ export {
   HOVER_ATTRIBUTE,
   getPortalRoot,
 } from "./elements/portalRoot.js";
-export { followUserActions } from "./elements/documentStyles.js";
+export { followUserActions } from "./elements/css/documentStyles.js";
 export { scrollElementBy } from "./elements/renderingUpdates.js";

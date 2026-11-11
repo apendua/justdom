@@ -10,14 +10,14 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { BENCH_SCENES, LAYER_SCENES, mountScene } from "../test/paintOrderScenes.js";
 import { countPanel } from "../test/paintOrderCount.js";
-import { getParentElement } from "./mirror.js";
-import { getClearedSiblings, getDrawLevel, getLayer } from "./elevation.js";
+import { getParentElement } from "./mirror/styleReads.js";
+import { getClearedSiblings, getDrawLevel, getLayer } from "./paint/elevation.js";
 import { getPaintChildren, isGenerated } from "./pseudoElements.js";
-import { getLayerOrder } from "./layerOrder.js";
+import { getLayerOrder } from "./paint/layerOrder.js";
 import { isSvgElement } from "./plugins.js";
 
 /**
- * @import {PaintNode} from "./elevation.js";
+ * @import {PaintNode} from "./paint/elevation.js";
  */
 
 /**
@@ -114,7 +114,7 @@ describe("a panel, on the count's scenes", () => {
       // red with a nested layer the panel does not place.
       const { root, dispose } = await mountScene(scene.build);
       const counted = countPanel(root);
-      const order = /** @type {import("./layerOrder.js").LayerOrder} */ (getLayerOrder(root));
+      const order = /** @type {import("./paint/layerOrder.js").LayerOrder} */ (getLayerOrder(root));
       order.walk(new THREE.Vector3(0, 0, 2000));
       const pieces = order.pieces();
       assert.deepEqual(

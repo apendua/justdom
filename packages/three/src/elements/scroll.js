@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { createProperty } from "justdom-signal";
 import { InteractionContext } from "../interactions.js";
-import { clipsOverflow, getComputedStyleCached, getParentElement, isPortalRoot } from "./mirror.js";
+import { clipsOverflow } from "./mirror/geometryReads.js";
+import { getComputedStyleCached, getParentElement, isPortalRoot } from "./mirror/styleReads.js";
 import { getParentObject } from "./contentGroup.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";

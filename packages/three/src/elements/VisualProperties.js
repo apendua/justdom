@@ -11,18 +11,19 @@ import {
 } from "justdom-signal";
 import { fromEvent, store } from "justdom-signal";
 import { filtered, Subject } from "justdom-signal";
-import { getBorderBoxSize, getComputedStyleCached, getOpacity } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
+import { getComputedStyleCached, getOpacity } from "./mirror/styleReads.js";
 import { isProbing, probeRecalculation } from "./outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
-import { getDrawLevel, getRenderBand } from "./elevation.js";
-import { parseAlpha, parseCssColor } from "./cssColor.js";
+import { getDrawLevel, getRenderBand } from "./paint/elevation.js";
+import { parseAlpha, parseCssColor } from "./css/cssColor.js";
 import { getDrawnBorderColor } from "./borderColor.js";
 import { parseBoxShadow } from "./shadows.js";
-import { layoutGradient, parseBackground, parseBackgroundPicture } from "./gradient.js";
+import { layoutGradient, parseBackground, parseBackgroundPicture } from "./paint/gradient.js";
 
 /**
- * @import {GradientLayout} from './gradient.js';
+ * @import {GradientLayout} from './paint/gradient.js';
  */
 
 /**
@@ -516,7 +517,7 @@ export default class VisualProperties {
    * The edges a background layer is laid out between, gradient and picture
    * alike.
    *
-   * @returns {import('./gradient.js').BackgroundBox}
+   * @returns {import('./paint/gradient.js').BackgroundBox}
    */
   get backgroundBox() {
     return {
@@ -542,7 +543,7 @@ export default class VisualProperties {
    * has a size, or `null` for none. `image.js` lays it out once the picture
    * has loaded (`backgroundImage`).
    *
-   * @returns {import('./gradient.js').BackgroundPicture | null}
+   * @returns {import('./paint/gradient.js').BackgroundPicture | null}
    */
   get backgroundPicture() {
     const props = this.#props;

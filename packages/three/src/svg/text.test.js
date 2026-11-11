@@ -2,13 +2,13 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { batch } from "justdom-signal";
-import { getComputedStyleCached } from "../elements/mirror.js";
+import { getComputedStyleCached } from "../elements/mirror/styleReads.js";
 import { observedMirror } from "../test/observedMirror.js";
 import { svgElements } from "./index.js";
 import { drawUse } from "./template.js";
 import { drawnRange, drawText, layoutScale, measuringScale } from "./text.js";
-import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
-import { getContentRenderOrder } from "../elements/elevation.js";
+import { BOX_BUCKET_BIAS } from "../elements/paint/boxBatch.js";
+import { getContentRenderOrder } from "../elements/paint/elevation.js";
 import { installSvgTextLayout } from "../test/svgTextLayout.js";
 
 /**
@@ -379,7 +379,7 @@ describe("svg text", () => {
     const s = scene([text], text, { portalOrder: true });
     // The runs were read before their nodes had records. The walk adopts
     // them after the `<text>`, and what read them comes round a microtask
-    // later (`announceAdoption` in `mirror.js`).
+    // later (`announceAdoption` in `mirror/records.js`).
     s.adoptRest();
     await Promise.resolve();
     const [first, second] = s.meshes;

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { createProperty } from "justdom-signal";
 import { bandBase, getElevation, PIECE_BAND, setLayerBase } from "./elevation.js";
+import { markMoved } from "./place.js";
 import {
   carryHalfPlanes,
   clearHalfPlanes,
@@ -90,6 +91,8 @@ export const LayerOrderContext = createProperty(
 
 /** Every panel's order, by its root, for a test or a snapshot to ask. */
 /** @type {WeakMap<Element, LayerOrder>} */
+// Not a nodeCache: keyed by a panel's root, set and deleted by that panel's
+// `LayerOrder`.
 const orders = new WeakMap();
 
 /**
@@ -512,6 +515,7 @@ export class LayerOrder {
         placed.height !== height ||
         !placed.matrix.equals(layerToPanel)
       ) {
+        // Not placed: a record of where the layer was, not an object.
         placed.matrix.copy(layerToPanel);
         placed.width = width;
         placed.height = height;
@@ -788,7 +792,7 @@ export class LayerOrder {
     // Its world matrix is the last mesh's until it is told: it updates its
     // matrix only when asked, and a parent passes the force down only in a
     // frame it moved itself.
-    proxy.matrixWorldNeedsUpdate = true;
+    markMoved(proxy);
     return proxy;
   }
 
@@ -1041,7 +1045,7 @@ function createProxy(mesh) {
   proxy.raycast = () => {};
   proxy.frustumCulled = false;
   proxy.matrixAutoUpdate = false;
-  proxy.matrixWorldNeedsUpdate = true;
+  markMoved(proxy);
   proxies.add(proxy);
   mesh.add(proxy);
   return proxy;

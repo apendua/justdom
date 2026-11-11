@@ -243,9 +243,12 @@ The scan's rules:
   once it reads a per-layer list of boxes in reverse paint order, kept with the batch, which sorts
   that order already. That list is not built.
 
-Where the two disagree, and which is right. The maintainer decided on 2026-11-11 that the two are to
-agree everywhere on this list: each case is fixed on the side that is wrong, and none stays as an
-exception. None of the fixes is built yet.
+Where the two disagree, and which is right. On 2026-11-11 the maintainer decided that the two are to
+agree on this list wherever the fix is simple and needs no change of architecture, by fixing the
+side that is wrong, and that a fix that does need one comes back to the maintainer first. Each fix
+below does: it needs the scan on every press and hover frame, which the per-layer list under _What
+it costs_ is for, or the scan reading what an element draws. The maintainer chose the same day not
+to build them for now, so each case stays a known difference, with the side that is right named.
 
 - **Level flow siblings that overlap.** A page gives the later sibling the hit, and so does the
   scan. The cast keeps the first of them it found (`onTop`): the nearer by a rounding error, or the
@@ -260,11 +263,13 @@ exception. None of the fixes is built yet.
 - **A box that is not a ray target, over one that is.** A translucent cover or a badge without
   `cursor: pointer` over a button: the cast meets only the button and gives it the press, the scan
   gives it to the cover, and a page gives the click to the cover. Likewise, a card's background is
-  the blocker to the cast and the card to the scan. The box takes the press, as on a page, and the
-  button hears nothing of it. A press that lands on an element in no ray target reaches nothing, as
-  a press on the panel's background does today, and in development the missed-press note names the
-  element. Until that is built, the differential test compares the two only where the scan's element
-  is a ray target or inside one (`isInRayTarget`), and compares nothing elsewhere.
+  the blocker to the cast and the card to the scan. The page is right: the cover gets the `click`,
+  which bubbles through its parents, and the button hears nothing of it. Today the button gets the
+  press. A press on a card's background goes to the panel's blocker, which clicks the panel's
+  container element and lets the scene see the press too (`portal.js`), or to an overlay's blocker,
+  which clicks the overlay and stops there (`div.js`); no element between hears it. The differential
+  test compares the two only where the scan's element is a ray target or inside one
+  (`isInRayTarget`), and compares nothing elsewhere.
 
 `input/hitTest.test.js` is that differential test. It casts and scans a grid of rays, straight on
 and slanting, over every scene in `test/paintOrderScenes.js` and a few of its own where draw order,

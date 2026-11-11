@@ -37,9 +37,6 @@ importers:
       '@vite-pwa/assets-generator':
         specifier: ^1.0.1
         version: 1.0.4(@types/node@24.19.2)
-      '@webgpu/types':
-        specifier: ^0.1.65
-        version: 0.1.74
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
@@ -226,9 +223,6 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.0
         version: 16.3.3(@testing-library/dom@10.4.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@testing-library/user-event':
-        specifier: ^14.6.1
-        version: 14.6.8(@testing-library/dom@10.4.2)
       '@types/lodash':
         specifier: ^4.17.20
         version: 4.17.27
@@ -262,9 +256,6 @@ importers:
       justdom-xr:
         specifier: workspace:*
         version: link:../../packages/xr
-      lodash:
-        specifier: ^4.17.21
-        version: 4.18.1
       three:
         specifier: ~0.185.0
         version: 0.185.1
@@ -292,9 +283,6 @@ importers:
       '@types/three':
         specifier: ~0.185.0
         version: 0.185.4
-      '@webgpu/types':
-        specifier: ^0.1.65
-        version: 0.1.74
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
@@ -334,9 +322,6 @@ importers:
 
   ../../apps/todo:
     dependencies:
-      '@testing-library/user-event':
-        specifier: ^14.6.1
-        version: 14.6.8(@testing-library/dom@10.4.2)
       '@types/node':
         specifier: ^24.7.0
         version: 24.19.2
@@ -346,9 +331,6 @@ importers:
       '@vite-pwa/assets-generator':
         specifier: ^1.0.1
         version: 1.0.4(@types/node@24.19.2)
-      '@webgpu/types':
-        specifier: ^0.1.65
-        version: 0.1.74
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)
@@ -370,9 +352,6 @@ importers:
       justdom-xr:
         specifier: workspace:*
         version: link:../../packages/xr
-      lodash:
-        specifier: ^4.17.21
-        version: 4.18.1
       three:
         specifier: ~0.185.0
         version: 0.185.1

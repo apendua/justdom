@@ -1,5 +1,5 @@
 import { $, attr, children, className, set, style, text } from "justdom-core";
-import { component, makeNonReactive, on } from "justdom-signal";
+import { component, on } from "justdom-signal";
 import { removeTodo } from "../todos.js";
 
 /**
@@ -65,13 +65,10 @@ const TodoItem = component(
               attr({ type: "submit" }),
               attr("aria-label", () => (todo.completed ? "Mark as active" : "Mark as completed")),
               children(text`${() => (todo.completed ? "☑" : "☐")}`),
-              on(
-                "click",
-                makeNonReactive((event) => {
-                  event.preventDefault();
-                  todo.completed = !todo.completed;
-                }),
-              ),
+              on("click", (event) => {
+                event.preventDefault();
+                todo.completed = !todo.completed;
+              }),
             ]),
             $("span", [
               set("className", labelStyle),
@@ -83,13 +80,10 @@ const TodoItem = component(
               set("className", buttonStyle),
               attr({ type: "submit", formaction: `/todos/${todo.id}/delete` }),
               children(text`Delete`),
-              on(
-                "click",
-                makeNonReactive((event) => {
-                  event.preventDefault();
-                  removeTodo(todo.id);
-                }),
-              ),
+              on("click", (event) => {
+                event.preventDefault();
+                removeTodo(todo.id);
+              }),
             ]),
           ),
         ]),

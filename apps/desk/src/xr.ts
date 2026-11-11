@@ -78,10 +78,7 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
         );
       }
 
-      createXRButton(renderer, {
-        ar: { optionalFeatures: ["hand-tracking"] },
-        vr: { optionalFeatures: ["hand-tracking"] },
-      }).then((button) => {
+      createXRButton(renderer).then((button) => {
         document.body.appendChild(button);
       });
     },

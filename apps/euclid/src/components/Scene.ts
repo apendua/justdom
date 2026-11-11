@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { $, children, cursors, dom, getScene, getXRSession } from "justdom-three";
+import { $, children, cursors, dom, getScene, getXRSession, Nothing } from "justdom-three";
 import type { PortalOptions } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
+import { component, effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
 import { Backdrop, clientRect } from "justdom-xr/scene";
 import {
@@ -22,12 +22,6 @@ import {
  * brightest things in view.
  */
 const BACKDROP = "#141210";
-
-/**
- * A source that says nothing and never finishes: what a mounting is handed
- * while there is nothing to mount.
- */
-const NOTHING = new Stream<never>(() => {});
 
 /** The three elements the app is mounted in, each a panel in a session. */
 export interface Mounts {
@@ -56,7 +50,7 @@ const Panel = component(
     options: PortalOptions = {},
   ) => {
     if (!getXRSession(ctx)) {
-      return NOTHING;
+      return Nothing();
     }
     return dom(
       ctx,

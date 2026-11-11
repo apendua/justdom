@@ -114,10 +114,7 @@ installEmulator({ touch: { pitch: 0 } })
     });
     render(scene, { pointer }).subscribe({
       next: (renderer) => {
-        createXRButton(renderer, {
-          ar: { optionalFeatures: ["hand-tracking"] },
-          vr: { optionalFeatures: ["hand-tracking"] },
-        }).then((button) => {
+        createXRButton(renderer).then((button) => {
           // The steps stand either side of the XR button, whose width
           // depends on what it says (see `.deck-step` in `index.css`).
           root.style.setProperty("--xr-button-width", button.style.width);
@@ -131,5 +128,11 @@ installEmulator({ touch: { pitch: 0 } })
           );
         });
       },
+      error: (err) => {
+        console.error("Could not start the scene:", err);
+      },
     });
+  })
+  .catch((err) => {
+    console.error("Could not open the deck:", err);
   });

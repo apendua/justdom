@@ -41,10 +41,7 @@ export function offerXR(root: HTMLElement): void {
         canvas.style.display = "none";
       });
 
-      createXRButton(renderer, {
-        ar: { optionalFeatures: ["hand-tracking"] },
-        vr: { optionalFeatures: ["hand-tracking"] },
-      }).then((button) => {
+      createXRButton(renderer).then((button) => {
         document.body.appendChild(button);
       });
     },

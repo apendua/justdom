@@ -1,17 +1,20 @@
 import * as THREE from "three";
 import { xrSession } from "justdom-xr/session";
-import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "justdom-three";
+import {
+  children,
+  cursors,
+  $,
+  dom,
+  getScene,
+  getXRSession,
+  placeAndScale,
+  Nothing,
+} from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, onCleanup, Stream, useEffects } from "justdom-signal";
+import { component, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 import type { MountedDesk } from "../desk.js";
 import { DESK_TOP, PX, type Placement, type Room } from "../looks.js";
 import type { Readable } from "../session.js";
-
-/**
- * A source that says nothing and never finishes: what a mounting is handed
- * while there is nothing to mount.
- */
-export const NOTHING = new Stream<never>(() => {});
 
 /**
  * The room the desk is set in, in the look's colours: a wall behind, a desk
@@ -167,7 +170,7 @@ export const Scene = (desk: Readable<MountedDesk>) =>
         ...lights(),
         component(() => {
           if (!getXRSession(ctx)) {
-            return NOTHING;
+            return Nothing();
           }
           const { look, elements } = desk.get();
           return $(new THREE.Group(), [

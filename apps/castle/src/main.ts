@@ -30,7 +30,7 @@ if (import.meta.env.DEV) {
 // emulator and the touch layer are chunks of their own, fetched only when
 // asked for. If that fetch fails there is no reason to withhold the game:
 // `installEmulator` logs it and mounting carries on regardless.
-installEmulator({ touch: {} }).then(() => {
+void installEmulator({ touch: {} }).then(() => {
   render(App, {
     // The mouse and a finger play on the page, with no session, a drag on
     // nothing turning the camera.
@@ -47,6 +47,9 @@ installEmulator({ touch: {} }).then(() => {
       createXRButton(renderer).then((button) => {
         root.replaceChildren(renderer.domElement, button);
       });
+    },
+    error: (err) => {
+      console.error("Could not start the scene:", err);
     },
   });
 });

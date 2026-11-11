@@ -23,7 +23,6 @@
     "@types/node": "^24.7.0",
     "@types/pngjs": "^6.0.5",
     "@types/three": "~0.185.0",
-    "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
     "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*",

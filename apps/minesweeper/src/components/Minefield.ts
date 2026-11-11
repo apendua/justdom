@@ -139,7 +139,7 @@ const Minefield = component((ctx: WeakKey, game: Fields) => {
     attr("class", noSelect),
     attr("width", () => dimensions.screenWidth.toString()),
     attr("height", () => dimensions.screenHeight.toString()),
-    attr("viewbox", () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`),
+    attr("viewBox", () => `0 0 ${dimensions.screenWidth} ${dimensions.screenHeight}`),
     on("click", handleOnClick),
     on("contextmenu", handleContextMenu),
     on("touchstart", handleTouchStart),

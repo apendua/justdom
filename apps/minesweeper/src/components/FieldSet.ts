@@ -43,7 +43,6 @@ class FieldSetStore {
 
   @memo()
   get d() {
-    console.log("EVALUATE");
     const loops = findBorder(this.#props.fields);
     if (this.#props.cutHoles) {
       this.#props.fields.forEach((field) => {

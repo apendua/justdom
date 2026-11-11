@@ -16,12 +16,12 @@ export interface MusicCardActions {
 }
 
 /**
- * The soundtrack's card. Building and besieging are two panels rather than two
- * halves of one, and the music plays through both, so the card is written once
- * here and dropped into either stack.
+ * The soundtrack's card, in the one panel both phases share (`GameUI.ts`).
+ * The music plays through building and besieging alike, so the card stays
+ * where it is while the cards above it change their rows.
  *
- * `state` is meant to be a panel's own props store: reading from it here is what
- * ties the readings to it. `output` is the scene's own, which the picker both
+ * `state` is meant to be the panel's own props store: reading from it here is
+ * what ties the readings to it. `output` is the scene's own, which the picker both
  * shows and sets.
  */
 export function musicCard(

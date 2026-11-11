@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { $, children, cursors, dom, getScene, getXRSession } from "justdom-three";
+import { $, children, cursors, dom, getScene, getXRSession, Nothing } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
+import { component, effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
 import { Backdrop, clientRect } from "justdom-xr/scene";
 import { BOARD_AT, boardScale, MENU_AT, MENU_PITCH, MENU_SCALE, MENU_YAW } from "../placement";
@@ -12,12 +12,6 @@ import { BOARD_AT, boardScale, MENU_AT, MENU_PITCH, MENU_SCALE, MENU_YAW } from 
  * the brightest things in view.
  */
 const BACKDROP = "#1e2430";
-
-/**
- * A source that says nothing and never finishes: what a mounting is handed
- * while there is nothing to mount.
- */
-const NOTHING = new Stream<never>(() => {});
 
 /**
  * The scene: the page's own board and menu, each mirrored into a panel in
@@ -73,7 +67,7 @@ export const Scene = (board: HTMLElement, menu: HTMLElement) =>
         $(new THREE.AmbientLight(0xffffff, 2)),
         component(() => {
           if (!getXRSession(ctx)) {
-            return NOTHING;
+            return Nothing();
           }
           return dom(
             ctx,
@@ -92,7 +86,7 @@ export const Scene = (board: HTMLElement, menu: HTMLElement) =>
         })(),
         component(() => {
           if (!getXRSession(ctx)) {
-            return NOTHING;
+            return Nothing();
           }
           return dom(
             ctx,

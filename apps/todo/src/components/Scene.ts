@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene, getXRSession } from "justdom-three";
+import { children, cursors, $, dom, getScene, getXRSession, Nothing } from "justdom-three";
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
-import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
+import { component, effects, effectsOnly, useEffects } from "justdom-signal";
 import { xrSession } from "justdom-xr/session";
 import { Backdrop } from "justdom-xr/scene";
 
@@ -19,12 +19,6 @@ declare global {
  * the brightest thing in view, which is where the eye should go.
  */
 const BACKDROP = "#1e2430";
-
-/**
- * A source that says nothing and never finishes: what a mounting is handed
- * while there is nothing to mount.
- */
-const NOTHING = new Stream<never>(() => {});
 
 /**
  * The scene: the page's own todo element, mirrored into a panel in front of
@@ -96,7 +90,7 @@ export const Scene = (panel: HTMLElement) =>
           children(
             component(() => {
               if (!getXRSession(ctx)) {
-                return NOTHING;
+                return Nothing();
               }
               return dom(ctx, panel, [
                 effects((obj) => {

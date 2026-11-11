@@ -108,9 +108,9 @@ const Game = component((ctx: WeakKey) => {
   const root = RootContext.get(ctx);
   const state = store({ isMenuVisible: false });
 
-  const setMenuVisible = makeNonReactive((isMenuVisible: boolean) => {
+  const setMenuVisible = (isMenuVisible: boolean) => {
     state.isMenuVisible = isMenuVisible;
-  });
+  };
 
   // The board is rebuilt from scratch for every new game, so it reads the game
   // it belongs to once, outside of any computation, and holds on to it.

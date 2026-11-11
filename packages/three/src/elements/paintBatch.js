@@ -577,8 +577,8 @@ export class PaintBatch {
   /** Something structural is pending, so the flush rebuilds. */
   #structural = false;
   /**
-   * The boxes whose numbers changed since the last flush, and nothing else
-   * about them: each once, in a list walked by index, since a hover or a
+   * The boxes and runs whose numbers changed since the last flush, and
+   * nothing else about them: each once, in a list walked by index, since a hover or a
    * colour animation patches every frame.
    *
    * @type {Object3D[]}
@@ -629,7 +629,8 @@ export class PaintBatch {
    * What a rebuild met, in the order of the walk: the order each box or run
    * draws at, the numbers of a box or the run itself, and its matrix in the
    * container's frame. Kept between rebuilds, as is every scratch below,
-   * since a rebuild runs in the frame whenever something moves.
+   * since a rebuild still runs in the frame whenever something structural
+   * changes, which a panel being edited does often.
    *
    * @type {number[]}
    */
@@ -731,11 +732,12 @@ export class PaintBatch {
   /**
    * Something either batch copied down changed in a way that needs a
    * rebuild (see the file's header), or the layers the order cuts did: a
-   * box moved, scrolled, appeared or went away, a run did the same.
+   * box or a run appeared, went away, was shown or hidden, or was put under
+   * another parent. A box that moved or scrolled is `moved`, and one whose
+   * numbers changed is `changed`.
    *
-   * Coalesced to one rebuild, because a single mutation reaches a great many
-   * of these — every box in a re-laid-out panel writes its uniforms — and the
-   * rebuild is a walk of the whole panel either way.
+   * Coalesced to one rebuild, because a single mutation can reach a great
+   * many of these, and the rebuild is a walk of the whole panel either way.
    *
    * Two things collect the debt, and a panel needs both. A microtask is the
    * right grain for anything that arrives as its own task, which is what a
@@ -766,10 +768,10 @@ export class PaintBatch {
   }
 
   /**
-   * A box's numbers changed, and nothing else about it: the next flush
-   * writes its instances where the last rebuild put them, unless anything
-   * structural is pending or the box no longer matches what the rebuild
-   * recorded (see the file's header).
+   * A box's or a run's numbers changed, and nothing else about it: the
+   * next flush writes its instances where the last rebuild put them, unless
+   * anything structural is pending or the member no longer matches what the
+   * rebuild recorded (see the file's header).
    *
    * @param {Object3D} mesh A member of `boxes` or of `runs`.
    * @returns {void}
@@ -833,7 +835,7 @@ export class PaintBatch {
 
   /**
    * Write the matrices under the objects marked moved and the instances of
-   * the boxes marked changed where the last rebuild put them, if every one
+   * the boxes and runs marked changed where the last rebuild put them, if every one
    * of them still matches the record; say whether it did. A move that does
    * not match leaves matrices written, which the rebuild that follows
    * writes again.
@@ -969,8 +971,8 @@ export class PaintBatch {
   }
 
   /**
-   * Whether a box the last rebuild recorded is drawn where and as it
-   * recorded it, so that writing its numbers there draws what a rebuild
+   * Whether a box or a run the last rebuild recorded is drawn where and as
+   * it recorded it, so that writing its numbers there draws what a rebuild
    * would.
    *
    * @param {Object3D} object

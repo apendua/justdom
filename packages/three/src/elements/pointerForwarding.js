@@ -4,7 +4,6 @@ import { interactions } from "../interactions.js";
 import { isBlocker } from "./blocker.js";
 import { getParentObject } from "./contentGroup.js";
 import {
-  clientPointAt,
   dragAndDrop,
   getPanel,
   hitElement,
@@ -16,7 +15,6 @@ import {
   pressInit,
   probePanel,
   releaseInit,
-  writeClient,
 } from "./dragAndDrop.js";
 import { createFrameRequester } from "./frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
@@ -31,7 +29,7 @@ import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
-import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";
+import { movesList, ScrollDragsContext } from "./scroll.js";
 import {
   atPointer,
   bringUpElsewhere,
@@ -51,8 +49,11 @@ import {
   sendPointerAndMouse,
   settleCapture,
   writeLastPoint,
+  isGone,
 } from "./pointerHands.js";
 import { createFlag, cross, drop, nextFlagged, NOWHERE } from "./pointerCrossings.js";
+import { samplePlane, writeSampled } from "./pointerPlane.js";
+import { watchStick } from "./pointerWheel.js";
 import { takesTheTyping } from "./typing.js";
 
 /**
@@ -219,37 +220,6 @@ export function getControlRoot(element, object) {
 }
 
 /**
- * Whether a press on this element is a press on anything. A projected panel
- * keeps a removed element's object in the scene, drawn as it was, until the
- * update that removed it commits — so for those frames the object is still
- * there to hit, and the ray still lands on it. What must not follow is the
- * click: the element is out of the document, the app has already let go of
- * it, and a handler still hanging off it would run against a row the app
- * considers gone. A press that lands on such an element is swallowed —
- * stopped, so that it does not fall through to whatever is behind the row
- * either — and the gesture is not begun.
- *
- * A swallowed press is silent to its end: the page hears no `pointerdown`,
- * no `pointerup` and no click of it, and the hand feels neither its press
- * nor its release. Not even from a control still around the element, which
- * would otherwise hear a release it heard no press for. That differs from
- * an element that goes during a press: the page heard that press, and the
- * next control up sends its release. The button stays held all the same,
- * so the hand's moves while it holds a swallowed press say `buttons` 1, as
- * a browser's moves do for a button pressed outside its window.
- *
- * `isConnected` rather than anything reactive, because it is asked from an
- * event handler, at the moment of the press, and the answer is a DOM fact
- * rather than a dependency.
- *
- * @param {Element} element
- * @returns {boolean}
- */
-export function isGone(element) {
-  return !element.isConnected;
-}
-
-/**
  * Whether the page runs in development: what Vite says as
  * `import.meta.env.DEV` where Vite served or built it, and `NODE_ENV`
  * under Node, as under a test runner.
@@ -299,82 +269,6 @@ function noteMissedPress(element) {
     element,
   );
 }
-
-/**
- * How far a hand's thumbstick turns the wheel, in px a second with the
- * stick held at its stop. A browser turns about 100 px a notch, so this is
- * ten notches a second.
- */
-const WHEEL_SPEED = 1000;
-
-/**
- * How far off its centre the stick has to be before it turns the wheel,
- * as a fraction of its travel. A stick let go of reads a little off zero,
- * and a wheel turned by that would creep under a hand that is not on it.
- * The travel past it is the wheel's whole range, so the wheel turns from
- * nothing as the stick leaves the zone.
- */
-const STICK_DEAD_ZONE = 0.15;
-
-/**
- * The most a frame counts for in turning the wheel, in ms. A frame that
- * stalled, on a commit that read a whole panel at once say, would
- * otherwise turn it as far as the stall was long, all at once.
- */
-const MAX_WHEEL_FRAME = 100;
-
-/**
- * Where a hand's thumbstick is along its vertical axis: -1 pushed forward,
- * 1 pulled back, as a gamepad says it, and 0 inside the dead zone (see
- * `STICK_DEAD_ZONE`). The `xr-standard` mapping puts the thumbstick on
- * axes 2 and 3, with a touchpad's, or zeros, on 0 and 1; a gamepad with
- * only two axes has its stick on those.
- *
- * @param {XRInputSource | null} source
- * @returns {number}
- */
-function stickY(source) {
-  const axes = source?.gamepad?.axes;
-  const y = axes ? (axes.length >= 4 ? axes[3] : (axes[1] ?? 0)) : 0;
-  const travel = (Math.abs(y) - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE);
-  return travel > 0 ? Math.sign(y) * Math.min(travel, 1) : 0;
-}
-
-/**
- * The buttons a gamepad says are pressed now, as `Hand.buttons` says them:
- * the trigger and the grip, which the `xr-standard` mapping puts at 0 and
- * 1.
- *
- * @param {Gamepad} gamepad
- * @returns {number}
- */
-function pressedBits(gamepad) {
-  const { buttons } = gamepad;
-  return (
-    (buttons[0]?.pressed ? HAND_BITS.select : 0) | (buttons[1]?.pressed ? HAND_BITS.squeeze : 0)
-  );
-}
-
-/**
- * The init of every `wheel` a thumbstick turns, written in place for each,
- * since one goes out every frame the stick is held over a panel. Pixels,
- * vertical, and cancelable, as a browser's is: a page that zooms on the
- * wheel cancels it.
- *
- * @type {WheelEventInit}
- */
-const wheelInit = {
-  bubbles: true,
-  cancelable: true,
-  deltaMode: 0,
-  deltaX: 0,
-  deltaY: 0,
-  deltaZ: 0,
-  clientX: 0,
-  clientY: 0,
-  screenX: 0,
-  screenY: 0,
-};
 
 /**
  * An element of a panel that rays act on: a control, which is anything a
@@ -457,8 +351,9 @@ const wheelInit = {
 
 /**
  * What one panel's forwarder keeps while it is up: everything
- * `createPanelForwarder` builds that its functions read after the build.
- * Values used only while building stay local to it.
+ * `createPanelForwarder` builds that its functions, and the ones in
+ * `pointerPlane.js` and `pointerWheel.js` it hands this to, read after the
+ * build. Values used only while building stay local to it.
  *
  * @typedef {object} ForwarderState
  * @property {WeakKey} ctx The panel's context.
@@ -614,7 +509,7 @@ export const PointerForwarderContext = createProperty(
  * A panel that asks for it also hears a hand's thumbstick as a wheel (see
  * `PortalOptions.thumbstickWheel` in `portal.js`). Like a browser's, the
  * `wheel` goes to the element under the ray, a control or not (see
- * `wheelTarget`), and scrolls nothing of itself.
+ * `wheelTarget` in `pointerWheel.js`), and scrolls nothing of itself.
  *
  * @param {WeakKey} ctx The panel's context, with its haptics and its scroll
  *   gesture.
@@ -975,32 +870,6 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   state.client = new THREE.Vector2();
 
   /**
-   * Where a hand's ray crosses this panel's plane, into `inPanel`, in the
-   * panel's px: the one place every event placed by the plane rather than
-   * by what the ray hit takes its point from, a captured hand's moves and
-   * release and the crossings `bringUp` sends.
-   *
-   * @param {XRTargetRaySpace} controller
-   * @returns {boolean} False, with nothing written, where the ray crosses
-   *   the plane nowhere.
-   */
-  const samplePlane = (controller) =>
-    sampleRay(controller, state.container, state.onPlane, state.inPanel);
-
-  /**
-   * Write the point `samplePlane` last found into an event's init, as a
-   * point on the page.
-   *
-   * @param {Panel} own
-   * @param {MouseEventInit} init
-   * @returns {void}
-   */
-  const writeSampled = (own, init) => {
-    clientPointAt(own, state.inPanel.x, state.inPanel.y, state.client);
-    writeClient(init, state.client.x, state.client.y);
-  };
-
-  /**
    * One captured hand's move, if its ray has moved across this panel's
    * plane since the last; and let go of a hand no longer captured here.
    *
@@ -1015,7 +884,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       state.following.delete(controller);
       return;
     }
-    if (!samplePlane(controller)) {
+    if (!samplePlane(state, controller)) {
       return;
     }
     if (last.sent && last.x === state.inPanel.x && last.y === state.inPanel.y) {
@@ -1053,115 +922,6 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   state.wheelFrame = 0;
   /** Whether a hand with a stick has its ray on the panel this frame. */
   state.wheelHeld = false;
-
-  /**
-   * The element a hand's wheel goes to: the innermost control its ray is
-   * on that the page still has, found as its moves find it, without a
-   * walk. On a list's gaps, on a gone row in a list, which the walk then
-   * finds whatever replaced, or on the panel's background, it is the
-   * deepest element at the point `samplePlane` last found (see
-   * `hitElement`); a move passes over the list to a control outside it
-   * instead. Nothing where the ray is on something a plugin hangs in the
-   * panel, which is the scene's, as the scene's object is in front of the
-   * page there; and, on a panel that stops no rays, nothing between its
-   * controls and lists, where it has no background for the ray to be on.
-   *
-   * @param {PanelHand} hand
-   * @param {Panel} own
-   * @returns {HTMLElement | null}
-   */
-  const wheelTarget = (hand, own) => {
-    let onList = false;
-    for (const object of hand.hover) {
-      const target = state.targets.get(object);
-      if (!target) {
-        continue;
-      }
-      if (target.list) {
-        onList = true;
-        break;
-      }
-      if (!isGone(target.element)) {
-        return target.element;
-      }
-    }
-    const hovered = hand.hovered;
-    const onBackground = hovered?.parent === state.container && isBlocker(hovered);
-    return onList || onBackground ? hitElement(own, state.onPlane) : null;
-  };
-
-  /**
-   * One hand's turn of the wheel this frame, if its ray is on the panel,
-   * it holds no button, and its stick is out of the dead zone. Held is what
-   * the hand's record says or what its gamepad says: the record hears only
-   * the buttons that close after it is made, and a trigger held on
-   * something the scene carries since before the ray came to any panel is
-   * held all the same. The `wheel` goes to the element under the ray (see
-   * `wheelTarget`), at the point where the ray crosses the panel's plane,
-   * against the corner last probed, as a move is placed.
-   *
-   * @param {PanelHand} hand
-   * @param {XRTargetRaySpace} controller
-   * @returns {void}
-   */
-  const turnWheel = (hand, controller) => {
-    if (hand.hover.length === 0 || !hand.source?.gamepad) {
-      return;
-    }
-    state.wheelHeld = true;
-    const y = stickY(hand.source);
-    const own = state.panel();
-    if (
-      y === 0 ||
-      state.wheelFrame === 0 ||
-      heldButtons(controller) !== 0 ||
-      pressedBits(hand.source.gamepad) !== 0 ||
-      !own
-    ) {
-      return;
-    }
-    const element = samplePlane(controller) ? wheelTarget(hand, own) : null;
-    if (!element) {
-      return;
-    }
-    writeSampled(own, wheelInit);
-    wheelInit.deltaY = (y * WHEEL_SPEED * state.wheelFrame) / 1000;
-    element.dispatchEvent(new WheelEvent("wheel", wheelInit));
-  };
-
-  /** The frames the thumbstick is read on, while a hand with one is here. */
-  const wheelTick = () => {
-    const now = performance.now();
-    state.wheelFrame = Math.min(now - state.wheelTime, MAX_WHEEL_FRAME);
-    state.wheelTime = now;
-    state.wheelHeld = false;
-    state.panelHands.forEach(turnWheel);
-    if (!state.wheelHeld && state.stopWheel) {
-      state.stopWheel();
-      state.stopWheel = null;
-    }
-  };
-
-  /**
-   * Read the stick of a hand whose ray is on the panel, if the panel asks
-   * for a wheel and the hand has a stick: the mouse has none, and so starts
-   * nothing before a session. Asked on every enter and move, so a hand
-   * whose source comes back while its ray rests here starts the frames too.
-   * The hand's record of its buttons starts here at the latest.
-   *
-   * @param {XREventMap["pointerenter"] | XREventMap["pointermove"]} e
-   * @returns {void}
-   */
-  const watchStick = (e) => {
-    if (!state.thumbstickWheel || !e.inputSource?.gamepad) {
-      return;
-    }
-    handOf(e.controller);
-    if (!state.stopWheel) {
-      state.wheelTime = performance.now();
-      state.stopWheel = state.requestFrames(wheelTick);
-    }
-  };
 
   /**
    * Bring what the page knows of where a hand's pointer is up to date with
@@ -1254,7 +1014,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       walk(e.originalTarget, hand.hover);
       hand.hovered = e.originalTarget;
       hand.source = e.inputSource;
-      watchStick(e);
+      watchStick(state, e);
       // Nothing is hovered under a drag, as `:hover` holds still under one
       // on a page; the targets the drag passes over hear `dragenter`. From
       // the press, since the ray has already moved in the frame the press
@@ -1291,7 +1051,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     pointermove(e) {
       const hand = panelHand(e.controller);
       hand.source = e.inputSource;
-      watchStick(e);
+      watchStick(state, e);
       if (e.originalTarget !== hand.hovered) {
         walk(e.originalTarget, hand.hover);
         hand.hovered = e.originalTarget;
@@ -1699,12 +1459,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     },
     placeRelease: (controller, captor, init) => {
       const own = state.panel();
-      if (!own?.element.contains(captor) || !samplePlane(controller)) {
+      if (!own?.element.contains(captor) || !samplePlane(state, controller)) {
         return false;
       }
       // One event, so probed, as any release is.
       probePanel(own);
-      writeSampled(own, init);
+      writeSampled(state, own, init);
       return true;
     },
     leave: (controller, init) => {
@@ -1728,9 +1488,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       const pointerHand = handOf(controller);
       const init = atPointer(controller, pointerHand, buttons);
       const own = state.panel();
-      const placed = !!own && !!element && samplePlane(controller);
+      const placed = !!own && !!element && samplePlane(state, controller);
       if (placed) {
-        writeSampled(own, init);
+        writeSampled(state, own, init);
       }
       const x = init.clientX ?? 0;
       const y = init.clientY ?? 0;

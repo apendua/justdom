@@ -235,7 +235,7 @@ export const OBSERVER_OPTIONS = {
  *   mouse wheel on this panel: while the hand's ray is on the panel and it
  *   holds no button, pushing the stick forward or pulling it back sends
  *   `wheel` to the element under the ray, once a frame (see `wheelTarget`
- *   in `pointerForwarding.js` for which one), with a `deltaY` that follows
+ *   in `pointerWheel.js` for which one), with a `deltaY` that follows
  *   how far the stick is pushed, forward as negative, as a wheel turned up
  *   says it. For a page that zooms or pans on the wheel. A panel with
  *   `opaqueToRays: false` turns it only while the ray is on a control or a

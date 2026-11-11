@@ -15,6 +15,37 @@ import { writeClient } from "./dragAndDrop.js";
  */
 
 /**
+ * Whether a press on this element is a press on anything. A projected panel
+ * keeps a removed element's object in the scene, drawn as it was, until the
+ * update that removed it commits — so for those frames the object is still
+ * there to hit, and the ray still lands on it. What must not follow is the
+ * click: the element is out of the document, the app has already let go of
+ * it, and a handler still hanging off it would run against a row the app
+ * considers gone. A press that lands on such an element is swallowed —
+ * stopped, so that it does not fall through to whatever is behind the row
+ * either — and the gesture is not begun.
+ *
+ * A swallowed press is silent to its end: the page hears no `pointerdown`,
+ * no `pointerup` and no click of it, and the hand feels neither its press
+ * nor its release. Not even from a control still around the element, which
+ * would otherwise hear a release it heard no press for. That differs from
+ * an element that goes during a press: the page heard that press, and the
+ * next control up sends its release. The button stays held all the same,
+ * so the hand's moves while it holds a swallowed press say `buttons` 1, as
+ * a browser's moves do for a button pressed outside its window.
+ *
+ * `isConnected` rather than anything reactive, because it is asked from an
+ * event handler, at the moment of the press, and the answer is a DOM fact
+ * rather than a dependency.
+ *
+ * @param {Element} element
+ * @returns {boolean}
+ */
+export function isGone(element) {
+  return !element.isConnected;
+}
+
+/**
  * What a hand is to the page as a pointer, whichever panel its ray is on: a
  * page knows a pointer by its id, and the capture and the cancelled
  * `pointerdown` below go with the pointer, across panels, as a browser's

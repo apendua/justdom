@@ -1410,6 +1410,8 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  * @typedef {object} ForwarderState
  * @property {WeakKey} ctx The panel's context.
  * @property {Object3D} container The panel's container object.
+ * @property {boolean} thumbstickWheel Whether a hand's thumbstick is heard
+ *   as a wheel (see `ForwarderOptions`).
  * @property {ReturnType<typeof interactions>["stopPropagation"]} stopPropagation
  * @property {ReturnType<typeof interactions>["isStopped"]} isStopped
  * @property {ReturnType<typeof ScrollDragsContext.get>} drags
@@ -1441,6 +1443,18 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  * @property {boolean} wheelHeld
  * @property {ForwarderEntry} registered This panel, among the panels that
  *   are up.
+ * @property {ForwarderListeners} listeners The container's ray listeners.
+ * @property {Object3D<XREventMap>} listened The container, as what they
+ *   listen on.
+ * @property {(keyof ForwarderListeners)[]} types The events they listen to.
+ * @property {() => void} letGoOfCapture Lets go of this forwarder's hold
+ *   on the page's pointer capture (see `holdPointerCapture`).
+ */
+
+/**
+ * One listener per ray event.
+ *
+ * @typedef {{ [K in keyof import('../core.js').InteractionEventMap]: (e: XREventMap[K]) => void }} ForwarderListeners
  */
 
 /**
@@ -1561,7 +1575,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   // they share. Its fields are written as the build reaches them, in the
   // order below; nothing reads one before the build has written it, since
   // every reader runs on an event, after the build returns.
-  const state = /** @type {ForwarderState} */ ({ ctx, container, stopPropagation, isStopped });
+  const state = /** @type {ForwarderState} */ ({
+    ctx,
+    container,
+    thumbstickWheel,
+    stopPropagation,
+    isStopped,
+  });
   state.drags = ScrollDragsContext.get(ctx);
   state.dnd = dragAndDrop(ctx);
   /** What the hand feels on a control, if the panel has haptics at all. */
@@ -2080,7 +2100,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {void}
    */
   const watchStick = (e) => {
-    if (!thumbstickWheel || !e.inputSource?.gamepad) {
+    if (!state.thumbstickWheel || !e.inputSource?.gamepad) {
       return;
     }
     handOf(e.controller);
@@ -2173,9 +2193,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * event's `originalTarget`: three writes `target` as the object whose
    * listener is running, which here is the container.
    *
-   * @type {{ [K in keyof import('../core.js').InteractionEventMap]: (e: XREventMap[K]) => void }}
+   * @type {ForwarderListeners}
    */
-  const listeners = {
+  state.listeners = {
     pointerenter(e) {
       const hand = panelHand(e.controller);
       walk(e.originalTarget, hand.hover);
@@ -2589,13 +2609,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     },
   };
 
-  const listened = /** @type {Object3D<XREventMap>} */ (container);
-  const types = /** @type {(keyof typeof listeners)[]} */ (Object.keys(listeners));
-  for (const type of types) {
-    listened.addEventListener(type, /** @type {never} */ (listeners[type]));
+  state.listened = /** @type {Object3D<XREventMap>} */ (container);
+  state.types = /** @type {(keyof ForwarderListeners)[]} */ (Object.keys(state.listeners));
+  for (const type of state.types) {
+    state.listened.addEventListener(type, /** @type {never} */ (state.listeners[type]));
   }
 
-  const letGoOfCapture = holdPointerCapture();
+  state.letGoOfCapture = holdPointerCapture();
 
   /**
    * This panel, among the panels that are up (see `forwarders`).
@@ -2713,14 +2733,14 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     control: (object, element, onPress) => register({ element, object, list: false, onPress }),
     list: (object, element) => register({ element, object, list: true, onPress: undefined }),
     dispose() {
-      for (const type of types) {
-        listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
+      for (const type of state.types) {
+        state.listened.removeEventListener(type, /** @type {never} */ (state.listeners[type]));
       }
       const index = forwarders.indexOf(state.registered);
       if (index !== -1) {
         forwarders.splice(index, 1);
       }
-      letGoOfCapture();
+      state.letGoOfCapture();
       state.following.clear();
       state.stopFollowing?.();
       state.stopFollowing = null;

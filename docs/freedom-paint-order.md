@@ -259,10 +259,13 @@ Where the two disagree, and which is right:
   (`isInRayTarget`), and compares nothing elsewhere.
 
 `input/hitTest.test.js` is that differential test. It casts and scans a grid of rays, straight on
-and slanting, over every scene in `test/paintOrderScenes.js`, with every element made a ray target.
+and slanting, over every scene in `test/paintOrderScenes.js` and a few of its own where draw order,
+the clip, a rounded clip corner or culling decides the hit, with every element made a ray target.
 Each difference it finds must be a level tie the scan breaks to the later element, or content over a
-sibling's box, and the count of each, per scene, is held there. A difference of any other kind fails
-it. The layers in those scenes agree everywhere.
+sibling's box, and the count of each, per scene, is held there, beside the count of rays compared. A
+difference of any other kind fails it. Layers in different planes agree. Sibling layers on one plane
+tie, since in jsdom no frame walks the layers and each keeps the base its nesting gives it, so the
+walk's order between layers is not exercised by this test.
 
 ## Within a level: the rungs
 

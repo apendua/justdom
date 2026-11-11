@@ -24,7 +24,10 @@ import {
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
+  getParentElement,
   isPortalRoot,
+  nodeCache,
+  nodeDerived,
 } from "./mirror.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
@@ -75,6 +78,37 @@ export function isClickable(element) {
  */
 export function isRayTarget(element) {
   return isClickable(element) || isDragSource(element) || isFieldLabel(element);
+}
+
+/** @type {WeakMap<Node, import("justdom-signal").Derived<boolean>>} */
+const inRayTargetCache = nodeCache();
+
+/**
+ * Whether the element is a ray target or sits inside one in its panel: the
+ * boxes a press on which the page would give to a ray target. A box there
+ * takes a ray even when it draws nothing, as a page's transparent child
+ * takes the click for the card around it, over a nested button or past the
+ * card's own edge. One memo per element, each reading its parent's.
+ *
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+export function isInRayTarget(element) {
+  let signal = inRayTargetCache.get(element);
+  if (!signal) {
+    signal = nodeDerived(element, () => {
+      if (isRayTarget(element)) {
+        return true;
+      }
+      if (isPortalRoot(element)) {
+        return false;
+      }
+      const parent = getParentElement(element);
+      return parent !== null && isInRayTarget(parent);
+    });
+    inRayTargetCache.set(element, signal);
+  }
+  return signal.get();
 }
 
 /** The attributes of a field that `takesTheTyping` reads. */

@@ -322,11 +322,17 @@ export function when(condition, render) {
  * Mounts one of several alternatives, chosen by a key.
  *
  * `render(key)` runs when `select` first gives a key and again each time it
- * gives a different one, after the alternative that was mounted has been
- * taken down. A key read again and found the same leaves what is mounted
- * alone, with whatever state it holds. Keys are compared by identity, as
- * the items of a `list` are, so strings, numbers and booleans are the
- * usual ones.
+ * gives a different one. A key read again and found the same leaves what is
+ * mounted alone, with whatever state it holds. Keys are compared by
+ * identity, as the items of a `list` are, so strings, numbers and booleans
+ * are the usual ones.
+ *
+ * A replacement goes in the order a `list` replaces an item: the old
+ * alternative's nodes leave the document, `render(key)` runs and the new
+ * alternative is mounted, and only then are the old one's effects disposed
+ * and its `onCleanup` run. So for a moment both are live, and an alternative
+ * that holds something only one may hold, such as a listener on `window`,
+ * has to allow for the next one taking it before it lets go.
  *
  * @template K
  * @param {() => K} select Read reactively.

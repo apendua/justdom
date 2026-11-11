@@ -110,9 +110,13 @@ not their key.
 
 `when(condition, render)` mounts what `render` makes while `condition` holds, and takes it down when
 it stops holding. `branch(select, render)` mounts one of several alternatives: `render(key)` runs
-when `select` gives a key it did not give last time, after the alternative that was mounted has been
-taken down. Both read their first argument reactively, and both leave what is mounted alone while
-the answer stays the same.
+when `select` gives a key it did not give last time. Both read their first argument reactively, and
+both leave what is mounted alone while the answer stays the same.
+
+When `branch` replaces an alternative, the old one's nodes leave the document first, then
+`render(key)` runs and the new one is mounted, and only after that are the old one's effects
+disposed. An alternative that holds something only one may hold, such as a listener on `window`, has
+to allow for the next one taking it before it lets go.
 
 ```js
 import { $, branch, children, text, when } from "justdom-core";

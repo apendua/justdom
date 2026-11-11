@@ -510,6 +510,7 @@ const hosts = new Map();
  *
  * @type {WeakMap<Element, OutlineEntry>}
  */
+// Not a nodeCache: a fresh one is made for each report.
 let report = new WeakMap();
 
 /**

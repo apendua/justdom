@@ -83,6 +83,8 @@ const listeners = new Set();
  *
  * @type {WeakMap<Element, StyleScope>}
  */
+// Not a nodeCache: keyed by the page's `<style>` and `<link>` elements, which
+// no mirror follows.
 const styleScopes = new WeakMap();
 
 /** @type {MutationObserver | null} */

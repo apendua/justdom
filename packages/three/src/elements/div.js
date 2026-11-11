@@ -165,6 +165,8 @@ function placementEqual(a, b) {
  *
  * @type {WeakMap<Element, Signal<Placement | null>>}
  */
+// Not a nodeCache: set and deleted by the box that commits it, in whichever
+// panel.
 const committedPlacements = new WeakMap();
 
 /**

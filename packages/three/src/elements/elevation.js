@@ -227,6 +227,8 @@ export function bandBase(order) {
 }
 
 /** @type {WeakMap<PaintNode, Signal<number | null>>} */
+// Not a nodeCache: keyed by a layer and set by the panel's walk, which writes
+// it whole each time.
 const layerBases = new WeakMap();
 
 /**

@@ -175,14 +175,16 @@ stay above every slot.
 ## The hit test
 
 `onTop` in `interactions.js` sorts the hits by distance. The nearest wins unless hits within `LEVEL`
-(a micrometre) of it are drawn after it, and then the last drawn of those wins. Each mesh a ray can
-meet on a panel registers how far past its `renderOrder` it draws (`registerDrawOrder` in
-`drawOrder.js`), and `getObjectDrawOrder` reads the sum. A batched box registers `BOX_BUCKET_BIAS`,
-since its ray target is its element's mesh and the panel's one batch lays it at
-`renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a level later. The box, the
-picture, a pseudo-element's box, the run, the caret, the checkbox's tick and the SVG shape register.
-A mesh that did not register reads as `-Infinity`, so where a hit is on no panel the nearest wins as
-it was found.
+(a micrometre) of it are drawn after it, and then the last drawn of those wins. Of those drawn at
+one order, the one in the later element in tree order wins, as on a page (`isLaterInTree` in
+`drawOrder.js`, which reads each hit's element from `objectNodes`, the map every portal keeps of the
+node each of its objects mirrors). Each mesh a ray can meet on a panel registers how far past its
+`renderOrder` it draws (`registerDrawOrder` in `drawOrder.js`), and `getObjectDrawOrder` reads the
+sum. A batched box registers `BOX_BUCKET_BIAS`, since its ray target is its element's mesh and the
+panel's one batch lays it at `renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a
+level later. The box, the picture, a pseudo-element's box, the run, the caret, the checkbox's tick
+and the SVG shape register. A mesh that did not register reads as `-Infinity`, so where a hit is on
+no panel the nearest wins as it was found.
 
 A blocker, the panel's or an overlay's, sits a little behind the box it covers, so that what the box
 draws is met first. A ray meets it wherever the ray crosses the box's own plane inside the box, and
@@ -249,16 +251,11 @@ agree on this list wherever the fix is simple and needs no change of architectur
 side that is wrong, and that a fix that does need one comes back to the maintainer first. Two of the
 fixes below do. The box over a button needs the scan on every press and hover frame, which the
 per-layer list under _What it costs_ is for, and content over a sibling's box needs the scan to read
-what an element draws. The other two were not assessed apart from those: the cast breaking a level
-tie by tree order, which needs the interaction manager to be handed the hits' tree order as it is
-handed their draw order, and the scan visiting pseudo-elements. The maintainer chose the same day
-not to build any of the four for now, so each case stays a known difference, with the side that is
-right named.
+what an element draws. The other two need neither: the cast breaking a level tie by tree order,
+which needs only the hits' elements, and the scan visiting pseudo-elements. The maintainer chose the
+same day to build those two and not the first two, which stay known differences, with the side that
+is right named. The level tie is built: the cast now names the later sibling, as the scan does.
 
-- **Level flow siblings that overlap.** A page gives the later sibling the hit, and so does the
-  scan. The cast keeps the first of them it found (`onTop`): the nearer by a rounding error, or the
-  one it cast first, which need not be the later. The scan is right, and the cast is to break the
-  tie the same way.
 - **Content over a sibling's box.** A run of text, or a picture an element holds, draws at its
   element's content order, R + 1, over a level sibling's box at R + 1/2, and the cast, meeting it,
   picks its element. The scan orders each element by its box, and picks the sibling. The cast is
@@ -279,14 +276,11 @@ right named.
 `input/hitTest.test.js` is that differential test. It casts and scans a grid of rays, straight on
 and slanting, over every scene in `test/paintOrderScenes.js` and a few of its own where draw order,
 the clip, a rounded clip corner or culling decides the hit, with every element made a ray target.
-Each difference it finds must be a level tie, or content over a sibling's box. A tie is counted on
-every ray where more than one element draws on top, level and at one order, and the scan names one
-of them (of boxes, the later), whether or not the cast named the same one: which one the cast names
-falls to rounding, and moves from one version of three to the next. The count of each, per scene, is
-held there, beside the count of rays compared. A difference of any other kind fails it. Layers in
-different planes agree. Sibling layers on one plane tie, since in jsdom no frame walks the layers
-and each keeps the base its nesting gives it, so the walk's order between layers is not exercised by
-this test.
+Each difference it finds must be content over a sibling's box, and the count of them, per scene, is
+held there, beside the count of rays compared. A difference of any other kind fails it, a level tie
+included, since both now break one to the later element. Layers in different planes agree. Sibling
+layers on one plane tie, since in jsdom no frame walks the layers and each keeps the base its
+nesting gives it, so the walk's order between layers is not exercised by this test.
 
 ## Within a level: the rungs
 

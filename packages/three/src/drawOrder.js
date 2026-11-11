@@ -46,6 +46,54 @@ export function getObjectDrawOrder(object) {
 }
 
 /**
+ * The DOM node each panel object mirrors, one map for every portal, which
+ * writes it as it builds an object and drops the entry as it takes one
+ * down (`portalNodes.js`).
+ *
+ * @type {WeakMap<import('three').Object3D, Node>}
+ */
+export const objectNodes = new WeakMap();
+
+/**
+ * Whether `a` is in an element that comes after `b`'s in tree order, which
+ * is the later drawn of two at one draw order, as on a page. Each object
+ * is read as the nearest node a panel object above it mirrors; objects in
+ * no panel, or in one node, are in no order.
+ *
+ * @param {import('three').Object3D} a
+ * @param {import('three').Object3D} b
+ * @returns {boolean}
+ */
+export function isLaterInTree(a, b) {
+  const nodeA = nodeAbove(a);
+  const nodeB = nodeAbove(b);
+  return (
+    !!nodeA &&
+    !!nodeB &&
+    nodeA !== nodeB &&
+    (nodeB.compareDocumentPosition(nodeA) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  );
+}
+
+/**
+ * @param {import('three').Object3D} object
+ * @returns {Node | undefined}
+ */
+function nodeAbove(object) {
+  for (
+    let node = /** @type {import('three').Object3D | null} */ (object);
+    node;
+    node = node.parent
+  ) {
+    const found = objectNodes.get(node);
+    if (found) {
+      return found;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Each element's box mesh, while it has one mounted.
  *
  * @type {WeakMap<Element, import('three').Object3D>}

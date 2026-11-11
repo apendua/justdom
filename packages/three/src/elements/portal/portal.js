@@ -33,6 +33,7 @@ import { createPanelForwarder, PointerForwarderContext } from "../input/pointerF
 import { createPanelHandles, HANDLE_RENDER_ORDER } from "../panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../../scene.js";
 import { InteractionContext } from "../../interactions.js";
+import { objectNodes } from "../../drawOrder.js";
 import { registerOutlineHost } from "../dev/outlines.js";
 import { claimRoot, createContainerElement, disconnect } from "./portalContainer.js";
 import {
@@ -470,8 +471,7 @@ function buildPortal(ctx, ownOptions = {}) {
   // Not a nodeCache: one portal's own, gone with it.
   state.nodeToObject = new WeakMap();
 
-  /** @type {WeakMap<Object3D, Node>} */
-  state.objectToNode = new WeakMap();
+  state.objectToNode = objectNodes;
 
   /** @type {WeakMap<Object3D, () => void>} */
   state.objectToCleanup = new WeakMap();

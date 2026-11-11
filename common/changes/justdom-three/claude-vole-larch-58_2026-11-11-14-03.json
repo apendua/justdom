@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Of level hits drawn at one order, the cast picks the one in the later element in tree order, as a page does, rather than the first it found",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

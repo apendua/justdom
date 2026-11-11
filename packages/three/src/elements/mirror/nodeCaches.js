@@ -14,7 +14,7 @@
  *
  * @type {WeakMap<object, unknown>[]}
  */
-export const nodeCaches = [];
+const nodeCaches = [];
 
 /**
  * A cache keyed by node that `forgetNode` knows about. Exported for the
@@ -33,4 +33,17 @@ export function nodeCache() {
   const cache = new WeakMap();
   nodeCaches.push(cache);
   return /** @type {T} */ (cache);
+}
+
+/**
+ * Drop `node` from every cache `nodeCache` made. `forgetNode` calls it,
+ * after the node's record, so that the list of caches stays here.
+ *
+ * @param {Node} node
+ * @returns {void}
+ */
+export function forgetCached(node) {
+  for (const cache of nodeCaches) {
+    cache.delete(node);
+  }
 }

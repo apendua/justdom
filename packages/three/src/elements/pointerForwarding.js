@@ -26,8 +26,8 @@ import {
   getComputedStyleCached,
   getParentElement,
   isPortalRoot,
-  nodeDerived,
 } from "./mirror.js";
+import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";

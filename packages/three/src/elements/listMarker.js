@@ -11,8 +11,8 @@ import {
   getInteriorClipBox,
   getParentElement,
   getScrollOffset,
-  nodeDerived,
 } from "./mirror.js";
+import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import {
   contentBox,

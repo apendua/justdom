@@ -8,8 +8,8 @@ import {
   getComputedStyleCached,
   getReflowContext,
   getTextDataCached,
-  nodeDerived,
 } from "../elements/mirror.js";
+import { nodeDerived } from "../elements/mirror/records.js";
 import { withMeasuringRange } from "../elements/mirror/textLayout.js";
 import { createMeasurementClone } from "../elements/mirror/measurementClones.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";

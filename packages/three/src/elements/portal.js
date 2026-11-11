@@ -1100,7 +1100,7 @@ function buildPortal(ctx, ownOptions = {}) {
     // Forgotten as well as taken down: the mirror's caches outlive the
     // portal, and a node kept in them keeps this mirror's signals under it.
     // The element the page owns is the one that comes back — see
-    // `forgetNode` in mirror.js.
+    // `forgetNode` in mirror/records.js.
     mirror.forget(node);
   }
 

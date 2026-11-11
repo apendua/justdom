@@ -547,8 +547,8 @@ const nodeCaches = [];
  * item's number in `listMarker.js`; anything kept per node has to be one of
  * these, or a re-claimed node keeps the first mirror's signals under it.
  * The exceptions hold nothing of a mirror's, or are emptied by their
- * owner, and are a plain `WeakMap` that says why on the line above its
- * declaration, in a comment that starts `// Not a nodeCache:`.
+ * owner, and are a plain `WeakMap` that says why in the `//` comment just
+ * above its declaration, which starts `// Not a nodeCache:`.
  * `test/nodeCaches.test.js` holds every map keyed by a node to that.
  *
  * @template {WeakMap<any, any>} T
@@ -923,7 +923,8 @@ function takeDeparted(node) {
  *
  * @type {WeakMap<Node, Signal<boolean>>}
  */
-// Not a nodeCache: it holds nodes no panel has adopted yet, and `adopt` takes them out.
+// Not a nodeCache: it holds nodes no panel has adopted yet, and `adopt` takes
+// them out.
 const adoptions = new WeakMap();
 
 /**

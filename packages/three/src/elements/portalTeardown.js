@@ -128,7 +128,8 @@ export const FRAMELESS_SLICE = 4;
  *
  * @type {WeakMap<Node, Cover>}
  */
-// Not a nodeCache: a teardown's bookkeeping, deleted when the teardown finishes.
+// Not a nodeCache: a teardown's bookkeeping, deleted when the teardown
+// finishes.
 const covering = new WeakMap();
 
 /**

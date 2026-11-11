@@ -442,6 +442,7 @@ export function drawText(ctx, element, instance = null) {
   const textScale = TextScaleContext.get(ctx);
 
   /** @type {WeakMap<Element, Derived<readonly string[]>>} */
+  // Not a nodeCache: one drawing's own, gone with it.
   const layoutStyles = new WeakMap();
   /** @param {Element} target */
   const layoutStyle = (target) => {
@@ -463,6 +464,7 @@ export function drawText(ctx, element, instance = null) {
     { isEqual: arraysEqual },
   );
   /** @type {WeakMap<Element, Derived<number>>} */
+  // Not a nodeCache: one drawing's own, gone with it.
   const fontSizes = new WeakMap();
   /**
    * The size of the font a run in `target` is drawn in, which in a copy made

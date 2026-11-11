@@ -19,8 +19,9 @@ Pick the packages for what you render:
 | DOM panels in a scene, such as a keyboard | `justdom-three-ui` and the packages of the row above |
 | A WebXR session                           | `justdom-xr` with `justdom-three`                    |
 
-`justdom-three`, `justdom-three-ui` and `justdom-xr` need `three` 0.180 or newer. For a Vite app,
-`npm install --save-dev justdom-vite-hmr` adds hot reloads that keep the app's live state.
+`justdom-three`, `justdom-three-ui` and `justdom-xr` need `three` 0.185, 0.186 or 0.187; the
+[`justdom-three` README](packages/three/README.md#installation) says why the range is closed. For a
+Vite app, `npm install --save-dev justdom-vite-hmr` adds hot reloads that keep the app's live state.
 
 The packages are JavaScript with JSDoc types and ship their `.d.ts` files, so TypeScript and editors
 see every signature.

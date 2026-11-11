@@ -84,6 +84,47 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # The packages that take `three` as a peer, built and tested against each
+  # end of the range their package.json gives (`>=0.185.0 <0.188.0`): the
+  # floor, and the newest three tested. Raise the second, and the ceiling
+  # with it, when a newer three passes. justdom-three's README says why the
+  # range is closed.
+  three-range:
+    if: >-
+      github.head_ref != 'release/version-bump'
+      && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        three: ["0.185.0", "0.187.0"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install canvas's build libraries
+        uses: ./.github/actions/canvas-libraries
+      - name: Rush install
+        run: node common/scripts/install-run-rush.js install
+      - name: Swap in three ${{ matrix.three }}
+        run: >-
+          node common/scripts/swap-three.mjs "${{ matrix.three }}"
+          packages/three packages/three-ui packages/xr packages/sound
+      - name: Build and test against three ${{ matrix.three }}
+        # The cache keys on the lockfile, which the swap leaves as it was, so
+        # a cached build would be one against the pinned three.
+        env:
+          RUSH_BUILD_CACHE_ENABLED: "0"
+        run: >-
+          node common/scripts/install-run-rush.js build --verbose
+          --to justdom-three-ui --to justdom-xr --to @apendua/sound
+
   preview:
     needs: build
     if: needs.build.outputs.preview == 'true'

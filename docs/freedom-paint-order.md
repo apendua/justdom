@@ -176,15 +176,18 @@ stay above every slot.
 
 `onTop` in `interactions.js` sorts the hits by distance. The nearest wins unless hits within `LEVEL`
 (a micrometre) of it are drawn after it, and then the last drawn of those wins. Of those drawn at
-one order, the one in the later element in tree order wins, as on a page (`isLaterInTree` in
+one order, the one painted later in tree order wins, as on a page (`isLaterInTree` in
 `drawOrder.js`, which reads each hit's element from `objectNodes`, the map every portal keeps of the
-node each of its objects mirrors). Each mesh a ray can meet on a panel registers how far past its
-`renderOrder` it draws (`registerDrawOrder` in `drawOrder.js`), and `getObjectDrawOrder` reads the
-sum. A batched box registers `BOX_BUCKET_BIAS`, since its ray target is its element's mesh and the
-panel's one batch lays it at `renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a
-level later. The box, the picture, a pseudo-element's box, the run, the caret, the checkbox's tick
-and the SVG shape register. A mesh that did not register reads as `-Infinity`, so where a hit is on
-no panel the nearest wins as it was found.
+node each of its objects mirrors). A `::before` or `::after` is read from `generatedObjects` and
+placed where a page paints it: a `::before` after its element's own box and before its children, an
+`::after` after everything inside its element, so an in-flow `::after` over a child takes the hit.
+Each mesh a ray can meet on a panel registers how far past its `renderOrder` it draws
+(`registerDrawOrder` in `drawOrder.js`), and `getObjectDrawOrder` reads the sum. A batched box
+registers `BOX_BUCKET_BIAS`, since its ray target is its element's mesh and the panel's one batch
+lays it at `renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a level later. The
+box, the picture, a pseudo-element's box, the run, the caret, the checkbox's tick and the SVG shape
+register. A mesh that did not register reads as `-Infinity`, so where a hit is on no panel the
+nearest wins as it was found.
 
 A blocker, the panel's or an overlay's, sits a little behind the box it covers, so that what the box
 draws is met first. A ray meets it wherever the ray crosses the box's own plane inside the box, and

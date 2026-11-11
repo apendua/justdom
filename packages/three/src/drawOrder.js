@@ -1,4 +1,8 @@
 /**
+ * @import { Generated } from "./elements/pseudoElements.js";
+ */
+
+/**
  * Where what goes over everything draws: the cursor and a drag's ghost.
  * Panels draw at a layer's base plus its level (see `getRenderBand` in
  * elevation.js), and a draggable panel's strips at `HANDLE_RENDER_ORDER`,
@@ -55,42 +59,100 @@ export function getObjectDrawOrder(object) {
 export const objectNodes = new WeakMap();
 
 /**
- * Whether `a` is in an element that comes after `b`'s in tree order, which
- * is the later drawn of two at one draw order, as on a page. Each object
- * is read as the nearest node a panel object above it mirrors; objects in
- * no panel, or in one node, are in no order.
+ * The pseudo-element each `::before` or `::after` group draws, written by
+ * `generatedContent.js` while the group is up. A pseudo-element is no node,
+ * so it is kept apart from `objectNodes`, which the portals also read.
+ *
+ * @type {WeakMap<import('three').Object3D, Generated>}
+ */
+export const generatedObjects = new WeakMap();
+
+/**
+ * Whether `a` is drawn after `b` in tree order, which is the later drawn
+ * of two at one draw order, as on a page. Each object is read as the
+ * nearest node a panel object above it mirrors, or the pseudo-element
+ * whose group it is in. A page paints an element's `::before` after the
+ * element's own box and before its children, and its `::after` after
+ * everything inside it. Objects in no panel, or in one place, are in no
+ * order.
  *
  * @param {import('three').Object3D} a
  * @param {import('three').Object3D} b
  * @returns {boolean}
  */
 export function isLaterInTree(a, b) {
-  const nodeA = nodeAbove(a);
-  const nodeB = nodeAbove(b);
-  return (
-    !!nodeA &&
-    !!nodeB &&
-    nodeA !== nodeB &&
-    (nodeB.compareDocumentPosition(nodeA) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-  );
+  return placeAbove(a, placeA) && placeAbove(b, placeB) && isLaterPlace(placeA, placeB);
 }
 
 /**
- * @param {import('three').Object3D} object
- * @returns {Node | undefined}
+ * Where a page paints a node or a pseudo-element in tree order: at a node's
+ * start (`START`), just after its element's start for a `::before`
+ * (`BEFORE`), or after all its element holds for an `::after` (`END`).
+ *
+ * @typedef {{ node: Node, at: number }} Place
  */
-function nodeAbove(object) {
+const START = 0;
+const BEFORE = 1;
+const END = 2;
+
+/** Written by each `isLaterInTree`, so a tie allocates nothing. */
+const placeA = /** @type {Place} */ ({
+  node: /** @type {Node} */ (/** @type {unknown} */ (null)),
+  at: START,
+});
+const placeB = /** @type {Place} */ ({
+  node: /** @type {Node} */ (/** @type {unknown} */ (null)),
+  at: START,
+});
+
+/**
+ * @param {Place} a
+ * @param {Place} b
+ * @returns {boolean}
+ */
+function isLaterPlace(a, b) {
+  if (a.node === b.node) {
+    return a.at > b.at;
+  }
+  const relation = b.node.compareDocumentPosition(a.node);
+  if (relation & Node.DOCUMENT_POSITION_CONTAINED_BY) {
+    // `a` is inside `b`: after `b`'s start, before its end.
+    return b.at !== END;
+  }
+  if (relation & Node.DOCUMENT_POSITION_CONTAINS) {
+    // `b` is inside `a`: only `a`'s end comes after it.
+    return a.at === END;
+  }
+  return (relation & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/**
+ * Write where `object` is painted into `place`.
+ *
+ * @param {import('three').Object3D} object
+ * @param {Place} place
+ * @returns {boolean} Whether it is in a panel.
+ */
+function placeAbove(object, place) {
   for (
     let node = /** @type {import('three').Object3D | null} */ (object);
     node;
     node = node.parent
   ) {
+    const generated = generatedObjects.get(node);
+    if (generated) {
+      place.node = generated.element;
+      place.at = generated.kind === "before" ? BEFORE : END;
+      return true;
+    }
     const found = objectNodes.get(node);
     if (found) {
-      return found;
+      place.node = found;
+      place.at = START;
+      return true;
     }
   }
-  return undefined;
+  return false;
 }
 
 /**

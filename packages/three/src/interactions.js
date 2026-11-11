@@ -736,9 +736,9 @@ export const LEVEL = 1e-6;
  * hits level with it are drawn over it. A panel puts its content level, and of
  * level hits the later draw order (`getObjectDrawOrder`) is drawn over the
  * earlier, since nothing in a panel writes depth but its depth quad. Of level
- * hits drawn at one order, the one in the later element in tree order
- * (`isLaterInTree`), as on a page; hits no panel draws keep the order the
- * cast found them in.
+ * hits drawn at one order, the one painted later in tree order, a
+ * `::before` and an `::after` in their places (`isLaterInTree`), as on a
+ * page; hits no panel draws keep the order the cast found them in.
  *
  * @param {THREE.Intersection<THREE.Object3D<XREventMap>>[]} sorted
  * @returns {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined}

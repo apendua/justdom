@@ -371,7 +371,8 @@ function removePseudoStubs() {
  * @param {Parameters<typeof createPortal>[1]} [options]
  */
 function generatedPanel(markup, options = {}) {
-  const ctx = InteractionContext.set({}, new InteractionManager());
+  const manager = new InteractionManager();
+  const ctx = InteractionContext.set({}, manager);
   const root = document.createElement("div");
   root.innerHTML = markup;
   document.body.appendChild(root);
@@ -382,6 +383,7 @@ function generatedPanel(markup, options = {}) {
     portal,
     root,
     parent,
+    manager,
     /**
      * The quads of the generated boxes, which carry their pseudo-element's
      * name.
@@ -1179,6 +1181,34 @@ describe("an element's ::before and ::after in the paint order", () => {
     assert.equal(comparePaintOrder(after, before), -1, "the higher paint layer last");
     assert.equal(comparePaintOrder(before, next), -1, "the next sibling after all of it");
 
+    panel.cleanup();
+  });
+
+  test("a ray on an in-flow ::after over its element's child meets the ::after", async () => {
+    // The two draw at one order, and a page paints the ::after after the
+    // child, so the cast breaks the tie to it (`isLaterInTree`).
+    pseudoRule(".card", "after", '""', "display: block; background-color: red");
+    const panel = generatedPanel(`
+      <div class="card" style="position: relative; cursor: pointer" data-rect="0,0,200,40" data-after="50,0,20,16">
+        <div class="child" style="cursor: pointer; background-color: green" data-rect="0,0,100,40"></div>
+      </div>
+    `);
+    await settle(panel.portal);
+    const object = panel.parent.children[0];
+    object.updateWorldMatrix(true, true);
+    /** @param {number} x */
+    const meets = (x) => {
+      const target = object.localToWorld(new THREE.Vector3(x, 8, 0));
+      const controller = /** @type {THREE.XRTargetRaySpace} */ (
+        /** @type {unknown} */ (new THREE.Object3D())
+      );
+      controller.position.copy(target).add(new THREE.Vector3(0, 0, 1));
+      controller.lookAt(controller.position.clone().multiplyScalar(2).sub(target));
+      controller.updateMatrixWorld(true);
+      return panel.manager.getIntersection(controller)?.object.name;
+    };
+    assert.equal(meets(60), "::after");
+    assert.notEqual(meets(30), "::after");
     panel.cleanup();
   });
 });

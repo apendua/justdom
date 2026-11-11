@@ -757,6 +757,7 @@ export function box(ctx, element, options = {}) {
       return;
     }
     obj.matrixAutoUpdate = false;
+    // Not placed: composed by hand, and marked by `markMoved` below.
     obj.matrix.copy(nextMatrix);
     markMoved(obj);
     wroteMatrix = true;

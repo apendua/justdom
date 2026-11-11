@@ -513,6 +513,7 @@ export class LayerOrder {
         placed.height !== height ||
         !placed.matrix.equals(layerToPanel)
       ) {
+        // Not placed: a record of where the layer was, not an object.
         placed.matrix.copy(layerToPanel);
         placed.width = width;
         placed.height = height;

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A field's value, a list marker and a pseudo-element's box now patch their panel's batch when they move or are clipped, instead of rebuilding it.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

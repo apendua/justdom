@@ -67,12 +67,25 @@ export function surfaceRun(ctx, surface, source, extra = []) {
       ...extra,
       // Where the run sits and what trims it, together: a field's value
       // scrolling under its caret moves both.
+      // Each tells the batch only what it changed, as in `text.js`.
       effects((obj) => {
         const at = source.origin();
-        place(obj, at.x, at.y, 0);
+        const { position } = obj;
+        if (obj.matrixAutoUpdate || position.x !== at.x || position.y !== at.y) {
+          place(obj, at.x, at.y, 0);
+          batch?.moved(obj);
+        }
         const box = toLocalClipBox(source.clip(), at.x, at.y);
-        clip.value.set(box.left, box.top, box.right, box.bottom);
-        batch?.invalidate();
+        const value = clip.value;
+        if (
+          value.x !== box.left ||
+          value.y !== box.top ||
+          value.z !== box.right ||
+          value.w !== box.bottom
+        ) {
+          value.set(box.left, box.top, box.right, box.bottom);
+          batch?.changed(obj);
+        }
       }),
     ],
   );

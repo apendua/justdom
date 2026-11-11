@@ -128,7 +128,6 @@ function generatedBox(ctx, generated, surface) {
   };
   const layerOrder = LayerOrderContext.get(ctx);
   const panelBatch = BoxBatchContext.get(ctx);
-  const textBatch = TextBatchContext.get(ctx);
 
   const properties = new VisualProperties();
   /** @type {BoxSurface} */
@@ -165,9 +164,10 @@ function generatedBox(ctx, generated, surface) {
     effects((obj) => {
       const at = frame();
       placeAndScale(obj, at.x, at.y, lifted.get() ? -OVERLAY_LIFT : 0, 1, 1, 1);
-      // The batches place what they draw from its world matrix.
-      panelBatch?.invalidate();
-      textBatch?.invalidate();
+      // The batch places what it draws from its matrix, and writes the
+      // matrices under it where they are. Being lifted or not also makes
+      // it a layer or not, and the panel's walk rebuilds for that.
+      panelBatch?.moved(obj);
     }),
     // A lifted one is one of the planes the panel's walk orders, for as
     // long as it is one.

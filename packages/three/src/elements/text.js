@@ -162,7 +162,7 @@ export function text(ctx, textNode) {
         [
           effects((obj) => {
             place(obj, 0, 0, 0.01);
-            batch?.invalidate();
+            batch?.moved(obj);
           }),
           // Spread in rather than written inline and returning early,
           // because an effect that does nothing is not free: it is a

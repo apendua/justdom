@@ -1861,6 +1861,52 @@ describe("a panel drawn in paint order", () => {
     canvas.restore();
   });
 
+  test("a scroll of fields writes their values' runs where they are", async () => {
+    // A field's value is a run its box draws (`surfaceRun.js`). The first
+    // field sits at the scroller's top edge, so a scroll moves the
+    // scroller's clip across it, which its value's clip follows. Goes red
+    // with that effect asking for a rebuild on every scroll.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      {
+        id: "scroller",
+        style: "position: absolute; overflow: hidden",
+        at: [0, 0, 200, 300],
+        children: Array.from({ length: 3 }, (_, i) => ({
+          id: `field${i}`,
+          tag: "input",
+          style: "position: absolute",
+          at: /** @type {[number, number, number, number]} */ ([0, i * 30, 200, 20]),
+        })),
+      },
+    ]);
+    for (let i = 0; i < 3; i++) {
+      /** @type {HTMLInputElement} */ (g.get(`field${i}`)).value = `value ${i}`;
+    }
+    await g.walk();
+    const runs = () =>
+      draws(g.panel)
+        .flatMap(kinds)
+        .filter((kind) => kind === "run").length;
+    assert.equal(runs(), 3, "the values are batched");
+    const watched = watchBatch();
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("scroller")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
   test("a text colour writes its run where it is", async () => {
     // A label recoloured, as a hover does: its run's instance is written
     // again, and nothing else. Goes red with the tint asking for a rebuild.

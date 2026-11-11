@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Keep an SVG drawing's paint order in a nodeCache, and test that every per-node cache is one",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

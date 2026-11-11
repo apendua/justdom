@@ -570,6 +570,7 @@ function buildPortal(ctx, ownOptions = {}) {
   }
 
   /** @type {WeakMap<Node, Object3D>} */
+  // Not a nodeCache: one portal's own, gone with it.
   const nodeToObject = new WeakMap();
 
   /** @type {WeakMap<Object3D, Node>} */

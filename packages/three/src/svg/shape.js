@@ -36,6 +36,7 @@ import {
   getParentElement,
   hidesVisibility,
   isVisibilityHidden,
+  nodeCache,
 } from "../elements/mirror.js";
 import {
   findSvgElement,
@@ -1261,7 +1262,7 @@ function paintOrderEqual(a, b) {
 }
 
 /** @type {WeakMap<Element, Derived<PaintOrder>>} */
-const paintOrders = new WeakMap();
+const paintOrders = nodeCache();
 
 /**
  * The document order of the shapes and images under an `<svg>` root, or

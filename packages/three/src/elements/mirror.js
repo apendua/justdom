@@ -546,10 +546,10 @@ const nodeCaches = [];
  * cached reads that live beside the elements they serve, such as a list
  * item's number in `listMarker.js`; anything kept per node has to be one of
  * these, or a re-claimed node keeps the first mirror's signals under it.
- * The exceptions hold nothing of a mirror's, only what the element itself
- * announces, and are kept for the element's life in a plain `WeakMap` that
- * says so where it is declared: `assignmentSources` below and
- * `valueVersions` in `textInput.js`.
+ * The exceptions hold nothing of a mirror's, or are emptied by their
+ * owner, and are a plain `WeakMap` that says why on the line above its
+ * declaration, in a comment that starts `// Not a nodeCache:`.
+ * `test/nodeCaches.test.js` holds every map keyed by a node to that.
  *
  * @template {WeakMap<any, any>} T
  * @returns {T}
@@ -872,6 +872,7 @@ class NodeRecord {
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
+// Not a nodeCache: `forgetNode` deletes from it by name.
 const records = new WeakMap();
 
 /**
@@ -883,6 +884,7 @@ const records = new WeakMap();
  *
  * @type {WeakMap<Node, NodeRecord>}
  */
+// Not a nodeCache: `forgetNode` deletes from it by name.
 const departed = new WeakMap();
 
 /**
@@ -921,6 +923,7 @@ function takeDeparted(node) {
  *
  * @type {WeakMap<Node, Signal<boolean>>}
  */
+// Not a nodeCache: it holds nodes no panel has adopted yet, and `adopt` takes them out.
 const adoptions = new WeakMap();
 
 /**
@@ -3821,6 +3824,7 @@ const checkedCache = nodeCache();
  *
  * @type {WeakMap<HTMLInputElement, Subscribable<void>>}
  */
+// Not a nodeCache: the element's own accessor's, see above.
 const assignmentSources = new WeakMap();
 
 /**

@@ -159,6 +159,7 @@ export function watchPageGeometry() {
  */
 
 /** @type {WeakMap<Element, PanelFrame>} */
+// Not a nodeCache: keyed by a panel's base, and holds numbers the panel writes, not signals.
 const frames = new WeakMap();
 
 /** The roots that have warned, so each warns once. */

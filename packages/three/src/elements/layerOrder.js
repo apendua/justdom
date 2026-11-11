@@ -90,6 +90,7 @@ export const LayerOrderContext = createProperty(
 
 /** Every panel's order, by its root, for a test or a snapshot to ask. */
 /** @type {WeakMap<Element, LayerOrder>} */
+// Not a nodeCache: keyed by a panel's root, set and deleted by that panel's `LayerOrder`.
 const orders = new WeakMap();
 
 /**

@@ -90,9 +90,11 @@ import { UNBOUNDED } from "./clip.js";
  *
  * @type {WeakMap<Text, RevealHandle>}
  */
+// Not a nodeCache: set by a reveal handle and deleted when it is released.
 const handles = new WeakMap();
 
 /** @type {WeakMap<Text, Derived<Cut>>} */
+// Not a nodeCache: set for a reveal handle and deleted when it is released.
 const cuts = new WeakMap();
 
 /**

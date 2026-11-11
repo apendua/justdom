@@ -452,9 +452,9 @@ function buildPortal(ctx, ownOptions = {}) {
   // container used to hide until the initial mount was done, or the panel
   // would have assembled itself in front of the player, boxes first and text
   // a few frames later; but nothing of the content is attached until the
-  // commit that ends the mount (see `commit` below), so the hiding guarded
-  // nothing — and what stands in the container meanwhile, the loading frame,
-  // is exactly what should be seen.
+  // commit that ends the mount (see `commit` in `portalNodes.js`), so the
+  // hiding guarded nothing — and what stands in the container meanwhile, the
+  // loading frame, is exactly what should be seen.
 
   // The panel's perimeter. Everything the portal draws hangs off this, and
   // everything it draws keeps its own matrices; this is what makes that hold
@@ -884,8 +884,9 @@ function buildPortal(ctx, ownOptions = {}) {
    * where a panel's cost is — and runs the effects together, in the frame
    * that finds nothing left to read. Until then the panel stands as it was.
    * The objects the pump builds meanwhile, and the ones whose nodes left,
-   * wait for that same frame; see `commit` below. Unless the portal was
-   * asked not to be — see `PortalOptions.atomic` for what that trades.
+   * wait for that same frame; see `commit` in `portalNodes.js`. Unless the
+   * portal was asked not to be — see `PortalOptions.atomic` for what that
+   * trades.
    *
    * Null where there are no frames — see above — and every `withChannel`
    * below degrades to the default channel, which is synchronous mounting.

@@ -27,10 +27,10 @@
 
 /**
  * What one panel keeps while it is up: everything `buildPortal` in
- * `portal.js` builds that its functions, and the modules it hands this to,
- * read after the build. The functions themselves stay in the
- * closure. Construction-only values, such as most of the options, stay local
- * to it.
+ * `portal.js` builds that its own functions, and the ones in
+ * `portalNodes.js` it hands this to, read after the build.
+ * Construction-only values, such as most of the options, stay local to
+ * `buildPortal`.
  *
  * @typedef {object} PortalState
  * @property {WeakKey} ctx The context the panel's nodes are built with,

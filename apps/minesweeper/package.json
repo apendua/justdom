@@ -19,8 +19,6 @@
   },
   "dependencies": {
     "@apendua/geometry": "workspace:*",
-    "@testing-library/react": "^16.3.0",
-    "@types/lodash": "^4.17.20",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@vite-pwa/assets-generator": "^1.0.1",

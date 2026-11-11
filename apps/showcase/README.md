@@ -2,8 +2,8 @@
 
 A deck of thirteen panels, one for each area of what `justdom-three` draws from the DOM: boxes,
 backgrounds, text, lists, images, pseudo-elements, paint order, forms, widgets, motion, pointer
-states and SVG. One panel is on show at a time, with a switcher under it. Each panel is ordinary
-`justdom-core` markup and CSS, built for the scene and mounted with `dom(ctx, …)`.
+states, SVG shapes and SVG paint. One panel is on show at a time, with a switcher under it. Each
+panel is ordinary `justdom-core` markup and CSS, built for the scene and mounted with `dom(ctx, …)`.
 
 Its first job is to hold still. The visual suite photographs every panel in an emulated headset and
 compares it with a baseline, and the benchmarks measure the mirror on the same panels. So

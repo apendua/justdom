@@ -165,27 +165,25 @@ const Game = component((ctx: WeakKey) => {
   };
 
   /** Whether a brick placed here would share space with one already built. */
-  const isBlocked = makeNonReactive(
-    (position: THREE.Vector3, extent: THREE.Vector3, exclude?: BrickState) => {
-      const box = brickBox(position, extent);
-      for (const brick of castle.bricks.values()) {
-        if (brick === exclude) {
-          continue;
-        }
-        const other = brickBox(
-          brick.position,
-          rotatedSize(
-            brickShape(brick.type).size,
-            new THREE.Quaternion().setFromEuler(brick.rotation),
-          ),
-        );
-        if (boxesOverlap(box, other)) {
-          return true;
-        }
+  const isBlocked = (position: THREE.Vector3, extent: THREE.Vector3, exclude?: BrickState) => {
+    const box = brickBox(position, extent);
+    for (const brick of castle.bricks.values()) {
+      if (brick === exclude) {
+        continue;
       }
-      return false;
-    },
-  );
+      const other = brickBox(
+        brick.position,
+        rotatedSize(
+          brickShape(brick.type).size,
+          new THREE.Quaternion().setFromEuler(brick.rotation),
+        ),
+      );
+      if (boxesOverlap(box, other)) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   /**
    * Work out where the brick being dragged would land, and show it there. The
@@ -193,51 +191,49 @@ const Game = component((ctx: WeakKey) => {
    * its faces line up with everything already built; a brick that would end up
    * inside another one, or under the floor, is shown as refused.
    */
-  const updatePreview = makeNonReactive(
-    (
-      event: { matrixWorld: THREE.Matrix4; inputSource?: XRInputSource },
-      type: BrickType,
-      exclude?: BrickState,
-    ) => {
-      const held = heldPose(object, event.matrixWorld);
-      if (!held) {
-        return;
-      }
-      const steps = event.inputSource
-        ? stepStick(placement.latch, readStick(event.inputSource.gamepad))
-        : { latch: placement.latch, x: 0 as const, y: 0 as const };
-      placement.latch = steps.latch;
+  const updatePreview = (
+    event: { matrixWorld: THREE.Matrix4; inputSource?: XRInputSource },
+    type: BrickType,
+    exclude?: BrickState,
+  ) => {
+    const held = heldPose(object, event.matrixWorld);
+    if (!held) {
+      return;
+    }
+    const steps = event.inputSource
+      ? stepStick(placement.latch, readStick(event.inputSource.gamepad))
+      : { latch: placement.latch, x: 0 as const, y: 0 as const };
+    placement.latch = steps.latch;
 
-      if (steps.x) {
-        // Pushing the stick right turns the brick clockwise seen from above.
-        placement.offset.copy(turn(placement.offset, upAxis, -steps.x * QUARTER_TURN));
-      }
-      if (steps.y) {
-        // Pushing the stick forward tips the top of the brick away from the player.
-        placement.offset.copy(turn(placement.offset, tumbleAxis(), steps.y * QUARTER_TURN));
-      }
+    if (steps.x) {
+      // Pushing the stick right turns the brick clockwise seen from above.
+      placement.offset.copy(turn(placement.offset, upAxis, -steps.x * QUARTER_TURN));
+    }
+    if (steps.y) {
+      // Pushing the stick forward tips the top of the brick away from the player.
+      placement.offset.copy(turn(placement.offset, tumbleAxis(), steps.y * QUARTER_TURN));
+    }
 
-      // The full set of twenty four grid orientations, not just the upright
-      // ones: a wrist can tip a brick over as well as turn it, and the grid
-      // only asks that the result is axis-aligned. The thumbstick stays for
-      // the turns a wrist cannot comfortably reach.
-      const quaternion = align(
-        new THREE.Quaternion().copy(placement.offset).multiply(held.quaternion),
-      );
-      const extent = rotatedSize(brickShape(type).size, quaternion);
-      const position = snapToGrid(held.position, extent);
+    // The full set of twenty four grid orientations, not just the upright
+    // ones: a wrist can tip a brick over as well as turn it, and the grid
+    // only asks that the result is axis-aligned. The thumbstick stays for
+    // the turns a wrist cannot comfortably reach.
+    const quaternion = align(
+      new THREE.Quaternion().copy(placement.offset).multiply(held.quaternion),
+    );
+    const extent = rotatedSize(brickShape(type).size, quaternion);
+    const position = snapToGrid(held.position, extent);
 
-      batch(() => {
-        preview.type = type;
-        preview.position = position;
-        preview.rotation = new THREE.Euler().setFromQuaternion(quaternion);
-        preview.blocked = isBlocked(position, extent, exclude);
-      });
-    },
-  );
+    batch(() => {
+      preview.type = type;
+      preview.position = position;
+      preview.rotation = new THREE.Euler().setFromQuaternion(quaternion);
+      preview.blocked = isBlocked(position, extent, exclude);
+    });
+  };
 
   /** Where a released brick belongs, or null if it may not go there. */
-  const dropPose = makeNonReactive(() => {
+  const dropPose = () => {
     if (!preview.type || preview.blocked) {
       return null;
     }
@@ -245,7 +241,7 @@ const Game = component((ctx: WeakKey) => {
       return null;
     }
     return { position: preview.position.clone(), rotation: preview.rotation.clone() };
-  });
+  };
 
   /**
    * The face buttons on either controller walk the history: the near one takes
@@ -275,7 +271,7 @@ const Game = component((ctx: WeakKey) => {
     }
   });
 
-  const fire = makeNonReactive((shot: { position: THREE.Vector3; velocity: THREE.Vector3 }) => {
+  const fire = (shot: { position: THREE.Vector3; velocity: THREE.Vector3 }) => {
     projectiles.set(
       `stone-${projectileCounter++}`,
       store<ProjectileState>({
@@ -285,7 +281,7 @@ const Game = component((ctx: WeakKey) => {
       }),
     );
     gameSession.shots.setFn((count) => count + 1);
-  });
+  };
 
   /**
    * Counts what is still standing. A brick is down once it is touching the

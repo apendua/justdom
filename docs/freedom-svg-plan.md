@@ -141,7 +141,7 @@ the mirror's child-list signals, so a `<g>` reorder is a render-order write, not
   invisible to it. It now follows any element, and classifies the SVG paint properties (`fill`,
   `stroke`, `stroke-dashoffset`, `d`, `r`, …) as _paint_, so a marching-ants animation re-reads one
   element's style per frame rather than re-measuring the panel.
-- **`mirror.js`, `cssTransform.js`** — the transformed-chain measurement used
+- **`mirror/geometryReads.js`, `cssTransform.js`** — the transformed-chain measurement used
   `offsetWidth`/`offsetLeft`, which an `<svg>` root does not have; it now falls back to
   `clientWidth` plus borders and to client-rect deltas.
 
@@ -433,15 +433,15 @@ instead of `color`.
 ### `<text>`, as built
 
 `drawText` in `svg/text.js`, for a `<text>` and the `<tspan>`s and `<a>`s in it. The layout is the
-browser's, measured the way `mirror.js` measures HTML text under a transform: the rects of the text
-in place are screen-space bounds after every matrix above, so the `<text>` is cloned into a detached
-`<svg>` off-screen, with its computed style copied onto the clone and its `transform` set to `none`,
-by the mirror's own `createMeasurementClone` with that `<svg>` as its host. That `<svg>` maps one
-user unit to one CSS pixel, and where an attribute is a percentage its `viewBox` is the viewport the
-text is in, so a Range rect per text node, read relative to it, is already in the `<text>`'s user
-space. The rects are read through the mirror's one shared range (`withMeasuringRange`). There is no
-CTM to undo, and no matrix is involved in the measurement at all: the text's own matrix and
-everything above it are its object's and its chain's, as for a shape.
+browser's, measured the way `mirror/textLayout.js` measures HTML text under a transform: the rects
+of the text in place are screen-space bounds after every matrix above, so the `<text>` is cloned
+into a detached `<svg>` off-screen, with its computed style copied onto the clone and its
+`transform` set to `none`, by the mirror's own `createMeasurementClone` with that `<svg>` as its
+host. That `<svg>` maps one user unit to one CSS pixel, and where an attribute is a percentage its
+`viewBox` is the viewport the text is in, so a Range rect per text node, read relative to it, is
+already in the `<text>`'s user space. The rects are read through the mirror's one shared range
+(`withMeasuringRange`). There is no CTM to undo, and no matrix is involved in the measurement at
+all: the text's own matrix and everything above it are its object's and its chain's, as for a shape.
 
 Each text node is a run, one textured quad under the `<text>`'s object, rasterized by
 `generateTextTexture` as a coverage mask. The colour is the run's `fill`, read through

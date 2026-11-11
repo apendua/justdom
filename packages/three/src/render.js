@@ -1,20 +1,8 @@
 import * as THREE from "three";
 import { observable, Signal, Stream, withComputation } from "justdom-signal";
 import { InteractionManager, InteractionContext } from "./interactions.js";
-import {
-  createFrameShareBudget,
-  createPortalScheduler,
-  PortalSchedulerContext,
-} from "./elements/portalScheduler.js";
-import { releaseIdleImages } from "./elements/image.js";
-import { PortalPluginsContext } from "./elements/plugins.js";
-import { withPanelOptions } from "./elements/panelOptions.js";
-import {
-  createKeyboardSlot,
-  dismissKeyboardAtSessionEnd,
-  disposeKeyboardSlot,
-  KeyboardSlotContext,
-} from "./elements/keyboardSlot.js";
+import { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
+import { createSceneHost } from "./sceneServices.js";
 import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 import { mouse, renderPointer } from "./mouse.js";
@@ -24,7 +12,6 @@ import {
   CameraContext,
   ControllersContext,
   createControllerHandle,
-  frames,
   lateListeners,
   onLateFrame,
   RendererContext,
@@ -245,37 +232,8 @@ export function render(fn, options = {}) {
       ctx = PortalPluginsContext.set(ctx, options.portalPlugins);
     }
     if (options.panelOptions) {
-      ctx = withPanelOptions(ctx, options.panelOptions);
+      ctx = PanelOptionsContext.set(ctx, options.panelOptions);
     }
-    // One keyboard for every panel in the scene, made by the first panel
-    // that offers one and taken down with the scene.
-    const keyboardSlot = createKeyboardSlot();
-    ctx = KeyboardSlotContext.set(ctx, keyboardSlot);
-    subscriber.add(dismissKeyboardAtSessionEnd(keyboardSlot, renderer.xr));
-    subscriber.add(() => {
-      disposeKeyboardSlot(keyboardSlot);
-    });
-    // A share of the frame rather than a fixed slice of it: the sessions ask
-    // for the headset's fastest rate now, and a number of milliseconds that
-    // was a third of a frame at 60 Hz is three fifths of one at 120. Fed from
-    // the animation loop below.
-    const portalBudget = createFrameShareBudget();
-
-    // One scheduler per rendering context is what makes the portal budget
-    // global: every panel in this scene draws frame time from the same pool,
-    // however many are mounting at once. The closure reads `ctx` when the
-    // first portal schedules work, by which point the contexts above are all
-    // in place.
-    ctx = PortalSchedulerContext.set(
-      ctx,
-      createPortalScheduler({
-        budget: options.portalBudget ?? portalBudget.budget,
-        requestFrames: (tick) => {
-          const subscription = frames(ctx).subscribe(() => tick());
-          return () => subscription.unsubscribe();
-        },
-      }),
-    );
 
     // Add simple rays to controllers. This will need to be revisited.
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
@@ -328,9 +286,12 @@ export function render(fn, options = {}) {
 
     ctx = ControllersContext.set(ctx, handles);
 
-    // The context is whole now; the keyboard looks for the scene, the camera
-    // and the renderer here.
-    keyboardSlot.ctx = ctx;
+    // The context is whole now. What the panels keep per scene (their
+    // scheduler, the keyboard, the image cache's release) is made on the
+    // host when a panel first asks, and finds the scene, the camera and the
+    // renderer in this context (`sceneServices.js`).
+    const [sceneCtx, sceneHost] = createSceneHost(ctx, renderer, options);
+    ctx = sceneCtx;
 
     scene.add(camera);
     for (const { controller, grip, hand } of handles) {
@@ -340,8 +301,6 @@ export function render(fn, options = {}) {
     for (const mounted of mountScene(scene, ctx, fn, options.pointer)) {
       subscriber.add(mounted);
     }
-
-    let previousFrameTime = 0;
 
     /**
      * @param {number} time
@@ -398,10 +357,7 @@ export function render(fn, options = {}) {
      * @param {XRFrame} frame
      */
     function drawFrame(time, frame) {
-      if (previousFrameTime) {
-        portalBudget.sample(time - previousFrameTime);
-      }
-      previousFrameTime = time;
+      sceneHost.frame(time);
       options.onBeforeRender?.(renderer);
       runFrame(renderer, time, frame);
       const lateSet = lateListeners.get(renderer);
@@ -428,10 +384,7 @@ export function render(fn, options = {}) {
 
     return () => {
       renderer.setAnimationLoop(null);
-      // Free what the texture cache keeps idle as the renderer goes. The
-      // cache is shared, so this also drops pictures another live
-      // `render()` could have reused; it would load them again.
-      releaseIdleImages();
+      sceneHost.dispose();
       renderer.dispose();
       interactionManager.cleanup();
     };

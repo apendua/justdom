@@ -14,7 +14,10 @@ import {
   placeContentImage,
   releaseIdleImages,
   releaseImage,
+  releaseImagesWithScene,
 } from "./image.js";
+import { sceneService } from "../sceneServices.js";
+import { testScene } from "../test/sceneHost.js";
 import VisualProperties from "./VisualProperties.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { deferredLoader, fakeTexture } from "../test/deferredLoader.js";
@@ -398,6 +401,22 @@ describe("the texture cache", () => {
       assert.equal(loader.loads.length, 3, "a released idle picture loads again");
       releaseImage("/idle.png");
       releaseImage("/used.png");
+    } finally {
+      loader.restore();
+    }
+  });
+
+  test("a scene that asked releases the idle pictures when it goes", () => {
+    const loader = deferredLoader();
+    try {
+      const { ctx, driver } = testScene();
+      sceneService(ctx, releaseImagesWithScene);
+      acquireImage("/idle.png");
+      const idle = loader.loads[0].land(4, 4).disposed;
+      releaseImage("/idle.png");
+      assert.equal(idle(), 0, "idle, kept for the next user");
+      driver.dispose();
+      assert.equal(idle(), 1);
     } finally {
       loader.restore();
     }

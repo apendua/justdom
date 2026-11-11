@@ -48,8 +48,8 @@ export {
 } from "./elements/portalRoot.js";
 export { isTextInput, typeIntoInput } from "./elements/typing.js";
 export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
-export { PortalPluginsContext } from "./elements/plugins.js";
-export { PanelOptionsContext, withPanelOptions } from "./elements/panelOptions.js";
+export { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
+export { withPanelOptions } from "./elements/panelOptions.js";
 export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js";
 export { box } from "./elements/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";

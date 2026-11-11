@@ -51,8 +51,8 @@ import { batch, withChannel } from "justdom-signal";
  *    does: a step crossed while the row waits draws its text again at the new
  *    step, for nothing, as it did while the row waited for its commit.
  * 3. **Only under the scene's scheduler.** The queue outlives the panel, so
- *    it needs frames that outlive the panel, and only the scheduler
- *    `render()` installs has them. A portal pacing itself, on a plain page
+ *    it needs frames that outlive the panel, and only the scene's scheduler
+ *    has them. A portal pacing itself, on a plain page
  *    or under a test runner, tears down in the task that closes it.
  * 4. **The frame's leftovers.** The queue is a pump of the lowest priority
  *    (`TEARDOWN_PRIORITY`). It is offered a frame only while time is left

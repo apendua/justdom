@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Panels keep what they need per scene (their scheduler, the keyboard, the image cache's release) on a host render() hands out, made the first time a panel asks; render() imports nothing from the panel layer.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

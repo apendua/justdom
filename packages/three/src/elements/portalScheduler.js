@@ -1,4 +1,10 @@
 import { createProperty } from "justdom-signal";
+import { frames } from "../scene.js";
+import { sceneService } from "../sceneServices.js";
+
+/**
+ * @import {SceneHost} from '../sceneServices.js';
+ */
 
 /**
  * One portal's claim on frame time, as the scheduler sees it.
@@ -240,13 +246,54 @@ export function createPortalScheduler({
 }
 
 /**
- * The scheduler the portals under a renderer share. `render()` installs one
- * per rendering context, which is what makes the budget global: every panel
- * in the scene draws frame time from the same pool, however many are
- * mounting at once. Null by default — a portal built outside a rendering
- * context, as under a test runner or on a plain page, paces itself with a
- * private scheduler instead, and its own `budget` option governs it.
+ * The scheduler the portals under a context share, for a scene built
+ * without `render()`. Null by default; see `portalSchedulerOf`.
  */
 export const PortalSchedulerContext = createProperty(
   /** @returns {PortalScheduler | null} */ () => null,
 );
+
+/**
+ * The scheduler the portals under `ctx` share: the one set on
+ * `PortalSchedulerContext`, or else, in a scene `render()` made, the
+ * scene's own, made for its first panel. One per scene is what makes the
+ * budget global: every panel in the scene draws frame time from the same
+ * pool, however many are mounting at once. Null under neither; a portal
+ * built outside a rendering context, as under a test runner or on a plain
+ * page, paces itself with a private scheduler instead, and its own
+ * `budget` option governs it.
+ *
+ * @param {WeakKey} ctx
+ * @returns {PortalScheduler | null}
+ */
+export function portalSchedulerOf(ctx) {
+  return PortalSchedulerContext.get(ctx) ?? sceneService(ctx, scenePortalScheduler);
+}
+
+/**
+ * The scene's scheduler, paced by `RenderOptions.portalBudget` or else by a
+ * share of the frame. A share rather than a fixed slice: the sessions ask
+ * for the headset's fastest rate now, and a number of milliseconds that was
+ * a third of a frame at 60 Hz is three fifths of one at 120. The share is
+ * fed every frame the scene draws from the first panel on.
+ *
+ * @param {SceneHost} host
+ * @returns {PortalScheduler}
+ */
+function scenePortalScheduler(host) {
+  const share = createFrameShareBudget();
+  let previous = 0;
+  host.onFrame((time) => {
+    if (previous) {
+      share.sample(time - previous);
+    }
+    previous = time;
+  });
+  return createPortalScheduler({
+    budget: host.options.portalBudget ?? share.budget,
+    requestFrames: (tick) => {
+      const subscription = frames(host.ctx).subscribe(() => tick());
+      return () => subscription.unsubscribe();
+    },
+  });
+}

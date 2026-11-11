@@ -1,6 +1,13 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createFrameShareBudget, createPortalScheduler } from "./portalScheduler.js";
+import {
+  createFrameShareBudget,
+  createPortalScheduler,
+  PortalSchedulerContext,
+  portalSchedulerOf,
+} from "./portalScheduler.js";
+import { testScene } from "../test/sceneHost.js";
+import { runFrame } from "../scene.js";
 
 /**
  * A pump that counts its units of work, honouring the contract: at least one
@@ -348,5 +355,55 @@ describe("idle pumps", () => {
     assert.equal(busy.remaining(), 1);
     assert.equal(idle.ticks(), 0);
     assert.equal(frames.running(), true, "and it keeps asking for frames");
+  });
+});
+
+describe("portalSchedulerOf", () => {
+  test("is the scheduler set on the context, then the scene's, then none", () => {
+    const set = createPortalScheduler({ requestFrames: () => () => {} });
+    const { ctx } = testScene();
+    assert.equal(portalSchedulerOf(PortalSchedulerContext.set(ctx, set)), set);
+    const scenes = portalSchedulerOf(ctx);
+    assert.ok(scenes);
+    assert.notEqual(scenes, set);
+    assert.equal(portalSchedulerOf(ctx), scenes, "one scheduler per scene");
+    assert.equal(portalSchedulerOf({}), null);
+  });
+
+  /**
+   * The budget the scene's scheduler gives a pump on the next frame: how
+   * far ahead of the clock the deadline is when the pump is offered it.
+   *
+   * @param {ReturnType<typeof testScene>} scene
+   */
+  function budgetOnNextFrame({ ctx, renderer }) {
+    let budget = NaN;
+    portalSchedulerOf(ctx)?.schedule({
+      priority: 0,
+      tick(deadline) {
+        budget = deadline - performance.now();
+        return true;
+      },
+    });
+    runFrame(renderer, 0, /** @type {XRFrame} */ (/** @type {unknown} */ (null)));
+    return budget;
+  }
+
+  test("the scene's scheduler takes the frame's share, sampled from the scene's frames", () => {
+    const scene = testScene();
+    portalSchedulerOf(scene.ctx);
+    // 120 Hz: a share of three tenths is 2.5 ms, where the share before any
+    // frame assumes 60 Hz and gives 5.
+    for (let time = 1000; time < 1100; time += 1000 / 120) {
+      scene.driver.frame(time);
+    }
+    const budget = budgetOnNextFrame(scene);
+    assert.ok(budget > 1.5 && budget <= 2.5, `${budget}`);
+  });
+
+  test("the scene's scheduler takes RenderOptions.portalBudget over the share", () => {
+    const scene = testScene({ portalBudget: 7 });
+    const budget = budgetOnNextFrame(scene);
+    assert.ok(budget > 6 && budget <= 7, `${budget}`);
   });
 });

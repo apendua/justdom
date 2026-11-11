@@ -14,8 +14,9 @@
  *
  * - `base`: what knows nothing of a scene, such as the operators, the
  *   draw order constants and the XR button.
- * - `scene`: the renderer, its loop, the interaction manager and what
- *   points and grabs.
+ * - `scene`: the renderer, its loop, the interaction manager, what points
+ *   and grabs, and what the scene keeps for its panels: the contexts it
+ *   fills from its options and the host the panels make their services on.
  * - `panel`: the DOM mirrored into the scene, `elements/` and what reaches
  *   it from outside it.
  * - `plugin`: what a scene opts into for its panels, the SVG plugin.
@@ -59,9 +60,11 @@ const LAYERS = {
   "hold.js": "scene",
   "interactions.js": "scene",
   "mouse.js": "scene",
+  "panelContexts.js": "scene",
   "pointers.js": "scene",
   "render.js": "scene",
   "scene.js": "scene",
+  "sceneServices.js": "scene",
   "bakery.js": "panel",
   "dom.js": "panel",
   "page.js": "panel",
@@ -80,11 +83,6 @@ const LAYERS = {
  * @type {readonly string[]}
  */
 const KNOWN = [
-  "render.js -> elements/image.js",
-  "render.js -> elements/keyboardSlot.js",
-  "render.js -> elements/panelOptions.js",
-  "render.js -> elements/plugins.js",
-  "render.js -> elements/portalScheduler.js",
   "cycle: elements/VisualProperties.js -> elements/elevation.js",
   "cycle: elements/elevation.js -> elements/pseudoElements.js",
   "cycle: elements/pseudoElements.js -> elements/VisualProperties.js",

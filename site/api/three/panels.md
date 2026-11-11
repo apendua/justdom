@@ -445,13 +445,13 @@ dom(ctx, menu, [effects((panel) => panel.position.copy(position))], {
 });
 ```
 
-- **The budget is the scene's, not the panel's.** `render()` installs one scheduler per rendering
-  context, and every portal under it draws frame time from the same pool, since three panels each
-  honouring a private five milliseconds would cost the frame fifteen. The budget bounds when work
-  stops being started, not how long a piece takes: at least one element is built and at least one
-  update runs per frame. The grain is the element, not the inserted subtree. Where there are no
-  frames to slice across — no renderer and no `requestAnimationFrame`, as under a test runner — the
-  portal mounts synchronously.
+- **The budget is the scene's, not the panel's.** A scene `render()` made has one scheduler, made
+  for its first panel, and every portal under it draws frame time from the same pool, since three
+  panels each honouring a private five milliseconds would cost the frame fifteen. The budget bounds
+  when work stops being started, not how long a piece takes: at least one element is built and at
+  least one update runs per frame. The grain is the element, not the inserted subtree. Where there
+  are no frames to slice across — no renderer and no `requestAnimationFrame`, as under a test runner
+  — the portal mounts synchronously.
 - **A panel is loading until its initial content is whole.** While that runs it stops no rays and,
   if the mount outruns `delay`, shows the loading frame: a translucent rounded rectangle the panel's
   size, with three dots that brighten in turn, placed exactly where the panel will be and replaced

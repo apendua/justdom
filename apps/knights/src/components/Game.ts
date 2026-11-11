@@ -1,4 +1,15 @@
-import { $, $$, CLASS_NAME, Nothing, attr, branch, children, set, stylesheet } from "justdom-core";
+import {
+  $,
+  $$,
+  CLASS_NAME,
+  Nothing,
+  attr,
+  branch,
+  children,
+  set,
+  stylesheet,
+  when,
+} from "justdom-core";
 import { component, makeNonReactive, store } from "justdom-signal";
 import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
 import { sessionStarted } from "../headset";
@@ -120,9 +131,9 @@ const Game = component((ctx: WeakKey) => {
     set("className", container),
     children(
       // Once a session has started, the music is the scene's.
-      branch(
-        () => (sessionStarted.get() ? "scene" : "page"),
-        (where) => (where === "page" ? Music(ctx) : text``),
+      when(
+        () => !sessionStarted.get(),
+        () => Music(ctx),
       ),
       $("img", [
         set("className", backdrop),

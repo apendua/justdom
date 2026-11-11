@@ -198,10 +198,6 @@ loses to anything level with it. It serves presses and hover. The scan, `hitElem
 each frame, the thumbstick's wheel on a list's gaps or the panel's background, and the missed-press
 note in development. Rule 3 holds for both, so the scan follows the cast's order.
 
-**Status.** What the scan visits and what makes a candidate are built. The scan still takes a point
-and returns the first candidate its walk finds; the PR after #186 gives it the ray and the order
-below. Remove this paragraph when it lands.
-
 The scan's rules:
 
 - **What it is given.** A ray in world space, not a point. Each element's object is its own border
@@ -221,8 +217,9 @@ The scan's rules:
   within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element is
   drawn at its box's rung, the number the cast compares for the box's mesh: its `renderOrder`,
   `getRenderBand` (the layer's base) plus `getDrawLevel`, and then `BOX_BUCKET_BIAS` (R + 1/2) for a
-  batched box, or `UNBATCHED_BOX_BIAS` (R + 1/4) for one that draws itself, a picture's. Of two at
-  one rung, the later in tree order wins, as on a page.
+  batched box, or `UNBATCHED_BOX_BIAS` (R + 1/4) for one that draws itself, a picture's. An element
+  with no box mesh mounted, which draws nothing and is no ray target, reads as a batched box would.
+  Of two at one rung, the later in tree order wins, as on a page.
 - **Clips.** One predicate, `clipBoxContains` in `clip.js`, says whether a point in a clip box's
   frame is inside it, corners included. `clipRaycast` trims the cast's hits with it and the scan
   tests its candidates with it, so rule 5 holds at a rounded corner on both sides. An element's own

@@ -395,7 +395,7 @@ export function applyReveal(material, clip, cut) {
 /**
  * Whether a point in a clip box's frame is inside the box, its rounded
  * corners included: the distance the clip patch measures, at or below
- * zero. The cast (`clipRaycast`) and the walk that hit-tests elements
+ * zero. The cast (`clipRaycast`) and the scan that hit-tests elements
  * (`hitElement` in `input/dragAndDrop.js`) both ask this, so a ray is cut
  * where the drawing is.
  *

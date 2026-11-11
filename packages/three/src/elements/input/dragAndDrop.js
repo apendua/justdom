@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { withComputation } from "justdom-signal";
-import { OVERLAY_RENDER_ORDER } from "../../drawOrder.js";
-import { InteractionContext } from "../../interactions.js";
+import { getBoxDrawOrder, OVERLAY_RENDER_ORDER } from "../../drawOrder.js";
+import { InteractionContext, LEVEL } from "../../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "../portal/frameRequester.js";
 import { RendererContext } from "../../scene.js";
@@ -16,8 +16,10 @@ import { placeAndScale } from "../place.js";
 import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "../panelFrame.js";
 import { isSvgRoot } from "../plugins.js";
 import { clipBoxContains } from "../clip.js";
-import { DRAG_THRESHOLD, sampleRay } from "./scroll.js";
+import { controllerRay, DRAG_THRESHOLD, sampleRay } from "./scroll.js";
 import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
+import { BOX_BUCKET_BIAS } from "../paint/boxBatch.js";
+import { getDrawLevel, getRenderBand } from "../paint/elevation.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
 
 /**
@@ -187,76 +189,152 @@ export function findDragSource(element) {
 /** @type {THREE.Vector3} */
 const scratch = new THREE.Vector3();
 
+/** What the scan meets each element with, so a scan allocates nothing. */
+const toLocal = new THREE.Matrix4();
+const localRay = new THREE.Ray();
+const met = new THREE.Vector3();
+
 /**
- * The deepest element under a point, among `element` and what is inside
- * it, found the way a page hit-tests: a later sibling is over an earlier
- * one, a child is over its parent, an element that `visibility` hides or
- * that says `pointer-events: none` is passed through to what is beneath,
- * and nothing is hit where an overflow-clipping ancestor cut it off,
- * rounded corners included (`clipBoxContains`).
+ * The scan's candidates, in the order it found them, as three parallel
+ * lists kept between scans: an element, how far along the ray it was met,
+ * and the order its box is drawn at. Emptied by length, so a scan that
+ * finds no more candidates than one before it allocates nothing.
  *
- * Asked in the same frames the mirror draws in: each element's object is
- * its own border box, top-left origin and y down, so the point is taken
- * into that frame and compared with the element's size and clip box. An
- * object the mirror has culled, a row scrolled out of its list, is not
- * visited and nor is anything in it. The walk visits every element in the
- * panel otherwise, since a child can overflow its parent. So it is asked
- * once a frame only while a drag is under way, or while a thumbstick turns
- * the wheel with the ray on a panel's background or a list's gaps, where
- * no control names the element; and once for a press, in development.
+ * @type {HTMLElement[]}
+ */
+const candidates = [];
+/** @type {number[]} */
+const distances = [];
+/** @type {number[]} */
+const orders = [];
+
+/**
+ * The order an element's box is drawn at, the number the cast compares for
+ * its mesh (`getBoxDrawOrder`). An element whose box has no mesh mounted
+ * draws nothing and is no ray target; it reads as a batched box would.
  *
  * @param {HTMLElement} element
- * @param {(node: Node) => THREE.Object3D | undefined} objectOf The panel's
- *   own record of which object draws which element.
- * @param {THREE.Vector3} point In world space.
- * @returns {HTMLElement | null}
+ * @returns {number}
  */
-function elementAt(element, objectOf, point) {
+function boxOrder(element) {
+  return (
+    getBoxDrawOrder(element) ?? getRenderBand(element) + getDrawLevel(element) + BOX_BUCKET_BIAS
+  );
+}
+
+/**
+ * Gather the candidates under a ray among `element` and what is inside it,
+ * last child first and a child before its parent, the rules of _Two hit
+ * tests, one order_ in `docs/freedom-paint-order.md`. An element is a
+ * candidate where the ray meets its plane, in front of the ray's origin,
+ * inside its border box and inside what its overflow-clipping ancestors
+ * leave of it (`clipBoxContains`), unless `visibility` hides it or it says
+ * `pointer-events: none`; its children are visited either way. An object
+ * the mirror has culled, a row scrolled out of its list, is not visited and
+ * nor is anything in it. What is inside an `<svg>` is shapes in the
+ * picture's own coordinates, not boxes; the `<svg>` is the candidate, as
+ * it is for a click.
+ *
+ * Each element's object is its own border box, top-left origin and y down,
+ * so the ray is taken into that frame and met at z = 0.
+ *
+ * @param {HTMLElement} element
+ * @param {(node: Node) => THREE.Object3D | undefined} objectOf
+ * @param {THREE.Ray} ray In world space.
+ * @returns {void}
+ */
+function gather(element, objectOf, ray) {
   const object = objectOf(element);
   if (!object || !object.visible) {
-    return null;
+    return;
   }
-  // What is inside an `<svg>` is shapes in the picture's own coordinates,
-  // not boxes; the `<svg>` is the target, as it is for a click.
   if (!isSvgRoot(element)) {
     for (let child = element.lastElementChild; child; child = child.previousElementSibling) {
-      const hit = elementAt(/** @type {HTMLElement} */ (child), objectOf, point);
-      if (hit) {
-        return hit;
-      }
+      gather(/** @type {HTMLElement} */ (child), objectOf, ray);
     }
   }
   if (
     isVisibilityHidden(element) ||
     getComputedStyleCached(element).getPropertyValue("pointer-events") === "none"
   ) {
-    return null;
+    return;
   }
-  object.worldToLocal(scratch.copy(point));
+  toLocal.copy(object.matrixWorld).invert();
+  localRay.copy(ray).applyMatrix4(toLocal);
+  const along = -localRay.origin.z / localRay.direction.z;
+  // Parallel to the plane, or meeting it behind the origin.
+  if (!(along >= 0) || !Number.isFinite(along)) {
+    return;
+  }
+  localRay.at(along, met);
   const size = getBorderBoxSize(element);
-  const clip = getLocalClipBox(element);
   if (
-    scratch.x < 0 ||
-    scratch.y < 0 ||
-    scratch.x > size.width ||
-    scratch.y > size.height ||
-    !clipBoxContains(clip, scratch.x, scratch.y)
+    met.x < 0 ||
+    met.y < 0 ||
+    met.x > size.width ||
+    met.y > size.height ||
+    !clipBoxContains(getLocalClipBox(element), met.x, met.y)
   ) {
-    return null;
+    return;
   }
-  return element;
+  met.z = 0;
+  met.applyMatrix4(object.matrixWorld);
+  candidates.push(element);
+  distances.push(met.distanceTo(ray.origin));
+  orders.push(boxOrder(element));
 }
 
 /**
- * The deepest element of a panel under a point on it, found as `elementAt`
- * finds what a drag is over.
+ * The element under a ray, among `element` and what is inside it: the
+ * cast's rule (`onTop` in `interactions.js`) read per element. The nearest
+ * candidate wins, unless candidates within `LEVEL` of it are drawn after
+ * it, and then the last drawn of those; of two at one order, the first
+ * found, which is the later in tree order, as on a page.
  *
- * @param {Panel} panel
- * @param {THREE.Vector3} point In world space.
+ * The scan visits every element in the panel, since a child can overflow
+ * its parent. So it is asked once a frame only while a drag is under way,
+ * or while a thumbstick turns the wheel with the ray on a panel's
+ * background or a list's gaps, where no control names the element; and
+ * once for a press, in development.
+ *
+ * @param {HTMLElement} element
+ * @param {(node: Node) => THREE.Object3D | undefined} objectOf The panel's
+ *   own record of which object draws which element.
+ * @param {THREE.Ray} ray In world space.
  * @returns {HTMLElement | null}
  */
-export function hitElement(panel, point) {
-  return elementAt(panel.element, panel.objectOf, point);
+function elementAt(element, objectOf, ray) {
+  candidates.length = 0;
+  distances.length = 0;
+  orders.length = 0;
+  gather(element, objectOf, ray);
+  let nearest = Infinity;
+  for (const distance of distances) {
+    nearest = Math.min(nearest, distance);
+  }
+  /** @type {HTMLElement | null} */
+  let hit = null;
+  let order = -Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    if (distances[i] - nearest <= LEVEL && (hit === null || orders[i] > order)) {
+      hit = candidates[i];
+      order = orders[i];
+    }
+  }
+  candidates.length = 0;
+  return hit;
+}
+
+/**
+ * The element of a panel under a ray, found as `elementAt` finds what a
+ * drag is over.
+ *
+ * @param {Panel} panel
+ * @param {THREE.Ray} ray In world space.
+ * @returns {HTMLElement | null}
+ */
+export function hitElement(panel, ray) {
+  return elementAt(panel.element, panel.objectOf, ray);
 }
 
 /**
@@ -861,7 +939,7 @@ export function createDragAndDrop(requestFrames, readHit, snapshots) {
     let under = null;
     if (hit && panel) {
       const registered = /** @type {Panel} */ (panels.get(panel));
-      under = elementAt(registered.element, registered.objectOf, hit.point);
+      under = elementAt(registered.element, registered.objectOf, controllerRay(session.controller));
       if (panel !== session.lastPanel) {
         // Arriving on a panel probes it, as a ray arriving on an element
         // does (see `pointerForwarding.js`): this panel's own ray targets

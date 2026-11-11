@@ -729,7 +729,7 @@ function byDistance(a, b) {
  * matrix inversions, far below any distance a panel puts between things it
  * means to stack.
  */
-const LEVEL = 1e-6;
+export const LEVEL = 1e-6;
 
 /**
  * The hit drawn on top, among those sorted by distance: the nearest, unless

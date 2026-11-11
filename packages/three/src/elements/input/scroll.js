@@ -114,6 +114,18 @@ const sampledPlane = new THREE.Plane();
 const sampledLocal = new THREE.Vector3();
 
 /**
+ * A hand's ray, in world space, as it stands now: the sampler's own, so it
+ * holds until the next call asks for another hand's. Allocates nothing.
+ *
+ * @param {THREE.XRTargetRaySpace} controller
+ * @returns {THREE.Ray}
+ */
+export function controllerRay(controller) {
+  sampler.setFromXRController(controller);
+  return sampler.ray;
+}
+
+/**
  * Where a hand's ray crosses the plane an object lies in, as the object
  * stands now: in world space, and in the object's own px. The one sampler
  * for every gesture that follows the ray rather than what it hits, so that
@@ -132,8 +144,7 @@ const sampledLocal = new THREE.Vector3();
  *   parallel to the plane or points away from it.
  */
 export function sampleRay(controller, space, world, local) {
-  sampler.setFromXRController(controller);
-  if (!sampler.ray.intersectPlane(planeOf(space, sampledPlane), world)) {
+  if (!controllerRay(controller).intersectPlane(planeOf(space, sampledPlane), world)) {
     return false;
   }
   if (local) {

@@ -10,6 +10,7 @@ import { isBlocker } from "../blocker.js";
 import { hitElement } from "./dragAndDrop.js";
 import { HAND_BITS, handOf, heldButtons, isGone } from "./pointerHands.js";
 import { samplePlane, writeSampled } from "./pointerPlane.js";
+import { controllerRay } from "./scroll.js";
 
 /**
  * @import {XRTargetRaySpace} from 'three';
@@ -97,21 +98,22 @@ const wheelInit = {
 /**
  * The element a hand's wheel goes to: the innermost control its ray is
  * on that the page still has, found as its moves find it, without a
- * walk. On a list's gaps, on a gone row in a list, which the walk then
+ * scan. On a list's gaps, on a gone row in a list, which the scan then
  * finds whatever replaced, or on the panel's background, it is the
- * deepest element at the point `samplePlane` last found (see
- * `hitElement`); a move passes over the list to a control outside it
- * instead. Nothing where the ray is on something a plugin hangs in the
- * panel, which is the scene's, as the scene's object is in front of the
- * page there; and, on a panel that stops no rays, nothing between its
- * controls and lists, where it has no background for the ray to be on.
+ * element the scan finds under the hand's ray (see `hitElement`); a move
+ * passes over the list to a control outside it instead. Nothing where
+ * the ray is on something a plugin hangs in the panel, which is the
+ * scene's, as the scene's object is in front of the page there; and, on a
+ * panel that stops no rays, nothing between its controls and lists, where
+ * it has no background for the ray to be on.
  *
  * @param {ForwarderState} state
  * @param {PanelHand} hand
  * @param {Panel} own
+ * @param {XRTargetRaySpace} controller
  * @returns {HTMLElement | null}
  */
-function wheelTarget(state, hand, own) {
+function wheelTarget(state, hand, own, controller) {
   let onList = false;
   for (const object of hand.hover) {
     const target = state.targets.get(object);
@@ -128,7 +130,7 @@ function wheelTarget(state, hand, own) {
   }
   const hovered = hand.hovered;
   const onBackground = hovered?.parent === state.container && isBlocker(hovered);
-  return onList || onBackground ? hitElement(own, state.onPlane) : null;
+  return onList || onBackground ? hitElement(own, controllerRay(controller)) : null;
 }
 
 /**
@@ -167,7 +169,7 @@ function turnWheel(hand, controller) {
   ) {
     return;
   }
-  const element = samplePlane(state, controller) ? wheelTarget(state, hand, own) : null;
+  const element = samplePlane(state, controller) ? wheelTarget(state, hand, own, controller) : null;
   if (!element) {
     return;
   }

@@ -44,3 +44,40 @@ export function getObjectDrawOrder(object) {
   const after = drawnAfter.get(object);
   return after === undefined ? -Infinity : object.renderOrder + after;
 }
+
+/**
+ * Each element's box mesh, while it has one mounted.
+ *
+ * @type {WeakMap<Element, import('three').Object3D>}
+ */
+const boxes = new WeakMap();
+
+/**
+ * Say which mesh draws an element's box, or that none does any more, so
+ * the scan that hit-tests elements (`hitElement` in
+ * `elements/input/dragAndDrop.js`) orders the element by the number the
+ * cast compares for that mesh.
+ *
+ * @param {Element} element
+ * @param {import('three').Object3D | null} mesh
+ * @returns {void}
+ */
+export function setBoxMesh(element, mesh) {
+  if (mesh) {
+    boxes.set(element, mesh);
+  } else {
+    boxes.delete(element);
+  }
+}
+
+/**
+ * The order an element's box is drawn at, as the cast reads it for the box's
+ * mesh (`getObjectDrawOrder`), or `undefined` while no box mesh is mounted.
+ *
+ * @param {Element} element
+ * @returns {number | undefined}
+ */
+export function getBoxDrawOrder(element) {
+  const mesh = boxes.get(element);
+  return mesh ? getObjectDrawOrder(mesh) : undefined;
+}

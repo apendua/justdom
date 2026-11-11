@@ -29,7 +29,7 @@ import { nodeDerived } from "../mirror/records.js";
 import { nodeCache } from "../mirror/nodeCaches.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "../portal/portalRoot.js";
 import { describeElement } from "../panelFrame.js";
-import { movesList, ScrollDragsContext } from "./scroll.js";
+import { controllerRay, movesList, ScrollDragsContext } from "./scroll.js";
 import {
   atPointer,
   bringUpElsewhere,
@@ -1132,7 +1132,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
           isBlocker(e.originalTarget) &&
           isDevelopment()
         ) {
-          const element = hitElement(own, e.intersection.point);
+          const element = hitElement(own, controllerRay(e.controller));
           if (element !== own.element) {
             noteMissedPress(element);
           }

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { createPortal } from "./elements/portal/portal.js";
 import { svgElements } from "./svg/index.js";
-import { getObjectDrawOrder } from "./drawOrder.js";
+import { getBoxDrawOrder, getObjectDrawOrder, registerDrawOrder, setBoxMesh } from "./drawOrder.js";
 import { BOX_BUCKET_BIAS, UNBATCHED_BOX_BIAS } from "./elements/paint/boxBatch.js";
 import { batchedBoxMaterial } from "./elements/paint/sdfRect.js";
 import { flushFrame, settle } from "./test/portalHarness.js";
@@ -165,5 +165,22 @@ describe("the hit test's draw order on every panel mesh", () => {
       ["box", "picture", "run", "shape", "tick"],
       "every kind was walked",
     );
+  });
+});
+
+describe("an element's box mesh", () => {
+  test("gives the element the order the cast reads for the mesh, while it is mounted", () => {
+    const element = document.createElement("div");
+    const mesh = new THREE.Mesh();
+    mesh.renderOrder = 7;
+    registerDrawOrder(mesh, BOX_BUCKET_BIAS);
+    assert.equal(getBoxDrawOrder(element), undefined);
+    setBoxMesh(element, mesh);
+    assert.equal(getBoxDrawOrder(element), 7 + BOX_BUCKET_BIAS);
+    // Read at every ask, so an order the walk moves is the one returned.
+    mesh.renderOrder = 9;
+    assert.equal(getBoxDrawOrder(element), getObjectDrawOrder(mesh));
+    setBoxMesh(element, null);
+    assert.equal(getBoxDrawOrder(element), undefined);
   });
 });

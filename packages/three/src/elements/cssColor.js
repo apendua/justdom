@@ -740,3 +740,15 @@ function channelsOf(name, channels) {
       return null;
   }
 }
+
+/**
+ * The alpha of a computed CSS colour alone, as `parseColor` in
+ * `VisualProperties.js` reads it, for the callers that want nothing else:
+ * it builds no `THREE.Color` and does not convert one to linear.
+ *
+ * @param {string} colorString
+ * @returns {number}
+ */
+export function parseAlpha(colorString) {
+  return parseCssColor(colorString)?.[3] ?? 1.0;
+}

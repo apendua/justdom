@@ -22,10 +22,10 @@
  * - `plugin`: what a scene opts into for its panels, the SVG plugin.
  * - `entry`: the package's entry points.
  *
- * `KNOWN` lists the imports that break the rule today. Each is a debt with
- * a plan (item 8 of the justdom-three strategy), and a PR that pays one
- * takes its line out. A line here that no longer matches an import fails
- * too, so the list cannot outlive what it excuses.
+ * An import closes a cycle when its two ends import each other, directly
+ * or through other modules, and every import inside a group of such
+ * modules is reported, as `cycle: from -> to`. No import breaks either
+ * rule today.
  */
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -74,21 +74,6 @@ const LAYERS = {
   "svg/": "plugin",
   "index.js": "entry",
 };
-
-/**
- * The imports that break the rule today, as `from -> to`, and the imports
- * that close a cycle, as `cycle: from -> to`. An import closes a cycle when
- * its two ends import each other, directly or through other modules, so
- * every import inside a group of such modules has its own line, and a new
- * one into the group fails even where the group is known.
- *
- * @type {readonly string[]}
- */
-const KNOWN = [
-  "cycle: elements/VisualProperties.js -> elements/elevation.js",
-  "cycle: elements/elevation.js -> elements/pseudoElements.js",
-  "cycle: elements/pseudoElements.js -> elements/VisualProperties.js",
-];
 
 /**
  * Every module under `src/` that is not a test or test support.
@@ -217,7 +202,7 @@ function cycleImports(graph) {
 }
 
 describe("finding the imports that close a cycle", () => {
-  test("an import into a known cycle through a module already walked is found", () => {
+  test("an import into a cycle through a module already walked is found", () => {
     // a and b import each other; a -> c -> b closes a second cycle through
     // them, reached from a after b is done.
     const graph = new Map([
@@ -263,16 +248,6 @@ describe("the package's layers", () => {
       }
     }
     broken.push(...cycleImports(graph));
-    const known = new Set(KNOWN);
-    assert.deepEqual(
-      broken.filter((line) => !known.has(line)),
-      [],
-      "imports that run upward or close a cycle",
-    );
-    assert.deepEqual(
-      KNOWN.filter((line) => !broken.includes(line)),
-      [],
-      "KNOWN lines that no longer match an import; take them out",
-    );
+    assert.deepEqual(broken, [], "imports that run upward or close a cycle");
   });
 });

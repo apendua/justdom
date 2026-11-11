@@ -107,7 +107,8 @@ import {
 import { comparePaintOrder, LayerTree, sameHalfPlanes } from "../elements/layerTree.js";
 import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
-import { getDrawnBorderColor, parseAlpha } from "../elements/VisualProperties.js";
+import { parseAlpha } from "../elements/cssColor.js";
+import { getDrawnBorderColor } from "../elements/borderColor.js";
 import { getListItemOrdinal, listMarkerText } from "../elements/listMarker.js";
 import {
   contentBox,

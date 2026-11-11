@@ -10,7 +10,8 @@ import {
   nodeDerived,
 } from "./mirror.js";
 import { ownedImage } from "./image.js";
-import { getDrawnBorderColor, parseAlpha } from "./VisualProperties.js";
+import { parseAlpha } from "./cssColor.js";
+import { getDrawnBorderColor } from "./borderColor.js";
 
 /**
  * @import {ClientBox, GeneratedLayout} from './mirror.js';

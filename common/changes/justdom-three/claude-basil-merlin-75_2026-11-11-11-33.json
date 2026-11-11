@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Keep the pointer forwarder's shared values in one ForwarderState object",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

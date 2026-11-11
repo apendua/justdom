@@ -36,7 +36,7 @@ import { takesTheTyping } from "./typing.js";
 
 /**
  * @import {EntityEffect} from 'justdom-signal';
- * @import {Object3D, XRTargetRaySpace} from 'three';
+ * @import {Object3D, Vector2, Vector3, XRTargetRaySpace} from 'three';
  * @import {Reactive} from '../interactions.js';
  * @import {InteractionEvent, XREventMap} from '../core.js';
  * @import {Panel} from './dragAndDrop.js';
@@ -1403,6 +1403,47 @@ const nextFlagged = /** @type {HTMLElement[]} */ ([]);
  */
 
 /**
+ * What one panel's forwarder keeps while it is up: everything
+ * `createPanelForwarder` builds that its functions read after the build.
+ * Values used only while building stay local to it.
+ *
+ * @typedef {object} ForwarderState
+ * @property {WeakKey} ctx The panel's context.
+ * @property {Object3D} container The panel's container object.
+ * @property {ReturnType<typeof interactions>["stopPropagation"]} stopPropagation
+ * @property {ReturnType<typeof interactions>["isStopped"]} isStopped
+ * @property {ReturnType<typeof ScrollDragsContext.get>} drags
+ * @property {ReturnType<typeof dragAndDrop>} dnd
+ * @property {ReturnType<typeof HapticsContext.get>} haptics What the hand
+ *   feels on a control, if the panel has haptics at all.
+ * @property {Map<Object3D, Target>} targets
+ * @property {Map<HTMLElement, number>} controls The controls among
+ *   `targets`, by element, each with how many of its registrations are
+ *   live.
+ * @property {Flag} hoverFlag
+ * @property {Flag} activeFlag
+ * @property {Map<XRTargetRaySpace, PanelHand>} panelHands
+ * @property {WeakMap<object, Grip>} grips
+ * @property {ReturnType<typeof lazyPanel>} panel The panel, found on the
+ *   first event that needs it.
+ * @property {Element[]} mouseChain What the mouse was last told it is over
+ *   in this panel.
+ * @property {Map<XRTargetRaySpace, { x: number, y: number, sent: boolean }>} following
+ * @property {ReturnType<typeof createFrameRequester>} requestFrames
+ * @property {(() => void) | null} stopFollowing
+ * @property {Vector3} onPlane Scratch for where a ray meets the panel's
+ *   plane.
+ * @property {Vector2} inPanel Scratch for that point in the panel's px.
+ * @property {Vector2} client Scratch for that point on the page.
+ * @property {(() => void) | null} stopWheel
+ * @property {number} wheelTime
+ * @property {number} wheelFrame
+ * @property {boolean} wheelHeld
+ * @property {ForwarderEntry} registered This panel, among the panels that
+ *   are up.
+ */
+
+/**
  * @typedef {object} ForwarderOptions
  * @property {boolean} [thumbstickWheel] Whether a hand's thumbstick turns
  *   the wheel; see `PortalOptions.thumbstickWheel`.
@@ -1516,13 +1557,18 @@ export const PointerForwarderContext = createProperty(
  */
 export function createPanelForwarder(ctx, container, { thumbstickWheel = false } = {}) {
   const { stopPropagation, isStopped } = interactions(ctx);
-  const drags = ScrollDragsContext.get(ctx);
-  const dnd = dragAndDrop(ctx);
+  // What the forwarder's functions read after it is built, in one object
+  // they share. Its fields are written as the build reaches them, in the
+  // order below; nothing reads one before the build has written it, since
+  // every reader runs on an event, after the build returns.
+  const state = /** @type {ForwarderState} */ ({ ctx, container, stopPropagation, isStopped });
+  state.drags = ScrollDragsContext.get(ctx);
+  state.dnd = dragAndDrop(ctx);
   /** What the hand feels on a control, if the panel has haptics at all. */
-  const haptics = HapticsContext.get(ctx);
+  state.haptics = HapticsContext.get(ctx);
 
   /** @type {Map<Object3D, Target>} */
-  const targets = new Map();
+  state.targets = new Map();
 
   /**
    * The controls among `targets`, by element, each with how many of its
@@ -1534,30 +1580,30 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @type {Map<HTMLElement, number>}
    */
-  const controls = new Map();
+  state.controls = new Map();
 
-  const hoverFlag = createFlag(HOVER_ATTRIBUTE);
-  const activeFlag = createFlag(ACTIVE_ATTRIBUTE);
+  state.hoverFlag = createFlag(HOVER_ATTRIBUTE);
+  state.activeFlag = createFlag(ACTIVE_ATTRIBUTE);
 
   /** @type {Map<XRTargetRaySpace, PanelHand>} */
-  const panelHands = new Map();
+  state.panelHands = new Map();
 
   /** @type {WeakMap<object, Grip>} */
-  const grips = new WeakMap();
+  state.grips = new WeakMap();
 
   /**
    * The panel, for where its events are on the page: the one registered
    * under the container, found on the first event that needs it, since the
    * portal registers the panel after it builds the forwarder.
    */
-  const panel = lazyPanel(container);
+  state.panel = lazyPanel(container);
 
   /**
    * @param {XRTargetRaySpace} controller
    * @returns {PanelHand}
    */
   const panelHand = (controller) => {
-    let hand = panelHands.get(controller);
+    let hand = state.panelHands.get(controller);
     if (!hand) {
       hand = {
         hover: [],
@@ -1570,7 +1616,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         active: [],
         source: null,
       };
-      panelHands.set(controller, hand);
+      state.panelHands.set(controller, hand);
     }
     return hand;
   };
@@ -1585,7 +1631,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    */
   const walk = (object, path) => {
     path.length = 0;
-    for (let node = /** @type {Object3D | null} */ (object); node && node !== container;) {
+    for (let node = /** @type {Object3D | null} */ (object); node && node !== state.container;) {
       path.push(node);
       node = node.parent;
     }
@@ -1638,7 +1684,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       return undefined;
     }
     for (let i = from; i < path.length; i += 1) {
-      const target = targets.get(path[i]);
+      const target = state.targets.get(path[i]);
       if (target && !(controlsOnly && target.list)) {
         return target;
       }
@@ -1659,7 +1705,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {boolean}
    */
   const arrived = (target, e) =>
-    !drags.scrolling(e.controller) &&
+    !state.drags.scrolling(e.controller) &&
     isArrival(getControlRoot(target.element, target.object), e.relatedTarget);
 
   /**
@@ -1673,8 +1719,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {void}
    */
   const feelArrival = (target, e, arrival) => {
-    if (haptics && e.registeredTarget === target.object && (arrival ?? arrived(target, e))) {
-      haptics.hover(e.inputSource);
+    if (state.haptics && e.registeredTarget === target.object && (arrival ?? arrived(target, e))) {
+      state.haptics.hover(e.inputSource);
     }
   };
 
@@ -1690,38 +1736,38 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {void}
    */
   const rehover = (controller) => {
-    const hand = panelHands.get(controller);
+    const hand = state.panelHands.get(controller);
     const captor = hands.get(controller)?.captor;
     if (captor?.isConnected) {
-      if (!panel()?.element.contains(captor)) {
+      if (!state.panel()?.element.contains(captor)) {
         if (hand) {
-          hoverFlag.clear(hand.hovering);
+          state.hoverFlag.clear(hand.hovering);
         }
         return;
       }
       for (let el = /** @type {Element | null} */ (captor); el; el = el.parentElement) {
-        if (controls.has(/** @type {HTMLElement} */ (el))) {
+        if (state.controls.has(/** @type {HTMLElement} */ (el))) {
           nextFlagged.push(/** @type {HTMLElement} */ (el));
         }
         if (isPortalRoot(el)) {
           break;
         }
       }
-      hoverFlag.replace(panelHand(controller).hovering, nextFlagged);
+      state.hoverFlag.replace(panelHand(controller).hovering, nextFlagged);
       return;
     }
     if (!hand) {
       return;
     }
     // Under a drag, only what the ray has left loses the flag.
-    const holding = dnd.holding(controller);
+    const holding = state.dnd.holding(controller);
     for (const object of hand.hover) {
-      const target = targets.get(object);
+      const target = state.targets.get(object);
       if (target && !target.list && (!holding || hand.hovering.includes(target.element))) {
         nextFlagged.push(target.element);
       }
     }
-    hoverFlag.replace(hand.hovering, nextFlagged);
+    state.hoverFlag.replace(hand.hovering, nextFlagged);
   };
 
   /**
@@ -1746,7 +1792,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @param {{ controller: XRTargetRaySpace, originalTarget: Object3D, start: InteractionEvent }} e
    * @returns {boolean}
    */
-  const taken = (e) => isStopped(e.start) && !pressOf(e, "squeeze").swallowed;
+  const taken = (e) => state.isStopped(e.start) && !pressOf(e, "squeeze").swallowed;
 
   /**
    * Whether the panel owns the grip that began with this start: the start
@@ -1756,8 +1802,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {boolean}
    */
   const owns = (start) => {
-    const state = grips.get(start);
-    return (state === "owned" || state === "felt") && !isStopped(start);
+    const grip = state.grips.get(start);
+    return (grip === "owned" || grip === "felt") && !state.isStopped(start);
   };
 
   /**
@@ -1767,9 +1813,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {void}
    */
   const feelClosing = (start) => {
-    if (haptics && grips.get(start) === "owned") {
-      grips.set(start, "felt");
-      haptics.press(start.inputSource);
+    if (state.haptics && state.grips.get(start) === "owned") {
+      state.grips.set(start, "felt");
+      state.haptics.press(start.inputSource);
     }
   };
 
@@ -1792,7 +1838,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @param {XRTargetRaySpace} controller
    * @returns {boolean}
    */
-  const busy = (controller) => dnd.carrying(controller) || movesList(ctx, controller);
+  const busy = (controller) => state.dnd.carrying(controller) || movesList(state.ctx, controller);
 
   /**
    * What the mouse was last told it is over in this panel, as
@@ -1802,7 +1848,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @type {Element[]}
    */
-  const mouseChain = [];
+  state.mouseChain = [];
 
   /**
    * The element a hand's pointer is over in this panel, as a browser would
@@ -1820,14 +1866,14 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     settleCapture(controller);
     const captor = hands.get(controller)?.captor;
     if (captor?.isConnected) {
-      const own = panel();
+      const own = state.panel();
       return !own || own.element.contains(captor) ? captor : null;
     }
     if (!hand) {
       return null;
     }
     for (const object of hand.hover) {
-      const target = targets.get(object);
+      const target = state.targets.get(object);
       if (target && !target.list && !isGone(target.element)) {
         return target.element;
       }
@@ -1847,13 +1893,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @type {Map<XRTargetRaySpace, { x: number, y: number, sent: boolean }>}
    */
-  const following = new Map();
-  const requestFrames = createFrameRequester(ctx);
+  state.following = new Map();
+  state.requestFrames = createFrameRequester(ctx);
   /** @type {(() => void) | null} */
-  let stopFollowing = null;
-  const onPlane = new THREE.Vector3();
-  const inPanel = new THREE.Vector2();
-  const client = new THREE.Vector2();
+  state.stopFollowing = null;
+  state.onPlane = new THREE.Vector3();
+  state.inPanel = new THREE.Vector2();
+  state.client = new THREE.Vector2();
 
   /**
    * Where a hand's ray crosses this panel's plane, into `inPanel`, in the
@@ -1865,7 +1911,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {boolean} False, with nothing written, where the ray crosses
    *   the plane nowhere.
    */
-  const samplePlane = (controller) => sampleRay(controller, container, onPlane, inPanel);
+  const samplePlane = (controller) =>
+    sampleRay(controller, state.container, state.onPlane, state.inPanel);
 
   /**
    * Write the point `samplePlane` last found into an event's init, as a
@@ -1876,8 +1923,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {void}
    */
   const writeSampled = (own, init) => {
-    clientPointAt(own, inPanel.x, inPanel.y, client);
-    writeClient(init, client.x, client.y);
+    clientPointAt(own, state.inPanel.x, state.inPanel.y, state.client);
+    writeClient(init, state.client.x, state.client.y);
   };
 
   /**
@@ -1890,34 +1937,34 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    */
   const moveCaptured = (last, controller) => {
     const captor = hands.get(controller)?.captor;
-    const own = panel();
+    const own = state.panel();
     if (!own || !captor?.isConnected || !own.element.contains(captor)) {
-      following.delete(controller);
+      state.following.delete(controller);
       return;
     }
     if (!samplePlane(controller)) {
       return;
     }
-    if (last.sent && last.x === inPanel.x && last.y === inPanel.y) {
+    if (last.sent && last.x === state.inPanel.x && last.y === state.inPanel.y) {
       return;
     }
-    last.x = inPanel.x;
-    last.y = inPanel.y;
+    last.x = state.inPanel.x;
+    last.y = state.inPanel.y;
     last.sent = true;
     sendPointerAndMouse(
       /** @type {HTMLElement} */ (captor),
       "pointermove",
-      planeInit(own, inPanel.x, inPanel.y),
+      planeInit(own, state.inPanel.x, state.inPanel.y),
       controller,
     );
   };
 
   /** The frames a captured hand is followed on, while any is. */
   const followFrame = () => {
-    following.forEach(moveCaptured);
-    if (following.size === 0 && stopFollowing) {
-      stopFollowing();
-      stopFollowing = null;
+    state.following.forEach(moveCaptured);
+    if (state.following.size === 0 && state.stopFollowing) {
+      state.stopFollowing();
+      state.stopFollowing = null;
     }
   };
 
@@ -1926,13 +1973,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @type {(() => void) | null}
    */
-  let stopWheel = null;
+  state.stopWheel = null;
   /** When the last of those frames ran, by `performance.now`. */
-  let wheelTime = 0;
+  state.wheelTime = 0;
   /** How long this one counts for, in ms (see `MAX_WHEEL_FRAME`). */
-  let wheelFrame = 0;
+  state.wheelFrame = 0;
   /** Whether a hand with a stick has its ray on the panel this frame. */
-  let wheelHeld = false;
+  state.wheelHeld = false;
 
   /**
    * The element a hand's wheel goes to: the innermost control its ray is
@@ -1953,7 +2000,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
   const wheelTarget = (hand, own) => {
     let onList = false;
     for (const object of hand.hover) {
-      const target = targets.get(object);
+      const target = state.targets.get(object);
       if (!target) {
         continue;
       }
@@ -1966,8 +2013,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
     }
     const hovered = hand.hovered;
-    const onBackground = hovered?.parent === container && isBlocker(hovered);
-    return onList || onBackground ? hitElement(own, onPlane) : null;
+    const onBackground = hovered?.parent === state.container && isBlocker(hovered);
+    return onList || onBackground ? hitElement(own, state.onPlane) : null;
   };
 
   /**
@@ -1988,12 +2035,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     if (hand.hover.length === 0 || !hand.source?.gamepad) {
       return;
     }
-    wheelHeld = true;
+    state.wheelHeld = true;
     const y = stickY(hand.source);
-    const own = panel();
+    const own = state.panel();
     if (
       y === 0 ||
-      wheelFrame === 0 ||
+      state.wheelFrame === 0 ||
       heldButtons(controller) !== 0 ||
       pressedBits(hand.source.gamepad) !== 0 ||
       !own
@@ -2005,20 +2052,20 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       return;
     }
     writeSampled(own, wheelInit);
-    wheelInit.deltaY = (y * WHEEL_SPEED * wheelFrame) / 1000;
+    wheelInit.deltaY = (y * WHEEL_SPEED * state.wheelFrame) / 1000;
     element.dispatchEvent(new WheelEvent("wheel", wheelInit));
   };
 
   /** The frames the thumbstick is read on, while a hand with one is here. */
   const wheelTick = () => {
     const now = performance.now();
-    wheelFrame = Math.min(now - wheelTime, MAX_WHEEL_FRAME);
-    wheelTime = now;
-    wheelHeld = false;
-    panelHands.forEach(turnWheel);
-    if (!wheelHeld && stopWheel) {
-      stopWheel();
-      stopWheel = null;
+    state.wheelFrame = Math.min(now - state.wheelTime, MAX_WHEEL_FRAME);
+    state.wheelTime = now;
+    state.wheelHeld = false;
+    state.panelHands.forEach(turnWheel);
+    if (!state.wheelHeld && state.stopWheel) {
+      state.stopWheel();
+      state.stopWheel = null;
     }
   };
 
@@ -2037,9 +2084,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       return;
     }
     handOf(e.controller);
-    if (!stopWheel) {
-      wheelTime = performance.now();
-      stopWheel = requestFrames(wheelTick);
+    if (!state.stopWheel) {
+      state.wheelTime = performance.now();
+      state.stopWheel = state.requestFrames(wheelTick);
     }
   };
 
@@ -2065,7 +2112,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    */
   const track = (e, hand, released = false, pressing = false) => {
     const { controller } = e;
-    if (!released && (dnd.holding(controller) || hands.get(controller)?.cancelled)) {
+    if (!released && (state.dnd.holding(controller) || hands.get(controller)?.cancelled)) {
       return;
     }
     const element = elementUnder(controller, hand);
@@ -2073,11 +2120,11 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     // the primary one by this panel; one that was the primary one still is.
     const isPrimary =
       hand.chain.length > 0 || element !== null
-        ? elect(controller, pressing, registered)
+        ? elect(controller, pressing, state.registered)
         : primary === controller;
     if (
       (hand.chain[0] ?? null) === element &&
-      (!isPrimary || (mouseChain[0] ?? null) === element)
+      (!isPrimary || (state.mouseChain[0] ?? null) === element)
     ) {
       return;
     }
@@ -2085,7 +2132,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     // A point of the ray's own only where it is on this panel: a leave or
     // a release may come with it on another or on nothing, and a hand that
     // has gone has it nowhere. Elsewhere, where the page last heard it.
-    const own = panel();
+    const own = state.panel();
     const on = isOnPanel(own, e);
     const init = moveInit(own, on ? e : NOWHERE);
     if (!on && !pointer.releasedNowhere) {
@@ -2101,7 +2148,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       sent = cross(hand.chain, element, init, "pointer");
     }
     if (isPrimary) {
-      sent = cross(mouseChain, element, init, "mouse") || sent;
+      sent = cross(state.mouseChain, element, init, "mouse") || sent;
     }
     if (sent && on) {
       recordPoint(pointer, x, y);
@@ -2116,7 +2163,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {MouseEventInit}
    */
   const clickInit = (e) => {
-    const init = pressInit(panel(), e, false);
+    const init = pressInit(state.panel(), e, false);
     init.buttons = heldButtons(e.controller, HAND_BITS.select);
     return init;
   };
@@ -2139,7 +2186,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // on a page; the targets the drag passes over hear `dragenter`. From
       // the press, since the ray has already moved in the frame the press
       // becomes a drag.
-      if (dnd.holding(e.controller)) {
+      if (state.dnd.holding(e.controller)) {
         hand.held = e;
         return;
       }
@@ -2156,12 +2203,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // began the scroll read it. Not under a drag, which probes the panels
       // it crosses itself and whose drop reads the one it ends on again.
       const arrival = arrived(first, e);
-      const own = arrival ? panel() : null;
+      const own = arrival ? state.panel() : null;
       if (own) {
         probePanel(own);
       }
       for (const object of hand.hover) {
-        const target = targets.get(object);
+        const target = state.targets.get(object);
         if (target && !target.list) {
           feelArrival(target, e, target === first ? arrival : undefined);
         }
@@ -2176,7 +2223,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         walk(e.originalTarget, hand.hover);
         hand.hovered = e.originalTarget;
       }
-      if (dnd.holding(e.controller)) {
+      if (state.dnd.holding(e.controller)) {
         return;
       }
       track(e, hand);
@@ -2187,7 +2234,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // A captured hand's moves come from the captor's panel, from where
       // the ray crosses its plane: from here at once if that is this one.
       const captured = !!hands.get(e.controller)?.captor?.isConnected;
-      const last = following.get(e.controller);
+      const last = state.following.get(e.controller);
       if (last) {
         moveCaptured(last, e.controller);
       }
@@ -2198,7 +2245,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // as it sends a release whose target has gone.
       let sent = captured;
       for (const object of hand.hover) {
-        const target = targets.get(object);
+        const target = state.targets.get(object);
         if (!target || target.list) {
           continue;
         }
@@ -2207,7 +2254,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         }
         if (!sent && !isGone(target.element)) {
           sent = true;
-          sendPointerAndMouse(target.element, "pointermove", moveInit(panel(), e), e.controller);
+          sendPointerAndMouse(
+            target.element,
+            "pointermove",
+            moveInit(state.panel(), e),
+            e.controller,
+          );
         }
       }
       if (held) {
@@ -2222,12 +2274,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
       // A captured pointer is still over its captor, wherever the ray went.
       if (!isCaptured(e.controller)) {
-        hoverFlag.clear(hand.hovering);
+        state.hoverFlag.clear(hand.hovering);
       }
       hand.hover.length = 0;
       hand.hovered = null;
       // Onto something else in this panel, its enter crosses over to it.
-      const own = panel();
+      const own = state.panel();
       if (!own || getPanel(e.relatedTarget) !== own) {
         track(e, hand);
       }
@@ -2241,10 +2293,10 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         // element. Not on an overlay's background, which clicks its
         // overlay, nor on a plugin's own object, which the scene takes, nor
         // on the panel's empty root.
-        const own = panel();
+        const own = state.panel();
         if (
           own &&
-          e.originalTarget.parent === container &&
+          e.originalTarget.parent === state.container &&
           isBlocker(e.originalTarget) &&
           isDevelopment()
         ) {
@@ -2261,8 +2313,8 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // press, which ends the one before's say over `didDrag`.
       if (isGone(first.element)) {
         select.swallowed = true;
-        dnd.begin(e.controller, first.element, first.object, false);
-        stopPropagation(e);
+        state.dnd.begin(e.controller, first.element, first.object, false);
+        state.stopPropagation(e);
         return;
       }
       if (first.list) {
@@ -2271,12 +2323,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         // The controls the ray reaches while the list scrolls, and while it
         // glides after, read nothing on arrival (see `arrived`), and their
         // moves take this corner.
-        const own = panel();
+        const own = state.panel();
         if (own) {
           probePanel(own);
         }
-        drags.begin(e.controller, first.element, first.object);
-        stopPropagation(e);
+        state.drags.begin(e.controller, first.element, first.object);
+        state.stopPropagation(e);
         return;
       }
       // The hand that presses may take over as the primary one, and then
@@ -2289,7 +2341,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       const pressed = sendPointerAndMouse(
         first.element,
         "pointerdown",
-        pressInit(panel(), e, true),
+        pressInit(state.panel(), e, true),
         e.controller,
       );
       // A press on something draggable may become a drag and drop, and
@@ -2297,7 +2349,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // will tell. The page's own gesture comes first, as it does under a
       // mouse, where dragging a row drags the row and not the list.
       if (
-        !dnd.begin(
+        !state.dnd.begin(
           e.controller,
           first.element,
           first.object,
@@ -2306,17 +2358,17 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
           recordDragPoint,
         )
       ) {
-        drags.begin(e.controller, first.element, first.object, cancelPointer);
+        state.drags.begin(e.controller, first.element, first.object, cancelPointer);
       }
-      haptics?.press(e.inputSource);
+      state.haptics?.press(e.inputSource);
       for (const object of select.path) {
-        const target = targets.get(object);
+        const target = state.targets.get(object);
         if (target && !target.list) {
           nextFlagged.push(target.element);
         }
       }
-      activeFlag.replace(hand.active, nextFlagged);
-      stopPropagation(e);
+      state.activeFlag.replace(hand.active, nextFlagged);
+      state.stopPropagation(e);
     },
     selectend(e) {
       const press = pressOf(e, "select");
@@ -2329,7 +2381,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // the list's part is only to keep the release from going on past the
       // panel.
       if (pressed.list) {
-        stopPropagation(e);
+        state.stopPropagation(e);
         return;
       }
       // A hand that went sends no release: the page loses its pointer,
@@ -2338,9 +2390,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // comes after this, takes the mouse off what it was over.
       if (e.lost) {
         lose(e.controller);
-        activeFlag.clear(panelHand(e.controller).active);
+        state.activeFlag.clear(panelHand(e.controller).active);
         endPress(e.controller);
-        stopPropagation(e);
+        state.stopPropagation(e);
         return;
       }
       // A press the page lost, or one that held the pointer to its captor,
@@ -2359,7 +2411,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // heard no press, and the controls around it hear no release.
       let sent = press.swallowed;
       for (const object of path) {
-        const target = targets.get(object);
+        const target = state.targets.get(object);
         if (!target || target.list) {
           continue;
         }
@@ -2369,19 +2421,19 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
           // drag sends from the controller's own `selectend`.
           // A captured hand's release is placed from its captor's panel
           // (see `placeCapturedRelease`).
-          if (!dnd.didDrag(e.controller)) {
+          if (!state.dnd.didDrag(e.controller)) {
             sendPointerAndMouse(
               target.element,
               "pointerup",
-              releaseInit(panel(), e),
+              releaseInit(state.panel(), e),
               e.controller,
-              isOnPanel(panel(), e),
+              isOnPanel(state.panel(), e),
             );
           }
-          haptics?.release(e.inputSource);
+          state.haptics?.release(e.inputSource);
         }
       }
-      activeFlag.clear(panelHand(e.controller).active);
+      state.activeFlag.clear(panelHand(e.controller).active);
       endPress(e.controller);
       // A capture, a hold of something draggable: what the press held the
       // pointer to has let go of it. A drag's `drop` and `dragend` come
@@ -2396,18 +2448,18 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
           ended.releasedNowhere = false;
         }
         if (held) {
-          bringUpElsewhere(e.controller, registered, {
+          bringUpElsewhere(e.controller, state.registered, {
             pointer: true,
             released: HAND_BITS.select,
           });
         }
       };
-      if (dnd.holding(e.controller)) {
+      if (state.dnd.holding(e.controller)) {
         queueMicrotask(catchUp);
       } else {
         catchUp();
       }
-      stopPropagation(e);
+      state.stopPropagation(e);
     },
     select(e) {
       const press = pressOf(e, "select");
@@ -2432,28 +2484,28 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         !completed ||
         press.swallowed ||
         isGone(pressed.element) ||
-        drags.didScroll(e.controller) ||
-        dnd.didDrag(e.controller)
+        state.drags.didScroll(e.controller) ||
+        state.dnd.didDrag(e.controller)
       ) {
-        stopPropagation(e);
+        state.stopPropagation(e);
         return;
       }
       completed.element.dispatchEvent(new MouseEvent("click", clickInit(e)));
       if (!completed.list) {
         for (let i = from; i < path.length; i += 1) {
-          const target = targets.get(path[i]);
+          const target = state.targets.get(path[i]);
           if (target && !target.list) {
             target.onPress?.();
           }
         }
       }
-      stopPropagation(e);
+      state.stopPropagation(e);
     },
     selectmissed(e) {
       // The panel took the press at its start, so its miss is the panel's
       // as its end is.
       if (pressOf(e, "select").target) {
-        stopPropagation(e);
+        state.stopPropagation(e);
       }
     },
     squeezestart(e) {
@@ -2466,18 +2518,18 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // the scene can grab the panel by a row the page has let go of.
       if (isGone(first.element)) {
         squeeze.swallowed = true;
-        stopPropagation(e);
+        state.stopPropagation(e);
         return;
       }
       if (busy(e.controller)) {
         return;
       }
-      grips.set(e, "owned");
+      state.grips.set(e, "owned");
       // Felt once as the grip closes on a control, as a trigger's press is,
       // but only once the dispatch has run, since the start goes on past
       // the panel and only then is it known whether something above took
       // it. A grab is felt by nothing here.
-      if (haptics) {
+      if (state.haptics) {
         queueMicrotask(() => {
           if (owns(e)) {
             feelClosing(e);
@@ -2500,11 +2552,11 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // does now, nor for one that opens while it does.
       const first = innermost(path, true, path.indexOf(e.completedOn));
       if (first && !isGone(gripped.element) && owns(e.start) && !busy(e.controller)) {
-        const init = pressInit(panel(), e, true, 2);
+        const init = pressInit(state.panel(), e, true, 2);
         init.buttons = heldButtons(e.controller, HAND_BITS.squeeze);
         first.element.dispatchEvent(new MouseEvent("contextmenu", init));
       }
-      stopPropagation(e);
+      state.stopPropagation(e);
     },
     squeezemissed(e) {
       // Let past for a grab, as its end is, so that every event of a taken
@@ -2512,7 +2564,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // today, `drag()` and `carry()` taking the start and the end alone.
       // The panel's own miss stops where a press's does.
       if (pressOf(e, "squeeze").target && !taken(e)) {
-        stopPropagation(e);
+        state.stopPropagation(e);
       }
     },
     squeezeend(e) {
@@ -2529,11 +2581,11 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // moved a list, is felt neither way, whatever the hand is doing as it
       // opens. A closing not felt yet, its microtask still to come, is felt
       // first. A hand that went has no motors left to feel it.
-      if (haptics && owns(e.start) && !e.lost) {
+      if (state.haptics && owns(e.start) && !e.lost) {
         feelClosing(e.start);
-        haptics.release(e.inputSource);
+        state.haptics.release(e.inputSource);
       }
-      stopPropagation(e);
+      state.stopPropagation(e);
     },
   };
 
@@ -2550,30 +2602,30 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    *
    * @type {ForwarderEntry}
    */
-  const registered = {
+  state.registered = {
     rehover,
     /** @param {XRTargetRaySpace} controller */
-    pointsAt: (controller) => (panelHands.get(controller)?.hover.length ?? 0) > 0,
+    pointsAt: (controller) => (state.panelHands.get(controller)?.hover.length ?? 0) > 0,
     /**
      * @param {XRTargetRaySpace} controller
      * @param {Element} captor
      */
     follow: (controller, captor) => {
-      if (!panel()?.element.contains(captor)) {
+      if (!state.panel()?.element.contains(captor)) {
         return;
       }
       // A capture of its own, whose first move goes out wherever the last
       // one's last move was.
-      const last = following.get(controller);
+      const last = state.following.get(controller);
       if (last) {
         last.sent = false;
       } else {
-        following.set(controller, { x: 0, y: 0, sent: false });
+        state.following.set(controller, { x: 0, y: 0, sent: false });
       }
-      stopFollowing ??= requestFrames(followFrame);
+      state.stopFollowing ??= state.requestFrames(followFrame);
     },
     placeRelease: (controller, captor, init) => {
-      const own = panel();
+      const own = state.panel();
       if (!own?.element.contains(captor) || !samplePlane(controller)) {
         return false;
       }
@@ -2583,13 +2635,13 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       return true;
     },
     leave: (controller, init) => {
-      const hand = panelHands.get(controller);
+      const hand = state.panelHands.get(controller);
       if (hand) {
         cross(hand.chain, null, init, "pointer");
       }
     },
     bringUp: (controller, { pointer, buttons, nowhere }) => {
-      const hand = panelHands.get(controller);
+      const hand = state.panelHands.get(controller);
       const element = nowhere ? null : elementUnder(controller, hand);
       const mouse = controller === primary;
       if (!mouse && !(pointer && hand)) {
@@ -2602,7 +2654,7 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       // `writePoint` in `dragAndDrop.js`).
       const pointerHand = handOf(controller);
       const init = atPointer(controller, pointerHand, buttons);
-      const own = panel();
+      const own = state.panel();
       const placed = !!own && !!element && samplePlane(controller);
       if (placed) {
         writeSampled(own, init);
@@ -2614,14 +2666,14 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
         sent = cross(hand.chain, element, init, "pointer");
       }
       if (mouse) {
-        sent = cross(mouseChain, element, init, "mouse") || sent;
+        sent = cross(state.mouseChain, element, init, "mouse") || sent;
       }
       if (sent && placed) {
         recordPoint(pointerHand, x, y);
       }
     },
   };
-  forwarders.push(registered);
+  forwarders.push(state.registered);
 
   /**
    * Take a target until the function returned is called, which also takes
@@ -2632,27 +2684,27 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
    * @returns {() => void}
    */
   const register = (target) => {
-    targets.set(target.object, target);
+    state.targets.set(target.object, target);
     if (!target.list) {
-      controls.set(target.element, (controls.get(target.element) ?? 0) + 1);
+      state.controls.set(target.element, (state.controls.get(target.element) ?? 0) + 1);
     }
     return () => {
-      if (targets.get(target.object) === target) {
-        targets.delete(target.object);
+      if (state.targets.get(target.object) === target) {
+        state.targets.delete(target.object);
       }
       if (!target.list) {
-        const count = controls.get(target.element) ?? 0;
+        const count = state.controls.get(target.element) ?? 0;
         if (count > 1) {
-          controls.set(target.element, count - 1);
+          state.controls.set(target.element, count - 1);
           return;
         }
-        controls.delete(target.element);
-        for (const hand of panelHands.values()) {
+        state.controls.delete(target.element);
+        for (const hand of state.panelHands.values()) {
           drop(hand.hovering, target.element);
           drop(hand.active, target.element);
         }
-        hoverFlag.forget(target.element);
-        activeFlag.forget(target.element);
+        state.hoverFlag.forget(target.element);
+        state.activeFlag.forget(target.element);
       }
     };
   };
@@ -2664,17 +2716,17 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       for (const type of types) {
         listened.removeEventListener(type, /** @type {never} */ (listeners[type]));
       }
-      const index = forwarders.indexOf(registered);
+      const index = forwarders.indexOf(state.registered);
       if (index !== -1) {
         forwarders.splice(index, 1);
       }
       letGoOfCapture();
-      following.clear();
-      stopFollowing?.();
-      stopFollowing = null;
-      stopWheel?.();
-      stopWheel = null;
-      panelHands.clear();
+      state.following.clear();
+      state.stopFollowing?.();
+      state.stopFollowing = null;
+      state.stopWheel?.();
+      state.stopWheel = null;
+      state.panelHands.clear();
     },
   };
 }

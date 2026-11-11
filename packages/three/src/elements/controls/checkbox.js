@@ -1,18 +1,18 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, mountEach, observable, onCleanup, set } from "justdom-signal";
-import { $, Nothing } from "../operators.js";
+import { $, Nothing } from "../../operators.js";
 import { box } from "./div.js";
-import { getCheckedCached } from "./mirror/styleReads.js";
-import { getComputedStyleCached } from "./mirror/styleReads.js";
-import { CHECKED_ATTRIBUTE } from "./portalRoot.js";
-import { applyClip } from "./clip.js";
-import { place } from "./place.js";
-import { MARK_MATERIAL_SETTINGS } from "./textHelpers.js";
-import { registerDrawOrder } from "../drawOrder.js";
+import { getCheckedCached } from "../mirror/styleReads.js";
+import { getComputedStyleCached } from "../mirror/styleReads.js";
+import { CHECKED_ATTRIBUTE } from "../portalRoot.js";
+import { applyClip } from "../clip.js";
+import { place } from "../place.js";
+import { MARK_MATERIAL_SETTINGS } from "../textHelpers.js";
+import { registerDrawOrder } from "../../drawOrder.js";
 
 /**
  * @import {Source} from 'justdom-signal';
- * @import {Component} from '../core.js';
+ * @import {Component} from '../../core.js';
  * @import {BoxSurface} from './div.js';
  */
 

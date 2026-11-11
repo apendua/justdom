@@ -19,7 +19,7 @@ import {
   UNCLIPPED,
   writeClip,
 } from "../elements/clip.js";
-import { PortalReadyContext } from "../elements/div.js";
+import { PortalReadyContext } from "../elements/controls/div.js";
 import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
 import { markMoved, place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/paint/elevation.js";

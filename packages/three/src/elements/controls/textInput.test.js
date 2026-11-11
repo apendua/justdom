@@ -1,10 +1,10 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal as createHeldPortal } from "./portal.js";
-import { stubCanvas, STUB_GLYPH_WIDTH } from "../test/stubCanvas.js";
-import { isRunMesh } from "../test/runMesh.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { createPortal as createHeldPortal } from "../portal.js";
+import { stubCanvas, STUB_GLYPH_WIDTH } from "../../test/stubCanvas.js";
+import { isRunMesh } from "../../test/runMesh.js";
 
 /**
  * `createPortal` with the loading frame's timing off, as the portal suite
@@ -290,7 +290,7 @@ describe("a text field in a panel", () => {
   });
 
   test("a number half way typed is drawn as typed, and a scripted clear clears it", async () => {
-    const { typeIntoInput } = await import("./typing.js");
+    const { typeIntoInput } = await import("../typing.js");
     const panel = fieldPanel((input) => {
       input.type = "number";
       input.placeholder = "Qty";

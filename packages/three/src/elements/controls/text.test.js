@@ -2,19 +2,19 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Signal, UpdateChannel, withChannel } from "justdom-signal";
-import { createMirror } from "./mirror.js";
+import { createMirror } from "../mirror.js";
 import { text } from "./text.js";
-import { TextBatchContext } from "./paint/textBatch.js";
-import { holdsStep, stepBelow, TextScaleContext } from "./textScale.js";
-import { createTextPreparer, TextPrepareContext } from "./textPrepare.js";
-import { createPortalScheduler } from "./portalScheduler.js";
-import { installRange } from "../test/textRange.js";
-import { paintBatch } from "../test/textRuns.js";
+import { TextBatchContext } from "../paint/textBatch.js";
+import { holdsStep, stepBelow, TextScaleContext } from "../textScale.js";
+import { createTextPreparer, TextPrepareContext } from "../textPrepare.js";
+import { createPortalScheduler } from "../portalScheduler.js";
+import { installRange } from "../../test/textRange.js";
+import { paintBatch } from "../../test/textRuns.js";
 
 /**
- * @import {PaintBatch} from './paint/paintBatch.js';
- * @import {TextBatch} from './paint/textBatch.js';
- * @import {TextPreparer} from './textPrepare.js';
+ * @import {PaintBatch} from '../paint/paintBatch.js';
+ * @import {TextBatch} from '../paint/textBatch.js';
+ * @import {TextPreparer} from '../textPrepare.js';
  */
 
 describe("text visibility", () => {

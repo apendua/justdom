@@ -1,13 +1,13 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { clientRect } from "../test/clientRect.js";
+import { clientRect } from "../../test/clientRect.js";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal as createHeldPortal } from "./portal.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { createPortal as createHeldPortal } from "../portal.js";
 import { getListItemOrdinal, listMarkerText } from "./listMarker.js";
-import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
-import { stubCanvas, STUB_GLYPH_WIDTH } from "../test/stubCanvas.js";
-import { isRunMesh } from "../test/runMesh.js";
+import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
+import { stubCanvas, STUB_GLYPH_WIDTH } from "../../test/stubCanvas.js";
+import { isRunMesh } from "../../test/runMesh.js";
 
 /**
  * `createPortal` with the loading frame's timing off, as the portal suite

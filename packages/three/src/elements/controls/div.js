@@ -1,28 +1,28 @@
 import * as THREE from "three";
 import { createProperty, Effect, onCleanup, Signal } from "justdom-signal";
 import { Derived, effects, flatMap, just, on, set, observable, useEffects } from "justdom-signal";
-import { $, children, Nothing } from "../operators.js";
-import { interactions } from "../interactions.js";
-import VisualProperties from "./VisualProperties.js";
-import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "./paint/sdfRect.js";
-import { RampSlot } from "./paint/gradient.js";
+import { $, children, Nothing } from "../../operators.js";
+import { interactions } from "../../interactions.js";
+import VisualProperties from "../VisualProperties.js";
+import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
+import { RampSlot } from "../paint/gradient.js";
 import { backgroundImage, contentImage, isImageElement } from "./image.js";
-import { createBlocker, coverBox } from "./blocker.js";
+import { createBlocker, coverBox } from "../blocker.js";
 import {
   getBorderBoxSize,
   getBoxOffset,
   getLocalClipBox,
   getScrollOffset,
-} from "./mirror/geometryReads.js";
-import { getParentElement, isPortalRoot, isVisibilityHidden } from "./mirror/styleReads.js";
-import { getPaintChildren, isGenerated } from "./pseudoElements.js";
-import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";
+} from "../mirror/geometryReads.js";
+import { getParentElement, isPortalRoot, isVisibilityHidden } from "../mirror/styleReads.js";
+import { getPaintChildren, isGenerated } from "../pseudoElements.js";
+import { clipBoxShows, clipRaycast, UNCLIPPED } from "../clip.js";
 import {
   composeTransform,
   hasDepthTransform,
   isTransformed,
   readOwnTransform,
-} from "./css/cssTransform.js";
+} from "../css/cssTransform.js";
 import {
   getContentRenderOrder,
   getLayer,
@@ -33,22 +33,22 @@ import {
   overlapOrders,
   overlaps,
   paintedBoundsInto,
-} from "./paint/elevation.js";
-import { LayerOrderContext } from "./paint/layerOrder.js";
-import { registerDrawOrder } from "../drawOrder.js";
-import { isScrollable } from "./scroll.js";
-import { markMoved, place } from "./place.js";
-import { BoxNumbers } from "./boxNumbers.js";
-import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "./paint/boxBatch.js";
-import { TextBatchContext } from "./paint/textBatch.js";
+} from "../paint/elevation.js";
+import { LayerOrderContext } from "../paint/layerOrder.js";
+import { registerDrawOrder } from "../../drawOrder.js";
+import { isScrollable } from "../scroll.js";
+import { markMoved, place } from "../place.js";
+import { BoxNumbers } from "../boxNumbers.js";
+import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "../paint/boxBatch.js";
+import { TextBatchContext } from "../paint/textBatch.js";
 import {
   forwardListEvents,
   forwardPointerEvents,
   pressesForRayTarget,
   isRayTarget,
-} from "./pointerForwarding.js";
-import { lazyPanel, pressInit } from "./dragAndDrop.js";
-import { setContentGroup } from "./contentGroup.js";
+} from "../pointerForwarding.js";
+import { lazyPanel, pressInit } from "../dragAndDrop.js";
+import { setContentGroup } from "../contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
 const scrollTranslation = new THREE.Matrix4();
@@ -84,9 +84,9 @@ export const MotionChannelContext = createProperty(
 );
 
 /**
- * @import {Component, XREventMap} from '../core.js';
- * @import {ClipBox} from './clip.js';
- * @import {PaintedBounds, PaintLayer} from './paint/elevation.js';
+ * @import {Component, XREventMap} from '../../core.js';
+ * @import {ClipBox} from '../clip.js';
+ * @import {PaintedBounds, PaintLayer} from '../paint/elevation.js';
  * @import {EntityEffect, Source, Subscribable} from 'justdom-signal';
  */
 
@@ -249,7 +249,7 @@ const committedPlacements = new WeakMap();
  *
  * @param {THREE.Mesh} mesh
  * @param {BoxNumbers['uniforms']} uniforms
- * @param {() => import('./paint/boxBatch.js').BoxBatch | null} batch
+ * @param {() => import('../paint/boxBatch.js').BoxBatch | null} batch
  * @param {() => boolean} paints
  * @returns {EntityEffect<THREE.Mesh>[]}
  */
@@ -478,7 +478,7 @@ export function box(ctx, element, options = {}) {
    * from inside three's traversal — somewhere the reactive graph does not
    * reach.
    *
-   * @type {import('./clip.js').ClipBox}
+   * @type {import('../clip.js').ClipBox}
    */
   let currentClipBox = UNCLIPPED;
 
@@ -522,7 +522,7 @@ export function box(ctx, element, options = {}) {
    * above already makes for every other cost a picture brings, decided once
    * here rather than watched, because a tag never changes.
    *
-   * @type {import('./paint/boxBatch.js').BoxBatch | null}
+   * @type {import('../paint/boxBatch.js').BoxBatch | null}
    */
   const panelBatch = image ? null : boxBatch;
 
@@ -533,7 +533,7 @@ export function box(ctx, element, options = {}) {
    * this is read where it decides something rather than once. A box without
    * one reads a memoized string to find out.
    *
-   * @returns {import('./paint/boxBatch.js').BoxBatch | null}
+   * @returns {import('../paint/boxBatch.js').BoxBatch | null}
    */
   const batch = () => (drawsBackgroundPicture() ? null : panelBatch);
   /** The panel's order of its layers, null outside a portal. */
@@ -546,7 +546,7 @@ export function box(ctx, element, options = {}) {
    * effect of its own. Both batches hand what they hear to the panel's one
    * paint batch, which walks boxes and text together, and so does `moved`.
    *
-   * @type {import('./paint/textBatch.js').TextBatch | null}
+   * @type {import('../paint/textBatch.js').TextBatch | null}
    */
   const textBatch = TextBatchContext.get(ctx);
 

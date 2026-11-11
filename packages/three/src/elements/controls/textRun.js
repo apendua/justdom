@@ -1,22 +1,22 @@
 import { Mesh } from "three";
 import { Derived, effects, onCleanup, selector, set } from "justdom-signal";
-import { $ } from "../operators.js";
-import { createMarkMaterial, generateTextTexture, makeTextQuadGeometry } from "./textHelpers.js";
-import { parseColor } from "./VisualProperties.js";
-import { applyClip, applyReveal } from "./clip.js";
-import { TextBatchContext } from "./paint/textBatch.js";
-import { LayerOrderContext } from "./paint/layerOrder.js";
-import { registerDrawOrder } from "../drawOrder.js";
-import { readTextScale, TextScaleContext } from "./textScale.js";
-import { TextPrepareContext } from "./textPrepare.js";
+import { $ } from "../../operators.js";
+import { createMarkMaterial, generateTextTexture, makeTextQuadGeometry } from "../textHelpers.js";
+import { parseColor } from "../VisualProperties.js";
+import { applyClip, applyReveal } from "../clip.js";
+import { TextBatchContext } from "../paint/textBatch.js";
+import { LayerOrderContext } from "../paint/layerOrder.js";
+import { registerDrawOrder } from "../../drawOrder.js";
+import { readTextScale, TextScaleContext } from "../textScale.js";
+import { TextPrepareContext } from "../textPrepare.js";
 
 /**
  * @import {MeshBasicMaterial, Texture, Vector4} from 'three';
  * @import {EntityEffect, Source} from 'justdom-signal';
- * @import {Component} from '../core.js';
- * @import {TextBounds, TextRenderStyle, TextTexture} from './textHelpers.js';
- * @import {TextLine} from './textLines.js';
- * @import {PreparedRun} from './textPrepare.js';
+ * @import {Component} from '../../core.js';
+ * @import {TextBounds, TextRenderStyle, TextTexture} from '../textHelpers.js';
+ * @import {TextLine} from '../textLines.js';
+ * @import {PreparedRun} from '../textPrepare.js';
  */
 
 /**

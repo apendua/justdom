@@ -11,7 +11,7 @@ import { MAX_BOX_SHADOWS } from "../shadows.js";
 
 /**
  * @import VisualProperties from '../VisualProperties.js';
- * @import {ContentImage} from '../image.js';
+ * @import {ContentImage} from '../controls/image.js';
  * @import {RampSlot} from './gradient.js';
  * @import {ProgramKind} from './programKeeper.js';
  */

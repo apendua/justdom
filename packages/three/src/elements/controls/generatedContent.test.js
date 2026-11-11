@@ -1,14 +1,14 @@
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { clientRect } from "../test/clientRect.js";
-import { stubCanvas } from "../test/stubCanvas.js";
-import { isRunMesh } from "../test/runMesh.js";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal as createHeldPortal } from "./portal.js";
-import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
-import { batchedBoxMaterial, rectGeometry } from "./paint/sdfRect.js";
-import { getGenerated, parseGeneratedContent } from "./pseudoElements.js";
+import { clientRect } from "../../test/clientRect.js";
+import { stubCanvas } from "../../test/stubCanvas.js";
+import { isRunMesh } from "../../test/runMesh.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { createPortal as createHeldPortal } from "../portal.js";
+import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
+import { batchedBoxMaterial, rectGeometry } from "../paint/sdfRect.js";
+import { getGenerated, parseGeneratedContent } from "../pseudoElements.js";
 import {
   getDrawLevel,
   getElevation,
@@ -17,20 +17,20 @@ import {
   getRenderBand,
   OVERLAY_LIFT,
   PIECE_BAND,
-} from "./paint/elevation.js";
-import { isBlocker } from "./blocker.js";
-import { getLayerOrder } from "./paint/layerOrder.js";
-import { PaintBatch } from "./paint/paintBatch.js";
-import { buffers, watchBatch } from "../test/batchBuffers.js";
-import { comparePaintOrder } from "./paint/layerTree.js";
-import { fakeClock } from "../test/clock.js";
-import { countEvaluations } from "../test/evaluations.js";
-import { flicker, reportTransform, shifted, transformTransition } from "../test/motion.js";
-import { getPanel } from "./dragAndDrop.js";
-import { layerDepth, listPaintOrder } from "../test/paintOrderCount.js";
-import { getGeneratedSelectors } from "./css/documentStyles.js";
-import { generatedHost, splitSelectorList } from "./css/styleRules.js";
-import { HOVER_ATTRIBUTE } from "./portalRoot.js";
+} from "../paint/elevation.js";
+import { isBlocker } from "../blocker.js";
+import { getLayerOrder } from "../paint/layerOrder.js";
+import { PaintBatch } from "../paint/paintBatch.js";
+import { buffers, watchBatch } from "../../test/batchBuffers.js";
+import { comparePaintOrder } from "../paint/layerTree.js";
+import { fakeClock } from "../../test/clock.js";
+import { countEvaluations } from "../../test/evaluations.js";
+import { flicker, reportTransform, shifted, transformTransition } from "../../test/motion.js";
+import { getPanel } from "../dragAndDrop.js";
+import { layerDepth, listPaintOrder } from "../../test/paintOrderCount.js";
+import { getGeneratedSelectors } from "../css/documentStyles.js";
+import { generatedHost, splitSelectorList } from "../css/styleRules.js";
+import { HOVER_ATTRIBUTE } from "../portalRoot.js";
 
 /**
  * `createPortal` with the loading frame's timing off, so a mount loads the
@@ -948,7 +948,7 @@ describe("an element's ::before and ::after in the paint order", () => {
    * @param {ReturnType<typeof generatedPanel>} panel
    */
   const walk = async (panel) => {
-    const order = /** @type {import("./paint/layerOrder.js").LayerOrder} */ (
+    const order = /** @type {import("../paint/layerOrder.js").LayerOrder} */ (
       getLayerOrder(panel.root)
     );
     panel.parent.updateWorldMatrix(true, true);

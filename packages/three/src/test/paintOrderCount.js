@@ -114,7 +114,7 @@ import { findSvgElement, isSvgElement } from "../elements/plugins.js";
 import { PORTAL_ATTRIBUTE } from "../elements/portalRoot.js";
 import { parseAlpha } from "../elements/css/cssColor.js";
 import { getDrawnBorderColor } from "../elements/borderColor.js";
-import { getListItemOrdinal, listMarkerText } from "../elements/listMarker.js";
+import { getListItemOrdinal, listMarkerText } from "../elements/controls/listMarker.js";
 import {
   contentBox,
   getRunRenderStyle,
@@ -123,7 +123,7 @@ import {
   measureTextRun,
   px,
 } from "../elements/textHelpers.js";
-import { PASSWORD_BULLET } from "../elements/textInput.js";
+import { PASSWORD_BULLET } from "../elements/controls/textInput.js";
 import { getShownValue, isTextInput } from "../elements/typing.js";
 import { getPaintChildren, isGenerated, paintsBox } from "../elements/pseudoElements.js";
 import { MARKABLE_TAGS, markerVertices } from "../svg/marker.js";

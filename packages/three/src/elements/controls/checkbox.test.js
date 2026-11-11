@@ -1,16 +1,16 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext } from "../interactions.js";
-import { createMirror } from "./mirror.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { InteractionContext } from "../../interactions.js";
+import { createMirror } from "../mirror.js";
+import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
 import { checkbox } from "./checkbox.js";
-import { bubble, forwardedPanel } from "../test/rays.js";
+import { bubble, forwardedPanel } from "../../test/rays.js";
 
 /**
  * @import { Mesh, MeshBasicMaterial, Object3D } from "three";
- * @import { InteractionManager } from "../interactions.js";
- * @import { XREventMap } from "../core.js";
+ * @import { InteractionManager } from "../../interactions.js";
+ * @import { XREventMap } from "../../core.js";
  */
 
 // Same reason as in div.test.js: jsdom implements no Font Loading API, and

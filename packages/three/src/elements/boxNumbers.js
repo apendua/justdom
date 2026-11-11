@@ -10,7 +10,7 @@ import {
 /**
  * @import * as THREE from 'three';
  * @import VisualProperties from './VisualProperties.js';
- * @import {ContentImage} from './image.js';
+ * @import {ContentImage} from './controls/image.js';
  * @import {RampSlot} from './paint/gradient.js';
  * @import {ClipBox} from './clip.js';
  * @import {BoxBatch} from './paint/boxBatch.js';

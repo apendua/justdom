@@ -1,35 +1,35 @@
 import * as THREE from "three";
 import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal";
-import { $, children, Nothing } from "../operators.js";
-import VisualProperties from "./VisualProperties.js";
-import { getInteriorClipBox, getScrollOffset } from "./mirror/geometryReads.js";
-import { hidesVisibility } from "./mirror/styleReads.js";
-import { getGenerated, KIND_BITS, paintsBox } from "./pseudoElements.js";
-import { rectGeometry } from "./paint/sdfRect.js";
-import { BoxNumbers } from "./boxNumbers.js";
-import { RampSlot } from "./paint/gradient.js";
+import { $, children, Nothing } from "../../operators.js";
+import VisualProperties from "../VisualProperties.js";
+import { getInteriorClipBox, getScrollOffset } from "../mirror/geometryReads.js";
+import { hidesVisibility } from "../mirror/styleReads.js";
+import { getGenerated, KIND_BITS, paintsBox } from "../pseudoElements.js";
+import { rectGeometry } from "../paint/sdfRect.js";
+import { BoxNumbers } from "../boxNumbers.js";
+import { RampSlot } from "../paint/gradient.js";
 import { backgroundImage, contentImageEqual, placeContentImage } from "./image.js";
-import { toLocalClipBox } from "./clip.js";
+import { toLocalClipBox } from "../clip.js";
 import {
   getContentRenderOrder,
   getDrawLevel,
   getLayer,
   getRenderBand,
   OVERLAY_LIFT,
-} from "./paint/elevation.js";
-import { LayerOrderContext } from "./paint/layerOrder.js";
-import { placeAndScale } from "./place.js";
-import { BoxBatchContext, UNBATCHED_BOX_BIAS } from "./paint/boxBatch.js";
-import { TextBatchContext } from "./paint/textBatch.js";
+} from "../paint/elevation.js";
+import { LayerOrderContext } from "../paint/layerOrder.js";
+import { placeAndScale } from "../place.js";
+import { BoxBatchContext, UNBATCHED_BOX_BIAS } from "../paint/boxBatch.js";
+import { TextBatchContext } from "../paint/textBatch.js";
 import { drawQuad } from "./div.js";
-import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
-import { surfaceRun } from "./surfaceRun.js";
+import { getRunRenderStyle, isTintableText } from "../textHelpers.js";
+import { surfaceRun } from "../surfaceRun.js";
 
 /**
  * @import {Source} from 'justdom-signal';
- * @import {Component} from '../core.js';
+ * @import {Component} from '../../core.js';
  * @import {BoxSurface} from './div.js';
- * @import {Generated, GeneratedKind} from './pseudoElements.js';
+ * @import {Generated, GeneratedKind} from '../pseudoElements.js';
  */
 
 /**

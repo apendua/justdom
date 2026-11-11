@@ -2,7 +2,7 @@ import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "justdom-signal";
-import { InteractionContext } from "../interactions.js";
+import { InteractionContext } from "../../interactions.js";
 import { div } from "./div.js";
 import {
   acquireImage,
@@ -16,11 +16,11 @@ import {
   releaseImage,
   releaseImagesWithScene,
 } from "./image.js";
-import { sceneService } from "../sceneServices.js";
-import { testScene } from "../test/sceneHost.js";
-import VisualProperties from "./VisualProperties.js";
-import { stubCanvas } from "../test/stubCanvas.js";
-import { deferredLoader, fakeTexture } from "../test/deferredLoader.js";
+import { sceneService } from "../../sceneServices.js";
+import { testScene } from "../../test/sceneHost.js";
+import VisualProperties from "../VisualProperties.js";
+import { stubCanvas } from "../../test/stubCanvas.js";
+import { deferredLoader, fakeTexture } from "../../test/deferredLoader.js";
 
 // Same stub as the other element suites: jsdom has no Font Loading API, and
 // `VisualProperties` will not resolve size units until `document.fonts` says
@@ -652,7 +652,7 @@ function boxMaterialOf(object) {
  * @param {HTMLElement} element
  */
 function project(element) {
-  const manager = /** @type {import('../interactions.js').InteractionManager} */ (
+  const manager = /** @type {import('../../interactions.js').InteractionManager} */ (
     /** @type {unknown} */ ({ add: () => {}, remove: () => {}, stopPropagation: () => {} })
   );
   /** @type {THREE.Object3D | undefined} */

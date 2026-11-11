@@ -11,31 +11,31 @@ import {
   Signal,
   withComputation,
 } from "justdom-signal";
-import { $, Nothing } from "../operators.js";
+import { $, Nothing } from "../../operators.js";
 import { box } from "./div.js";
-import { getBorderBoxSize } from "./mirror/geometryReads.js";
-import { getComputedStyleCached } from "./mirror/styleReads.js";
+import { getBorderBoxSize } from "../mirror/geometryReads.js";
+import { getComputedStyleCached } from "../mirror/styleReads.js";
 import {
   createMarkMaterial,
   getRunRenderStyle,
   isTintableText,
   contentBox,
   measureTextRun,
-} from "./textHelpers.js";
-import { parseColor } from "./VisualProperties.js";
-import { applyClip, clipBoxEqual, intersectClipBoxes, toLocalClipBox } from "./clip.js";
-import { rectGeometry } from "./paint/sdfRect.js";
-import { placeAndScale } from "./place.js";
-import { registerDrawOrder } from "../drawOrder.js";
-import { surfaceRun } from "./surfaceRun.js";
-import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
-import { holdShared, shadowAccessor } from "./shadowAccessor.js";
+} from "../textHelpers.js";
+import { parseColor } from "../VisualProperties.js";
+import { applyClip, clipBoxEqual, intersectClipBoxes, toLocalClipBox } from "../clip.js";
+import { rectGeometry } from "../paint/sdfRect.js";
+import { placeAndScale } from "../place.js";
+import { registerDrawOrder } from "../../drawOrder.js";
+import { surfaceRun } from "../surfaceRun.js";
+import { discardDraft, getCaretOffset, getShownValue, setCaretOffset } from "../typing.js";
+import { holdShared, shadowAccessor } from "../shadowAccessor.js";
 
 /**
  * @import {EntityEffect} from 'justdom-signal';
- * @import {Component, InputEvent, PointerEvent, InputCancelEvent, XREventMap} from '../core.js';
+ * @import {Component, InputEvent, PointerEvent, InputCancelEvent, XREventMap} from '../../core.js';
  * @import {BoxSurface} from './div.js';
- * @import {ClipBox} from './clip.js';
+ * @import {ClipBox} from '../clip.js';
  */
 
 /**

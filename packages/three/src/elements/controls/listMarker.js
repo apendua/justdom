@@ -1,17 +1,17 @@
 import { Derived, flatMap, observable, selector } from "justdom-signal";
 import * as THREE from "three";
-import { $, children, Nothing } from "../operators.js";
+import { $, children, Nothing } from "../../operators.js";
 import { box } from "./div.js";
-import { getFirstLine } from "./mirror/textLayout.js";
-import { getBorderBoxSize, getInteriorClipBox, getScrollOffset } from "./mirror/geometryReads.js";
+import { getFirstLine } from "../mirror/textLayout.js";
+import { getBorderBoxSize, getInteriorClipBox, getScrollOffset } from "../mirror/geometryReads.js";
 import {
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
   getParentElement,
-} from "./mirror/styleReads.js";
-import { nodeDerived } from "./mirror/records.js";
-import { nodeCache } from "./mirror/nodeCaches.js";
+} from "../mirror/styleReads.js";
+import { nodeDerived } from "../mirror/records.js";
+import { nodeCache } from "../mirror/nodeCaches.js";
 import {
   contentBox,
   getRunRenderStyle,
@@ -19,13 +19,13 @@ import {
   measureTextAdvance,
   measureTextRun,
   px,
-} from "./textHelpers.js";
-import { surfaceRun } from "./surfaceRun.js";
+} from "../textHelpers.js";
+import { surfaceRun } from "../surfaceRun.js";
 import { generatedContent } from "./generatedContent.js";
-import { generatedRules } from "./pseudoElements.js";
+import { generatedRules } from "../pseudoElements.js";
 
 /**
- * @import {Component} from '../core.js';
+ * @import {Component} from '../../core.js';
  * @import {BoxSurface} from './div.js';
  * @import {Source} from 'justdom-signal';
  */

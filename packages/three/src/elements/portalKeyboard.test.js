@@ -15,7 +15,7 @@ import { CameraContext, RendererContext, SceneContext } from "../scene.js";
 import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./paint/sdfRect.js";
-import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "./textInput.js";
+import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "./controls/textInput.js";
 import { getObjectDrawOrder } from "../drawOrder.js";
 import { recordingSource } from "../test/rumble.js";
 import { PREVIEW_ATTRIBUTE } from "./keyboardPreview.js";

@@ -7,12 +7,12 @@
 
 import * as THREE from "three";
 import { batch, withChannel } from "justdom-signal";
-import { div } from "./div.js";
+import { div } from "./controls/div.js";
 import { getContentGroup } from "./contentGroup.js";
-import { text } from "./text.js";
-import { checkbox } from "./checkbox.js";
-import { markedBox } from "./listMarker.js";
-import { textInput } from "./textInput.js";
+import { text } from "./controls/text.js";
+import { checkbox } from "./controls/checkbox.js";
+import { markedBox } from "./controls/listMarker.js";
+import { textInput } from "./controls/textInput.js";
 import { isTextInput } from "./typing.js";
 import { ELEMENT_FLAGS } from "./portalRoot.js";
 import { markMoved } from "./place.js";

@@ -10,7 +10,7 @@ import { Derived, Signal, toObservable, UpdateChannel, withChannel } from "justd
 import { $, $$, attr, children } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "./mirror/mutationRules.js";
-import { acquireImage, releaseImage } from "./image.js";
+import { acquireImage, releaseImage } from "./controls/image.js";
 import { fakeClock } from "../test/clock.js";
 import { syntheticEvent } from "../test/events.js";
 

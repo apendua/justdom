@@ -9,7 +9,7 @@ import {
 } from "./boxBatch.js";
 import { batchedBoxMaterial, createRectUniforms, rectGeometry } from "./sdfRect.js";
 import { rampUniforms } from "./gradient.js";
-import { CARET_ORDER_BIAS } from "../textInput.js";
+import { CARET_ORDER_BIAS } from "../controls/textInput.js";
 import { place } from "../place.js";
 import { instanceVersions } from "../../test/instanceVersions.js";
 import { paintBatch } from "../../test/textRuns.js";

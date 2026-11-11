@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { batch, Effect, Signal, UpdateChannel, withChannel, withComputation } from "justdom-signal";
-import { MotionChannelContext, PortalReadyContext } from "./div.js";
-import { InputFocusContext } from "./textInput.js";
+import { MotionChannelContext, PortalReadyContext } from "./controls/div.js";
+import { InputFocusContext } from "./controls/textInput.js";
 import { bindPortalKeyboard } from "./portalKeyboard.js";
 import { createKeyboardHost } from "./keyboardHost.js";
 import { keyboardSlotOf } from "./keyboardSlot.js";
-import { releaseImagesWithScene } from "./image.js";
+import { releaseImagesWithScene } from "./controls/image.js";
 import { sceneService } from "../sceneServices.js";
 import { createMirror } from "./mirror.js";
 import { getBorderBoxSize } from "./mirror/geometryReads.js";

@@ -6,7 +6,7 @@ import { getChildNodes, getComputedStyleCached } from "./mirror/styleReads.js";
 import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";
 import { describeStillStyle } from "./mirror/measurementClones.js";
-import { ownedImage } from "./image.js";
+import { ownedImage } from "./controls/image.js";
 import { parseAlpha } from "./css/cssColor.js";
 import { getDrawnBorderColor } from "./borderColor.js";
 

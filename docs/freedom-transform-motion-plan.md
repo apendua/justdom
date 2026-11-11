@@ -199,8 +199,8 @@ Each is a draft through the review loop in apendua.dev's `CLAUDE.md`, stacked on
 3. **The motion channel and the split placement.** The rules above, with their docs: the `atomic`
    option's doc in `portal.js`, a section in `docs/freedom-atomic-panel-updates.md` and the rule of
    its section 7.1 (with the `div.test.js` tests that pin it), and the package README where it
-   describes atomic updates. Tests in `portalLoading.test.js`, each failing on the old code where it
-   describes new behaviour:
+   describes atomic updates. Tests in `portalAlwaysBusy.test.js`, each failing on the old code where
+   it describes new behaviour:
    - an atomic panel holding a cold effect elsewhere moves a transform-only animation's box every
      frame;
    - the matrix is composed with the committed offset while a layout change waits;

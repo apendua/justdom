@@ -1,18 +1,20 @@
 /**
  * `createPortal` as a whole: what a panel projects and how rays reach it,
- * the `Mountable` contract and the order a mount is built in, and a
- * draggable panel. The parts `buildPortal` hands its state to have files of
- * their own: `portalNodes.test.js` (building, the commit, teardown),
- * `portalLoading.test.js` (the loading frame, busy flags, images and fonts),
- * `portalWatchers.test.js` (mutations, scroll, animation and restyles) and
- * `portalContainer.test.js` (the container, claimed or the portal's own).
+ * the `Mountable` contract, and a draggable panel. The parts `buildPortal`
+ * hands its state to have files of their own: `portalNodes.test.js`
+ * (building, the commit, teardown), `portalLoading.test.js` (the loading
+ * frame, busy flags, images and fonts), `portalWatchers.test.js`
+ * (mutations, scroll, animation and restyles) and `portalContainer.test.js`
+ * (the container, claimed or the portal's own). `portalAlwaysBusy.test.js`
+ * is a panel whose channel never runs dry, across the pump, the commit and
+ * the motion channel.
  */
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Signal, UpdateChannel, withChannel } from "justdom-signal";
-import { $, $$, attr, children } from "justdom-core";
+import { $, attr, children } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { getComputedStyleCached } from "./mirror/styleReads.js";
 import { getPortalRoot } from "./portalRoot.js";
@@ -273,61 +275,6 @@ describe("createPortal", () => {
     portal.disconnect();
   });
 
-  test("a checkbox is projected as a control rather than as a box", async () => {
-    const manager = new InteractionManager();
-    /** @type {THREE.Object3D[]} */
-    const added = [];
-    const originalAdd = manager.add.bind(manager);
-    manager.add = (object) => {
-      added.push(object);
-      originalAdd(object);
-    };
-    const ctx = InteractionContext.set({}, manager);
-
-    const portal = createPortal(ctx);
-    portal.addTo(new THREE.Group());
-
-    /** @type {import("justdom-core").Mountable | undefined} */
-    let mountable;
-    // Deliberately without `cursor: pointer`: an ordinary box has to ask to be
-    // a ray target, and a checkbox does not.
-    const tree = $("div", [children($("input", [attr("type", () => "checkbox")]))]);
-    const subscription = tree.subscribe((value) => {
-      mountable = value;
-    });
-    assert.ok(mountable);
-    portal.mount(mountable);
-
-    await settle(portal);
-
-    assert.equal(added.length, 2, "the blocker, and the checkbox itself");
-    const input = /** @type {HTMLInputElement | null} */ (
-      document.querySelector('[data-xr-portal] input[type="checkbox"]')
-    );
-    assert.ok(input);
-    assert.equal(input.checked, false);
-
-    const control = added.find(
-      (object) => !(object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry),
-    );
-    assert.ok(control);
-    manager.dispatch(
-      /** @type {any} */ (control),
-      /** @type {any} */ ({ type: "select", originalTarget: control, completedOn: control }),
-    );
-
-    // The click the ray sends is a click, so the DOM does the toggling and the
-    // scene follows the DOM — the same order of events the page sees. The DOM
-    // is true immediately; the scene's write-back of the flag rides the
-    // panel's channel and lands at the top of the next frame.
-    assert.equal(input.checked, true);
-    await pump();
-    assert.equal(input.dataset.xrChecked, "true");
-
-    subscription.unsubscribe();
-    portal.disconnect();
-  });
-
   test("a stylesheet's :checked rule alone restyles a box a ray ticks", async () => {
     // Written for the page alone, with no `[data-xr-checked]` beside it.
     const style = document.createElement("style");
@@ -546,55 +493,6 @@ describe("createPortal", () => {
       [true, true, true],
     );
 
-    subscription.unsubscribe();
-    portal.disconnect();
-  });
-
-  test("an svg template the portal does not build is still followed", async () => {
-    // A `<marker>` in its `<defs>` is drawn where a path names it, not where
-    // it stands, so the portal builds nothing for it. Whatever draws it still
-    // has to hear an edit inside it, which only reaches nodes in the mirror.
-    const ctx = InteractionContext.set({}, new InteractionManager());
-    const portal = createPortal(ctx, { budget: Infinity });
-    portal.addTo(new THREE.Group());
-
-    /** @type {import("justdom-core").Mountable | undefined} */
-    let mountable;
-    const tree = $("div", [
-      children(
-        $$("svg", [
-          children(
-            $$("defs", [
-              children($$("marker", [children($$("path", [attr({ d: "M0 0 L10 5 L0 10 z" })]))])),
-            ]),
-          ),
-        ]),
-      ),
-    ]);
-    const subscription = tree.subscribe((value) => {
-      mountable = value;
-    });
-    assert.ok(mountable);
-    portal.mount(mountable);
-    await settle(portal);
-
-    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
-    const path = containers[containers.length - 1].querySelector("marker path");
-    assert.ok(path, "the marker's path is in the panel");
-    let reads = 0;
-    const style = new Derived(() => {
-      getComputedStyleCached(path);
-      reads += 1;
-      return reads;
-    });
-    const reader = style.subscribe({});
-    const before = style.get();
-
-    path.setAttribute("class", "edited");
-    await settle(portal);
-    assert.notEqual(style.get(), before, "the edit reached the marker's path");
-
-    reader.unsubscribe();
     subscription.unsubscribe();
     portal.disconnect();
   });

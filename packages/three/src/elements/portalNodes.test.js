@@ -1,6 +1,7 @@
 /**
  * A panel's objects and the commit that puts them in the scene and takes
- * them out, as `portalNodes.js` does them: the mount sliced across frames,
+ * them out, as `portalNodes.js` does them: the object each kind of node
+ * becomes, the order a mount is built in, the mount sliced across frames,
  * atomic and non-atomic updates, rows moved and removed, and the shared
  * budget.
  */
@@ -8,10 +9,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { Signal, toObservable } from "justdom-signal";
-import { $, attr, children, className } from "justdom-core";
+import { Derived, Signal, toObservable } from "justdom-signal";
+import { $, $$, attr, children, className } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror } from "./mirror.js";
+import { getComputedStyleCached } from "./mirror/styleReads.js";
 import { clientRect } from "../test/clientRect.js";
 import { getContentGroup } from "./contentGroup.js";
 
@@ -1265,6 +1267,110 @@ describe("createPortal", () => {
     } finally {
       DomMirror.prototype.adopt = originalAdopt;
     }
+  });
+
+  test("a checkbox is projected as a control rather than as a box", async () => {
+    const manager = new InteractionManager();
+    /** @type {THREE.Object3D[]} */
+    const added = [];
+    const originalAdd = manager.add.bind(manager);
+    manager.add = (object) => {
+      added.push(object);
+      originalAdd(object);
+    };
+    const ctx = InteractionContext.set({}, manager);
+
+    const portal = createPortal(ctx);
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("justdom-core").Mountable | undefined} */
+    let mountable;
+    // Deliberately without `cursor: pointer`: an ordinary box has to ask to be
+    // a ray target, and a checkbox does not.
+    const tree = $("div", [children($("input", [attr("type", () => "checkbox")]))]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+
+    await settle(portal);
+
+    assert.equal(added.length, 2, "the blocker, and the checkbox itself");
+    const input = /** @type {HTMLInputElement | null} */ (
+      document.querySelector('[data-xr-portal] input[type="checkbox"]')
+    );
+    assert.ok(input);
+    assert.equal(input.checked, false);
+
+    const control = added.find(
+      (object) => !(object instanceof THREE.Mesh && object.geometry instanceof THREE.PlaneGeometry),
+    );
+    assert.ok(control);
+    manager.dispatch(
+      /** @type {any} */ (control),
+      /** @type {any} */ ({ type: "select", originalTarget: control, completedOn: control }),
+    );
+
+    // The click the ray sends is a click, so the DOM does the toggling and the
+    // scene follows the DOM — the same order of events the page sees. The DOM
+    // is true immediately; the scene's write-back of the flag rides the
+    // panel's channel and lands at the top of the next frame.
+    assert.equal(input.checked, true);
+    await pump();
+    assert.equal(input.dataset.xrChecked, "true");
+
+    subscription.unsubscribe();
+    portal.disconnect();
+  });
+
+  test("an svg template the portal does not build is still followed", async () => {
+    // A `<marker>` in its `<defs>` is drawn where a path names it, not where
+    // it stands, so the portal builds nothing for it. Whatever draws it still
+    // has to hear an edit inside it, which only reaches nodes in the mirror.
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const portal = createPortal(ctx, { budget: Infinity });
+    portal.addTo(new THREE.Group());
+
+    /** @type {import("justdom-core").Mountable | undefined} */
+    let mountable;
+    const tree = $("div", [
+      children(
+        $$("svg", [
+          children(
+            $$("defs", [
+              children($$("marker", [children($$("path", [attr({ d: "M0 0 L10 5 L0 10 z" })]))])),
+            ]),
+          ),
+        ]),
+      ),
+    ]);
+    const subscription = tree.subscribe((value) => {
+      mountable = value;
+    });
+    assert.ok(mountable);
+    portal.mount(mountable);
+    await settle(portal);
+
+    const containers = document.querySelectorAll(`[${"data-xr-portal"}]`);
+    const path = containers[containers.length - 1].querySelector("marker path");
+    assert.ok(path, "the marker's path is in the panel");
+    let reads = 0;
+    const style = new Derived(() => {
+      getComputedStyleCached(path);
+      reads += 1;
+      return reads;
+    });
+    const reader = style.subscribe({});
+    const before = style.get();
+
+    path.setAttribute("class", "edited");
+    await settle(portal);
+    assert.notEqual(style.get(), before, "the edit reached the marker's path");
+
+    reader.unsubscribe();
+    subscription.unsubscribe();
+    portal.disconnect();
   });
 });
 

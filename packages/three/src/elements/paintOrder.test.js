@@ -1722,6 +1722,13 @@ describe("a panel drawn in paint order", () => {
       const [mesh] = members;
       const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
 
+      // Told twice in one flush, as a paint and a clip are by a scroll:
+      // written once.
+      batch.changed(mesh);
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, 1, "told twice, written once");
+
       mesh.visible = false;
       batch.changed(mesh);
       batch.flush();

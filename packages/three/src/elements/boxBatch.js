@@ -424,9 +424,8 @@ export class BoxBatch {
    * Something about the panel that the batch has copied down has changed in
    * a way that needs a rebuild: a box appeared, went away, or was shown or
    * hidden. A change to a member's numbers alone is `changed`, and to an
-   * object's matrix alone `moved`. The one batch
-   * coalesces it with everything else the panel changed (`invalidate` in
-   * `paintBatch.js`).
+   * object's matrix alone `moved`. The one batch coalesces it with
+   * everything else the panel changed (`invalidate` in `paintBatch.js`).
    *
    * @returns {void}
    */

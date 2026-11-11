@@ -620,7 +620,8 @@ export class PaintBatch {
    * What a rebuild met, in the order of the walk: the order each box or run
    * draws at, the numbers of a box or the run itself, and its matrix in the
    * container's frame. Kept between rebuilds, as is every scratch below,
-   * since a rebuild runs in the frame whenever something moves.
+   * since a rebuild still runs in the frame whenever something structural
+   * changes, which a panel being edited does often.
    *
    * @type {number[]}
    */
@@ -722,11 +723,12 @@ export class PaintBatch {
   /**
    * Something either batch copied down changed in a way that needs a
    * rebuild (see the file's header), or the layers the order cuts did: a
-   * box moved, scrolled, appeared or went away, a run did the same.
+   * box or a run appeared, went away, was shown or hidden, or was put under
+   * another parent. A box that moved or scrolled is `moved`, and one whose
+   * numbers changed is `changed`.
    *
-   * Coalesced to one rebuild, because a single mutation reaches a great many
-   * of these — every box in a re-laid-out panel writes its uniforms — and the
-   * rebuild is a walk of the whole panel either way.
+   * Coalesced to one rebuild, because a single mutation can reach a great
+   * many of these, and the rebuild is a walk of the whole panel either way.
    *
    * Two things collect the debt, and a panel needs both. A microtask is the
    * right grain for anything that arrives as its own task, which is what a

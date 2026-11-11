@@ -5,8 +5,10 @@
  * module may import from its own layer and the ones under it. An import
  * from a layer above is a failure, and so is a cycle of imports, whatever
  * the layers. Both are read from the source: every `import … from`,
- * `export … from` and `import(…)` outside a comment. A type named in a
- * JSDoc comment is not an import at run time and is not read.
+ * `export … from`, `import "…"` and `import(…)` outside a comment, with
+ * the path in any of the three quotes. A type named in a JSDoc comment is
+ * not an import at run time and is not read. A path built at run time is
+ * not read either; the package has none.
  *
  * The layers, from the bottom:
  *
@@ -69,9 +71,11 @@ const LAYERS = {
 };
 
 /**
- * The imports that break the rule today, as `from -> to`, and the cycles,
- * as `cycle: a -> b -> … -> a` starting from the first module of the cycle
- * by name.
+ * The imports that break the rule today, as `from -> to`, and the imports
+ * that close a cycle, as `cycle: from -> to`. An import closes a cycle when
+ * its two ends import each other, directly or through other modules, so
+ * every import inside a group of such modules has its own line, and a new
+ * one into the group fails even where the group is known.
  *
  * @type {readonly string[]}
  */
@@ -81,7 +85,9 @@ const KNOWN = [
   "render.js -> elements/panelOptions.js",
   "render.js -> elements/plugins.js",
   "render.js -> elements/portalScheduler.js",
-  "cycle: elements/VisualProperties.js -> elements/elevation.js -> elements/pseudoElements.js -> elements/VisualProperties.js",
+  "cycle: elements/VisualProperties.js -> elements/elevation.js",
+  "cycle: elements/elevation.js -> elements/pseudoElements.js",
+  "cycle: elements/pseudoElements.js -> elements/VisualProperties.js",
 ];
 
 /**
@@ -125,7 +131,7 @@ function importsOf(file) {
     .replace(/^\s*\/\/.*$/gm, "");
   /** @type {Set<string>} */
   const found = new Set();
-  const pattern = /(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+)["'](\.{1,2}\/[^"']+)["']/gm;
+  const pattern = /(?:\bfrom|\bimport\s*\(?)\s*["'`](\.{1,2}\/[^"'`]+)["'`]/g;
   for (const match of source.matchAll(pattern)) {
     found.add(posix.normalize(posix.join(posix.dirname(file), match[1])));
   }
@@ -149,45 +155,89 @@ function layerOf(file) {
 }
 
 /**
- * Every cycle in the graph, each once, from its first module by name.
+ * The imports that close a cycle: those whose two ends import each other,
+ * directly or through other modules. They are the imports inside a
+ * strongly connected component of the graph, found by Tarjan's algorithm.
  *
  * @param {Map<string, string[]>} graph
- * @returns {string[]}
+ * @returns {string[]} As `cycle: from -> to`, sorted.
  */
-function cycles(graph) {
-  /** @type {Set<string>} */
-  const found = new Set();
+function cycleImports(graph) {
+  /** @type {Map<string, number>} */
+  const index = new Map();
+  /** @type {Map<string, number>} */
+  const low = new Map();
+  /** @type {Map<string, number>} */
+  const component = new Map();
   /** @type {string[]} */
-  const path = [];
-  /** @type {Set<string>} */
-  const onPath = new Set();
-  /** @type {Set<string>} */
-  const done = new Set();
+  const stack = [];
   /** @param {string} node */
   const visit = (node) => {
-    path.push(node);
-    onPath.add(node);
+    index.set(node, index.size);
+    low.set(node, index.size - 1);
+    stack.push(node);
     for (const next of graph.get(node) ?? []) {
-      if (onPath.has(next)) {
-        const loop = path.slice(path.indexOf(next));
-        const first = loop.indexOf([...loop].sort()[0]);
-        const turned = [...loop.slice(first), ...loop.slice(0, first)];
-        found.add(`cycle: ${[...turned, turned[0]].join(" -> ")}`);
-      } else if (!done.has(next)) {
+      if (!index.has(next)) {
         visit(next);
+        low.set(
+          node,
+          Math.min(/** @type {number} */ (low.get(node)), /** @type {number} */ (low.get(next))),
+        );
+      } else if (!component.has(next)) {
+        low.set(
+          node,
+          Math.min(/** @type {number} */ (low.get(node)), /** @type {number} */ (index.get(next))),
+        );
       }
     }
-    path.pop();
-    onPath.delete(node);
-    done.add(node);
+    if (low.get(node) === index.get(node)) {
+      const id = index.get(node);
+      let member;
+      do {
+        member = /** @type {string} */ (stack.pop());
+        component.set(member, /** @type {number} */ (id));
+      } while (member !== node);
+    }
   };
   for (const node of [...graph.keys()].sort()) {
-    if (!done.has(node)) {
+    if (!index.has(node)) {
       visit(node);
     }
   }
-  return [...found].sort();
+  /** @type {string[]} */
+  const found = [];
+  for (const [from, imports] of graph) {
+    for (const to of imports) {
+      if (component.get(from) === component.get(to)) {
+        found.push(`cycle: ${from} -> ${to}`);
+      }
+    }
+  }
+  return found.sort();
 }
+
+describe("finding the imports that close a cycle", () => {
+  test("an import into a known cycle through a module already walked is found", () => {
+    // a and b import each other; a -> c -> b closes a second cycle through
+    // them, reached from a after b is done.
+    const graph = new Map([
+      ["a", ["b", "c"]],
+      ["b", ["a"]],
+      ["c", ["b"]],
+      ["d", ["a"]],
+    ]);
+    assert.deepEqual(cycleImports(graph), [
+      "cycle: a -> b",
+      "cycle: a -> c",
+      "cycle: b -> a",
+      "cycle: c -> b",
+    ]);
+  });
+
+  test("a module importing itself closes a cycle", () => {
+    assert.deepEqual(cycleImports(new Map([["a", ["a"]]])), ["cycle: a -> a"]);
+  });
+});
 
 describe("the package's layers", () => {
   const files = modules();
@@ -212,7 +262,7 @@ describe("the package's layers", () => {
         }
       }
     }
-    broken.push(...cycles(graph));
+    broken.push(...cycleImports(graph));
     const known = new Set(KNOWN);
     assert.deepEqual(
       broken.filter((line) => !known.has(line)),

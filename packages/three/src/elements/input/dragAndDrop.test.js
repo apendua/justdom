@@ -706,7 +706,7 @@ describe("drag and drop in a panel", () => {
     s.teardown();
   });
 
-  test("is over nothing of a list outside its rounded corner", async () => {
+  test("is over the list, not its row, outside the list's rounded corner", async () => {
     const s = await sortableList();
     // Corner by corner, as the browser computes the shorthand: jsdom does
     // not expand it.

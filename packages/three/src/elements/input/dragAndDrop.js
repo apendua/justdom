@@ -287,13 +287,13 @@ function gather(element, objectOf, ray) {
 /**
  * Gather an element's `::before` or `::after`, which a panel draws
  * (`getMountedGenerated`), as a candidate that names the element, as a
- * click on a page's `::before` icon is a click on the element. It is met where its quad is drawn
- * (`generatedContent.js`): in its element's frame, scrolled, or, while it
- * is an overlay, in its layer's object at the quad's corner, and inside
- * what clips the element's content (`getInteriorClipBox`). Its own
- * `visibility` and `pointer-events` decide, which it inherits from the
- * element unless a rule sets them, and it is ordered by its quad as an
- * element is by its box.
+ * click on a page's `::before` icon is a click on the element. It is met
+ * where its quad is drawn (`generatedContent.js`): in its element's frame,
+ * scrolled, or, while it is an overlay, in its layer's object at the
+ * quad's corner, and inside what clips the element's content
+ * (`getInteriorClipBox`). Its own `visibility` and `pointer-events`
+ * decide, which it inherits from the element unless a rule sets them, and
+ * it is ordered by its quad as an element is by its box.
  *
  * @param {Generated} generated
  * @param {THREE.Object3D} object The element's.

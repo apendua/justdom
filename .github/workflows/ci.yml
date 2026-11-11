@@ -103,7 +103,9 @@ jobs:
         with:
           node-version: 22
       - id: ends
-        run: echo "versions=$(node common/scripts/swap-three.mjs --ends)" >> "$GITHUB_OUTPUT"
+        run: |
+          versions="$(node common/scripts/swap-three.mjs --ends)"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
 
   # The packages that take `three` as a peer, built and tested against each
   # end of their range. The swap stops when their ranges disagree.

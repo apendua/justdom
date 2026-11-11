@@ -42,7 +42,22 @@ function peerRange(folder) {
 }
 
 /**
- * The versions of `name` on npm inside `range`, oldest first.
+ * Orders two `x.y.z` versions, oldest first.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function byVersion(a, b) {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+}
+
+/**
+ * The versions of `name` on npm inside `range`, oldest first. npm lists
+ * them in the order they were published, which is not this order once an
+ * older line is patched after a newer one came out.
  *
  * @param {string} name
  * @param {string} range
@@ -53,7 +68,7 @@ function published(name, range) {
     encoding: "utf8",
   });
   const found = out.trim() ? JSON.parse(out) : [];
-  return Array.isArray(found) ? found : [found];
+  return (Array.isArray(found) ? found : [found]).sort(byVersion);
 }
 
 const [first, ...rest] = process.argv.slice(2);

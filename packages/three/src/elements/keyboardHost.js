@@ -252,13 +252,14 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       };
     }
     room.scene.add(anchor);
-    // Not placed: the anchor is the room's, and three composes its matrix each frame.
+    // Not placed: the anchor is the room's, on three's own matrices.
     // The board's container is scaled to the panel's units per px, as every
     // panel's is; this makes a px of it `scale` metres in the room.
     anchor.scale.setScalar(scale / binding.scale);
     const head = headOf(room.camera);
     if (putDown && shouldReuse(putDown.head, head)) {
       // Where the player put it, over wherever the scene would have.
+      // Not placed: the room's anchor, as above.
       anchor.position.copy(putDown.board.position);
       anchor.rotation.set(0, putDown.board.yaw, 0);
     } else if (typeof placement === "function") {
@@ -270,6 +271,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       });
     } else {
       const pose = viewerPose(room.camera.matrixWorld, { reach, drop: below });
+      // Not placed: the room's anchor, as above.
       anchor.position.copy(pose.position);
       anchor.rotation.set(0, pose.yaw, 0);
     }
@@ -411,7 +413,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
           new Effect(
             () => {
               const boardSize = shown.panel.size();
-              // Not placed: in the room, three composes its matrix each frame.
+              // Not placed: in the room, on three's own matrices.
               pivot.rotation.set(-tilt, 0, 0);
               place(drop, 0, -(boardSize.height / 2) * units, 0);
               current.handles?.layout(boardSize.width, boardSize.height, units);

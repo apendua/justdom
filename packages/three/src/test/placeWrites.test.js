@@ -10,20 +10,28 @@
  * `.matrix` other than a reader's, `.updateMatrix()`, or an assignment to
  * `.matrixWorldNeedsUpdate`. Such a line passes in one of three ways:
  *
- * - `markMoved`, `place` or `placeAndScale` on the same object follows it,
- *   before the next blank line. The scan reads this from the code, so the
- *   test fails when the call is removed.
+ * - `markMoved`, `place` or `placeAndScale` on the same object follows it
+ *   in its block: before the next blank line, and before the first line
+ *   indented less than the write, where the block ends. The scan reads
+ *   this from the code, so the test fails when the call is removed.
  * - `noteMatrixChange()` is on the next line, as it is in the modules below
  *   the panel layer, which `place.js` is above.
- * - A comment above it, before the next blank line up, starts with
- *   `// Not placed:` and says why, such as an object that is under no panel
- *   or a record that is not an object. The scan cannot check this reason, so
- *   it is kept for what the code cannot show.
+ * - A comment above it in its block, by the same bounds read upward,
+ *   starts with `// Not placed:` and says why, such as an object that is
+ *   under no panel or a record that is not an object. The scan cannot check
+ *   this reason, so it is kept for what the code cannot show.
  *
- * What a line scan cannot see is a matrix or a vector handed to a callee to
- * write, as `contentMatrix(contentGroup.matrix)` in `div.js` or
- * `matrix.decompose(object.position, …)` in `interactions.js` do. Those are
- * left to the call that follows them, and to whoever reads the code.
+ * What a line scan cannot see:
+ *
+ * - a matrix or a vector handed to a callee to write, as
+ *   `contentMatrix(contentGroup.matrix)` in `div.js` or
+ *   `matrix.decompose(object.position, …)` in `interactions.js` do;
+ * - a chain broken across lines after the part, as Prettier breaks
+ *   `camera.matrix` and `.copy(…)` in `ghostSnapshot.js`;
+ * - a write through something that is not a name, such as
+ *   `objects[i].position.set(…)` or `camera().position.set(…)`.
+ *
+ * Those are left to the code around them, and to whoever reads it.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -90,6 +98,14 @@ function escape(text) {
 }
 
 /**
+ * @param {string} line
+ * @returns {number} How many spaces it starts with.
+ */
+function indentOf(line) {
+  return line.length - line.trimStart().length;
+}
+
+/**
  * The lines, counted from 1, that move an object and neither commit the move
  * through `place.js` nor say why not.
  *
@@ -108,8 +124,12 @@ function unmarkedWrites(source) {
     if (object === undefined) {
       return;
     }
+    const indent = indentOf(line);
+    /** Whether the line at `at` is in the write's block. */
+    const inBlock = (/** @type {number} */ at) =>
+      at >= 0 && at < lines.length && lines[at].trim() !== "" && indentOf(lines[at]) >= indent;
     const commit = new RegExp(String.raw`\b(?:markMoved|place|placeAndScale)\(${escape(object)}\b`);
-    for (let next = i + 1; next < lines.length && lines[next].trim() !== ""; next++) {
+    for (let next = i + 1; inBlock(next); next++) {
       if (commit.test(lines[next])) {
         return;
       }
@@ -117,7 +137,7 @@ function unmarkedWrites(source) {
     if (/noteMatrixChange\(\)/.test(lines[i + 1] ?? "")) {
       return;
     }
-    for (let above = i - 1; above >= 0 && lines[above].trim() !== ""; above--) {
+    for (let above = i - 1; inBlock(above); above--) {
       if (MARKER.test(lines[above])) {
         return;
       }
@@ -127,7 +147,7 @@ function unmarkedWrites(source) {
   return found;
 }
 
-test("the scan finds each way to move an object, and each way to commit it", () => {
+test("the scan finds each way to move an object, and each way to commit it in its block", () => {
   const source = [
     "object.matrixWorldNeedsUpdate = true;",
     "if (object.matrixWorldNeedsUpdate === true) {}",
@@ -158,8 +178,19 @@ test("the scan finds each way to move an object, and each way to commit it", () 
     "",
     "bar.position.set(0, 0, 0);",
     " * `.position.set(` in a doc comment",
+    "",
+    "if (still) {",
+    "  obj.position.copy(at);",
+    "} else {",
+    "  markMoved(obj);",
+    "}",
+    "",
+    "// Not placed: covers its own block, not one nested in it.",
+    "if (parent) {",
+    "  widget.position.copy(point);",
+    "}",
   ].join("\n");
-  assert.deepEqual(unmarkedWrites(source), [1, 3, 4, 5, 6, 7, 10, 28]);
+  assert.deepEqual(unmarkedWrites(source), [1, 3, 4, 5, 6, 7, 10, 28, 32, 39]);
 });
 
 test("an object a panel draws moves through place.js, or says why not", () => {

@@ -111,7 +111,7 @@ export function createBakery(ctx, faces, { settleFrames = SETTLE_FRAMES } = {}) 
   const oven = () =>
     $(new THREE.Group(), [
       effects((group) => {
-        // Not placed: the oven keeps three's defaults, so three composes its matrix each frame.
+        // Not placed: the oven, on three's own matrices.
         group.position.set(0, OVEN_DEPTH, 0);
       }),
       // Out of the render walk the moment the last face is baked.

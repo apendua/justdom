@@ -174,11 +174,12 @@ function follow(pointer) {
     addDependency(fromEvent(widget, "removed"));
     const { point } = pointer.get();
     const { parent } = widget;
-    // Not placed: a cursor keeps three's defaults, so three composes its matrix each frame.
     if (parent) {
       parent.updateWorldMatrix(true, false);
+      // Not placed: a cursor, on three's own matrices.
       widget.position.copy(parent.worldToLocal(point.clone()));
     } else {
+      // Not placed: a cursor, on three's own matrices.
       widget.position.copy(point);
     }
   };

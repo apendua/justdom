@@ -539,7 +539,7 @@ export const carryHandle =
         );
         return $(mesh, [
           effects((o) => {
-            // Not placed: a carried mesh keeps three's defaults, so three composes its matrix each frame.
+            // Not placed: a carried mesh, on three's own matrices.
             o.position.copy(position);
           }),
           makeInteractive(),

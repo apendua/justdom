@@ -38,8 +38,7 @@ import { readClientRect } from "./mirror/geometryReads.js";
 import { measureTextRects } from "./mirror/textLayout.js";
 
 /**
- * @import {RevealLayout, TextLine} from './textLines.js';
- * @import {TextBounds} from './textHelpers.js';
+ * @import {TextLayout} from './mirror/textLayout.js';
  * @import {ClipBox} from './clip.js';
  * @import {Subscribable} from 'justdom-signal';
  */
@@ -3871,29 +3870,6 @@ export function getCheckedCached(element) {
   }
   return signal.get();
 }
-
-/**
- * A text node's layout, measured with every transform on the chain switched
- * off — line boxes read back under a rotation would group by *screen* rows,
- * which is not where the browser broke the lines.
- *
- * @typedef {object} TextLayout
- * @property {TextBounds} bounds How big the union of the text node's line
- *   boxes is. Deliberately a size and not a rectangle — see
- *   `measureTextRects`.
- * @property {number} left Where `bounds` sits in the parent element's
- *   *content* space — relative to the border box plus however far the parent
- *   is scrolled — in layout px. Content space is what makes the number a
- *   constant of the layout: text sliding through its own parent's window
- *   measures to exactly what it measured before.
- * @property {number} top Same, vertically.
- * @property {TextLine[]} lines Line boxes, positioned relative to `bounds`.
- * @property {RevealLayout | null} reveal Character boundaries, for a node that
- *   asked for them with `trackCharacterEdges`, and `null` — always the same
- *   `null` — for every other node in the scene. Opt-in because it costs a
- *   range read per character, which is the right price for a letter being
- *   typed out and quite the wrong one for a label.
- */
 
 /**
  * The text nodes whose character boundaries are measured along with their

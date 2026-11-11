@@ -88,14 +88,14 @@ function stubMeasuringRange({ onSelect, rect } = {}) {
  * @param {Text} text
  */
 function holdTextLayout(text) {
-  /** @type {import("./mirror.js").TextLayout | undefined} */
+  /** @type {import("./mirror/textLayout.js").TextLayout | undefined} */
   let layout;
   const effect = new Effect(() => {
     layout = getTextLayout(text);
   });
   return {
     get layout() {
-      return /** @type {import("./mirror.js").TextLayout} */ (layout);
+      return /** @type {import("./mirror/textLayout.js").TextLayout} */ (layout);
     },
     dispose: () => effect.dispose(),
   };
@@ -3888,7 +3888,7 @@ describe("character edges", () => {
   /**
    * @param {string} content
    * @param {boolean} tracked
-   * @returns {{ layout: import('./mirror.js').TextLayout, rects: number }}
+   * @returns {{ layout: import('./mirror/textLayout.js').TextLayout, rects: number }}
    */
   function measure(content, tracked) {
     let rects = 0;

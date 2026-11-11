@@ -210,6 +210,8 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
     raycaster.setFromCamera(at, camera);
+    // Not placed: the pointer is under no panel, and its world matrix is
+    // brought up to date here.
     pointer.position.copy(raycaster.ray.origin);
     pointer.quaternion.setFromUnitVectors(FORWARD, raycaster.ray.direction);
     pointer.updateMatrixWorld(true);
@@ -271,6 +273,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
     turning.x = event.clientX;
     turning.y = event.clientY;
     const distance = around ? camera.position.distanceTo(_around.copy(around)) : 0;
+    // Not placed: the camera is under no panel.
     camera.quaternion.setFromEuler(_euler.set(turning.pitch, turning.yaw, 0, "YXZ"));
     if (around) {
       // Back from the point along the new heading, as far as it was.
@@ -351,12 +354,12 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
    */
   const reachOut = (to) => {
     for (const child of pointer.children) {
+      // Not placed: held by the pointer, not under a panel, and walked here.
       // The ray is the group's -Z, so how far out a thing is held is the
       // negative of its z, and moving it along the ray changes z alone.
       child.position.z = -Math.max(MIN_REACH, to(-child.position.z));
       // Into the matrix by hand, for a thing that keeps its own (what a
       // portal draws does): `drag` writes those directly too.
-      // matrix-epoch: held by the pointer, not under a panel, and walked here.
       child.updateMatrix();
       child.updateMatrixWorld(true);
     }

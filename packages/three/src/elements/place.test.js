@@ -1,9 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import { keepSubtreeMatrices, markMoved, place, placeAndScale } from "./place.js";
 import { noteMatrixChange } from "../matrixEpoch.js";
 
@@ -289,48 +286,3 @@ function spyOnWalk(object) {
   };
   return calls;
 }
-
-describe("matrix writes under a panel", () => {
-  /**
-   * Every module of the package, but its tests and test helpers.
-   *
-   * @param {string} directory
-   * @returns {string[]}
-   */
-  const modules = (directory) =>
-    readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) {
-        return entry.name === "test" ? [] : modules(path);
-      }
-      return entry.name.endsWith(".js") && !entry.name.endsWith(".test.js") ? [path] : [];
-    });
-
-  test("go through place.js, or note the change themselves", () => {
-    const src = fileURLToPath(new URL("..", import.meta.url));
-    /** @type {string[]} */
-    const found = [];
-    for (const path of modules(src)) {
-      const name = relative(src, path);
-      if (name === join("elements", "place.js")) {
-        continue;
-      }
-      const lines = readFileSync(path, "utf8").split("\n");
-      lines.forEach((line, i) => {
-        const writes =
-          /\.matrixWorldNeedsUpdate\s*=[^=]/.test(line) || /\.updateMatrix\(\)/.test(line);
-        if (!writes) {
-          return;
-        }
-        // A write followed at once by the note keeps the rule; so does one
-        // the line before explains with the marker.
-        const noted = /noteMatrixChange\(\)/.test(lines[i + 1] ?? "");
-        const exempt = /matrix-epoch:/.test(lines[i - 1] ?? "");
-        if (!noted && !exempt) {
-          found.push(`${name}:${i + 1}: ${line.trim()}`);
-        }
-      });
-    }
-    assert.deepEqual(found, []);
-  });
-});

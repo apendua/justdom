@@ -174,6 +174,7 @@ function follow(pointer) {
     addDependency(fromEvent(widget, "removed"));
     const { point } = pointer.get();
     const { parent } = widget;
+    // Not placed: a cursor keeps three's defaults, so three composes its matrix each frame.
     if (parent) {
       parent.updateWorldMatrix(true, false);
       widget.position.copy(parent.worldToLocal(point.clone()));
@@ -224,6 +225,7 @@ export function fitRayToHit(ray, controller, all, fallback = DEFAULT_RAY_LENGTH)
   // its value. Nobody would.
   return toEffect(() => {
     const pointer = all.get(controller);
+    // Not placed: the ray hangs off a controller, under no panel.
     ray.scale.z = pointer ? pointer.get().distance : fallback;
   });
 }
@@ -268,6 +270,8 @@ export function cursors(ctx, options = {}) {
   return list(observeFn(all).values(), (pointer) => {
     if (object) {
       const widget = object.clone();
+      // Not placed: set before the widget is attached, and attaching is
+      // noted.
       widget.scale.multiplyScalar(scale);
       return $(widget, [
         // Read from inside an effect rather than up here, so that the chrome
@@ -280,6 +284,7 @@ export function cursors(ctx, options = {}) {
       ]);
     }
     const widget = new THREE.Mesh();
+    // Not placed: set before the widget is attached, and attaching is noted.
     widget.scale.setScalar(scale);
     // The ball's material carries the chrome flags itself — it is shared by
     // every default cursor, so there is nothing to clone or to own here.

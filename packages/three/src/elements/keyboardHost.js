@@ -252,6 +252,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       };
     }
     room.scene.add(anchor);
+    // Not placed: the anchor is the room's, and three composes its matrix each frame.
     // The board's container is scaled to the panel's units per px, as every
     // panel's is; this makes a px of it `scale` metres in the room.
     anchor.scale.setScalar(scale / binding.scale);
@@ -410,6 +411,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
           new Effect(
             () => {
               const boardSize = shown.panel.size();
+              // Not placed: in the room, three composes its matrix each frame.
               pivot.rotation.set(-tilt, 0, 0);
               place(drop, 0, -(boardSize.height / 2) * units, 0);
               current.handles?.layout(boardSize.width, boardSize.height, units);

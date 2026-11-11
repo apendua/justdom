@@ -182,6 +182,7 @@ export function carriedPose(
   const ray = rayOf(hand);
   const turned = yawOf(ray.quaternion) - grip.handYaw;
   const offset = _offset.copy(grip.offset).applyAxisAngle(upAxis, turned);
+  // Not placed: `out` is a pose, not an object.
   out.position.copy(ray.position).addScaledVector(ray.direction, grip.distance).add(offset);
   out.yaw = grip.yaw + turned;
   out.turned = turned;
@@ -538,6 +539,7 @@ export const carryHandle =
         );
         return $(mesh, [
           effects((o) => {
+            // Not placed: a carried mesh keeps three's defaults, so three composes its matrix each frame.
             o.position.copy(position);
           }),
           makeInteractive(),

@@ -97,7 +97,7 @@ export function createLoadingFrame({
   // Everything under a portal's container keeps its own matrices; this
   // group never moves, so an identity composed once is its matrix for good.
   group.matrixAutoUpdate = false;
-  // matrix-epoch: built loose; the portal marks it when it attaches it.
+  // Not placed: built loose; the portal marks it when it attaches it.
   group.updateMatrix();
 
   const lineColor = new THREE.Color(color);

@@ -4,6 +4,7 @@ import { getBorderBoxSize } from "./mirror.js";
 import { emptyTally, setProbing, takeTallies, unprobed } from "./outlineProbe.js";
 import { describeElement } from "./panelFrame.js";
 import { isSvgElement, isSvgRoot, readBBox } from "./plugins.js";
+import { markMoved } from "./place.js";
 
 /**
  * @import {Tally} from './outlineProbe.js';
@@ -340,7 +341,7 @@ function createOverlay({ containerElement, containerObject, objectOf, requestFra
   // child asks or the container moved, and a panel standing still has not.
   // Without this, an overlay made after the panel was placed, by turning the
   // mode on from the console, stays at the scene's origin.
-  group.matrixWorldNeedsUpdate = true;
+  markMoved(group);
 
   /**
    * When the panel's commit was last forced, or null.
@@ -509,6 +510,7 @@ const hosts = new Map();
  *
  * @type {WeakMap<Element, OutlineEntry>}
  */
+// Not a nodeCache: a fresh one is made for each report.
 let report = new WeakMap();
 
 /**

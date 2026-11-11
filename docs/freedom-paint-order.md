@@ -225,9 +225,9 @@ The scan's rules:
 - **What makes a candidate.** The point where the ray meets the element's plane lies inside its
   border box and inside its clip box (`getLocalClipBox`), the clip box's rounded corners included.
   An element that `visibility` hides or that says `pointer-events: none` is not a candidate, and its
-  children still are. A `::before` or `::after`, while it draws, makes its element a candidate where
-  the ray meets its quad, in the element's plane or, as an overlay, in its layer's, inside what
-  clips the element's content (`getInteriorClipBox`), unless its own `visibility` or
+  children still are. A `::before` or `::after` that a panel draws makes its element a candidate
+  where the ray meets its quad, in the element's plane or, as an overlay, in its layer's, inside
+  what clips the element's content (`getInteriorClipBox`), unless its own `visibility` or
   `pointer-events` says otherwise. It is drawn at its quad's rung, read as an element's box is.
 - **Which candidate wins.** The cast's rule, read per element. The nearest wins, unless candidates
   within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element is

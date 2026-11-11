@@ -27,7 +27,7 @@ import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { BOX_BUCKET_BIAS } from "../paint/boxBatch.js";
 import { getBoxRenderOrder } from "../paint/elevation.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
-import { generatedRules, getGenerated, KIND_BITS } from "../pseudoElements.js";
+import { getMountedGenerated } from "../pseudoElements.js";
 
 /**
  * @import {DropEffect} from './dataTransfer.js';
@@ -256,17 +256,18 @@ function gather(element, objectOf, ray) {
   if (!object || !object.visible) {
     return;
   }
-  const kinds = generatedRules(element);
-  if (kinds & KIND_BITS.after) {
-    gatherGenerated(getGenerated(element, "after"), object, ray);
+  const after = getMountedGenerated(element, "after");
+  if (after) {
+    gatherGenerated(after, object, ray);
   }
   if (!isSvgRoot(element)) {
     for (let child = element.lastElementChild; child; child = child.previousElementSibling) {
       gather(/** @type {HTMLElement} */ (child), objectOf, ray);
     }
   }
-  if (kinds & KIND_BITS.before) {
-    gatherGenerated(getGenerated(element, "before"), object, ray);
+  const before = getMountedGenerated(element, "before");
+  if (before) {
+    gatherGenerated(before, object, ray);
   }
   if (
     isVisibilityHidden(element) ||
@@ -284,9 +285,9 @@ function gather(element, objectOf, ray) {
 }
 
 /**
- * Gather an element's `::before` or `::after`, while it draws, as a
- * candidate that names the element, as a click on a page's `::before`
- * icon is a click on the element. It is met where its quad is drawn
+ * Gather an element's `::before` or `::after`, which a panel draws
+ * (`getMountedGenerated`), as a candidate that names the element, as a
+ * click on a page's `::before` icon is a click on the element. It is met where its quad is drawn
  * (`generatedContent.js`): in its element's frame, scrolled, or, while it
  * is an overlay, in its layer's object at the quad's corner, and inside
  * what clips the element's content (`getInteriorClipBox`). Its own
@@ -300,9 +301,6 @@ function gather(element, objectOf, ray) {
  * @returns {void}
  */
 function gatherGenerated(generated, object, ray) {
-  if (generated.content.get() === null) {
-    return;
-  }
   const style = generated.style();
   if (hidesVisibility(style.visibility) || style.getPropertyValue("pointer-events") === "none") {
     return;

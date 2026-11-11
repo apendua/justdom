@@ -172,6 +172,13 @@ function generatedBox(ctx, generated, surface) {
       // for the rebuild.
       panelBatch?.moved(obj);
     }),
+    // The scan meets it only while it is up.
+    effects(() => {
+      generated.mounted = true;
+      onCleanup(() => {
+        generated.mounted = false;
+      });
+    }),
     // What it draws is ordered in tree order as its pseudo-element
     // (`isLaterInTree`), not as its element.
     effects((obj) => {

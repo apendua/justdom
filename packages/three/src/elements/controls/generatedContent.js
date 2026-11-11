@@ -23,7 +23,7 @@ import { TextBatchContext } from "../paint/textBatch.js";
 import { drawQuad } from "./div.js";
 import { getRunRenderStyle, isTintableText } from "../textHelpers.js";
 import { surfaceRun } from "../surfaceRun.js";
-import { setBoxMesh } from "../../drawOrder.js";
+import { generatedObjects, setBoxMesh } from "../../drawOrder.js";
 
 /**
  * @import {Source} from 'justdom-signal';
@@ -171,6 +171,14 @@ function generatedBox(ctx, generated, surface) {
       // order (`numbers.order` below and the run's in `textRun.js`) ask
       // for the rebuild.
       panelBatch?.moved(obj);
+    }),
+    // What it draws is ordered in tree order as its pseudo-element
+    // (`isLaterInTree`), not as its element.
+    effects((obj) => {
+      generatedObjects.set(obj, generated);
+      onCleanup(() => {
+        generatedObjects.delete(obj);
+      });
     }),
     // A lifted one is one of the planes the panel's walk orders, for as
     // long as it is one.

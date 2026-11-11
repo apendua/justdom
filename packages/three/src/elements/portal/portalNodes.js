@@ -134,7 +134,13 @@ export function unlink(state, node, unlinked) {
       // was, which is what the commit is for. Whatever the tree does hold
       // is the other walk's, so this skips nothing that is anybody's to
       // clean.
-      if (childNode && !state.containerElement.contains(childNode)) {
+      // The map is every portal's (`objectNodes`), so a node is this
+      // portal's only where this portal maps it back to the child.
+      if (
+        childNode &&
+        state.nodeToObject.get(childNode) === child &&
+        !state.containerElement.contains(childNode)
+      ) {
         unlink(state, childNode, unlinked);
       }
     }

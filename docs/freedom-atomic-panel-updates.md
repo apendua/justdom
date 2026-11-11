@@ -432,7 +432,7 @@ the constructor, inside the pump's budgeted node build — and a caller who does
 | a running effect is warm                                        | "counts a running effect as warm"                                                |
 | non-atomic channels are untouched                               | "a channel that is not atomic is not warmed by its flush"                        |
 
-`packages/three/src/elements/portal.test.js`:
+`packages/three/src/elements/portalNodes.test.js`:
 
 | behaviour                                                                      | test                                                                           |
 | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
@@ -447,7 +447,7 @@ the constructor, inside the pump's budgeted node build — and a caller who does
 | a built, unattached object is taken down with the panel                        | "an object built for a commit that never came is taken down with the panel"    |
 | shared-budget accounting, counted at the build rather than the scene           | "portals under one scheduler share one budget…"                                |
 
-`packages/three/src/elements/portal.test.js`, "a panel that is always busy", for section 4.5:
+`packages/three/src/elements/portalLoading.test.js`, "a panel that is always busy", for section 4.5:
 
 | behaviour                                                                  | test                                                                                         |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -497,8 +497,9 @@ leaves the matrix alone, so three is not asked to recompute the world matrices u
 box pays one more effect for it: a layout change now queues `setFromElement` and the place with its
 clip as two effects where it queued one, which an atomic panel warms in two steps. `shape.test.js`
 and `div.test.js` pin both halves: a move under a budget of one effect per pass, and a change that
-leaves the place alone writing no matrix. The split in a portal is pinned by `portal.test.js`'s "the
-motion channel finishes in the frame, under a budget that cuts the panel's".
+leaves the place alone writing no matrix. The split in a portal is pinned by
+`portalLoading.test.js`'s "the motion channel finishes in the frame, under a budget that cuts the
+panel's".
 
 ### 7.2 What the rule cannot reach
 

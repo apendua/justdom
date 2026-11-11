@@ -28,7 +28,8 @@
 /**
  * What one panel keeps while it is up: everything `buildPortal` in
  * `portal.js` builds that its own functions, and the ones in
- * `portalNodes.js` it hands this to, read after the build.
+ * `portalNodes.js`, `portalLoading.js` and `portalWatchers.js` it hands
+ * this to, read after the build.
  * Construction-only values, such as most of the options, stay local to
  * `buildPortal`.
  *

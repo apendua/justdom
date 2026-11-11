@@ -578,8 +578,8 @@ export class PaintBatch {
   #structural = false;
   /**
    * The boxes and runs whose numbers changed since the last flush, and
-   * nothing else about them: each once, in a list walked by index, since a hover or a
-   * colour animation patches every frame.
+   * nothing else about them: each once, in a list walked by index, since a
+   * hover or a colour animation patches every frame.
    *
    * @type {Object3D[]}
    */
@@ -835,10 +835,10 @@ export class PaintBatch {
 
   /**
    * Write the matrices under the objects marked moved and the instances of
-   * the boxes and runs marked changed where the last rebuild put them, if every one
-   * of them still matches the record; say whether it did. A move that does
-   * not match leaves matrices written, which the rebuild that follows
-   * writes again.
+   * the boxes and runs marked changed where the last rebuild put them, if
+   * every one of them still matches the record; say whether it did. A move
+   * that does not match leaves matrices written, which the rebuild that
+   * follows writes again.
    *
    * @returns {boolean}
    */

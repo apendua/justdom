@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the pointer crossings and hover and active flags out of pointerForwarding.js into pointerCrossings.js",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

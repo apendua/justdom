@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { applyClip } from "../elements/clip.js";
-import { rampAtlas, RampSlot } from "../elements/gradient.js";
+import { rampAtlas, RampSlot } from "../elements/paint/gradient.js";
 import { apply, IDENTITY } from "./geometry.js";
 import { applyPaint, createPaintUniforms, toGradientSpace, writePaint } from "./paintShader.js";
 import { SPREAD_REFLECT } from "./paintServer.js";

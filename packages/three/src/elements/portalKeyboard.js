@@ -3,7 +3,7 @@ import { labelledField, takesTheTyping } from "./typing.js";
 /**
  * @import {Subscribable} from 'justdom-signal';
  * @import {Mountable} from '../core.js';
- * @import {InputFocus} from './textInput.js';
+ * @import {InputFocus} from './controls/textInput.js';
  * @import {KeyPress} from './typing.js';
  * @import {KeyboardBinding, KeyboardHost} from './keyboardHost.js';
  * @import {KeyboardPreviewOptions} from './keyboardPreview.js';

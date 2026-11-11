@@ -13,6 +13,7 @@
  */
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { runFrame } from "../scene.js";
+import { createPortal as createHeldPortal } from "../elements/portal.js";
 
 if (typeof globalThis.MutationObserver === "undefined") {
   globalThis.MutationObserver = window.MutationObserver;
@@ -217,4 +218,33 @@ export function pageCard() {
   root.append(button, label);
   document.body.appendChild(root);
   return { root, button, label };
+}
+
+/**
+ * `createPortal`, with the loading frame's delay and minimum time off. A
+ * panel here shows its frame on the first frame its mount does not finish
+ * in, and loads the moment it is built, so a test can count the frames a
+ * mount takes; the delay and the hold have tests of their own, which ask
+ * for them by name.
+ *
+ * @type {typeof createHeldPortal}
+ */
+export const createPortal = (ctx, options = {}) =>
+  createHeldPortal(ctx, {
+    loadingFrame: { delay: 0, minimumTime: 0 },
+    ...options,
+  });
+
+/**
+ * Give every box in a portal a background, so that each takes an instance
+ * in its panel's batch: a box that paints nothing takes none. Remove the
+ * element it answers to stop.
+ *
+ * @returns {HTMLStyleElement}
+ */
+export function paintEveryBox() {
+  const style = document.createElement("style");
+  style.textContent = "[data-xr-portal] div { background-color: rgb(255, 0, 0); }";
+  document.head.appendChild(style);
+  return style;
 }

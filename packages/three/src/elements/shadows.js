@@ -1,7 +1,7 @@
-import { parseCssColor } from "./cssColor.js";
+import { parseCssColor } from "./css/cssColor.js";
 
 /**
- * @import {RGBA} from './cssColor.js';
+ * @import {RGBA} from './css/cssColor.js';
  */
 
 /**

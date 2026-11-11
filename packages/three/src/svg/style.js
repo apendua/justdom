@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { parseCssColor } from "../elements/cssColor.js";
+import { parseCssColor } from "../elements/css/cssColor.js";
 import { getAttributeCached } from "../elements/mirror/styleReads.js";
 import { normalizeDashArray } from "./dash.js";
 

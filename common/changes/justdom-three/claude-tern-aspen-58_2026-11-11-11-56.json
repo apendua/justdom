@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the element controls into src/elements/controls/",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Split portal.test.js by the modules buildPortal hands its state to",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

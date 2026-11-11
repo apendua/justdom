@@ -1,4 +1,4 @@
-import { parseAlpha } from "./cssColor.js";
+import { parseAlpha } from "./css/cssColor.js";
 
 /**
  * The sides of a box, in the order CSS lists them, by the names of their

@@ -1,4 +1,4 @@
-import { acquireImage, releaseImage } from "../elements/image.js";
+import { acquireImage, releaseImage } from "../elements/controls/image.js";
 import {
   getAttributeCached,
   getAttributeNamesCached,
@@ -39,7 +39,7 @@ import { parseUrlReference, readProperty } from "./style.js";
 
 /** @typedef {import('./geometry.js').Matrix2D} Matrix2D */
 /** @typedef {import('./paintServer.js').PatternServer} PatternServer */
-/** @typedef {import('../elements/image.js').ImageEntry} ImageEntry */
+/** @typedef {import('../elements/controls/image.js').ImageEntry} ImageEntry */
 /** @typedef {{ x: number, y: number, width: number, height: number }} Box */
 
 const SVG_NS = "http://www.w3.org/2000/svg";

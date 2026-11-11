@@ -5,8 +5,8 @@ import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
 import { RendererContext } from "../scene.js";
 import { countingManager } from "../test/portalHarness.js";
 import { withStart } from "../test/rays.js";
-import { PIECE_BAND } from "./elevation.js";
-import { PANEL_PIECES } from "./layerOrder.js";
+import { PIECE_BAND } from "./paint/elevation.js";
+import { PANEL_PIECES } from "./paint/layerOrder.js";
 import { createPanelHandles, DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
 
 /**

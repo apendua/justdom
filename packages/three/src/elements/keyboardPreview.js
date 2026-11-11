@@ -1,10 +1,10 @@
 import { Effect, withChannel, withComputation } from "justdom-signal";
 import { getCaretOffset, getShownValue, setCaretOffset } from "./typing.js";
-import { placeCaretIn, touchValue, watchValue } from "./textInput.js";
+import { placeCaretIn, touchValue, watchValue } from "./controls/textInput.js";
 
 /**
  * @import {Mountable} from '../core.js';
- * @import {InputFocus} from './textInput.js';
+ * @import {InputFocus} from './controls/textInput.js';
  */
 
 /**

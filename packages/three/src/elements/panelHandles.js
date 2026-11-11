@@ -3,12 +3,12 @@ import { useEffect, withComputation } from "justdom-signal";
 import { carry } from "../carry.js";
 import { interactions } from "../interactions.js";
 import { $ } from "../operators.js";
-import { keepProgram } from "./programKeeper.js";
+import { keepProgram } from "./paint/programKeeper.js";
 
 /**
  * @import {Unsubscribable} from 'justdom-signal';
  * @import {PointerCancelEvent, PointerEvent, XREventMap} from '../core.js';
- * @import {ProgramKind} from './programKeeper.js';
+ * @import {ProgramKind} from './paint/programKeeper.js';
  */
 
 /**

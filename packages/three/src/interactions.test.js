@@ -12,7 +12,7 @@ import {
 } from "./interactions.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
 import { registerDrawOrder } from "./drawOrder.js";
-import { BOX_BUCKET_BIAS } from "./elements/boxBatch.js";
+import { BOX_BUCKET_BIAS } from "./elements/paint/boxBatch.js";
 
 /**
  * @import { XREventMap } from "./core.js";

@@ -1,16 +1,16 @@
 import { effects } from "justdom-signal";
 import { toLocalClipBox, unboundedClipUniform } from "./clip.js";
 import { place } from "./place.js";
-import { TextBatchContext } from "./textBatch.js";
-import { textRun } from "./textRun.js";
+import { TextBatchContext } from "./paint/textBatch.js";
+import { textRun } from "./controls/textRun.js";
 
 /**
  * @import {Mesh} from 'three';
  * @import {EntityEffect} from 'justdom-signal';
  * @import {Component} from '../core.js';
- * @import {BoxSurface} from './div.js';
+ * @import {BoxSurface} from './controls/div.js';
  * @import {ClipBox} from './clip.js';
- * @import {TextRunSource} from './textRun.js';
+ * @import {TextRunSource} from './controls/textRun.js';
  */
 
 /**

@@ -60,10 +60,11 @@ appear" for the showcase's visual suite, which photographs the scene in a real b
   `PortalPluginsContext` carries the list; `render()` takes `portalPlugins` and sets it, and
   `PortalOptions.plugins` prepends per portal, for a panel that wants something the rest of the
   scene does not.
-- **`portal.js`** — `createObjectForNode` asks the plugins first, in order, before its own `switch`.
-  An element in the SVG namespace that no plugin claims produces no object, and neither does
-  anything under it (the walk stops at a node with no object), nor a text node whose parent is an
-  SVG element. The `<svg>` root is the exception: it is a real CSS box and stays one, plugin or not.
+- **`portalNodes.js`** — `createObjectForNode` asks the plugins first, in order, before its own
+  `switch`. An element in the SVG namespace that no plugin claims produces no object, and neither
+  does anything under it (the walk stops at a node with no object), nor a text node whose parent is
+  an SVG element. The `<svg>` root is the exception: it is a real CSS box and stays one, plugin or
+  not.
 - **`render.js`** — `RenderOptions.portalPlugins`.
 
 ### The plugin: `justdom-three/svg`
@@ -141,7 +142,7 @@ the mirror's child-list signals, so a `<g>` reorder is a render-order write, not
   invisible to it. It now follows any element, and classifies the SVG paint properties (`fill`,
   `stroke`, `stroke-dashoffset`, `d`, `r`, …) as _paint_, so a marching-ants animation re-reads one
   element's style per frame rather than re-measuring the panel.
-- **`mirror/geometryReads.js`, `cssTransform.js`** — the transformed-chain measurement used
+- **`mirror/geometryReads.js`, `css/cssTransform.js`** — the transformed-chain measurement used
   `offsetWidth`/`offsetLeft`, which an `<svg>` root does not have; it now falls back to
   `clientWidth` plus borders and to client-rect deltas.
 

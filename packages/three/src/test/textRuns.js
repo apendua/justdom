@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { place } from "../elements/place.js";
-import { PaintBatch } from "../elements/paintBatch.js";
+import { PaintBatch } from "../elements/paint/paintBatch.js";
 
-/** @import {LayerOrder} from "../elements/layerOrder.js"; */
+/** @import {LayerOrder} from "../elements/paint/layerOrder.js"; */
 
 /**
  * A rasterized run, as the batch reads one: a mask in the material's alpha

@@ -1,6 +1,6 @@
 import { isSvgElement, isSvgRoot } from "../plugins.js";
 import { classify } from "../animationClock.js";
-import { getSiblingReach } from "../documentStyles.js";
+import { getSiblingReach } from "../css/documentStyles.js";
 import {
   ACTIVE_ATTRIBUTE,
   ELEMENT_FLAGS,

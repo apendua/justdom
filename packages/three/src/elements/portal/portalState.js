@@ -15,7 +15,7 @@
  * @import {createBlocker, createDepthQuad} from '../blocker.js';
  * @import {LayerOrder} from '../paint/layerOrder.js';
  * @import {createFrameRequester} from './frameRequester.js';
- * @import {OutlineHost} from '../outlines.js';
+ * @import {OutlineHost} from '../dev/outlines.js';
  * @import {PanelHandles} from '../panelHandles.js';
  * @import {createLoadingFrame} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';

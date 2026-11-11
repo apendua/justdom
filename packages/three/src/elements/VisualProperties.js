@@ -13,7 +13,7 @@ import { fromEvent, store } from "justdom-signal";
 import { filtered, Subject } from "justdom-signal";
 import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { getComputedStyleCached, getOpacity } from "./mirror/styleReads.js";
-import { isProbing, probeRecalculation } from "./outlineProbe.js";
+import { isProbing, probeRecalculation } from "./dev/outlineProbe.js";
 import { frameFor, measureClientRect } from "./panelFrame.js";
 
 import { getDrawLevel, getRenderBand } from "./paint/elevation.js";

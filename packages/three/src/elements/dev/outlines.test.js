@@ -1,15 +1,15 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { createPortal } from "./portal/portal.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { createPortal } from "../portal/portal.js";
 import { classify, enableOutlinesMode, outlinesReport, rampColor } from "./outlines.js";
 import { emptyTally } from "./outlineProbe.js";
-import { MAX_COMMIT_WAIT } from "./portal/portalPump.js";
-import { drain, flushFrame, nextMacrotask, settle } from "../test/portalHarness.js";
-import { fakeClock } from "../test/clock.js";
-import { svgElements } from "../svg/index.js";
-import { SVG_NAMESPACE } from "./plugins.js";
+import { MAX_COMMIT_WAIT } from "../portal/portalPump.js";
+import { drain, flushFrame, nextMacrotask, settle } from "../../test/portalHarness.js";
+import { fakeClock } from "../../test/clock.js";
+import { svgElements } from "../../svg/index.js";
+import { SVG_NAMESPACE } from "../plugins.js";
 
 /**
  * A panel the page already has: a list of four rows, each a plain box with

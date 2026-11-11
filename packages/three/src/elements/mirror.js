@@ -1,6 +1,6 @@
 import { batch, Signal } from "justdom-signal";
 import { isSvgElement, isSvgRoot } from "./plugins.js";
-import { probeChange, probeNoopWrite, probeRipple } from "./outlineProbe.js";
+import { probeChange, probeNoopWrite, probeRipple } from "./dev/outlineProbe.js";
 import {
   frameFor,
   invalidateGeometry,

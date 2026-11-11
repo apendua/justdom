@@ -39,7 +39,7 @@ export {
 } from "./carry.js";
 export { createPortal } from "./elements/portal/portal.js";
 export { enableThemingMode, followUserActions } from "./elements/css/documentStyles.js";
-export { enableOutlinesMode, outlinesReport } from "./elements/outlines.js";
+export { enableOutlinesMode, outlinesReport } from "./elements/dev/outlines.js";
 export {
   ACTIVE_ATTRIBUTE,
   FOCUS_ATTRIBUTE,

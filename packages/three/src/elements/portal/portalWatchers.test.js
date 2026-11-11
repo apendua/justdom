@@ -16,7 +16,7 @@ import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
 import { getPortalRoot } from "./portalRoot.js";
 import { syntheticEvent } from "../../test/events.js";
 
-import { enableOutlinesMode, outlinesReport } from "../outlines.js";
+import { enableOutlinesMode, outlinesReport } from "../dev/outlines.js";
 import { createPortal, drain, pump, settle } from "../../test/portalHarness.js";
 
 describe("createPortal", () => {

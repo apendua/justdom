@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { withComputation } from "justdom-signal";
-import { getBorderBoxSize } from "./mirror/geometryReads.js";
+import { getBorderBoxSize } from "../mirror/geometryReads.js";
 import { emptyTally, setProbing, takeTallies, unprobed } from "./outlineProbe.js";
-import { describeElement } from "./panelFrame.js";
-import { isSvgElement, isSvgRoot, readBBox } from "./plugins.js";
-import { markMoved } from "./place.js";
+import { describeElement } from "../panelFrame.js";
+import { isSvgElement, isSvgRoot, readBBox } from "../plugins.js";
+import { markMoved } from "../place.js";
 
 /**
  * @import {Tally} from './outlineProbe.js';

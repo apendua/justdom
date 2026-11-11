@@ -33,7 +33,7 @@ import { createPanelForwarder, PointerForwarderContext } from "../input/pointerF
 import { createPanelHandles, HANDLE_RENDER_ORDER } from "../panelHandles.js";
 import { CameraContext, frames, onLateFrame, RendererContext } from "../../scene.js";
 import { InteractionContext } from "../../interactions.js";
-import { registerOutlineHost } from "../outlines.js";
+import { registerOutlineHost } from "../dev/outlines.js";
 import { claimRoot, createContainerElement, disconnect } from "./portalContainer.js";
 import {
   attach,

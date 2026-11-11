@@ -1,5 +1,5 @@
 import { batch, Derived, Signal } from "justdom-signal";
-import { probedDerived } from "../outlineProbe.js";
+import { probedDerived } from "../dev/outlineProbe.js";
 import { forgetCached } from "./nodeCaches.js";
 
 /**

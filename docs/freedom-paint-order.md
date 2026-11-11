@@ -198,10 +198,9 @@ loses to anything level with it. It serves presses and hover. The scan, `hitElem
 each frame, the thumbstick's wheel on a list's gaps or the panel's background, and the missed-press
 note in development. Rule 3 holds for both, so the scan follows the cast's order.
 
-**Status.** What the scan visits and what makes a candidate are built, save the rounded corners,
-which #186 brings with `clipBoxContains`. The scan still takes a point and returns the first
-candidate its walk finds; the PR after #186 gives it the ray and the order below. Remove this
-paragraph as they land.
+**Status.** What the scan visits and what makes a candidate are built. The scan still takes a point
+and returns the first candidate its walk finds; the PR after #186 gives it the ray and the order
+below. Remove this paragraph when it lands.
 
 The scan's rules:
 

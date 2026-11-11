@@ -2,11 +2,11 @@
  * The two contexts `render()` fills from its options for the panels in the
  * scene: the plugins and the panel defaults.
  *
- * They are the panel layer's, and their rules are there (`elements/plugins.js`
- * and `elements/panelOptions.js`, which export them again). They are
- * defined here, under `render.js`, because `render()` sets them before
- * anything is mounted, and a module under the panel layer cannot import
- * one in it.
+ * They are the panel layer's, and their rules are there
+ * (`elements/plugins.js` and `elements/panelOptions.js`). They are defined
+ * here, under `render.js`, because `render()` sets them before anything is
+ * mounted, and `render.js` cannot import from the panel layer. This is the
+ * one place to import them from.
  */
 import { createProperty } from "justdom-signal";
 

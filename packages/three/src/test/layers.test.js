@@ -50,6 +50,7 @@ const LAYERS = {
   "core.js": "base",
   "crash.js": "base",
   "drawOrder.js": "base",
+  "frameShare.js": "base",
   "htmlTexture.js": "base",
   "limits.js": "base",
   "matrixEpoch.js": "base",

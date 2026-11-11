@@ -28,9 +28,10 @@ import { sceneService } from "../sceneServices.js";
  */
 
 /**
- * A slot set by hand, for a scene built without `render()`. Null by
- * default; see `keyboardSlotOf`. Outside a scene, as on a plain page or
- * under a test runner, a panel with a keyboard keeps one of its own.
+ * A slot set by hand, by a test that builds a scene's panels without
+ * `render()`; the package does not export it. Null by default; see
+ * `keyboardSlotOf`. Outside a scene, as on a plain page or under a test
+ * runner, a panel with a keyboard keeps one of its own.
  */
 export const KeyboardSlotContext = createProperty(
   /**

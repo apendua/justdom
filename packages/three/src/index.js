@@ -54,11 +54,8 @@ export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js
 export { box } from "./elements/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
-export {
-  createFrameShareBudget,
-  createPortalScheduler,
-  PortalSchedulerContext,
-} from "./elements/portalScheduler.js";
+export { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
+export { createFrameShareBudget } from "./frameShare.js";
 export {
   isRenderingSuspended,
   sampleRenderingUpdates,

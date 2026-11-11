@@ -36,18 +36,14 @@ describe("sceneService", () => {
     assert.equal(sceneService(panelCtx, service), value);
   });
 
-  test("calls a service's frame hook on every frame from the ask on", () => {
+  test("keeps the share of the frame from the scene's first frame", () => {
     const { ctx, driver } = scene();
-    driver.frame(1);
-    /** @type {number[]} */
-    const times = [];
-    sceneService(ctx, (host) => host.onFrame((time) => times.push(time)));
-    driver.frame(2);
-    driver.frame(3);
-    assert.deepEqual(times, [2, 3]);
-    driver.dispose();
-    driver.frame(4);
-    assert.deepEqual(times, [2, 3], "no frame after the scene goes");
+    // 120 Hz before anything asks: three tenths of it is 2.5 ms.
+    for (let time = 1000; time < 1100; time += 1000 / 120) {
+      driver.frame(time);
+    }
+    const budget = sceneService(ctx, (host) => host.frameBudget);
+    assert.equal(+(budget?.() ?? 0).toFixed(2), 2.5);
   });
 
   test("runs every disposal once when the scene goes, and at once after", () => {

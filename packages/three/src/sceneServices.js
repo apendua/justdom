@@ -22,16 +22,21 @@
  * - `sceneService` outside a scene, as on a plain page or under a test
  *   runner, makes nothing and answers `null`. The caller does without, as
  *   a portal with no scene does.
- * - A service hooks into the scene through the host: `onFrame` is called
- *   with the frame's time on every frame the scene draws from then on, and
- *   `onDispose` once when the scene is taken down. A service made while the
- *   scene is going down is disposed with it.
+ * - A service hooks into the scene's end through the host: `onDispose` is
+ *   called once when the scene is taken down. A service made after the
+ *   scene went is disposed at once.
+ * - What the scene knows from its own frames, the share of a frame its
+ *   panels may spend, is kept by the host from the scene's first frame,
+ *   not by a service from its first ask: a panel mounted into a scene
+ *   that has been drawing for a while is paced by the frames before it,
+ *   which its own work cannot stretch (`frameShare.js`).
  * - The host's `ctx` is the scene's whole context, the one `render()` hands
  *   to the component, with the renderer, the camera and the controllers in
  *   it. A service reads it when it is made, which is always from a panel
  *   mounted under that context.
  */
 import { createProperty } from "justdom-signal";
+import { createFrameShareBudget } from "./frameShare.js";
 
 /**
  * @import * as THREE from "three";
@@ -44,7 +49,8 @@ import { createProperty } from "justdom-signal";
  * @property {RenderOptions} options What `render()` was
  *   given, for a service that takes an option of its own from there.
  * @property {WeakKey} ctx The scene's whole context.
- * @property {(fn: (time: number) => void) => void} onFrame
+ * @property {() => number} frameBudget The share of the frame its panels
+ *   may spend, in milliseconds, from the frames the scene has drawn.
  * @property {(fn: () => void) => void} onDispose
  */
 
@@ -55,7 +61,8 @@ import { createProperty } from "justdom-signal";
 
 /**
  * @typedef {object} SceneHostDriver
- * @property {(time: number) => void} frame Called on every frame.
+ * @property {(time: number) => void} frame Called on every frame, with
+ *   its time.
  * @property {() => void} dispose Runs every service's disposal, once.
  */
 
@@ -96,8 +103,8 @@ export function sceneService(ctx, service) {
  * @returns {[WeakKey, SceneHostDriver]}
  */
 export function createSceneHost(ctx, renderer, options) {
-  /** @type {Array<(time: number) => void>} */
-  const frameHooks = [];
+  const share = createFrameShareBudget();
+  let previous = 0;
   /** @type {Array<() => void>} */
   const disposals = [];
   let disposed = false;
@@ -106,10 +113,7 @@ export function createSceneHost(ctx, renderer, options) {
     options,
     /** @type {WeakKey} */
     ctx,
-    /** @param {(time: number) => void} fn */
-    onFrame(fn) {
-      frameHooks.push(fn);
-    },
+    frameBudget: share.budget,
     /** @param {() => void} fn */
     onDispose(fn) {
       if (disposed) {
@@ -126,16 +130,16 @@ export function createSceneHost(ctx, renderer, options) {
     host.ctx,
     {
       frame(time) {
-        for (let i = 0; i < frameHooks.length; i++) {
-          frameHooks[i](time);
+        if (previous) {
+          share.sample(time - previous);
         }
+        previous = time;
       },
       dispose() {
         if (disposed) {
           return;
         }
         disposed = true;
-        frameHooks.length = 0;
         for (const fn of disposals.splice(0)) {
           fn();
         }

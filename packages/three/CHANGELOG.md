@@ -1,6 +1,51 @@
 # Change Log - justdom-three
 
-This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+
+## 0.35.0
+Wed, 11 Nov 2026 23:41:15 GMT
+
+### Minor changes
+
+- The three peer range is now >=0.185.0 <0.188.0: CI tests both ends, and three before 0.185 fails the SVG plugin's fill rule
+- Add when(condition, render) and branch(select, render) for scenes, the conditionals justdom-core has, for Three objects
+- Panels keep what they need per scene (their scheduler, the keyboard, the image cache's release) on a host render() hands out, made the first time a panel asks; render() imports nothing from the panel layer. PortalSchedulerContext no longer answers the scheduler of a scene render() made; it is only for a scene built without render(). createFrameShareBudget moves to its own module, with the same export.
+- render() takes a container to draw in, camera planes and field of view, and WebGLRenderer parameters; the size, pixel ratio and aspect are read again on every resize and when a session ends
+
+### Patches
+
+- Move the measurement clones out of mirror.js into elements/mirror/measurementClones.js, with no change in behaviour.
+- Keep the pointer forwarder's shared values in one ForwarderState object
+- A box that paints nothing and takes no ray mounts no quad
+- Move the mirror's text layout and checkbox reads out of mirror.js
+- A box that draws no background, border, shadow or outline takes no instance in its panel's batch
+- Move the mirror's geometry reads into elements/mirror/geometryReads.js
+- A field's value, a list marker and a pseudo-element's box now patch their panel's batch when they move or are clipped, instead of rebuilding it.
+- Gather buildPortal's shared values into one PortalState object
+- The scene's contexts and frame hooks live in scene.js, so mouse.js no longer imports render.js back
+- Move the panel's container claim and release out of portal.js into portalContainer.js
+- A scrolled or recoloured label no longer rebuilds its panel's batch: its run's clip, colour and matrix are written where the last rebuild put them.
+- Keep an SVG drawing's paint order and a revealed text's cut in a nodeCache, and test that every per-node cache is one
+- Move the mirror's text measurement, node caches and client rect read into elements/mirror/, with no change in behaviour.
+- A box whose numbers alone changed is written where it is, without a rebuild of the panel's batch
+- A panel's matrix walk stops at its edge in a frame in which nothing under any panel moved, and code that writes a matrix under a panel marks it through markMoved
+- Move the mirror's mutation rules into elements/mirror/mutationRules.js
+- The border colour a box is drawn in and parseAlpha move out of VisualProperties.js, which breaks the import cycle between VisualProperties.js, elevation.js and pseudoElements.js.
+- A moved or scrolled box no longer rebuilds its panel's batch: the batch writes the matrices under the moved object where its last rebuild put them.
+- A box tells the batch about its quad's numbers only when a write changed one
+- Move the panel's loading and change watchers out of buildPortal into portalLoading.js and portalWatchers.js
+- Move the CSS value and rule modules into src/elements/css/
+- Move the panel's node builder and commit out of buildPortal into portalNodes.js
+- An author's attribute, inline style included, restyles an element's siblings only when a rule of the document could carry it to them
+- The motion step asks elevation.js's clearing rule for which sibling overlaps decide a draw level
+- Move the mirror's node records into elements/mirror/records.js, with no change in behaviour.
+- Move the thumbstick wheel and the panel plane sampling out of createPanelForwarder into pointerWheel.js and pointerPlane.js
+- Move the pointer crossings and hover and active flags out of pointerForwarding.js into pointerCrossings.js
+- Move the element controls into src/elements/controls/
+- Split portal.test.js by the modules buildPortal hands its state to
+- Move the mirror's tree and style reads into elements/mirror/styleReads.js, with no change in behaviour.
+- Move the paint and batching modules into src/elements/paint/
+- Move the hands' pointer state and capture out of pointerForwarding.js into pointerHands.js
 
 ## 0.34.1
 Tue, 10 Nov 2026 21:23:39 GMT

@@ -2,6 +2,29 @@
   "name": "@apendua/sound",
   "entries": [
     {
+      "version": "0.2.0",
+      "tag": "@apendua/sound_v0.2.0",
+      "date": "Wed, 11 Nov 2026 23:41:15 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Music resumes its listener's AudioContext as a session starts and on each gesture until it runs, so the soundtrack plays on iOS; new unlockAudio export"
+          },
+          {
+            "comment": "The three peer range is now >=0.185.0 <0.188.0: CI tests both ends, and three before 0.185 fails the SVG plugin's fill rule"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.35.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.35.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.1.7",
       "tag": "@apendua/sound_v0.1.7",
       "date": "Tue, 10 Nov 2026 21:23:39 GMT",

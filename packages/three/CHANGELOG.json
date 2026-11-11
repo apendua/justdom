@@ -2,6 +2,144 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.35.0",
+      "tag": "justdom-three_v0.35.0",
+      "date": "Wed, 11 Nov 2026 23:41:15 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Move the measurement clones out of mirror.js into elements/mirror/measurementClones.js, with no change in behaviour."
+          },
+          {
+            "comment": "Keep the pointer forwarder's shared values in one ForwarderState object"
+          },
+          {
+            "comment": "A box that paints nothing and takes no ray mounts no quad"
+          },
+          {
+            "comment": "Move the mirror's text layout and checkbox reads out of mirror.js"
+          },
+          {
+            "comment": "A box that draws no background, border, shadow or outline takes no instance in its panel's batch"
+          },
+          {
+            "comment": "Move the mirror's geometry reads into elements/mirror/geometryReads.js"
+          },
+          {
+            "comment": "A field's value, a list marker and a pseudo-element's box now patch their panel's batch when they move or are clipped, instead of rebuilding it."
+          },
+          {
+            "comment": "Gather buildPortal's shared values into one PortalState object"
+          },
+          {
+            "comment": "The scene's contexts and frame hooks live in scene.js, so mouse.js no longer imports render.js back"
+          },
+          {
+            "comment": "Move the panel's container claim and release out of portal.js into portalContainer.js"
+          },
+          {
+            "comment": "A scrolled or recoloured label no longer rebuilds its panel's batch: its run's clip, colour and matrix are written where the last rebuild put them."
+          },
+          {
+            "comment": "Keep an SVG drawing's paint order and a revealed text's cut in a nodeCache, and test that every per-node cache is one"
+          },
+          {
+            "comment": "Move the mirror's text measurement, node caches and client rect read into elements/mirror/, with no change in behaviour."
+          },
+          {
+            "comment": "A box whose numbers alone changed is written where it is, without a rebuild of the panel's batch"
+          },
+          {
+            "comment": "A panel's matrix walk stops at its edge in a frame in which nothing under any panel moved, and code that writes a matrix under a panel marks it through markMoved"
+          },
+          {
+            "comment": "Move the mirror's mutation rules into elements/mirror/mutationRules.js"
+          },
+          {
+            "comment": "The border colour a box is drawn in and parseAlpha move out of VisualProperties.js, which breaks the import cycle between VisualProperties.js, elevation.js and pseudoElements.js."
+          },
+          {
+            "comment": "A moved or scrolled box no longer rebuilds its panel's batch: the batch writes the matrices under the moved object where its last rebuild put them."
+          },
+          {
+            "comment": "A box tells the batch about its quad's numbers only when a write changed one"
+          },
+          {
+            "comment": "Move the panel's loading and change watchers out of buildPortal into portalLoading.js and portalWatchers.js"
+          },
+          {
+            "comment": "Move the CSS value and rule modules into src/elements/css/"
+          },
+          {
+            "comment": "Move the panel's node builder and commit out of buildPortal into portalNodes.js"
+          },
+          {
+            "comment": "An author's attribute, inline style included, restyles an element's siblings only when a rule of the document could carry it to them"
+          },
+          {
+            "comment": "The motion step asks elevation.js's clearing rule for which sibling overlaps decide a draw level"
+          },
+          {
+            "comment": "Move the mirror's node records into elements/mirror/records.js, with no change in behaviour."
+          },
+          {
+            "comment": "Move the thumbstick wheel and the panel plane sampling out of createPanelForwarder into pointerWheel.js and pointerPlane.js"
+          },
+          {
+            "comment": "Move the pointer crossings and hover and active flags out of pointerForwarding.js into pointerCrossings.js"
+          },
+          {
+            "comment": "Move the element controls into src/elements/controls/"
+          },
+          {
+            "comment": "Split portal.test.js by the modules buildPortal hands its state to"
+          },
+          {
+            "comment": "Move the mirror's tree and style reads into elements/mirror/styleReads.js, with no change in behaviour."
+          },
+          {
+            "comment": "Move the paint and batching modules into src/elements/paint/"
+          },
+          {
+            "comment": "Move the hands' pointer state and capture out of pointerForwarding.js into pointerHands.js"
+          }
+        ],
+        "none": [
+          {
+            "comment": "A test fails on an import that runs up the package's layers or closes a cycle"
+          },
+          {
+            "comment": "Hold the mirror bench's counts at 100 rows and 100 cards to ceilings in a test"
+          },
+          {
+            "comment": "Read which attributes the document's rules can carry to a sibling (no behaviour change yet)"
+          },
+          {
+            "comment": "A source test holds every object a panel draws to moving through place.js"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "The three peer range is now >=0.185.0 <0.188.0: CI tests both ends, and three before 0.185 fails the SVG plugin's fill rule"
+          },
+          {
+            "comment": "Add when(condition, render) and branch(select, render) for scenes, the conditionals justdom-core has, for Three objects"
+          },
+          {
+            "comment": "Panels keep what they need per scene (their scheduler, the keyboard, the image cache's release) on a host render() hands out, made the first time a panel asks; render() imports nothing from the panel layer. PortalSchedulerContext no longer answers the scheduler of a scene render() made; it is only for a scene built without render(). createFrameShareBudget moves to its own module, with the same export."
+          },
+          {
+            "comment": "render() takes a container to draw in, camera planes and field of view, and WebGLRenderer parameters; the size, pixel ratio and aspect are read again on every resize and when a session ends"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.7.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.34.1",
       "tag": "justdom-three_v0.34.1",
       "date": "Tue, 10 Nov 2026 21:23:39 GMT",

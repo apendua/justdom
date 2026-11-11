@@ -53,7 +53,7 @@ import { TextBatchContext } from "./textBatch.js";
 import {
   forwardListEvents,
   forwardPointerEvents,
-  isInRayTarget,
+  pressesForRayTarget,
   isRayTarget,
 } from "./pointerForwarding.js";
 import { lazyPanel, pressInit } from "./dragAndDrop.js";
@@ -822,22 +822,17 @@ export function box(ctx, element, options = {}) {
    * no quad at all, so the render list, the layer walk and the raycast never
    * meet a mesh for them. A press over one lands on what is behind it, which
    * is where its events would have bubbled to, since only a ray target
-   * forwards anything (`isRayTarget`). A box inside a ray target keeps its
-   * quad however blank (`isInRayTarget`), so that a press on it goes where a
-   * page sends it: to the target around it, over a nested target it covers
-   * and past the target's own edge where it spills over.
+   * forwards anything (`isRayTarget`). A box inside a ray target that takes
+   * pointer events keeps its quad however blank (`pressesForRayTarget`), so
+   * that a press on it goes where a page sends it: to the target around it,
+   * over a nested target it covers and past the target's own edge where it
+   * spills over. A blank box with `pointer-events: none` mounts none, and a
+   * press passes through it, as on a page.
    *
    * An `<img>` and a `url()` background are drawn by the quad whether or not
    * the box `paints` a colour of its own. A list that scrolls is grabbed by
    * its quad, between its rows.
    */
-  const insideRayTarget = () => {
-    if (isPortalRoot(element)) {
-      return false;
-    }
-    const parent = getParentElement(element);
-    return parent !== null && isInRayTarget(parent);
-  };
   const hasQuad = new Derived(
     () =>
       image !== null ||
@@ -845,7 +840,7 @@ export function box(ctx, element, options = {}) {
       properties.paints ||
       clickable.get() ||
       scrollable.get() ||
-      insideRayTarget(),
+      pressesForRayTarget(element),
   );
 
   /**

@@ -65,9 +65,10 @@ would. An ancestor that is not a ray target takes neither.
 A ray meets an element where its box paints, where it is a ray target, or where it sits inside one.
 A box with no colour and no cursor outside anything clickable is not there for the ray, and a press
 on it lands on what is behind it, which is where a page's click would have bubbled to anyway. Inside
-a ray target every box takes the ray, as on a page: a transparent child laid over a nested button
-takes the press for the target around it, and so does a transparent child where it reaches past the
-target's own box.
+a ray target every box that takes pointer events takes the ray, as on a page: a transparent child
+laid over a nested button takes the press for the target around it, and so does a transparent child
+where it reaches past the target's own box. A blank box with `pointer-events: none` is passed
+through, to what is beneath it.
 
 **The grip** is the mouse's other button: a press of it, let go on the element it started on,
 arrives as `contextmenu`, which is where a page already flags a tile or opens a menu of its own. Not

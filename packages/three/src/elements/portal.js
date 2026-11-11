@@ -401,6 +401,7 @@ function claimRoot(root) {
  * @property {WeakMap<Object3D, () => void>} objectToCleanup
  * @property {DomMirror} mirror
  * @property {HTMLElement} containerElement
+ * @property {ReturnType<typeof registerPanel>["panel"]} panel
  * @property {() => void} unregisterPanel
  * @property {ReturnType<typeof createBlocker> | null} blocker
  * @property {ReturnType<typeof createDepthQuad>} depthQuad
@@ -484,7 +485,10 @@ function buildPortal(ctx, ownOptions = {}) {
   /**
    * What the panel keeps for as long as it is up, and what the functions
    * below read (see `PortalState`). Each field is written where the code
-   * below builds it, and nothing reads a field before it is written.
+   * below builds it. Nothing may read a field before then: the cast below
+   * types every field as present from the start, so the build's order is
+   * the only thing that keeps that true, where a `const` read too early
+   * used to throw.
    */
   const state = /** @type {PortalState} */ ({
     ctx,
@@ -655,11 +659,14 @@ function buildPortal(ctx, ownOptions = {}) {
     // and is enough on its own.
   }
 
+  /** @type {WeakMap<Node, Object3D>} */
   // Not a nodeCache: one portal's own, gone with it.
   state.nodeToObject = new WeakMap();
 
+  /** @type {WeakMap<Object3D, Node>} */
   state.objectToNode = new WeakMap();
 
+  /** @type {WeakMap<Object3D, () => void>} */
   state.objectToCleanup = new WeakMap();
 
   /**
@@ -692,6 +699,7 @@ function buildPortal(ctx, ownOptions = {}) {
     state.containerElement,
     (node) => state.nodeToObject.get(node),
   );
+  state.panel = panel;
   state.unregisterPanel = unregister;
 
   // With only clickable elements as ray targets (see div.js), the portal
@@ -753,7 +761,9 @@ function buildPortal(ctx, ownOptions = {}) {
     // with a `<canvas>` board, which is not `cursor: pointer`, takes its
     // clicks through here and finds the square from the point.
     state.blocker.addEventListener("select", (e) => {
-      state.containerElement.dispatchEvent(new MouseEvent("click", pressInit(panel, e, false)));
+      state.containerElement.dispatchEvent(
+        new MouseEvent("click", pressInit(state.panel, e, false)),
+      );
     });
   }
 
@@ -874,6 +884,8 @@ function buildPortal(ctx, ownOptions = {}) {
    * its whole life. Idempotent, and `stopLoadingFrame` ends it.
    */
   state.startLoadingFrame = () => {};
+  // Read once into a local: the closures below need it known to be there,
+  // and a property read inside a closure loses what the `if` proved.
   const loadingFrameObject = state.loadingFrameObject;
   if (loadingFrameObject) {
     state.showLoadingFrame = () => {

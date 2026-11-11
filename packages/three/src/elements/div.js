@@ -40,6 +40,7 @@ import {
   getPaintLayer,
   isOverlay,
   OVERLAY_LIFT,
+  overlapOrders,
   overlaps,
   paintedBoundsInto,
 } from "./elevation.js";
@@ -656,32 +657,45 @@ export function box(ctx, element, options = {}) {
   /**
    * Whether every sibling the element overlapped, by the bounds its order
    * was written from, it still overlaps at `bounds`, and no other: tested
-   * against the bounds each sibling's order was written from. A sibling that
-   * is a layer is skipped, since an overlap with it changes no draw level
-   * (`getDrawLevel`). One in the flow is not: the element clears it
-   * (`getClearedSiblings`). The parent's `::before` and `::after` are
-   * siblings too (`getPaintChildren`), skipped as well while lifted
-   * (`getLayer`), and otherwise tested against the box measured for them:
-   * neither moves but with its element's layout, which the commit brings.
+   * against the bounds each sibling's order was written from. Only the
+   * siblings whose overlap with the element decides a draw level count
+   * (`overlapOrders`), by the painting layers committed with the bounds. A
+   * sibling that is a layer is skipped as well, since `getDrawLevel` skips
+   * it: its committed placement has no bounds. The parent's `::before` and
+   * `::after` are siblings too (`getPaintChildren`), skipped as well while
+   * lifted (`getLayer`), and otherwise tested against the box measured for
+   * them: neither moves but with its element's layout, which the commit
+   * brings.
    *
    * @param {PaintedBounds} was
+   * @param {PaintLayer} layer the painting layer committed with `was`
    * @param {PaintedBounds} bounds
    * @returns {boolean}
    */
-  const keepsOverlaps = (was, bounds) => {
+  const keepsOverlaps = (was, layer, bounds) => {
     const parent = getParentElement(element);
     if (!parent) {
       return true;
     }
+    let earlier = true;
     for (const node of getPaintChildren(parent)) {
+      if (node === element) {
+        earlier = false;
+        continue;
+      }
       /** @type {PaintedBounds | null | undefined} */
       let theirs;
+      /** @type {PaintLayer | undefined} */
+      let theirLayer;
       if (isGenerated(node)) {
         theirs = getLayer(node) === node ? null : getPaintedBounds(node);
-      } else if (node !== element && node.nodeType === Node.ELEMENT_NODE) {
-        theirs = committedPlacements.get(/** @type {Element} */ (node))?.get()?.bounds;
+        theirLayer = getPaintLayer(node);
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const committed = committedPlacements.get(/** @type {Element} */ (node))?.get();
+        theirs = committed?.bounds;
+        theirLayer = committed?.paintLayer;
       }
-      if (!theirs) {
+      if (!theirs || theirLayer === undefined || !overlapOrders(layer, theirLayer, earlier)) {
         continue;
       }
       if (overlaps(bounds, theirs) !== overlaps(was, theirs)) {
@@ -744,7 +758,7 @@ export function box(ctx, element, options = {}) {
         own ? ownMatrix : null,
         ownOrigin,
       );
-      if (!keepsOverlaps(at.bounds, bounds)) {
+      if (!keepsOverlaps(at.bounds, at.paintLayer, bounds)) {
         return;
       }
     }

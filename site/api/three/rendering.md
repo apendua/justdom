@@ -92,9 +92,9 @@ getXRSession(ctx)?.end();
 
 `getXRSession(ctx)` is reactive and null between sessions. A page mounted before there is a renderer
 to ask reads the session from `xrSession` in `justdom-xr/session` instead, which the scene writes:
-minesweeper, Euclid, Knights and the todo app through `enterSession(getXRSession(ctx))`, the desk
-with `xrSession.set` in its `components/Scene.ts`. `apps/minesweeper`'s × and `apps/desk`'s power
-button both call `end()` on the session that signal holds.
+through `enterSession(getXRSession(ctx))` in minesweeper, Euclid, Knights, the todo app and the
+desk. `apps/minesweeper`'s × and `apps/desk`'s power button both call `end()` on the session that
+signal holds.
 
 The parts of `createXRButton` are exported for an app that builds its own button:
 `requestFrameRate(renderer, preference)`, `anchorToViewer(renderer)`, `installCrashPanel(renderer)`

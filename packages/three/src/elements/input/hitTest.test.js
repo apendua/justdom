@@ -233,9 +233,10 @@ function caseOf(hit, cast, scanned) {
  * Cast and scan a grid of rays over a scene, with every element made a
  * ray target, and count where the two name different elements, by case,
  * with the place of each difference in no case. Compared only where the
- * scan's element is a ray target or inside one (`isInRayTarget`), while
- * the box over a ray target is undecided; here that is wherever the scan
- * names an element other than the root.
+ * scan's element is a ray target or inside one (`isInRayTarget`), since a
+ * box over a ray target is to take the press, as on a page, and that is
+ * not built; here that is wherever the scan names an element other than
+ * the root.
  *
  * @param {Scene["build"]} build
  * @returns {Promise<{ counts: Partial<Record<Case, number>>, compared: number, odd: string[] }>}

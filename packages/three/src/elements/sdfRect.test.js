@@ -309,7 +309,7 @@ describe("BoxNumbers", () => {
         invalidate: () => told.push("invalidate"),
       })
     );
-    const numbers = new BoxNumbers(mesh, () => batch);
+    const numbers = new BoxNumbers(mesh, batch);
     return { numbers, mesh, told, marks: () => told.length };
   };
 

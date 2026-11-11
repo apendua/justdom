@@ -26,7 +26,10 @@ import {
  * Which kind of change it tells the batch is decided here
  * (`paintBatch.js`'s header): a change to the numbers alone is `changed`,
  * which writes the box's instances again where they are, and a change to
- * the mesh's place, order or visibility is `invalidate`, a rebuild.
+ * the mesh's place, order or visibility is `invalidate`, a rebuild. Both go
+ * to the panel's batch, even for a box that draws itself: the batch's walk
+ * still reads its visibility and its order, and `changed` passes over a
+ * mesh the batch does not draw.
  *
  * What it does not cover is written elsewhere and told the batch there: the
  * matrix of the box's object, which the motion step and the place effect in
@@ -45,13 +48,13 @@ export class BoxNumbers {
   /** @type {THREE.Mesh} */
   #mesh;
 
-  /** @type {() => BoxBatch | null} */
+  /** @type {BoxBatch | null} */
   #batch;
 
   /**
    * @param {THREE.Mesh} mesh The quad the numbers are drawn on.
-   * @param {() => BoxBatch | null} batch The batch that draws the quad now,
-   *   or none while it draws itself.
+   * @param {BoxBatch | null} batch The panel's, whether or not it draws the
+   *   quad now; none outside a panel drawn in paint order.
    */
   constructor(mesh, batch) {
     this.#mesh = mesh;
@@ -60,12 +63,12 @@ export class BoxNumbers {
 
   /** The numbers changed, and nothing else. */
   #changed() {
-    this.#batch()?.changed(this.#mesh);
+    this.#batch?.changed(this.#mesh);
   }
 
   /** The mesh's place, order or visibility changed. */
   #moved() {
-    this.#batch()?.invalidate();
+    this.#batch?.invalidate();
   }
 
   /**
@@ -120,10 +123,8 @@ export class BoxNumbers {
       !mesh.matrixAutoUpdate &&
       position.x === x &&
       position.y === y &&
-      position.z === 0 &&
       scale.x === scaleX &&
-      scale.y === scaleY &&
-      scale.z === 1
+      scale.y === scaleY
     ) {
       return;
     }

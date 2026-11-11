@@ -491,9 +491,13 @@ export function box(ctx, element, options = {}) {
    * place in three's bookkeeping and a `dispose()` at teardown, per box, for
    * a program that is never compiled. What it actually needs is this record,
    * which the batch copies into its instance buffers. Written through
-   * `BoxNumbers`, which tells the batch when a write changed anything.
+   * `BoxNumbers`, which tells the panel's batch when a write changed
+   * anything. The panel's, not `batch()`: a box that draws itself is still
+   * read by the batch's walk, which skips it while it is hidden and breaks
+   * the draws at its order.
    */
-  const numbers = new BoxNumbers(boxMesh, () => batch());
+  const boxBatch = BoxBatchContext.get(ctx);
+  const numbers = new BoxNumbers(boxMesh, boxBatch);
   clipRaycast(boxMesh, () => currentClipBox, object);
 
   /**
@@ -513,7 +517,7 @@ export function box(ctx, element, options = {}) {
    *
    * @type {import('./boxBatch.js').BoxBatch | null}
    */
-  const panelBatch = image ? null : BoxBatchContext.get(ctx);
+  const panelBatch = image ? null : boxBatch;
 
   /**
    * The batch this box is drawn by now. A box with a `url()` background

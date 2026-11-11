@@ -237,11 +237,13 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
   // Named for the pseudo-element, which is all that tells it from its
   // element's quad in a scene's tree.
   mesh.name = pseudo;
-  const numbers = new BoxNumbers(mesh, () => batch());
   const rampSlot = new RampSlot();
   surface.clipMesh(mesh);
   const background = backgroundImage(properties);
   const panelBatch = BoxBatchContext.get(ctx);
+  // The panel's batch, not `batch()`: one with a picture draws itself and is
+  // still read by the batch's walk, for its visibility and its order.
+  const numbers = new BoxNumbers(mesh, panelBatch);
   const textBatch = TextBatchContext.get(ctx);
   /** The batch that draws the quad now; none while it has a picture. */
   const batch = () =>

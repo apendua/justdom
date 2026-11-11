@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Derived, effects, Signal } from "justdom-signal";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
-import { getCamera, getXRSession, onLateFrame, RendererContext } from "./render.js";
+import { getCamera, getXRSession, onLateFrame, RendererContext } from "./scene.js";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
 
 /**

@@ -2,8 +2,8 @@
 /// <reference path="./types/three.d.ts" preserve="true" />
 export { children, fragment, copy, Nothing, $, layoutEffects } from "./operators.js";
 export { list, keyedList } from "./core.js";
+export { render } from "./render.js";
 export {
-  render,
   useFrame,
   size,
   getCamera,
@@ -12,7 +12,7 @@ export {
   controllers,
   RendererContext,
   runFrame,
-} from "./render.js";
+} from "./scene.js";
 export {
   InteractionContext,
   InteractionManager,
@@ -98,7 +98,7 @@ export {
  */
 
 /**
- * @typedef {import('./render.js').ControllerHandle} ControllerHandle
+ * @typedef {import('./scene.js').ControllerHandle} ControllerHandle
  */
 
 /**

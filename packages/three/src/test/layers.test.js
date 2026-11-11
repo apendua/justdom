@@ -59,6 +59,7 @@ const LAYERS = {
   "mouse.js": "scene",
   "pointers.js": "scene",
   "render.js": "scene",
+  "scene.js": "scene",
   "bakery.js": "panel",
   "dom.js": "panel",
   "page.js": "panel",
@@ -81,7 +82,6 @@ const KNOWN = [
   "render.js -> elements/plugins.js",
   "render.js -> elements/portalScheduler.js",
   "cycle: elements/VisualProperties.js -> elements/elevation.js -> elements/pseudoElements.js -> elements/VisualProperties.js",
-  "cycle: mouse.js -> render.js -> mouse.js",
 ];
 
 /**

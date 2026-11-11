@@ -9,7 +9,7 @@ import { createKeyboardPreview } from "./keyboardPreview.js";
 import { DEFAULT_KEYBOARD_SCALE, shouldReuse, viewerPose } from "./keyboardPlacement.js";
 import { createPanelHandles } from "./panelHandles.js";
 import { levelPose } from "../carry.js";
-import { CameraContext, RendererContext, SceneContext } from "../render.js";
+import { CameraContext, RendererContext, SceneContext } from "../scene.js";
 
 /**
  * @import {Unsubscribable} from 'justdom-signal';

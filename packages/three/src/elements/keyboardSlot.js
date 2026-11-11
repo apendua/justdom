@@ -10,8 +10,9 @@ import { createProperty } from "justdom-signal";
  *
  * A slot rather than the host itself, and a module of its own rather than a
  * corner of `keyboardHost.js`, because of who builds what. The host builds
- * the board as a portal, and the portal imports `render.js`; `render()`
- * making the host would close that circle. So `render()` sets out the slot,
+ * the board as a portal, which is the panel layer, above `render.js`;
+ * `render()` making the host would import upward (`src/test/layers.test.js`
+ * has the layers). So `render()` sets out the slot,
  * which needs nothing, and the first portal that wants a keyboard puts one
  * in it with the `createPortal` it has to hand.
  *

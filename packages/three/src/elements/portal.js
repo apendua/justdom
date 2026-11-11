@@ -42,7 +42,7 @@ import { mergePanelOptions, PanelOptionsContext, resolveKeyboard } from "./panel
 import { createHaptics, HapticsContext } from "./haptics.js";
 import { createPanelForwarder, PointerForwarderContext } from "./pointerForwarding.js";
 import { createPanelHandles, HANDLE_RENDER_ORDER } from "./panelHandles.js";
-import { CameraContext, frames, onLateFrame, RendererContext } from "../render.js";
+import { CameraContext, frames, onLateFrame, RendererContext } from "../scene.js";
 import { InteractionContext } from "../interactions.js";
 import { registerOutlineHost } from "./outlines.js";
 

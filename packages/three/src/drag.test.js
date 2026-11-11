@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived } from "justdom-signal";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { RendererContext, runFrame } from "./render.js";
+import { RendererContext, runFrame } from "./scene.js";
 import { $ } from "./operators.js";
 import { drag } from "./drag.js";
 

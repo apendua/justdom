@@ -1,7 +1,7 @@
 import { makeNonReactive, onCleanup, useEffect, withComputation } from "justdom-signal";
 import { createHold } from "./hold.js";
 import { asReader, InteractionContext, setLocalMatrix } from "./interactions.js";
-import { useFrame } from "./render.js";
+import { useFrame } from "./scene.js";
 
 /**
  * @import { EntityEffect } from "justdom-signal";

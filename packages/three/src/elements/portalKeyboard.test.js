@@ -11,7 +11,7 @@ import {
   disposeKeyboardSlot,
   KeyboardSlotContext,
 } from "./keyboardSlot.js";
-import { CameraContext, RendererContext, SceneContext } from "../render.js";
+import { CameraContext, RendererContext, SceneContext } from "../scene.js";
 import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
 import { rectGeometry } from "./sdfRect.js";

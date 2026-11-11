@@ -19,7 +19,7 @@ import { getPortalRoot } from "./portalRoot.js";
 import { isBlocker } from "./blocker.js";
 import { withPanelOptions } from "./panelOptions.js";
 import { DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
-import { RendererContext } from "../render.js";
+import { RendererContext } from "../scene.js";
 import { recordingSource } from "../test/rumble.js";
 import { clientRect } from "../test/clientRect.js";
 import { getContentGroup } from "./contentGroup.js";

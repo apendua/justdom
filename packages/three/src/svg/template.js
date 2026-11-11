@@ -213,8 +213,9 @@ function markers(ctx, element, host, hostInstance) {
     const marker = findSvgElement(element, parseUrlReference(host.read(name)), "marker");
     // A `<defs>` later in the panel than this path, or in another `<svg>`
     // in it, is not in the mirror yet. What is read of it now is read again
-    // once the portal's walk adopts it (`readRecordOf` in `mirror.js`). One
-    // outside the panel is not this portal's to follow, and stays as read.
+    // once the portal's walk adopts it (`readRecordOf` in
+    // `mirror/records.js`). One outside the panel is not this portal's to
+    // follow, and stays as read.
     return !marker || expanding.has(marker) ? null : marker;
   };
 

@@ -379,7 +379,7 @@ describe("svg text", () => {
     const s = scene([text], text, { portalOrder: true });
     // The runs were read before their nodes had records. The walk adopts
     // them after the `<text>`, and what read them comes round a microtask
-    // later (`announceAdoption` in `mirror.js`).
+    // later (`announceAdoption` in `mirror/records.js`).
     s.adoptRest();
     await Promise.resolve();
     const [first, second] = s.meshes;

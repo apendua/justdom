@@ -526,10 +526,10 @@ const DESCRIPTIVE_TAGS = new Set(["title", "desc", "metadata"]);
  * Not followed, and so not clipped: any other `<clipPath>`, a basic shape
  * such as `inset()`, and a `clip-path` on the `<clipPath>` or its rect. A
  * `<clipPath>` outside the panel is read as it was first read, as a
- * `<marker>` is (see `readRecordOf` in `mirror.js`). The lookup by id is
- * not a cached read, so a `<clipPath>` added after the element was drawn is
- * found the next time the element's chain is read, such as when the element
- * is restyled.
+ * `<marker>` is (see `readRecordOf` in `mirror/records.js`). The lookup by
+ * id is not a cached read, so a `<clipPath>` added after the element was
+ * drawn is found the next time the element's chain is read, such as when
+ * the element is restyled.
  *
  * Exported for the templates in `template.js`, whose own `clip-path` the
  * walk in `readChain` stops short of.

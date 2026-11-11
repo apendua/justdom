@@ -5034,6 +5034,30 @@ describe("a panel that is always busy", () => {
       },
     }));
 
+  test("a step of a box with a negative z-index onto another such sibling is drawn at once", () =>
+    // Neither clears the other: a box with a negative `z-index` clears
+    // nothing (`clears`), so the two are drawn in tree order however they
+    // overlap.
+    whileWaiting({
+      prepare(list, card) {
+        const other = /** @type {HTMLElement} */ (card.nextElementSibling);
+        for (const box of [card, other]) {
+          box.style.position = "relative";
+          box.style.zIndex = "-1";
+        }
+        lay(card, { width: 10, height: 10 });
+        other.getBoundingClientRect = () => clientRect(50, 0, 10, 10);
+      },
+      from: shifted(10),
+      to: shifted(45),
+      during(object) {
+        assert.equal(object.matrix.elements[12], 45, "drawn where it went");
+      },
+      after(object) {
+        assert.equal(object.matrix.elements[12], 45);
+      },
+    }));
+
   test("a departing row keeps its matrix until the commit takes it out", async () => {
     // The mirror has let go of the row, and its transform read keeps the
     // value it had, as every other read does. A row of the test's own, so

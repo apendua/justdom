@@ -643,18 +643,20 @@ export function clears(layer, below, earlier) {
 /**
  * Whether an overlap between two siblings, neither of them a layer
  * (`getLayer`), decides a draw level: whether either clears the other
- * (`clears`). Two boxes in the flow, or a box with a negative `z-index` and
- * one in the flow, are drawn in tree order however they overlap. Whatever
- * holds a step until the order it changes is committed asks this, so that
- * it holds for exactly the overlaps `getDrawLevel` reads.
+ * (`clears`). That is so exactly when one of them is in painting layer 0 or
+ * 1. Two boxes in the flow, a box with a negative `z-index` and one in the
+ * flow, and two boxes with a negative `z-index` are drawn in their order
+ * however they overlap. Tree order does not change the answer: of two boxes
+ * in one layer that clears, the later clears the earlier. Whatever holds a
+ * step until the order it changes is committed asks this, so that it holds
+ * for exactly the overlaps `getDrawLevel` reads.
  *
  * @param {PaintLayer} layer the box's painting layer
  * @param {PaintLayer} theirs the sibling's
- * @param {boolean} earlier whether the sibling comes first in tree order
  * @returns {boolean}
  */
-export function overlapOrders(layer, theirs, earlier) {
-  return clears(layer, theirs, earlier) || clears(theirs, layer, !earlier);
+export function overlapOrders(layer, theirs) {
+  return clears(layer, theirs, true) || clears(theirs, layer, true);
 }
 
 /** @type {WeakMap<PaintNode, Derived<readonly PaintNode[]>>} */

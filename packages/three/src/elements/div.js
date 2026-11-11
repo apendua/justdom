@@ -677,10 +677,8 @@ export function box(ctx, element, options = {}) {
     if (!parent) {
       return true;
     }
-    let earlier = true;
     for (const node of getPaintChildren(parent)) {
       if (node === element) {
-        earlier = false;
         continue;
       }
       /** @type {PaintedBounds | null | undefined} */
@@ -695,7 +693,7 @@ export function box(ctx, element, options = {}) {
         theirs = committed?.bounds;
         theirLayer = committed?.paintLayer;
       }
-      if (!theirs || theirLayer === undefined || !overlapOrders(layer, theirLayer, earlier)) {
+      if (!theirs || theirLayer === undefined || !overlapOrders(layer, theirLayer)) {
         continue;
       }
       if (overlaps(bounds, theirs) !== overlaps(was, theirs)) {

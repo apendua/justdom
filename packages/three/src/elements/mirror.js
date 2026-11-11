@@ -15,7 +15,6 @@ import {
   getSiblingReach,
   withGeneratedCopyRule,
 } from "./documentStyles.js";
-import { clipBoxEqual, intersectClipBoxes, toLocalClipBox, UNCLIPPED } from "./clip.js";
 import {
   ACTIVE_ATTRIBUTE,
   ELEMENT_FLAGS,
@@ -55,7 +54,6 @@ import {
   getReflowContext,
   getScrollOffset,
   isOutOfFlowPosition,
-  readClientRect,
   readParentBox,
 } from "./mirror/geometryReads.js";
 import { measureTextRects } from "./mirror/textLayout.js";
@@ -71,9 +69,7 @@ import {
 
 /**
  * @import {TextLayout} from './mirror/textLayout.js';
- * @import {ScrollOffset} from './mirror/records.js';
  * @import {BorderBoxSize} from './mirror/geometryReads.js';
- * @import {ClipBox} from './clip.js';
  * @import {Subscribable} from 'justdom-signal';
  */
 

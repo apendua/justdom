@@ -114,11 +114,25 @@ export function text(ctx, textNode) {
     // One effect for both cheap writes: where the text sits and what trims
     // it move together — a scroll shifts the clip while the content-space
     // position holds still, and a re-layout can move both.
+    // Each tells the batch only what it changed: a move is matrices
+    // written where they are, and a clip is the runs' numbers.
     effects((obj) => {
-      place(obj, layout.left, layout.top, -0.01);
+      const { position } = obj;
+      if (obj.matrixAutoUpdate || position.x !== layout.left || position.y !== layout.top) {
+        place(obj, layout.left, layout.top, -0.01);
+        batch?.moved(obj);
+      }
       const box = clipBox.get();
-      clipUniform.value.set(box.left, box.top, box.right, box.bottom);
-      batch?.invalidate();
+      const clip = clipUniform.value;
+      if (
+        clip.x !== box.left ||
+        clip.y !== box.top ||
+        clip.z !== box.right ||
+        clip.w !== box.bottom
+      ) {
+        clip.set(box.left, box.top, box.right, box.bottom);
+        batch?.changedUnder(obj);
+      }
     }),
     children(
       textRun(

@@ -1817,6 +1817,137 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  test("a scroll of text writes its runs' clips and matrices, as a rebuild would", async () => {
+    // Labels in a scroller: a scroll moves the content group and changes
+    // each label's clip, which is expressed against the scroll. The batch
+    // writes both where they are. Goes red with the label's effect asking
+    // for a rebuild on every scroll.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      {
+        id: "scroller",
+        style: "position: absolute; overflow: hidden",
+        at: [0, 0, 200, 300],
+        children: Array.from({ length: 4 }, (_, i) => ({
+          id: `row${i}`,
+          style: CARD,
+          at: /** @type {[number, number, number, number]} */ ([0, 40 + i * 20, 200, 20]),
+          text: `row ${i}`,
+        })),
+      },
+    ]);
+    await g.walk();
+    const runs = () =>
+      draws(g.panel)
+        .flatMap(kinds)
+        .filter((kind) => kind === "run").length;
+    assert.equal(runs(), 4, "the labels are batched");
+    const watched = watchBatch();
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("scroller")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      assert.ok(watched.changed >= 4, "the labels' clips");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a text colour writes its run where it is", async () => {
+    // A label recoloured, as a hover does: its run's instance is written
+    // again, and nothing else. Goes red with the tint asking for a rebuild.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      { id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" },
+      { id: "other", style: CARD, at: [20, 100, 200, 40] },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card").style.color = "rgb(255, 0, 0)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      assert.equal(batch.written, 1, "the run alone");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
+  test("a run changed past its writer's back is rebuilt, not patched", async () => {
+    // The same second guard as a box's, for a run: hidden, reordered or no
+    // longer a member, and said only to have changed its colour.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([{ id: "card", style: CARD, at: [20, 20, 200, 40], text: "label" }]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card").style.color = "rgb(255, 0, 0)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      /** @type {THREE.Mesh | undefined} */
+      let run;
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.runs.memberOf(object)) {
+          run = object;
+        }
+      });
+      const mesh = /** @type {THREE.Mesh} */ (run);
+      const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, 1, "patched");
+
+      mesh.visible = false;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "hidden: rebuilt");
+      mesh.visible = true;
+      batch.invalidate();
+      batch.flush();
+
+      mesh.renderOrder += 1;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "reordered: rebuilt");
+      mesh.renderOrder -= 1;
+      batch.invalidate();
+      batch.flush();
+
+      const memberOf = batch.runs.memberOf;
+      batch.runs.memberOf = () => undefined;
+      try {
+        batch.changed(mesh);
+        batch.flush();
+        assert.equal(batch.written, total(), "no longer a member: rebuilt");
+      } finally {
+        batch.runs.memberOf = memberOf;
+      }
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+  });
+
   test("a move writes the matrices of the boxes and runs under the object", async () => {
     // A card with a label in it, moved without the layout knowing, as a
     // transform's motion step moves one: the batch writes the card's

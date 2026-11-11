@@ -668,14 +668,66 @@ export class TextBatch {
   }
 
   /**
-   * Something about a run the batch has copied down has changed. The one
-   * batch coalesces it with everything else the panel changed (`invalidate`
-   * in `paintBatch.js`).
+   * Something about a run the batch has copied down has changed in a way
+   * that needs a rebuild: its raster, its order, whether it is shown. A
+   * change to its colour, opacity or clip alone is `changed`. The one batch
+   * coalesces it with everything else the panel changed (`invalidate` in
+   * `paintBatch.js`).
    *
    * @returns {void}
    */
   invalidate() {
     this.#draw.invalidate();
+  }
+
+  /**
+   * The member a mesh is, or undefined for a mesh that is not one. Unlike
+   * `take`, settles and marks nothing.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {Member | undefined}
+   */
+  memberOf(mesh) {
+    return this.#members.get(mesh);
+  }
+
+  /**
+   * A run's colour, opacity or clip changed, and nothing else about it: the
+   * one batch writes its instance again where it is (`changed` in
+   * `paintBatch.js`). A mesh that is not a member is drawn by nothing here.
+   *
+   * @param {THREE.Mesh} mesh
+   * @returns {void}
+   */
+  changed(mesh) {
+    if (this.#members.has(mesh)) {
+      this.#draw.changed(mesh);
+    }
+  }
+
+  /**
+   * `changed` for every run under `object`, which share its clip.
+   *
+   * @param {THREE.Object3D} object
+   * @returns {void}
+   */
+  changedUnder(object) {
+    const children = object.children;
+    for (let i = 0; i < children.length; i++) {
+      this.changed(/** @type {THREE.Mesh} */ (children[i]));
+      this.changedUnder(children[i]);
+    }
+  }
+
+  /**
+   * An object moved, and nothing else about it changed (`moved` in
+   * `paintBatch.js`).
+   *
+   * @param {THREE.Object3D} object
+   * @returns {void}
+   */
+  moved(object) {
+    this.#draw.moved(object);
   }
 
   /**

@@ -84,10 +84,12 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  *   box and run under it. A scroll is one, of the content group that
  *   carries what scrolls. Order is by render order, not by place, so a move
  *   changes no draw.
- * - A patch (`changed(mesh)`): a box's numbers changed. A box gaining or
- *   losing a shadow layer or an outline, or a shadow layer turning inset or
- *   outer, arrives this way too, since `BoxNumbers` sees only numbers: the
- *   check against the record below is what makes it a rebuild.
+ * - A patch (`changed(mesh)`): a box's numbers changed, or a run's colour,
+ *   opacity or clip. A box gaining or losing a shadow layer or an outline,
+ *   or a shadow layer turning inset or outer, arrives this way too, since
+ *   `BoxNumbers` sees only numbers: the check against the record below is
+ *   what makes it a rebuild. A run's raster, and so its size and its layer
+ *   in an array, changes only by `invalidate`.
  *
  * What a rebuild leaves behind is a record: for each box and run it took,
  * where its instance and each of a box's decorations went, by draw and
@@ -121,6 +123,13 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  * and `remove`, `LayerOrder` rebasing a mesh), so these checks fail only
  * for a writer that forgot to: a second guard, which turns that writer's
  * mistake into a rebuild rather than a box drawn as it was.
+ *
+ * A run marked changed is checked and passed over the same way: it has to
+ * be visible, still a member, and at its recorded order (`textRun.js`
+ * invalidates when its visibility or order changes). With nothing
+ * structural pending its raster is the one the record holds, so writing it
+ * is `writeRun` at its recorded index, in the array slot its draw gave its
+ * size class.
  */
 
 /**
@@ -762,7 +771,7 @@ export class PaintBatch {
    * structural is pending or the box no longer matches what the rebuild
    * recorded (see the file's header).
    *
-   * @param {Object3D} mesh A member of `boxes`.
+   * @param {Object3D} mesh A member of `boxes` or of `runs`.
    * @returns {void}
    */
   changed(mesh) {
@@ -851,6 +860,17 @@ export class PaintBatch {
     for (let k = 0; k < changed.length; k++) {
       const first = this.#slots.get(changed[k]);
       if (first === undefined) {
+        continue;
+      }
+      const run = this.#runs[first];
+      if (run) {
+        const draw = this.#draws[this.#drawAt[first]];
+        const sizeClass = /** @type {Slot} */ (run.shown).sizeClass;
+        draw.writeRun(this.#indexAt[first], run, draw.classes.indexOf(sizeClass));
+        if (!touched.includes(draw)) {
+          touched.push(draw);
+        }
+        written += 1;
         continue;
       }
       const box = this.#boxes[first];
@@ -959,6 +979,16 @@ export class PaintBatch {
   #matches(object) {
     const first = /** @type {number} */ (this.#slots.get(object));
     const mesh = /** @type {THREE.Mesh} */ (object);
+    const run = this.#runs[first];
+    if (run) {
+      // A run's numbers are its colour, opacity and clip. Its size and its
+      // layer in an array come with its raster, which only a rebuild
+      // settles, so they are as the record has them. The rest is the same
+      // second guard as a box's, below.
+      return (
+        mesh.visible && this.runs.memberOf(mesh) === run && this.#orders[first] === mesh.renderOrder
+      );
+    }
     const box = this.#boxes[first];
     if (
       !box ||

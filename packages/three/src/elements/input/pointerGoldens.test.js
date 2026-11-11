@@ -24,7 +24,7 @@
  * To record them again after such a change:
  *
  *   UPDATE_GOLDENS=1 node --import ./src/test/setup-jsdom.js \
- *     --test src/elements/pointerGoldens.test.js
+ *     --test src/elements/input/pointerGoldens.test.js
  *
  * and read the diff of the JSON file before committing it. A gesture with
  * no recording fails rather than recording one, unless that is asked for.
@@ -32,10 +32,10 @@
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import { drain } from "../test/portalHarness.js";
-import { pagePanel } from "../test/pagePanel.js";
-import { rayHand } from "../test/rayHand.js";
-import { describeScroller } from "../test/scroller.js";
+import { drain } from "../../test/portalHarness.js";
+import { pagePanel } from "../../test/pagePanel.js";
+import { rayHand } from "../../test/rayHand.js";
+import { describeScroller } from "../../test/scroller.js";
 
 const GOLDENS = new URL("./pointerGoldens.json", import.meta.url);
 const UPDATE = process.env.UPDATE_GOLDENS === "1";
@@ -52,7 +52,7 @@ after(() => {
 });
 
 /**
- * @import { PageSpec, Rect } from "../test/pagePanel.js";
+ * @import { PageSpec, Rect } from "../../test/pagePanel.js";
  */
 
 /**

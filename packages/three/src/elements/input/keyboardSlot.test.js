@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createKeyboardSlot, KeyboardSlotContext, keyboardSlotOf } from "./keyboardSlot.js";
-import { testScene } from "../test/sceneHost.js";
+import { testScene } from "../../test/sceneHost.js";
 
 /**
  * @import {KeyboardHost} from './keyboardHost.js';

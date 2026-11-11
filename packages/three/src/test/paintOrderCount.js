@@ -124,7 +124,7 @@ import {
   px,
 } from "../elements/textHelpers.js";
 import { PASSWORD_BULLET } from "../elements/controls/textInput.js";
-import { getShownValue, isTextInput } from "../elements/typing.js";
+import { getShownValue, isTextInput } from "../elements/input/typing.js";
 import { getPaintChildren, isGenerated, paintsBox } from "../elements/pseudoElements.js";
 import { MARKABLE_TAGS, markerVertices } from "../svg/marker.js";
 import { buildShapePath, readDrawnProperty, SHAPE_TAGS, viewportSize } from "../svg/shape.js";

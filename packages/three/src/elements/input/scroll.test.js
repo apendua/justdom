@@ -1,9 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
-import { setContentGroup } from "./contentGroup.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { setContentGroup } from "../contentGroup.js";
 import {
   createPanelScrollDrags,
   createScrollDrags,
@@ -12,8 +12,8 @@ import {
   movesList,
   ScrollDragsContext,
 } from "./scroll.js";
-import { describeScroller } from "../test/scroller.js";
-import { flushFrame } from "../test/portalHarness.js";
+import { describeScroller } from "../../test/scroller.js";
+import { flushFrame } from "../../test/portalHarness.js";
 
 /**
  * @param {string} style

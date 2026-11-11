@@ -10,7 +10,7 @@ import {
   dismissKeyboardAtSessionEnd,
   disposeKeyboardSlot,
   KeyboardSlotContext,
-} from "./keyboardSlot.js";
+} from "./input/keyboardSlot.js";
 import { CameraContext, RendererContext, SceneContext } from "../scene.js";
 import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "./panelHandles.js";
 import { stubCanvas } from "../test/stubCanvas.js";
@@ -18,9 +18,9 @@ import { rectGeometry } from "./paint/sdfRect.js";
 import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "./controls/textInput.js";
 import { getObjectDrawOrder } from "../drawOrder.js";
 import { recordingSource } from "../test/rumble.js";
-import { PREVIEW_ATTRIBUTE } from "./keyboardPreview.js";
+import { PREVIEW_ATTRIBUTE } from "./input/keyboardPreview.js";
 import { withStart } from "../test/rays.js";
-import { getCaretOffset } from "./typing.js";
+import { getCaretOffset } from "./input/typing.js";
 
 /**
  * @import {KeyboardTarget} from './portalKeyboard.js';
@@ -101,7 +101,7 @@ const ownKeyboard = (create) => ({ options: { keyboard: { gap: 20, create } } })
  * is one clickable key; what it is handed is recorded.
  *
  * @param {Configure} [configure]
- * @param {import('./keyboardSlot.js').KeyboardSlot} [slot] The scene's
+ * @param {import('./input/keyboardSlot.js').KeyboardSlot} [slot] The scene's
  *   keyboard, for panels that share one; without it the panel has its own.
  * @param {{ scene: THREE.Scene, camera: THREE.Camera, renderer?: object }} [room] A scene and a
  *   camera for the board to open in front of, and a renderer to carry it

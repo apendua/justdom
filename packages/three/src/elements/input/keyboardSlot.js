@@ -1,9 +1,9 @@
 import { createProperty } from "justdom-signal";
-import { sceneService } from "../sceneServices.js";
+import { sceneService } from "../../sceneServices.js";
 
 /**
  * @import {KeyboardHost} from './keyboardHost.js';
- * @import {SceneHost} from '../sceneServices.js';
+ * @import {SceneHost} from '../../sceneServices.js';
  */
 
 /**

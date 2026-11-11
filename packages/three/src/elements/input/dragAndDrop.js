@@ -1,27 +1,27 @@
 import * as THREE from "three";
 import { withComputation } from "justdom-signal";
-import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
-import { InteractionContext } from "../interactions.js";
+import { OVERLAY_RENDER_ORDER } from "../../drawOrder.js";
+import { InteractionContext } from "../../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
-import { createFrameRequester } from "./frameRequester.js";
-import { RendererContext } from "../scene.js";
-import { getBorderBoxSize, getLocalClipBox } from "./mirror/geometryReads.js";
+import { createFrameRequester } from "../frameRequester.js";
+import { RendererContext } from "../../scene.js";
+import { getBorderBoxSize, getLocalClipBox } from "../mirror/geometryReads.js";
 import {
   getComputedStyleCached,
   getParentElement,
   isPortalRoot,
   isVisibilityHidden,
-} from "./mirror/styleReads.js";
-import { placeAndScale } from "./place.js";
-import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "./panelFrame.js";
-import { isSvgRoot } from "./plugins.js";
+} from "../mirror/styleReads.js";
+import { placeAndScale } from "../place.js";
+import { frameFor, getPanelFrame, measureClientRect, probePanelFrame } from "../panelFrame.js";
+import { isSvgRoot } from "../plugins.js";
 import { DRAG_THRESHOLD, sampleRay } from "./scroll.js";
-import { createRectMaterial, rectGeometry } from "./paint/sdfRect.js";
+import { createRectMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { snapshotsFor } from "./ghostSnapshot.js";
 
 /**
  * @import {DropEffect} from './dataTransfer.js';
- * @import {PanelFrame} from './panelFrame.js';
+ * @import {PanelFrame} from '../panelFrame.js';
  */
 
 /**

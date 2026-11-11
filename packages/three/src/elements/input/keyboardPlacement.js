@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 /**
- * @import {LevelPose} from '../carry.js';
+ * @import {LevelPose} from '../../carry.js';
  */
 
 /**

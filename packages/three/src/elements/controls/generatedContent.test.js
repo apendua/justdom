@@ -26,7 +26,7 @@ import { comparePaintOrder } from "../paint/layerTree.js";
 import { fakeClock } from "../../test/clock.js";
 import { countEvaluations } from "../../test/evaluations.js";
 import { flicker, reportTransform, shifted, transformTransition } from "../../test/motion.js";
-import { getPanel } from "../dragAndDrop.js";
+import { getPanel } from "../input/dragAndDrop.js";
 import { layerDepth, listPaintOrder } from "../../test/paintOrderCount.js";
 import { getGeneratedSelectors } from "../css/documentStyles.js";
 import { generatedHost, splitSelectorList } from "../css/styleRules.js";

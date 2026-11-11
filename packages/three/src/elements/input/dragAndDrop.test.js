@@ -1,15 +1,15 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { drain, flushFrame, settle } from "../test/portalHarness.js";
-import { rayHand } from "../test/rayHand.js";
-import { isUnder } from "../test/rays.js";
-import { describeScroller } from "../test/scroller.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { drain, flushFrame, settle } from "../../test/portalHarness.js";
+import { rayHand } from "../../test/rayHand.js";
+import { isUnder } from "../../test/rays.js";
+import { describeScroller } from "../../test/scroller.js";
 import { createDragAndDrop, dragAndDrop } from "./dragAndDrop.js";
 import { movesList } from "./scroll.js";
-import { createPortal } from "./portal.js";
-import { clientRect } from "../test/clientRect.js";
+import { createPortal } from "../portal.js";
+import { clientRect } from "../../test/clientRect.js";
 
 /**
  * @param {Element} element

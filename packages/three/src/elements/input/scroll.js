@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { createProperty } from "justdom-signal";
-import { InteractionContext } from "../interactions.js";
-import { clipsOverflow } from "./mirror/geometryReads.js";
-import { getComputedStyleCached, getParentElement, isPortalRoot } from "./mirror/styleReads.js";
-import { getParentObject } from "./contentGroup.js";
-import { createFrameRequester } from "./frameRequester.js";
-import { sampleRenderingUpdates, scrollElementBy } from "./renderingUpdates.js";
+import { InteractionContext } from "../../interactions.js";
+import { clipsOverflow } from "../mirror/geometryReads.js";
+import { getComputedStyleCached, getParentElement, isPortalRoot } from "../mirror/styleReads.js";
+import { getParentObject } from "../contentGroup.js";
+import { createFrameRequester } from "../frameRequester.js";
+import { sampleRenderingUpdates, scrollElementBy } from "../renderingUpdates.js";
 
 /**
  * Dragging a scrolling list with the controller ray.

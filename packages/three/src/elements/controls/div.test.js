@@ -8,14 +8,14 @@ import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
 import { div } from "./div.js";
 import { getClearedSiblings, getContentRenderOrder } from "../paint/elevation.js";
 import { GRADIENT_LINEAR, rampAtlas } from "../paint/gradient.js";
-import { createHaptics, HapticsContext } from "../haptics.js";
+import { createHaptics, HapticsContext } from "../input/haptics.js";
 import { getContentGroup } from "../contentGroup.js";
-import { ScrollDragsContext } from "../scroll.js";
+import { ScrollDragsContext } from "../input/scroll.js";
 import { bubble, forwardedPanel } from "../../test/rays.js";
 import { describeScroller } from "../../test/scroller.js";
 import { recordingSource } from "../../test/rumble.js";
 import { clientRect } from "../../test/clientRect.js";
-import { registerPanel } from "../dragAndDrop.js";
+import { registerPanel } from "../input/dragAndDrop.js";
 import { batchedBoxMaterial, rectGeometry } from "../paint/sdfRect.js";
 import { text } from "./text.js";
 import { InputFocusContext, textInput } from "./textInput.js";
@@ -64,7 +64,7 @@ Object.defineProperty(document, "fonts", {
  *
  * @param {string} cursor
  * @param {string} [cssText] Anything else the element should be styled with.
- * @param {import('../haptics.js').Haptics | null} [haptics] What the panel
+ * @param {import('../input/haptics.js').Haptics | null} [haptics] What the panel
  *   the element is in feels like; none, as outside a panel, unless given.
  * @param {HTMLElement} [parent] Where the element goes. Unless given, a
  *   fresh container of its own, so that what earlier tests left behind is

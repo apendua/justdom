@@ -7,7 +7,7 @@ import { UpdateChannel, withChannel } from "justdom-signal";
 import { InteractionContext, InteractionManager, intersectVisible } from "../interactions.js";
 import { createMirror } from "../elements/mirror.js";
 import { setContentGroup } from "../elements/contentGroup.js";
-import { getControlRoot } from "../elements/pointerForwarding.js";
+import { getControlRoot } from "../elements/input/pointerForwarding.js";
 import { bubble, forwardedPanel } from "../test/rays.js";
 import { leaveSizesUnmapped } from "../test/unmappedSizes.js";
 import { observedMirror } from "../test/observedMirror.js";

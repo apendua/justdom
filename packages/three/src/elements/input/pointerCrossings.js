@@ -7,10 +7,10 @@
  * rays move.
  */
 
-import { isPortalRoot } from "./mirror/styleReads.js";
+import { isPortalRoot } from "../mirror/styleReads.js";
 
 /**
- * @import {ACTIVE_ATTRIBUTE, HOVER_ATTRIBUTE} from './portalRoot.js';
+ * @import {ACTIVE_ATTRIBUTE, HOVER_ATTRIBUTE} from '../portalRoot.js';
  */
 
 /**

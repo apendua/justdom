@@ -51,8 +51,8 @@ uses for "clickable", when it is `draggable="true"` (see
 `none`. Checkboxes and text fields are targets without asking. A clickable element built outside any
 portal is a ray target and nothing more: each element a ray acts on registers with its panel's
 forwarder, which listens on the portal's container object and reads which of its elements each ray
-event went through (`createPanelForwarder` in `elements/pointerForwarding.js`), so the panel does
-all of the below once, for every element in it.
+event went through (`createPanelForwarder` in `elements/input/pointerForwarding.js`), so the panel
+does all of the below once, for every element in it.
 
 **A press.** Closing the trigger on a target sends `pointerdown` and `mousedown`; opening it sends
 `pointerup`, `mouseup` and `click`. The element carries `data-xr-hover` while a ray is on it and

@@ -1,27 +1,27 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager } from "../interactions.js";
-import { shape } from "../svg/shape.js";
-import { getContentGroup } from "./contentGroup.js";
-import { box } from "./controls/div.js";
+import { InteractionContext, InteractionManager } from "../../interactions.js";
+import { shape } from "../../svg/shape.js";
+import { getContentGroup } from "../contentGroup.js";
+import { box } from "../controls/div.js";
 import { dragAndDrop, registerPanel } from "./dragAndDrop.js";
-import { createMirror } from "./mirror.js";
-import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
+import { createMirror } from "../mirror.js";
+import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
 import { movesList } from "./scroll.js";
 import { createHaptics, HapticsContext } from "./haptics.js";
-import { recordingSource } from "../test/rumble.js";
-import { clientRect } from "../test/clientRect.js";
-import { describeScroller } from "../test/scroller.js";
-import { countingManager, flushFrame, settle } from "../test/portalHarness.js";
-import { bubble, forwardedPanel } from "../test/rays.js";
-import { rayHand } from "../test/rayHand.js";
-import { fakeClock } from "../test/clock.js";
-import { createPortal } from "./portal.js";
+import { recordingSource } from "../../test/rumble.js";
+import { clientRect } from "../../test/clientRect.js";
+import { describeScroller } from "../../test/scroller.js";
+import { countingManager, flushFrame, settle } from "../../test/portalHarness.js";
+import { bubble, forwardedPanel } from "../../test/rays.js";
+import { rayHand } from "../../test/rayHand.js";
+import { fakeClock } from "../../test/clock.js";
+import { createPortal } from "../portal.js";
 import { PointerForwarderContext } from "./pointerForwarding.js";
 
 /**
- * @import { XREventMap } from "../core.js";
+ * @import { XREventMap } from "../../core.js";
  */
 
 // three's SVGLoader parses with DOMParser, which jsdom-env does not install.
@@ -235,7 +235,7 @@ function nest({ outer, inner, build, haptics = null }) {
  * @param {THREE.Object3D} [options.scene]
  * @param {number} [options.x] How far along x to put the panel, in m, so
  *   that a ray aimed at one panel misses another.
- * @param {import("./portal.js").PortalOptions} [options.portal] The
+ * @param {import("../portal.js").PortalOptions} [options.portal] The
  *   panel's own options, besides its root and a budget of 0.
  */
 async function mirrored(
@@ -2920,7 +2920,7 @@ describe("the thumbstick as a wheel", () => {
    * A hand with a stick on a board, a clock the test moves, and the
    * `wheel` events the page hears, as `wheel #id at x,y deltaY d`.
    *
-   * @param {import("./portal.js").PortalOptions} [options]
+   * @param {import("../portal.js").PortalOptions} [options]
    */
   const wheeling = async (options = { thumbstickWheel: true }) => {
     const page = await mirrored(board, { portal: options });

@@ -46,11 +46,11 @@ export {
   HOVER_ATTRIBUTE,
   getPortalRoot,
 } from "./elements/portalRoot.js";
-export { isTextInput, typeIntoInput } from "./elements/typing.js";
-export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
+export { isTextInput, typeIntoInput } from "./elements/input/typing.js";
+export { PREVIEW_ATTRIBUTE } from "./elements/input/keyboardPreview.js";
 export { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
 export { withPanelOptions } from "./elements/panelOptions.js";
-export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js";
+export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/input/haptics.js";
 export { box } from "./elements/controls/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
@@ -111,23 +111,23 @@ export {
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticOptions} HapticOptions
+ * @typedef {import('./elements/input/haptics.js').HapticOptions} HapticOptions
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticFlavor} HapticFlavor
+ * @typedef {import('./elements/input/haptics.js').HapticFlavor} HapticFlavor
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticFlavorName} HapticFlavorName
+ * @typedef {import('./elements/input/haptics.js').HapticFlavorName} HapticFlavorName
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticPulse} HapticPulse
+ * @typedef {import('./elements/input/haptics.js').HapticPulse} HapticPulse
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticEffect} HapticEffect
+ * @typedef {import('./elements/input/haptics.js').HapticEffect} HapticEffect
  */
 
 /**
@@ -143,11 +143,11 @@ export {
  */
 
 /**
- * @typedef {import('./elements/keyboardPreview.js').KeyboardPreviewOptions} KeyboardPreviewOptions
+ * @typedef {import('./elements/input/keyboardPreview.js').KeyboardPreviewOptions} KeyboardPreviewOptions
  */
 
 /**
- * @typedef {import('./elements/typing.js').KeyPress} KeyPress
+ * @typedef {import('./elements/input/typing.js').KeyPress} KeyPress
  */
 
 /**

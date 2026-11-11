@@ -6,14 +6,14 @@
  * `pointerForwarding.js`) starts it from its ray events.
  */
 
-import { isBlocker } from "./blocker.js";
+import { isBlocker } from "../blocker.js";
 import { hitElement } from "./dragAndDrop.js";
 import { HAND_BITS, handOf, heldButtons, isGone } from "./pointerHands.js";
 import { samplePlane, writeSampled } from "./pointerPlane.js";
 
 /**
  * @import {XRTargetRaySpace} from 'three';
- * @import {XREventMap} from '../core.js';
+ * @import {XREventMap} from '../../core.js';
  * @import {Panel} from './dragAndDrop.js';
  * @import {ForwarderState, PanelHand} from './pointerForwarding.js';
  */

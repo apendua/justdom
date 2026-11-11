@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { createProperty, onCleanup } from "justdom-signal";
-import { interactions } from "../interactions.js";
-import { isBlocker } from "./blocker.js";
-import { getParentObject } from "./contentGroup.js";
+import { interactions } from "../../interactions.js";
+import { isBlocker } from "../blocker.js";
+import { getParentObject } from "../contentGroup.js";
 import {
   dragAndDrop,
   getPanel,
@@ -16,7 +16,7 @@ import {
   probePanel,
   releaseInit,
 } from "./dragAndDrop.js";
-import { createFrameRequester } from "./frameRequester.js";
+import { createFrameRequester } from "../frameRequester.js";
 import { HapticsContext, isArrival } from "./haptics.js";
 import {
   getAttributeCached,
@@ -24,11 +24,11 @@ import {
   getComputedStyleCached,
   getParentElement,
   isPortalRoot,
-} from "./mirror/styleReads.js";
-import { nodeDerived } from "./mirror/records.js";
-import { nodeCache } from "./mirror/nodeCaches.js";
-import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
-import { describeElement } from "./panelFrame.js";
+} from "../mirror/styleReads.js";
+import { nodeDerived } from "../mirror/records.js";
+import { nodeCache } from "../mirror/nodeCaches.js";
+import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "../portalRoot.js";
+import { describeElement } from "../panelFrame.js";
 import { movesList, ScrollDragsContext } from "./scroll.js";
 import {
   atPointer,
@@ -59,8 +59,8 @@ import { takesTheTyping } from "./typing.js";
 /**
  * @import {EntityEffect} from 'justdom-signal';
  * @import {Object3D, Vector2, Vector3, XRTargetRaySpace} from 'three';
- * @import {Reactive} from '../interactions.js';
- * @import {InteractionEvent, XREventMap} from '../core.js';
+ * @import {Reactive} from '../../interactions.js';
+ * @import {InteractionEvent, XREventMap} from '../../core.js';
  * @import {ForwarderEntry} from './pointerHands.js';
  * @import {Flag} from './pointerCrossings.js';
  */
@@ -401,7 +401,7 @@ function noteMissedPress(element) {
 /**
  * One listener per ray event.
  *
- * @typedef {{ [K in keyof import('../core.js').InteractionEventMap]: (e: XREventMap[K]) => void }} ForwarderListeners
+ * @typedef {{ [K in keyof import('../../core.js').InteractionEventMap]: (e: XREventMap[K]) => void }} ForwarderListeners
  */
 
 /**

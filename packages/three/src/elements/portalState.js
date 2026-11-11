@@ -6,12 +6,12 @@
  * @import {PaintBatch} from './paint/paintBatch.js';
  * @import {BoxBatch} from './paint/boxBatch.js';
  * @import {TextBatch} from './paint/textBatch.js';
- * @import {ScrollDrags} from './scroll.js';
- * @import {Forwarder} from './pointerForwarding.js';
+ * @import {ScrollDrags} from './input/scroll.js';
+ * @import {Forwarder} from './input/pointerForwarding.js';
  * @import {createTextScale} from './textScale.js';
  * @import {TextPreparer} from './textPrepare.js';
  * @import {DomMirror} from './mirror.js';
- * @import {registerPanel} from './dragAndDrop.js';
+ * @import {registerPanel} from './input/dragAndDrop.js';
  * @import {createBlocker, createDepthQuad} from './blocker.js';
  * @import {LayerOrder} from './paint/layerOrder.js';
  * @import {createFrameRequester} from './frameRequester.js';
@@ -19,7 +19,7 @@
  * @import {PanelHandles} from './panelHandles.js';
  * @import {createLoadingFrame} from './loadingFrame.js';
  * @import {PortalScheduler} from './portalScheduler.js';
- * @import {KeyboardHost} from './keyboardHost.js';
+ * @import {KeyboardHost} from './input/keyboardHost.js';
  * @import {bindPortalKeyboard} from './portalKeyboard.js';
  * @import {createPortalPump} from './portalPump.js';
  * @import {createAnimationClock} from './animationClock.js';

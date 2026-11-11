@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { createHaptics, HAPTIC_FLAVORS, isArrival, playHaptic, playHapticAll } from "./haptics.js";
-import { pulsingSource, recordingSource } from "../test/rumble.js";
+import { pulsingSource, recordingSource } from "../../test/rumble.js";
 
 /**
  * @import {HapticOptions} from './haptics.js';

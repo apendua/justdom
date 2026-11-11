@@ -9,7 +9,7 @@ import { $ } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal } from "./portal.js";
 import { portalSchedulerOf } from "./portalScheduler.js";
-import { keyboardSlotOf } from "./keyboardSlot.js";
+import { keyboardSlotOf } from "./input/keyboardSlot.js";
 import { acquireImage, releaseImage } from "./controls/image.js";
 import "../test/portalHarness.js";
 import { testScene } from "../test/sceneHost.js";

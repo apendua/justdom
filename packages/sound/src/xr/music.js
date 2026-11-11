@@ -18,6 +18,7 @@ import {
 } from "justdom-signal";
 import { $, getXRSession } from "justdom-three";
 import { audioOutputSelection, setAudioOutput } from "../audioOutputs.js";
+import { unlockAudio } from "../unlock.js";
 
 /**
  * @import { Component } from 'justdom-three';
@@ -115,10 +116,17 @@ export function createMusicControls({ track, volume: initial = DEFAULT_MUSIC_VOL
 }
 
 /**
- * Background music, started when an XR session begins and stopped when it ends.
- * Tying it to the session rather than to page load keeps it out of the way of
- * autoplay policy, and means the browser tab stays silent until the headset
- * goes on.
+ * Background music, started when an XR session begins and stopped when it ends,
+ * so the browser tab stays silent until the headset goes on.
+ *
+ * The listener's context is usually made before any gesture, as the scene is
+ * built, and a browser keeps such a context suspended until it is resumed
+ * within one. Starting the track does not resume it, so the session asks
+ * through `unlockAudio`: at once, which the Enter button's press allows in
+ * Chromium, and on each gesture after that until it runs, which is what
+ * Safari on iOS needs. The asking is its own effect, apart from the track,
+ * so it happens as the session starts and not once the track has been
+ * fetched and decoded, by when a press's grace is long over.
  *
  * @type {(ctx: WeakKey, listener: THREE.AudioListener, controls: MusicControls) => import("justdom-signal").Source<Component>}
  */
@@ -146,6 +154,12 @@ export const Music = component(
         const deviceId = controls.output.deviceId.get();
         if (deviceId) {
           void setAudioOutput(listener.context, deviceId);
+        }
+      }),
+      effects(() => {
+        const session = getXRSession(ctx);
+        if (session) {
+          onCleanup(unlockAudio(listener.context, { session }));
         }
       }),
       effects((audio) => {

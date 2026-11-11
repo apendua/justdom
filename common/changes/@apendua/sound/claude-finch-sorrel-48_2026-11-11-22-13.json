@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Music resumes its listener's AudioContext as a session starts and on each gesture until it runs, so the soundtrack plays on iOS; new unlockAudio export",
+      "type": "minor",
+      "packageName": "@apendua/sound"
+    }
+  ],
+  "packageName": "@apendua/sound",
+  "email": "noreply@anthropic.com"
+}

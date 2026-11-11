@@ -218,6 +218,38 @@ async function main() {
     watch(navigator.xr);
   });
 
+  // The autoplay rule Safari on iOS holds a player to, which automation
+  // waives: a context made before any gesture starts suspended, and runs
+  // only once `resume()` is called within a gesture's grace. Chromium also
+  // starts one by itself when a source starts after any gesture at all,
+  // which Safari does not, so a start that no `resume()` asked for is
+  // suspended again here. Without this the soundtrack check below would
+  // pass whether or not anything ever asked the context to resume.
+  await page.addInitScript(() => {
+    const Native = window.AudioContext;
+    window.__audioContexts = [];
+    window.AudioContext = class extends Native {
+      #allowed = false;
+      constructor(...args) {
+        super(...args);
+        window.__audioContexts.push(this);
+        void super.suspend();
+        super.addEventListener("statechange", () => {
+          if (this.state === "running" && !this.#allowed) {
+            void super.suspend();
+          }
+        });
+      }
+      resume() {
+        if (!navigator.userActivation.isActive) {
+          return Promise.reject(new DOMException("no user activation", "NotAllowedError"));
+        }
+        this.#allowed = true;
+        return super.resume();
+      }
+    };
+  });
+
   await page.goto(`${url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });
   await page.waitForSelector("#ARButton, #VRButton", { timeout: 30_000 });
   await page.click("#ARButton, #VRButton");
@@ -232,6 +264,14 @@ async function main() {
   await pose(page, -0.3);
   await frames(page, 60);
 
+  // The listener's context was made as the scene was built, before Start
+  // was pressed, so only the session asking it to resume can start it.
+  const audio = await page.evaluate(() => window.__audioContexts.map((c) => c.state));
+  check(
+    "the soundtrack's context runs once the session starts",
+    audio.length > 0 && audio.every((state) => state === "running"),
+    audio.join(", "),
+  );
   check("castle seeded from localStorage", (await readCount(page, "Bricks")) === 37);
   await shot(page, "build.png");
 

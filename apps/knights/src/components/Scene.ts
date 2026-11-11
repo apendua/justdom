@@ -1,10 +1,22 @@
 import * as THREE from "three";
-import { $, children, cursors, dom, getScene, getXRSession, Nothing } from "justdom-three";
+import { createMusicControls, Music } from "@apendua/sound/xr";
+import {
+  $,
+  children,
+  cursors,
+  dom,
+  getCamera,
+  getScene,
+  getXRSession,
+  Nothing,
+} from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
 import { component, effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
 import { Backdrop, clientRect } from "justdom-xr/scene";
 import { GAME_AT, gameScale } from "../placement";
+import stepsToTheThrone from "../assets/steps_to_the_throne.mp3";
+import { MUSIC_VOLUME } from "./Music";
 
 /**
  * What the session is set against unless the room is asked for: one dark
@@ -31,6 +43,11 @@ const BACKDROP = "#181410";
  * nothing left to resolve would rarely find one. A torn frame of a battle
  * in motion is the lesser harm, as it is for Euclid's drawing.
  *
+ * The battle theme plays here, for the length of each session, and stops
+ * when the session ends. The page plays it only until the first session
+ * starts (see `headset.ts`), so a player back from a session gets a quiet
+ * page.
+ *
  * The panel exists only while a session is presenting. Between sessions
  * the page is all anyone sees, and a portal kept up behind it would go on
  * mirroring every hover on the page into a scene nobody is looking at.
@@ -40,6 +57,9 @@ export const Scene = (root: HTMLElement) =>
     // Kept across sessions, so a second session's chart starts from the
     // first one's scale rather than from nothing.
     const diagnostics = createDiagnostics();
+    // The ears ride the camera, as in Castle.
+    const listener = new THREE.AudioListener();
+    const music = createMusicControls({ track: stepsToTheThrone, volume: MUSIC_VOLUME });
 
     useEffects(getScene(ctx), [
       effects((scene) => {
@@ -58,7 +78,11 @@ export const Scene = (root: HTMLElement) =>
           useDiagnostics(ctx, diagnostics);
         }
       }),
+      effects(() => {
+        useEffects(getCamera(ctx), [children($(listener))]);
+      }),
       children(
+        Music(ctx, listener, music),
         Backdrop(BACKDROP),
         $(new THREE.PointLight(0xffffff, 100, 5), [
           effects((o) => {

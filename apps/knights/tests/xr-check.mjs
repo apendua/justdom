@@ -21,8 +21,10 @@
  *   there, through the board's own `mousemove` handler;
  * - the trigger sends the stack along it, through the board's `click`
  *   handler, at the place on the page the ray met, and the turn passes on;
+ * - the battle theme, which the page played before, plays from the scene
+ *   and not from the page;
  * - Passthrough, in the toolbar, takes the backdrop down;
- * - the × ends the session.
+ * - the × ends the session, and the theme stops with it.
  *
  * The script fails if any of them does not happen, or if the page throws
  * along the way. It is kept out of `npm test` because it needs a browser
@@ -150,6 +152,15 @@ async function main() {
         "a browser that cannot present does not load the headset scene",
       );
       check(!(await plain.$("#ARButton, #VRButton")), "and shows no Enter button");
+      // The theme waits for a gesture, which a click on the backdrop is.
+      await plain.mouse.click(5, 5);
+      await plain.waitForTimeout(500);
+      check(
+        await plain.evaluate(() =>
+          [...document.querySelectorAll("audio")].some((audio) => !audio.paused),
+        ),
+        "and plays the battle theme on the page",
+      );
       if (SHOTS) {
         await plain.screenshot({ path: join(SHOTS, "page.png") });
       }
@@ -251,6 +262,27 @@ async function main() {
       errors.push(error.message);
       console.log("[pageerror]", process.env.STACKS ? error.stack : error.message);
     });
+    // Every looping buffer source the page starts, held until it is
+    // stopped: a soundtrack is the one thing here that loops.
+    await page.addInitScript(() => {
+      const loops = new Set();
+      Object.assign(window, { __loops: loops });
+      const { start, stop } = AudioBufferSourceNode.prototype;
+      AudioBufferSourceNode.prototype.start = function (...args) {
+        if (this.loop) loops.add(this);
+        return start.apply(this, args);
+      };
+      AudioBufferSourceNode.prototype.stop = function (...args) {
+        loops.delete(this);
+        return stop.apply(this, args);
+      };
+    });
+    /** Whether anything on the page or in the scene is playing music. */
+    const music = () =>
+      page.evaluate(() => ({
+        scene: /** @type {any} */ (window).__loops.size,
+        page: [...document.querySelectorAll("audio")].filter((audio) => !audio.paused).length,
+      }));
     await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
     // The battle is dealt half a second after the page loads, and the board
     // is drawn once it is.
@@ -265,6 +297,13 @@ async function main() {
       return a.bottom <= b.top || a.top >= b.bottom || a.right <= b.left || a.left >= b.right;
     });
     check(clear, "the Enter button does not cover the toolbar");
+    await page.mouse.click(5, 5);
+    await page.waitForTimeout(500);
+    const beforeSession = await music();
+    check(
+      beforeSession.scene === 0 && beforeSession.page === 1,
+      `before any session the page plays the theme (${JSON.stringify(beforeSession)})`,
+    );
     await page.click("#ARButton, #VRButton");
     await page
       .waitForFunction(
@@ -282,6 +321,18 @@ async function main() {
     if (SHOTS) {
       await page.screenshot({ path: join(SHOTS, "session.png") });
     }
+
+    // The track is fetched and decoded once the session asks for it.
+    await page
+      .waitForFunction(() => /** @type {any} */ (window).__loops.size > 0, undefined, {
+        timeout: 15_000,
+      })
+      .catch(() => {});
+    const playing = await music();
+    check(
+      playing.scene === 1 && playing.page === 0,
+      `the theme plays from the scene and not the page (${JSON.stringify(playing)})`,
+    );
 
     // Where the head was as the session started, which is the origin of the
     // `local` space the scene is laid out in.
@@ -415,6 +466,12 @@ async function main() {
     await pressInToolbar("×");
     const ended = await page.evaluate(() => !document.querySelector("#root[data-xr-portal]"));
     check(ended, "the × ended the session and took the panel down");
+    await frames(page, 5);
+    const after = await music();
+    check(
+      after.scene === 0 && after.page === 0,
+      `and the theme stopped with it (${JSON.stringify(after)})`,
+    );
     check(errors.length === 0, `the page threw nothing (${errors.length} errors)`);
   } finally {
     await closeAll(browser, server);

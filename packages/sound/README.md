@@ -78,6 +78,16 @@ const output = audioOutputSelection();
 `setAudioOutput(listener.context, deviceId)` applies the choice to an `AudioListener`'s context, and
 `audioOutputs()` is the list on its own for anything that wants it without the selection around it.
 
+**`unlockAudio(context, { page?, session? })`** — gets a context that the browser started suspended
+to play. It calls `resume()` at once, which works within a gesture's grace (five seconds in
+Chromium), and again on every later `pointerup`, `touchend`, `click` or `keydown` on `page` (the
+document by default) and every `select` of `session`, until the context runs. Safari on iOS accepts
+`resume()` only from inside a gesture's own handler, which is what the listeners are for. It also
+sets Safari's `navigator.audioSession.type` to `playback`, without which the phone's silent switch
+mutes Web Audio while an `<audio>` element plays through. The function it returns stops the
+listening. `Music` calls it for the length of each session; an app that starts sound some other way
+can call it itself.
+
 ## What is in `/xr`
 
 **`createMusicControls({ track, volume? })`** — the soundtrack's state, in one object: the volume as
@@ -87,9 +97,11 @@ an mp3 the app keeps in `src/assets/`. Volume starts at `DEFAULT_MUSIC_VOLUME` (
 says otherwise.
 
 **`Music(ctx, listener, controls)`** — plays it. The track starts when an XR session begins and
-stops when it ends, which keeps it out of the way of autoplay policy and leaves the browser tab
-silent until the headset goes on. Volume and output are followed live, so turning the music down
-takes the gain of the track that is playing rather than starting it over from the top.
+stops when it ends, which leaves the browser tab silent until the headset goes on. The listener's
+context is usually made before the player has touched the page, and a browser keeps such a context
+suspended until it is resumed within a gesture, so the session asks it to through `unlockAudio`
+(above). Volume and output are followed live, so turning the music down takes the gain of the track
+that is playing rather than starting it over from the top.
 
 ```js
 import * as THREE from "three";

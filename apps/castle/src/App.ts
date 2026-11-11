@@ -11,7 +11,8 @@ import {
   getScene,
 } from "justdom-three";
 import { effectsOnly, useEffects } from "justdom-signal";
-import { on, set, effects, component } from "justdom-signal";
+import { on, set, effects, component, onCleanup } from "justdom-signal";
+import { unlockAudio } from "@apendua/sound";
 
 import { CastleContext, ListenerContext, SessionContext } from "./elements/context.js";
 import { boxGeometry } from "./elements/geometry.js";
@@ -106,6 +107,13 @@ const App = effectsOnly((ctx: WeakKey) => {
   useEffects(getScene(ctx), [
     effects(() => {
       useEffects(getCamera(ctx), [children($(listener))]);
+    }),
+    // Outside a session the game is played on the page, and on an iPhone
+    // there is no session at all, so the bricks' clicks need the context
+    // started by the page's own taps. `Music` asks again, by the session's
+    // trigger too, for as long as one runs.
+    effects(() => {
+      onCleanup(unlockAudio(listener.context));
     }),
     // Head-locked, like the ears above and for the same reason: a reading you
     // have to go and look for is a reading nobody takes while playing.

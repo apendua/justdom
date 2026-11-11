@@ -1,6 +1,7 @@
 export { audioOutputs, audioOutputSelection, setAudioOutput } from "./audioOutputs.js";
 export { createClickWaveform } from "./click.js";
 export { createClicks } from "./clicks.js";
+export { unlockAudio } from "./unlock.js";
 export { createVoices } from "./voices.js";
 export { checkSampleRate, createNoise, createSweepWaveform, normalize } from "./waveform.js";
 
@@ -30,4 +31,8 @@ export { checkSampleRate, createNoise, createSweepWaveform, normalize } from "./
 
 /**
  * @typedef {import('./waveform.js').Sweep} Sweep
+ */
+
+/**
+ * @typedef {import('./unlock.js').UnlockTargets} UnlockTargets
  */

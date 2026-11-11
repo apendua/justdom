@@ -218,9 +218,62 @@ async function main() {
     watch(navigator.xr);
   });
 
+  // The autoplay rule Safari on iOS holds a player to, which automation
+  // waives: a context made before any gesture starts suspended, and runs
+  // only once `resume()` is called from inside the handler of a trusted
+  // gesture (`pointerup`, `touchend`, `click`, `keydown`), not in the grace
+  // after one as Chromium allows. Chromium also starts a context by itself
+  // when a source starts after any gesture, which Safari does not, so a
+  // start no allowed `resume()` asked for is suspended again here. Without
+  // this the soundtrack check below would pass whether or not anything ever
+  // asked the context to resume from a gesture.
+  await page.addInitScript(() => {
+    let inGesture = false;
+    for (const type of ["pointerup", "touchend", "click", "keydown"]) {
+      window.addEventListener(
+        type,
+        (event) => {
+          if (!event.isTrusted) return;
+          inGesture = true;
+          setTimeout(() => {
+            inGesture = false;
+          });
+        },
+        { capture: true },
+      );
+      window.addEventListener(type, () => {
+        inGesture = false;
+      });
+    }
+    const Native = window.AudioContext;
+    window.__audioContexts = [];
+    window.AudioContext = class extends Native {
+      #allowed = false;
+      constructor(...args) {
+        super(...args);
+        window.__audioContexts.push(this);
+        void super.suspend();
+        super.addEventListener("statechange", () => {
+          if (this.state === "running" && !this.#allowed) {
+            void super.suspend();
+          }
+        });
+      }
+      resume() {
+        if (!inGesture) {
+          return Promise.reject(new DOMException("not in a gesture", "NotAllowedError"));
+        }
+        this.#allowed = true;
+        return super.resume();
+      }
+    };
+  });
+
   await page.goto(`${url}?emulator=bare`, { waitUntil: "load", timeout: 60_000 });
   await page.waitForSelector("#ARButton, #VRButton", { timeout: 30_000 });
-  await page.click("#ARButton, #VRButton");
+  // Started by a DOM click, which is no gesture, so nothing can start the
+  // context while the session starts and the tap below is the first chance.
+  await page.evaluate(() => document.querySelector("#ARButton, #VRButton")?.click());
   await page.waitForFunction(
     () =>
       Array.from(document.querySelectorAll("[data-xr-portal]")).some((portal) =>
@@ -232,6 +285,22 @@ async function main() {
   await pose(page, -0.3);
   await frames(page, 60);
 
+  // The listener's context was made as the scene was built, and nothing
+  // in the session has been a gesture yet, so it is still suspended. A tap
+  // in the session is a gesture, and a `resume()` from inside its handler
+  // is the only thing that can start the context.
+  const contexts = () => page.evaluate(() => window.__audioContexts.map((c) => c.state));
+  const before = await contexts();
+  await page.mouse.click(5, 5);
+  await frames(page, 5);
+  const after = await contexts();
+  check(
+    "the soundtrack's context waits for a gesture, then runs from a tap in the session",
+    before.length > 0 &&
+      before.every((state) => state === "suspended") &&
+      after.every((state) => state === "running"),
+    `${before.join(", ")} -> ${after.join(", ")}`,
+  );
   check("castle seeded from localStorage", (await readCount(page, "Bricks")) === 37);
   await shot(page, "build.png");
 

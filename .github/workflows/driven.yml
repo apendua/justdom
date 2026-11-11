@@ -35,6 +35,7 @@ on:
       - "packages/euclid-lang/**"
       - "packages/geometry/**"
       - "packages/signal/**"
+      - "packages/sound/**"
       - "packages/three/**"
       - "packages/three-ui/**"
       - "packages/vite-hmr/**"

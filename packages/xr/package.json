@@ -1,6 +1,6 @@
 {
   "name": "justdom-xr",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "What every headset app repeats: the emulated headset behind ?emulator and the phone's touch layer behind ?touch, the offer of a session, theming mode behind ?theming, outlines mode behind ?outlines, the session a page reads, and the backdrop and hand models a scene draws",
   "repository": {
     "type": "git",

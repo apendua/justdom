@@ -1,6 +1,14 @@
 # Change Log - justdom-xr
 
-This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+
+## 0.6.0
+Wed, 11 Nov 2026 23:41:15 GMT
+
+### Minor changes
+
+- The three peer range is now >=0.185.0 <0.188.0: CI tests both ends, and three before 0.185 fails the SVG plugin's fill rule
+- Add sessionCanvas(renderer) and whilePresenting(ctx, render) to justdom-xr/scene, the session setup every headset demo repeated
 
 ## 0.5.0
 Tue, 10 Nov 2026 21:23:39 GMT

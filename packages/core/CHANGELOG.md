@@ -1,6 +1,13 @@
 # Change Log - justdom-core
 
-This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+
+## 0.7.0
+Wed, 11 Nov 2026 23:41:15 GMT
+
+### Minor changes
+
+- Add when(condition, render), branch(select, render) and Nothing(), for mounting one thing or another
 
 ## 0.6.1
 Tue, 10 Nov 2026 21:23:39 GMT

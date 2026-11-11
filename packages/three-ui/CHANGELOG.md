@@ -1,6 +1,17 @@
 # Change Log - justdom-three-ui
 
-This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+
+## 0.5.0
+Wed, 11 Nov 2026 23:41:15 GMT
+
+### Minor changes
+
+- The three peer range is now >=0.185.0 <0.188.0: CI tests both ends, and three before 0.185 fails the SVG plugin's fill rule
+
+### Patches
+
+- The dropdown's menu and the scrollable's bar are mounted with justdom-core's when(), with no change in behaviour
 
 ## 0.4.3
 Tue, 10 Nov 2026 21:23:39 GMT

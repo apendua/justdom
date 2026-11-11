@@ -1,6 +1,14 @@
 # Change Log - @apendua/sound
 
-This log was last generated on Tue, 10 Nov 2026 21:23:39 GMT and should not be manually modified.
+This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+
+## 0.2.0
+Wed, 11 Nov 2026 23:41:15 GMT
+
+### Minor changes
+
+- Music resumes its listener's AudioContext as a session starts and on each gesture until it runs, so the soundtrack plays on iOS; new unlockAudio export
+- The three peer range is now >=0.185.0 <0.188.0: CI tests both ends, and three before 0.185 fails the SVG plugin's fill rule
 
 ## 0.1.7
 Tue, 10 Nov 2026 21:23:39 GMT

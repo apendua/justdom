@@ -28,8 +28,8 @@
 /**
  * What one panel keeps while it is up: everything `buildPortal` in
  * `portal.js` builds that its own functions, and the ones in
- * `portalNodes.js`, `portalLoading.js` and `portalWatchers.js` it hands
- * this to, read after the build.
+ * `portalNodes.js`, `portalLoading.js`, `portalWatchers.js` and
+ * `portalContainer.js` it hands this to, read after the build.
  * Construction-only values, such as most of the options, stay local to
  * `buildPortal`.
  *
@@ -85,6 +85,12 @@
  * @property {Effect} resizeEffect
  * @property {MutationObserver} mutationObserver
  * @property {ReturnType<typeof createAnimationClock>} animationClock
+ * @property {(event: Event) => void} onScroll The container's scroll
+ *   listener, kept so that the release removes the function it added.
+ * @property {(event: Event) => void} onLoad The container's load listener,
+ *   kept for the same.
+ * @property {() => void} onFontsLoaded The document's `loadingdone`
+ *   listener, kept for the same.
  * @property {() => void} stopWatchingPage
  * @property {(() => void) | null} loadFrame
  * @property {Set<Node>} loaded

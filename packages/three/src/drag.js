@@ -2,6 +2,7 @@ import { makeNonReactive, onCleanup, useEffect, withComputation } from "justdom-
 import { createHold } from "./hold.js";
 import { asReader, InteractionContext, setLocalMatrix } from "./interactions.js";
 import { useFrame } from "./scene.js";
+import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
  * @import { EntityEffect } from "justdom-signal";
@@ -180,6 +181,7 @@ export function drag(ctx, options = {}) {
       origin = null;
       if (home) {
         home.parent.attach(object);
+        noteMatrixChange();
       }
       object.dispatchEvent({
         type: "dragend",

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Derived, each, flatMap, fromEvent, just, Stream, use, useEffect } from "justdom-signal";
 import { addDependency } from "justdom-signal";
+import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
  * @import { EntityEffect, Subscribable, Source } from 'justdom-signal';
@@ -112,6 +113,7 @@ function toComponent() {
               subscriber.next({
                 addTo: (parent) => {
                   parent.add(entity);
+                  noteMatrixChange();
                   return () => {
                     parent.remove(entity);
                   };

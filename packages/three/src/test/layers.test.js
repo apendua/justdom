@@ -52,6 +52,7 @@ const LAYERS = {
   "drawOrder.js": "base",
   "htmlTexture.js": "base",
   "limits.js": "base",
+  "matrixEpoch.js": "base",
   "operators.js": "base",
   "viewport.js": "base",
   "xr.js": "base",

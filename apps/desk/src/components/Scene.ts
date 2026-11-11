@@ -1,17 +1,20 @@
 import * as THREE from "three";
-import { xrSession } from "justdom-xr/session";
-import { children, cursors, $, dom, getScene, getXRSession, placeAndScale } from "justdom-three";
+import { enterSession } from "justdom-xr/session";
+import {
+  children,
+  cursors,
+  $,
+  dom,
+  getScene,
+  getXRSession,
+  placeAndScale,
+  Nothing,
+} from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, onCleanup, Stream, useEffects } from "justdom-signal";
+import { component, effects, effectsOnly, onCleanup, useEffects } from "justdom-signal";
 import type { MountedDesk } from "../desk.js";
 import { DESK_TOP, PX, type Placement, type Room } from "../looks.js";
 import type { Readable } from "../session.js";
-
-/**
- * A source that says nothing and never finishes: what a mounting is handed
- * while there is nothing to mount.
- */
-export const NOTHING = new Stream<never>(() => {});
 
 /**
  * The room the desk is set in, in the look's colours: a wall behind, a desk
@@ -145,7 +148,7 @@ export const placedGroups = new Map<string, THREE.Object3D>();
  * mirrored key is a click on the real one and a card dragged in the room is
  * dragged on the page. The room and the panels exist only while a session
  * presents: a session that starts builds them from the look the page is
- * showing then, and one that ends takes them down. `xrSession` tells the
+ * showing then, and one that ends takes them down. `enterSession` tells the
  * page first, so that it takes its staging off before anything is
  * measured.
  */
@@ -158,7 +161,7 @@ export const Scene = (desk: Readable<MountedDesk>) =>
     useEffects(getScene(ctx), [
       effects(() => {
         const session = getXRSession(ctx);
-        xrSession.set(session);
+        enterSession(session);
         if (session) {
           useDiagnostics(ctx, diagnostics);
         }
@@ -167,7 +170,7 @@ export const Scene = (desk: Readable<MountedDesk>) =>
         ...lights(),
         component(() => {
           if (!getXRSession(ctx)) {
-            return NOTHING;
+            return Nothing();
           }
           const { look, elements } = desk.get();
           return $(new THREE.Group(), [

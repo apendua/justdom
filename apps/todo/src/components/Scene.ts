@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene, getXRSession } from "justdom-three";
+import { children, cursors, $, dom, getScene, getXRSession, Nothing } from "justdom-three";
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
-import { component, effects, effectsOnly, Stream, useEffects } from "justdom-signal";
-import { xrSession } from "justdom-xr/session";
+import { component, effects, effectsOnly, useEffects } from "justdom-signal";
+import { enterSession } from "justdom-xr/session";
 import { Backdrop } from "justdom-xr/scene";
 
 declare global {
@@ -21,12 +21,6 @@ declare global {
 const BACKDROP = "#1e2430";
 
 /**
- * A source that says nothing and never finishes: what a mounting is handed
- * while there is nothing to mount.
- */
-const NOTHING = new Stream<never>(() => {});
-
-/**
  * The scene: the page's own todo element, mirrored into a panel in front of
  * the viewer.
  *
@@ -39,7 +33,7 @@ const NOTHING = new Stream<never>(() => {});
  *
  * While a session runs there is also the frame rate, in the corner of the
  * view (`useDiagnostics` from justdom-three-ui), and the app is told about
- * the session (`xrSession`) so that its card can show a button that ends it.
+ * the session (`enterSession`) so that its card can show a button that ends it.
  *
  * The panel exists only while a session is presenting. Between sessions the
  * page is all anyone sees, and a portal kept up behind it would go on
@@ -73,7 +67,7 @@ export const Scene = (panel: HTMLElement) =>
       effects(() => {
         // Re-run as a session starts and as it ends.
         const session = getXRSession(ctx);
-        xrSession.set(session);
+        enterSession(session);
         if (session) {
           useDiagnostics(ctx, diagnostics);
         }
@@ -96,7 +90,7 @@ export const Scene = (panel: HTMLElement) =>
           children(
             component(() => {
               if (!getXRSession(ctx)) {
-                return NOTHING;
+                return Nothing();
               }
               return dom(ctx, panel, [
                 effects((obj) => {

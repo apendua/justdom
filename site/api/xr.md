@@ -166,13 +166,13 @@ If the emulator's chunk, the touch layer's or the scene's cannot be fetched beca
 from a service worker's precache and a deploy has replaced the chunks it names, the page reloads
 once a newer worker has taken it over, and at once if one already has. A page whose worker has not
 been replaced has no newer page to reload into, so it waits rather than loops. Minesweeper, Euclid,
-Knights and the todo app offer their sessions this way.
+Knights, the todo app and the desk offer their sessions this way.
 
 A page that offers its session another way, through `justdom-three`'s own Enter button, calls
 `installEmulator(options)` before it renders, so `navigator.xr` is the emulator's by the time
 three.js asks. It resolves once the headset is in, logs a chunk it could not fetch rather than
-throwing, and reloads into a new deploy as `offerHeadset` does. Castle, the showcase and the desk do
-this, each with `touch`.
+throwing, and reloads into a new deploy as `offerHeadset` does. Castle and the showcase do this,
+each with `touch`.
 
 ## `justdom-xr/scene`
 

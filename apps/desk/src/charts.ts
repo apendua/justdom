@@ -1,4 +1,4 @@
-import { scrollElementBy } from "justdom-three";
+import { scrollElementBy } from "justdom-three/page";
 
 const SVG = "http://www.w3.org/2000/svg";
 

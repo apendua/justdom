@@ -17,3 +17,23 @@ export function slotBefore(rows: Iterable<HTMLElement>, clientY: number): string
   }
   return null;
 }
+
+/** What `dividerAbove` answers when the divider is the list's own top border. */
+export const LIST_TOP = Symbol("the list's top border");
+
+/**
+ * What draws the divider above the slot a drop would land in: the id of the
+ * row whose bottom border it is, or `LIST_TOP` for the first slot, whose
+ * divider is the list's own top border.
+ *
+ * `before` is the todo the row would go before, or null for last, as
+ * `slotBefore` gives it. `ids` are the todos' ids in the order shown.
+ */
+export function dividerAbove(
+  ids: readonly string[],
+  before: string | null,
+): string | typeof LIST_TOP {
+  const index = before === null ? -1 : ids.indexOf(before);
+  const above = index < 0 ? ids.length - 1 : index - 1;
+  return above < 0 ? LIST_TOP : ids[above];
+}

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Signal } from "justdom-signal";
+import { makeReveal } from "justdom-three";
+import type { MakeReveal } from "./session.js";
 import { mountScreen } from "./screen.js";
 import { Terminal } from "./terminal.js";
 
@@ -33,7 +35,7 @@ describe("mountScreen", () => {
   it("shows the typed part of the listing on the page", async () => {
     const { element, program, prompt } = screen();
     const terminal = new Terminal();
-    const dispose = mountScreen(element, terminal, Signal.of(false));
+    const dispose = mountScreen(element, terminal, Signal.of(null));
     terminal.load("PLOT.BAS");
     await settle();
     expect(program.textContent).toBe(`LOAD "PLOT.BAS"\n`);
@@ -50,19 +52,19 @@ describe("mountScreen", () => {
   it("holds the whole listing in a revealed node while a session presents", async () => {
     const { element, program } = screen();
     const terminal = new Terminal();
-    const presenting = Signal.of(false);
+    const presenting = Signal.of<MakeReveal | null>(null);
     const dispose = mountScreen(element, terminal, presenting);
     terminal.load("PLOT.BAS");
     await settle();
 
-    presenting.set(true);
+    presenting.set(makeReveal);
     await settle();
     // Only the LOAD line is typed, but the node has all of it: the scene
     // draws the typed part.
     expect(terminal.typed.get()).toBeLessThan(terminal.listing.get().length);
     expect(program.textContent).toBe(terminal.listing.get());
 
-    presenting.set(false);
+    presenting.set(null);
     await settle();
     expect(program.textContent).toBe(`LOAD "PLOT.BAS"\n`);
     dispose();
@@ -72,7 +74,7 @@ describe("mountScreen", () => {
   it("says which phosphor the screen is", async () => {
     const { element } = screen();
     const terminal = new Terminal();
-    const dispose = mountScreen(element, terminal, Signal.of(false));
+    const dispose = mountScreen(element, terminal, Signal.of(null));
     terminal.phosphor.set("amber");
     await settle();
     expect(element.getAttribute("data-phosphor")).toBe("amber");

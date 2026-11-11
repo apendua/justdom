@@ -1,5 +1,5 @@
 import { effect } from "justdom-signal";
-import { getPortalRoot } from "justdom-three";
+import { getPortalRoot } from "justdom-three/page";
 import { isPhosphor, type Terminal } from "./terminal.js";
 
 /**

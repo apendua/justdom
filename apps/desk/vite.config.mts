@@ -31,9 +31,13 @@ export default defineConfig({
         warn(warning);
       },
       output: {
-        // three.js in a chunk of its own, cached apart from the app and kept
-        // out of its main chunk, which grows with justdom-three.
-        manualChunks: (id) => (id.includes("/node_modules/three/") ? "three" : undefined),
+        // three.js's core in a chunk of its own, apart from the renderer.
+        // The scene loads both, where a session can be opened. A page under
+        // `?panels=texture` loads the core alone, for the test of
+        // HTML-in-Canvas (`src/texture/support.ts`). The page without the
+        // flag loads neither.
+        manualChunks: (id) =>
+          id.includes("/node_modules/three/build/three.core") ? "three.core" : undefined,
       },
     },
   },

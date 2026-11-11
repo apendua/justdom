@@ -1,4 +1,5 @@
 import {
+  attr,
   className,
   text,
   $,
@@ -10,13 +11,12 @@ import {
   stylesheet,
   CLASS_NAME,
 } from "justdom-core";
-import { Signal, toObservable } from "justdom-signal";
-import { store, on, set, observable, component } from "justdom-signal";
+import { Derived, Signal, store, on, set, component } from "justdom-signal";
 import { scrollable } from "justdom-three-ui";
 import ProgressBar from "./ProgressBar.js";
 import { xrSession } from "justdom-xr/session";
 import TodoItem from "./TodoItem.js";
-import { slotBefore } from "./reorder.js";
+import { dividerAbove, LIST_TOP, slotBefore } from "./reorder.js";
 
 // Artificial delay used to demonstrate suspense. The progress bar is given the
 // same duration, so it fills up just as the content arrives.
@@ -98,7 +98,7 @@ const inputStyle = stylesheet`
     color: #8a8f98;
   }
 
-  .${CLASS_NAME}[data-xr-hover] {
+  .${CLASS_NAME}:hover {
     border-color: #7ab4ff;
   }
 
@@ -197,7 +197,7 @@ const listStyle = stylesheet`
     border-top: 2px solid transparent;
   }
 
-  .${CLASS_NAME}.drop-marker {
+  .${CLASS_NAME}[data-drop-marker] {
     border-top-color: #007bff;
   }
 `;
@@ -276,7 +276,7 @@ const scrollStyles = {
       cursor: pointer;
     }
 
-    .${CLASS_NAME}[data-xr-hover] {
+    .${CLASS_NAME}:hover {
       background-color: #cbd7e6;
       border-radius: 4px;
     }
@@ -341,33 +341,40 @@ const TodoApp = component((ctx: WeakKey) => {
   // events from the controller ray, so these handlers are the ones that
   // run there too.
   //
-  // `dragover` decides where the row would land from where the pointer is
-  // against the rows (see `slotBefore`), and marks the divider above that
-  // slot with a class: the bottom border of the row above it, or the list's
-  // top border for the first slot (see `TodoItem`).
-  // `drop` reads the row being carried from `dataTransfer`, as a page has
-  // to: during the drag its data is guarded and only its types can be read.
+  // The handlers only write two signals. `dragging` is the todo being
+  // carried, and `landing` is where a drop now would put it: before which
+  // todo, null for last, or undefined while the pointer is off the list.
+  // What is drawn follows from them: the row being carried fades, and the
+  // divider above the landing slot turns blue, which is the bottom border of
+  // the row above it or the list's top border for the first slot (see
+  // `marked`, and `TodoItem`).
+  //
+  // `dragover` decides the slot from where the pointer is against the rows
+  // (see `slotBefore`). `drop` reads the row being carried from
+  // `dataTransfer`, as a page has to: during the drag its data is guarded
+  // and only its types can be read.
   const TODO_TYPE = "application/x-todo-id";
-  let marked: Element | null = null;
-  const mark = (divider: Element | null) => {
-    if (marked !== divider) {
-      marked?.classList.remove("drop-marker");
-      divider?.classList.add("drop-marker");
-      marked = divider;
-    }
-  };
-  /** What draws the divider above the slot before `before`, or the last. */
-  const dividerAbove = (list: Element, before: string | null) => {
-    const row = before === null ? null : list.querySelector(`li[data-id="${before}"]`);
-    return (row ? row.previousElementSibling : list.lastElementChild) ?? list;
-  };
+  const dragging = Signal.of<string | null>(null);
+  const landing = Signal.of<string | null | undefined>(undefined);
+  // What draws the divider of the slot a drop would land in, if any. A
+  // `Derived`, so that the rows, which each ask whether it is theirs, share
+  // one answer per change.
+  const marked = new Derived(() => {
+    const before = landing.get();
+    return before === undefined
+      ? null
+      : dividerAbove(
+          todos.get().map((t) => t.id),
+          before,
+        );
+  });
   const rowOf = (target: EventTarget | null) =>
     target instanceof Element ? target.closest<HTMLElement>("li[data-id]") : null;
   /**
    * Where a drop at this event would put the row: before which todo, or
    * null for last (see `slotBefore`).
    */
-  const landing = (event: DragEvent): string | null => {
+  const slotAt = (event: DragEvent): string | null => {
     const list = event.currentTarget as Element;
     return slotBefore(list.querySelectorAll<HTMLElement>("li[data-id]"), event.clientY);
   };
@@ -382,7 +389,7 @@ const TodoApp = component((ctx: WeakKey) => {
       // The handle is what was pressed; the row is what is carried.
       const rect = row.getBoundingClientRect();
       event.dataTransfer.setDragImage(row, event.clientX - rect.left, event.clientY - rect.top);
-      row.classList.add("dragging");
+      dragging.set(row.dataset.id ?? null);
     }),
     on("dragover", (event: DragEvent) => {
       if (!event.dataTransfer?.types.includes(TODO_TYPE)) {
@@ -390,30 +397,29 @@ const TodoApp = component((ctx: WeakKey) => {
       }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      mark(dividerAbove(event.currentTarget as Element, landing(event)));
+      landing.set(slotAt(event));
     }),
     on("dragleave", (event: DragEvent) => {
       // Only leaving the list for somewhere else clears the mark; moving
       // between a row and what is inside it is a leave as well.
       const to = event.relatedTarget;
       if (!(to instanceof Node) || !(event.currentTarget as Node).contains(to)) {
-        mark(null);
+        landing.set(undefined);
       }
     }),
     on("drop", (event: DragEvent) => {
       event.preventDefault();
       const id = event.dataTransfer?.getData(TODO_TYPE);
+      const before = slotAt(event);
+      // Before the move, so that no divider is lit for the new order.
+      landing.set(undefined);
       if (id) {
-        moveTodo(id, landing(event));
+        moveTodo(id, before);
       }
-      mark(null);
     }),
-    on("dragend", (event: DragEvent) => {
-      const row = rowOf(event.target);
-      if (row) {
-        row.classList.remove("dragging");
-      }
-      mark(null);
+    on("dragend", () => {
+      dragging.set(null);
+      landing.set(undefined);
     }),
   ];
 
@@ -469,11 +475,7 @@ const TodoApp = component((ctx: WeakKey) => {
         ]),
         $("p", [
           set("className", remainingStyle),
-          children(
-            text`Remaining Todos: ${observable(
-              () => todos.get().filter((t) => !t.completed).length,
-            )}`,
-          ),
+          children(text`Remaining Todos: ${() => todos.get().filter((t) => !t.completed).length}`),
         ]),
         scrollable({
           classes: scrollStyles,
@@ -482,24 +484,34 @@ const TodoApp = component((ctx: WeakKey) => {
           content: [
             $("ul", [
               set("className", listStyle),
+              attr("data-drop-marker", () => (marked.get() === LIST_TOP ? "" : undefined)),
               ...reordering,
               children(
-                list(toObservable(todos), (todo, i) => {
-                  return TodoItem(ctx, todo.id, [
-                    set({
-                      get text() {
-                        return `${i() + 1}. ${todo.text}`;
-                      },
-                      get completed() {
-                        return todo.completed;
-                      },
-                    }),
-                    on("change", (completed) => {
-                      todo.completed = completed;
-                    }),
-                    on("delete", () => deleteTodo(todo.id)),
-                  ]);
-                }),
+                list(
+                  () => todos.get(),
+                  (todo, i) => {
+                    return TodoItem(ctx, todo.id, [
+                      set({
+                        get text() {
+                          return `${i() + 1}. ${todo.text}`;
+                        },
+                        get completed() {
+                          return todo.completed;
+                        },
+                        get dragging() {
+                          return dragging.get() === todo.id;
+                        },
+                        get dropMarker() {
+                          return marked.get() === todo.id;
+                        },
+                      }),
+                      on("change", (completed) => {
+                        todo.completed = completed;
+                      }),
+                      on("delete", () => deleteTodo(todo.id)),
+                    ]);
+                  },
+                ),
               ),
             ]),
           ],

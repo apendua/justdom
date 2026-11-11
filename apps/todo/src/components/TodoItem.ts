@@ -2,8 +2,10 @@ import { attr, className, text, $, children, style, stylesheet, CLASS_NAME } fro
 import { store, on, set, emit, Op, component } from "justdom-signal";
 
 // While a row is dragged, the slot it would land in is marked by turning
-// the divider above it blue (see `TodoApp`), and the row being carried fades
-// until it is let go. Only a colour changes, so nothing moves under the ray.
+// the divider above it blue, and the row being carried fades until it is let
+// go. `TodoApp` keeps both as signals and hands each row its part as a prop,
+// and the row writes them as `data-` attributes for these rules to answer.
+// Only a colour changes, so nothing moves under the ray.
 // The divider is the row's only border on purpose: a panel draws a box's
 // border in one colour, the colour of its first bordered side, so a row
 // with a top border as well would draw both in the top's.
@@ -20,11 +22,11 @@ const itemStyle = stylesheet`
     box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   }
 
-  .${CLASS_NAME}.drop-marker {
+  .${CLASS_NAME}[data-drop-marker] {
     border-bottom-color: #007bff;
   }
 
-  .${CLASS_NAME}.dragging {
+  .${CLASS_NAME}[data-dragging] {
     opacity: 0.4;
   }
 `;
@@ -66,9 +68,8 @@ const textStyle = className`
 // declarations, the tick in whatever `color` says — so the native look is of
 // no use to it, and `appearance: none` is what the flat build needs anyway to
 // be dressed the same way. The same DOM is the page and the panel, and
-// `:checked` alone would serve both: the portal writes `data-xr-checked` on a
-// ticked box, and that write is what makes the panel read its style again.
-// The rule names both all the same, which is harmless.
+// `:checked` serves both: the portal writes `data-xr-checked` on a ticked
+// box, and that write is what makes the panel read its style again.
 const checkboxStyle = stylesheet`
   .${CLASS_NAME} {
     appearance: none;
@@ -87,7 +88,7 @@ const checkboxStyle = stylesheet`
     border-color: #007bff;
   }
 
-  .${CLASS_NAME}:checked, .${CLASS_NAME}[data-xr-checked] {
+  .${CLASS_NAME}:checked {
     background-color: #007bff;
     border-color: #007bff;
     /* The tick, for the page, over a gradient for both. In a scene
@@ -121,6 +122,10 @@ const deleteButtonStyle = stylesheet`
 interface TodoProps {
   text: string;
   completed: boolean;
+  /** Whether this row is the one being carried. */
+  dragging: boolean;
+  /** Whether a drop now would land just under this row. */
+  dropMarker: boolean;
 }
 
 interface TodoEvents {
@@ -131,6 +136,8 @@ interface TodoEvents {
 const defaults: TodoProps = {
   text: "",
   completed: false,
+  dragging: false,
+  dropMarker: false,
 };
 
 const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, TodoEvents>) => {
@@ -143,6 +150,8 @@ const TodoItem = component((_: WeakKey, id: string, operators: Op<TodoProps, Tod
   return $("li", [
     set("className", itemStyle),
     attr({ "data-id": id }),
+    attr("data-dragging", () => (props.dragging ? "" : undefined)),
+    attr("data-drop-marker", () => (props.dropMarker ? "" : undefined)),
     style("backgroundImage", () => (props.completed ? completedBackground : "none")),
     children(
       $("span", [

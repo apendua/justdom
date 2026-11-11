@@ -2,11 +2,10 @@ import { Signal } from "justdom-signal";
 import { mountDesk, type MountedDesk } from "./desk.js";
 import { lookFromSearch, type Look } from "./looks.js";
 import { mountLookPicker } from "./lookPicker.js";
-import { presenting } from "./session.js";
+import { presenting, revealing } from "./session.js";
 import { mountStage } from "./stage.js";
-import { canDrawHtmlInCanvas } from "justdom-three";
 import { panelsFromSearch } from "./texture/panels.js";
-import { offerXR } from "./xr.js";
+import { offerHeadset } from "justdom-xr/offer";
 import "./index.css";
 
 function find<T extends Element = HTMLElement>(selector: string): T {
@@ -22,7 +21,7 @@ function find<T extends Element = HTMLElement>(selector: string): T {
 // mirror reveals a listing it holds whole.
 const panels = panelsFromSearch(location.search);
 document.documentElement.dataset.panels = panels;
-const reveal = panels === "texture" ? { get: () => false } : presenting;
+const reveal = panels === "texture" ? { get: () => null } : revealing;
 
 const desk = find("[data-desk]");
 const stage = mountStage(find(".stage"), desk, presenting);
@@ -60,10 +59,27 @@ find("[data-notes-toggle]").addEventListener("click", () => {
 });
 
 // And the headset, offered to a page that can open one: the scene mirrors
-// the very elements the page is showing.
-if (panels === "texture" && !canDrawHtmlInCanvas()) {
-  find("[data-panels-notice]").hidden = false;
+// the very elements the page is showing. `xr.ts`, with the scene and
+// three.js's renderer, is loaded only once a session is known to be
+// possible, so a page that is only ever a page fetches no three.js at all.
+// `?emulator` and `?touch` install a headset in the browser first
+// (`installEmulator` in `justdom-xr/offer`).
+offerHeadset(() => import("./xr.js"), { touch: {} })
+  .then((xr) => xr?.offerXR(current, panels))
+  .catch((err) => {
+    console.error("Could not offer an XR session:", err);
+  });
+
+// The texture variant needs HTML-in-Canvas, and the page says so where the
+// browser has none, headset or not. The test comes with three.js's core,
+// about a quarter of a megabyte, fetched only under this flag
+// (`texture/support.ts`).
+if (panels === "texture") {
+  import("./texture/support.js")
+    .then(({ canDrawHtmlInCanvas }) => {
+      find("[data-panels-notice]").hidden = canDrawHtmlInCanvas();
+    })
+    .catch((err) => {
+      console.error("Could not tell whether the browser draws HTML into a canvas:", err);
+    });
 }
-offerXR(current, panels).catch((err) => {
-  console.error("Could not offer an XR session:", err);
-});

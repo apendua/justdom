@@ -18,11 +18,9 @@
     "test:watch": "vitest --environment jsdom"
   },
   "dependencies": {
-    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.7.0",
     "@types/three": "~0.185.0",
     "@vite-pwa/assets-generator": "^1.0.1",
-    "@webgpu/types": "^0.1.65",
     "eslint": "^9.37.0",
     "justdom-core": "workspace:*",
     "justdom-signal": "workspace:*",
@@ -30,7 +28,6 @@
     "justdom-three-ui": "workspace:*",
     "justdom-vite-hmr": "workspace:*",
     "justdom-xr": "workspace:*",
-    "lodash": "^4.17.21",
     "three": "~0.185.0",
     "typescript": "^7.0.2",
     "vite": "^7.1.9",

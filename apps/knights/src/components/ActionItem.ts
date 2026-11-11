@@ -1,5 +1,5 @@
 import { $, attr, children, on, set, text } from "justdom-core";
-import { component, makeNonReactive, store } from "justdom-signal";
+import { component, store } from "justdom-signal";
 import branch from "./branch";
 import { menuItem, spinner } from "./styles";
 
@@ -20,11 +20,9 @@ interface ActionItemProps {
 const ActionItem = component((_: WeakKey, props: ActionItemProps) => {
   const state = store({ isWaiting: false });
 
-  // The flag is written from a click handler and from a promise callback, both
-  // of which may run inside a computation, so the write is taken out of one.
-  const setWaiting = makeNonReactive((isWaiting: boolean) => {
+  const setWaiting = (isWaiting: boolean) => {
     state.isWaiting = isWaiting;
-  });
+  };
 
   const handleClick = () => {
     if (state.isWaiting) {

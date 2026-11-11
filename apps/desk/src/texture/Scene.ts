@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { xrSession } from "justdom-xr/session";
+import { enterSession } from "justdom-xr/session";
 import {
   $,
   children,
@@ -9,6 +9,7 @@ import {
   getXRSession,
   htmlTextureMaterial,
   interactions,
+  Nothing,
   RendererContext,
   requestPaint,
   type XREventMap,
@@ -16,7 +17,7 @@ import {
 import { component, effects, effectsOnly, on, onCleanup, useEffects } from "justdom-signal";
 import type { MountedDesk } from "../desk.js";
 import type { Readable } from "../session.js";
-import { disposedWithIt, lights, mug, NOTHING, pose, room } from "../components/Scene.js";
+import { disposedWithIt, lights, mug, pose, room } from "../components/Scene.js";
 import { createPointerForwarder, type PointerForwarder } from "./forwarding.js";
 
 type PanelMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>;
@@ -98,13 +99,13 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
 
     useEffects(getScene(ctx), [
       effects(() => {
-        xrSession.set(getXRSession(ctx));
+        enterSession(getXRSession(ctx));
       }),
       children(
         ...lights(),
         component(() => {
           if (!getXRSession(ctx)) {
-            return NOTHING;
+            return Nothing();
           }
           const { look, root, elements } = desk.get();
           const canvas = RendererContext.get(ctx).domElement;

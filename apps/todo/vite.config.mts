@@ -50,6 +50,7 @@ export default defineConfig({
         // them when it first asks. `touch` imports three.js too, which
         // splits three's core into a chunk the two share, and the limits
         // it shares with `justdom-three`'s pointer into another.
+        // `focusDiagnostics` is the key log, imported only behind `?keylog`.
         globIgnores: [
           "**/xr-*.js",
           "**/three.module-*.js",
@@ -57,6 +58,7 @@ export default defineConfig({
           "**/emulator-*.js",
           "**/touch-*.js",
           "**/limits-*.js",
+          "**/focusDiagnostics-*.js",
         ],
       },
     }),

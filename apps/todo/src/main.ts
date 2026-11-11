@@ -2,7 +2,6 @@ import { children } from "justdom-core";
 import { just } from "justdom-signal";
 import TodoApp from "./components/TodoApp";
 import { offerHeadset } from "justdom-xr/offer";
-import { mountFocusDiagnostics } from "./focusDiagnostics";
 import "./index.css";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -28,11 +27,15 @@ offerHeadset(() => import("./xr"), { touch: { pitch: 0 } })
   });
 
 // A log in the card of the keys and focus the page hears, only when the
-// address asks for it, to read in a headset.
+// address asks for it, to read in a headset. Fetched only then.
 if (new URLSearchParams(location.search).has("keylog")) {
   // After the app, which `just` above has already rendered into `#root`:
   // its `children` owns the span from the first child to the last and
   // replaces it on every emission, and it emits once, synchronously, so a
-  // node appended now is left alone.
-  mountFocusDiagnostics(root);
+  // node appended later is left alone.
+  import("./focusDiagnostics")
+    .then(({ mountFocusDiagnostics }) => mountFocusDiagnostics(root))
+    .catch((err) => {
+      console.error("Could not load the key log:", err);
+    });
 }

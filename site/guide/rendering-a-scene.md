@@ -69,9 +69,31 @@ source's values into a property with a `copy` method, a `Vector3` or a `Color`; 
 object's events, the interaction events among them. `children(...)` adds the objects the sources
 emit and removes them when a source emits something else or the parent goes.
 
-`list` and `keyedList` are the keyed lists `justdom-core` has, for Three objects, and `Nothing()` is
-a component that mounts nothing, for a branch that has nothing to show yet. `component(() => …)`
-picks between them reactively, as the demos do to mount a panel only while a session is presenting.
+`list` and `keyedList` are the keyed lists `justdom-core` has, for Three objects. `when` and
+`branch` are its conditionals, for Three objects too: `when(condition, render)` mounts what `render`
+makes while `condition` holds, and `branch(select, render)` mounts `render(key)` for the key
+`select` gives and replaces it when the key changes. `Nothing()` is a component that mounts nothing,
+for an alternative that has nothing to show.
+
+```js
+import { set } from "justdom-signal";
+import { branch, children, Nothing, when } from "justdom-three";
+
+children(
+  when(
+    () => game.phase.get() === "build",
+    () => Palette(ctx),
+  ),
+  branch(
+    () => preview.type,
+    (type) => (type ? Brick(ctx, [set({ type })]) : Nothing()),
+  ),
+);
+```
+
+Both leave what is mounted alone while the answer stays the same, and build it again the next time.
+`component(() => …)` also picks reactively, and builds again when anything its body read changes, as
+the demos do to mount a panel only while a session is presenting.
 
 ## Placing things
 

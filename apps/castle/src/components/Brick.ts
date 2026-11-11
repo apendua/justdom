@@ -10,7 +10,7 @@ import {
   component,
   onCleanup,
 } from "justdom-signal";
-import { $, children, drag, interactions, Nothing, XREventMap } from "justdom-three";
+import { $, children, drag, interactions, when, XREventMap } from "justdom-three";
 import * as RAPIER from "@dimforge/rapier3d";
 import { BrickStyle, brickShape, BrickType } from "./types.js";
 import {
@@ -231,22 +231,21 @@ const Brick = component((ctx: WeakKey, operators: Op<Props, Events>) => {
       });
     }),
     children(
-      component(() => {
-        if (!props.hitbox) {
-          return Nothing();
-        }
-        const [x, y, z] = brickShape(props.type).size;
-        return $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
-          set({
-            get geometry() {
-              return boxGeometry(Math.max(x, 0.8), Math.max(y, 0.8), Math.max(z, 0.8));
-            },
-            get material() {
-              return invisibleMaterial();
-            },
-          }),
-        ]);
-      })(),
+      when(
+        () => props.hitbox,
+        () =>
+          $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
+            set({
+              get geometry() {
+                const [x, y, z] = brickShape(props.type).size;
+                return boxGeometry(Math.max(x, 0.8), Math.max(y, 0.8), Math.max(z, 0.8));
+              },
+              get material() {
+                return invisibleMaterial();
+              },
+            }),
+          ]),
+      ),
       $(new THREE.Mesh<THREE.BufferGeometry, THREE.Material, XREventMap>(), [
         set({
           get geometry() {

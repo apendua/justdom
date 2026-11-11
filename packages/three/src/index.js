@@ -1,7 +1,7 @@
 /// <reference types="justdom-signal/dom" preserve="true" />
 /// <reference path="./types/three.d.ts" preserve="true" />
 export { children, fragment, copy, Nothing, $, layoutEffects } from "./operators.js";
-export { list, keyedList } from "./core.js";
+export { list, keyedList, when, branch } from "./core.js";
 export { render } from "./render.js";
 export {
   useFrame,

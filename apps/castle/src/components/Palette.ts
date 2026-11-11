@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { $, children, dom, drag, interactions, Nothing, XREventMap } from "justdom-three";
+import { $, children, dom, drag, interactions, when, XREventMap } from "justdom-three";
 import { component, effects, emit, on, Op, set, Signal, store } from "justdom-signal";
 import { children as domChildren, $ as $dom, text } from "justdom-core";
 import Brick from "./Brick.js";
@@ -107,14 +107,11 @@ export const Palette = component((ctx: WeakKey, operators: Op<PaletteProps, Pale
           // brick's own object, so the slot sat empty for the length of the
           // drag and the tray looked raided. A stand-in holds the slot
           // instead, and goes when the brick itself comes back to it.
-          component(() => {
-            if (!taken.get()) {
-              return Nothing();
-            }
-            return Brick(ctx, [
-              set({ type, scale: PALETTE_BRICK_SCALE, position, interactive: false }),
-            ]);
-          })(),
+          when(
+            () => taken.get(),
+            () =>
+              Brick(ctx, [set({ type, scale: PALETTE_BRICK_SCALE, position, interactive: false })]),
+          ),
           Brick(ctx, [
             set({
               type,

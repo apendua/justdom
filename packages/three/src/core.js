@@ -403,6 +403,45 @@ export function list(items, renderItem) {
   });
 }
 
+const SHOWN = [true];
+const HIDDEN = /** @type {never[]} */ ([]);
+
+/**
+ * Mounts what `render()` makes while `condition()` holds, and takes it out
+ * of the scene when it stops holding. `condition` is read reactively. While
+ * it keeps holding, what is mounted is left alone, and `render` runs again
+ * each time it comes to hold after not holding. This is `when` from
+ * `justdom-core`, for Three objects.
+ *
+ * @param {() => unknown} condition
+ * @param {() => Subscribable<Component>} render
+ * @returns {Source<Component>}
+ */
+export function when(condition, render) {
+  return list(
+    () => (condition() ? SHOWN : HIDDEN),
+    () => render(),
+  );
+}
+
+/**
+ * Mounts `render(key)` for the key `select()` gives, and replaces it with
+ * another when the key changes. `select` is read reactively, and keys are
+ * compared by identity, so while it gives the same key what is mounted is
+ * left alone. This is `branch` from `justdom-core`, for Three objects.
+ *
+ * @template K
+ * @param {() => K} select
+ * @param {(key: K) => Subscribable<Component>} render
+ * @returns {Source<Component>}
+ */
+export function branch(select, render) {
+  return list(
+    () => [select()],
+    (key) => render(key),
+  );
+}
+
 /**
  * @template K
  * @template T

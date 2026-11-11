@@ -244,10 +244,10 @@ Where the two disagree, and which is right:
   scan. The cast keeps the first of them it found (`onTop`): the nearer by a rounding error, or the
   one it cast first, which need not be the later. The scan is right. The cast stays as it is until
   presses move to the scan.
-- **Text over a sibling's box.** A run draws at its element's content order, R + 1, over a level
-  sibling's box at R + 1/2, and the cast, meeting the run, picks the run's element. The scan orders
-  each element by its box, and picks the sibling. The cast is right, and this is a limit of the scan
-  until it reads the runs under the point.
+- **Content over a sibling's box.** A run of text, or a picture an element holds, draws at its
+  element's content order, R + 1, over a level sibling's box at R + 1/2, and the cast, meeting it,
+  picks its element. The scan orders each element by its box, and picks the sibling. The cast is
+  right, and this is a limit of the scan until it reads what an element draws under the point.
 - **A pseudo-element's box outside its element.** The cast is right, as above. The scan is to visit
   pseudo-elements as the paint children they are.
 - **A box that is not a ray target, over one that is.** A translucent cover or a badge without
@@ -257,6 +257,12 @@ Where the two disagree, and which is right:
   presses move to the scan changes what apps see, and is open. Until it is decided, the differential
   test compares the two only where the scan's element is a ray target or inside one
   (`isInRayTarget`), and compares nothing elsewhere.
+
+`input/hitTest.test.js` is that differential test. It casts and scans a grid of rays, straight on
+and slanting, over every scene in `test/paintOrderScenes.js`, with every element made a ray target.
+Each difference it finds must be a level tie the scan breaks to the later element, or content over a
+sibling's box, and the count of each, per scene, is held there. A difference of any other kind fails
+it. The layers in those scenes agree everywhere.
 
 ## Within a level: the rungs
 

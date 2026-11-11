@@ -11,7 +11,7 @@ import {
   onLateFrame,
   RendererContext,
   SceneContext,
-} from "./render.js";
+} from "./scene.js";
 
 describe("frames", () => {
   test("a renderer has frames before the loop that emits them is installed", () => {

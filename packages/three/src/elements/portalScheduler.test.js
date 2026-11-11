@@ -1,6 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { createFrameShareBudget, createPortalScheduler } from "./portalScheduler.js";
+import {
+  createPortalScheduler,
+  PortalSchedulerContext,
+  portalSchedulerOf,
+} from "./portalScheduler.js";
+import { testScene } from "../test/sceneHost.js";
+import { runFrame } from "../scene.js";
 
 /**
  * A pump that counts its units of work, honouring the contract: at least one
@@ -185,74 +191,6 @@ describe("createPortalScheduler", () => {
   });
 });
 
-describe("createFrameShareBudget", () => {
-  /**
-   * @param {{ sample: (ms: number) => void }} budget
-   * @param {number} frameMs
-   * @param {number} count
-   */
-  const run = (budget, frameMs, count) => {
-    for (let i = 0; i < count; i++) {
-      budget.sample(frameMs);
-    }
-  };
-
-  test("before a frame has been drawn it is the number it always was", () => {
-    // 0.3 of a 60 Hz frame, which is the 5 ms this scheduler was born with.
-    assert.equal(createFrameShareBudget().budget(), 5);
-  });
-
-  test("halves when the frame does", () => {
-    const at72 = createFrameShareBudget();
-    run(at72, 1000 / 72, 60);
-    assert.equal(+at72.budget().toFixed(2), 4.17);
-
-    const at120 = createFrameShareBudget();
-    run(at120, 1000 / 120, 60);
-    assert.equal(+at120.budget().toFixed(2), 2.5);
-  });
-
-  test("a frame we stretched ourselves does not buy us a bigger slice", () => {
-    const budget = createFrameShareBudget();
-    run(budget, 1000 / 120, 40);
-    // The portals overspent and the frame ran long. Reading that as the
-    // cadence is the feedback loop this estimator exists to avoid.
-    run(budget, 40, 10);
-    assert.equal(+budget.budget().toFixed(2), 2.5);
-  });
-
-  test("the window rolls, so a scene that really did slow down is believed", () => {
-    const budget = createFrameShareBudget({ window: 10 });
-    run(budget, 1000 / 120, 10);
-    assert.equal(+budget.budget().toFixed(2), 2.5);
-    run(budget, 1000 / 60, 10);
-    assert.equal(+budget.budget().toFixed(2), 5);
-  });
-
-  test("ignores what cannot be a frame", () => {
-    const budget = createFrameShareBudget();
-    run(budget, 1000 / 60, 10);
-    // A zero-length frame, and a tab coming back from the background.
-    budget.sample(0);
-    budget.sample(-1);
-    budget.sample(1000);
-    assert.equal(+budget.budget().toFixed(2), 5);
-  });
-
-  test("clamped at both ends", () => {
-    const fast = createFrameShareBudget();
-    run(fast, 2, 20);
-    // A panel still mounts through a run of impossible frames, slowly.
-    assert.equal(fast.budget(), 1.5);
-
-    const slow = createFrameShareBudget();
-    run(slow, 100, 20);
-    // A scene that has genuinely dropped to 10 Hz does not get a tenth of a
-    // second to build panels in.
-    assert.equal(slow.budget(), 8);
-  });
-});
-
 describe("idle pumps", () => {
   /**
    * A pump of `units` that only works while the clock allows, as the prepare
@@ -348,5 +286,54 @@ describe("idle pumps", () => {
     assert.equal(busy.remaining(), 1);
     assert.equal(idle.ticks(), 0);
     assert.equal(frames.running(), true, "and it keeps asking for frames");
+  });
+});
+
+describe("portalSchedulerOf", () => {
+  test("is the scheduler set on the context, then the scene's, then none", () => {
+    const set = createPortalScheduler({ requestFrames: () => () => {} });
+    const { ctx } = testScene();
+    assert.equal(portalSchedulerOf(PortalSchedulerContext.set(ctx, set)), set);
+    const scenes = portalSchedulerOf(ctx);
+    assert.ok(scenes);
+    assert.notEqual(scenes, set);
+    assert.equal(portalSchedulerOf(ctx), scenes, "one scheduler per scene");
+    assert.equal(portalSchedulerOf({}), null);
+  });
+
+  /**
+   * The budget the scene's scheduler gives a pump on the next frame: how
+   * far ahead of the clock the deadline is when the pump is offered it.
+   *
+   * @param {ReturnType<typeof testScene>} scene
+   */
+  function budgetOnNextFrame({ ctx, renderer }) {
+    let budget = NaN;
+    portalSchedulerOf(ctx)?.schedule({
+      priority: 0,
+      tick(deadline) {
+        budget = deadline - performance.now();
+        return true;
+      },
+    });
+    runFrame(renderer, 0, /** @type {XRFrame} */ (/** @type {unknown} */ (null)));
+    return budget;
+  }
+
+  test("the scene's scheduler takes the share of the frames drawn before its first panel", () => {
+    const scene = testScene();
+    // 120 Hz, drawn before any panel asks: a share of three tenths is
+    // 2.5 ms, where a share with no frames assumes 60 Hz and gives 5.
+    for (let time = 1000; time < 1100; time += 1000 / 120) {
+      scene.driver.frame(time);
+    }
+    const budget = budgetOnNextFrame(scene);
+    assert.ok(budget > 1.5 && budget <= 2.5, `${budget}`);
+  });
+
+  test("the scene's scheduler takes RenderOptions.portalBudget over the share", () => {
+    const scene = testScene({ portalBudget: 7 });
+    const budget = budgetOnNextFrame(scene);
+    assert.ok(budget > 6 && budget <= 7, `${budget}`);
   });
 });

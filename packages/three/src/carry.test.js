@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Signal } from "justdom-signal";
 import { InteractionContext, InteractionManager } from "./interactions.js";
-import { RendererContext, runFrame } from "./render.js";
+import { RendererContext, runFrame } from "./scene.js";
 import { $, children } from "./operators.js";
 import {
   applyLevelPose,

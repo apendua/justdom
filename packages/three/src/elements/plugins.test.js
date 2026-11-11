@@ -4,13 +4,8 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror } from "./mirror.js";
 import { createPortal } from "./portal.js";
-import {
-  findSvgElement,
-  isSvgElement,
-  isSvgRoot,
-  PortalPluginsContext,
-  projectWithPlugins,
-} from "./plugins.js";
+import { findSvgElement, isSvgElement, isSvgRoot, projectWithPlugins } from "./plugins.js";
+import { PortalPluginsContext } from "../panelContexts.js";
 import { svgElements } from "../svg/index.js";
 
 /**

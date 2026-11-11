@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The scene's contexts and frame hooks live in scene.js, so mouse.js no longer imports render.js back",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

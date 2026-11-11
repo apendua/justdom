@@ -4,7 +4,7 @@ import { OVERLAY_RENDER_ORDER } from "../drawOrder.js";
 import { InteractionContext } from "../interactions.js";
 import { initialDropEffect, PanelDataTransfer, resolveOperation } from "./dataTransfer.js";
 import { createFrameRequester } from "./frameRequester.js";
-import { RendererContext } from "../render.js";
+import { RendererContext } from "../scene.js";
 import {
   getBorderBoxSize,
   getComputedStyleCached,

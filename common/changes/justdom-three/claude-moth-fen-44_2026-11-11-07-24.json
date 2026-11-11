@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The border colour a box is drawn in and parseAlpha move out of VisualProperties.js, which breaks the import cycle between VisualProperties.js, elevation.js and pseudoElements.js.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

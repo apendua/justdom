@@ -1,4 +1,4 @@
-import { createProperty } from "justdom-signal";
+import { PanelOptionsContext } from "../panelContexts.js";
 
 /**
  * @import {HapticOptions} from './haptics.js';
@@ -43,17 +43,6 @@ import { createProperty } from "justdom-signal";
  * @property {number} [priority]
  * @property {number | (() => number)} [budget]
  */
-
-/**
- * The panel options in scope. Empty by default, which is every panel exactly
- * as its own options say.
- */
-export const PanelOptionsContext = createProperty(
-  /**
-   * @returns {PanelOptions}
-   */
-  () => ({}),
-);
 
 /** The options that are spread one over the other rather than replaced. */
 const SPREAD_OPTIONS = new Set(["keyboard", "loadingFrame", "haptics"]);

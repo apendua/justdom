@@ -7,6 +7,7 @@ import { fitImage } from "./objectFit.js";
 /**
  * @import VisualProperties from './VisualProperties.js';
  * @import {Size} from './objectFit.js';
+ * @import {SceneHost} from '../sceneServices.js';
  */
 
 /**
@@ -386,6 +387,18 @@ export function releaseImage(url) {
   idle.set(url, entry);
   idleBytes += bytesOf(entry);
   fitIdle(url, entry);
+}
+
+/**
+ * Release the idle images when the scene goes, for a scene that mounted a
+ * panel; `portal.js` asks for it through `sceneService`.
+ *
+ * @param {SceneHost} host
+ * @returns {true}
+ */
+export function releaseImagesWithScene(host) {
+  host.onDispose(releaseIdleImages);
+  return true;
 }
 
 /**

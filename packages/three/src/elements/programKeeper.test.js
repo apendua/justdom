@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { RendererContext } from "../render.js";
+import { RendererContext } from "../scene.js";
 import { countingManager } from "../test/portalHarness.js";
 import { stubGlRenderer } from "../test/stubGl.js";
 import { paintBatch, panel } from "../test/textRuns.js";

@@ -10,7 +10,7 @@ import {
 import { asReader, InteractionContext, interactions, setWorldMatrix } from "./interactions.js";
 import { createHold } from "./hold.js";
 import { $ } from "./operators.js";
-import { useFrame } from "./render.js";
+import { useFrame } from "./scene.js";
 
 /**
  * @import { EntityEffect, Source } from "justdom-signal";

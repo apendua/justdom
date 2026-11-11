@@ -190,15 +190,27 @@ box, so the root takes the press there.
 
 ### Two hit tests, one order
 
-A panel finds the element under a ray in two ways. The cast above meets meshes, and serves presses
-and hover. The scan, `hitElement` in `input/dragAndDrop.js`, visits elements, and serves what has no
-mesh to meet: a drag's target each frame, the thumbstick's wheel on a list's gaps or the panel's
-background, and the missed-press note in development. Rule 3 holds for both, so the scan follows the
-cast's order. Its rules:
+A panel finds the element under a ray in two ways. The cast above meets ray targets only: the
+elements `isInRayTarget` admits (a clickable element, a drag source or a field's label, and what
+sits inside one), the lists, and the panel's blocker plane, which registers no draw order and so
+loses to anything level with it. It serves presses and hover. The scan, `hitElement` in
+`input/dragAndDrop.js`, visits every element, and serves what the cast does not: a drag's target
+each frame, the thumbstick's wheel on a list's gaps or the panel's background, and the missed-press
+note in development. Rule 3 holds for both, so the scan follows the cast's order.
 
-- **What the scan is given.** A ray in world space, not a point. Each element's object is its own
-  border box, top-left origin and y down, in its own plane, so the ray meets each element at one
-  point and one distance along the ray. A ray parallel to an element's plane meets nothing there.
+**Status.** What the scan visits and what makes a candidate are built, save the rounded corners,
+which #186 brings with `clipBoxContains`. The scan still takes a point and returns the first
+candidate its walk finds; the PR after #186 gives it the ray and the order below. Remove this
+paragraph as they land.
+
+The scan's rules:
+
+- **What it is given.** A ray in world space, not a point. Each element's object is its own border
+  box, top-left origin and y down, in its own plane, so the ray meets each element at one point and
+  one distance along it. A plane the ray is parallel to, or meets behind its origin, gives no
+  candidate, as three's raycast keeps no hit behind the ray. A plane seen from behind is met as from
+  the front, as the cast meets the double-sided box and blocker, until `backface-visibility` is read
+  (see Open cases).
 - **What it visits.** Every element under the portal's root, last child first, a child before its
   parent. An object the mirror has culled (`visible` false) is passed over with all it holds. What
   is inside an `<svg>` is not visited: the `<svg>` is the target, as it is for a click.
@@ -207,9 +219,11 @@ cast's order. Its rules:
   An element that `visibility` hides or that says `pointer-events: none` is not a candidate, and its
   children still are.
 - **Which candidate wins.** The cast's rule, read per element. The nearest wins, unless candidates
-  within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element's draw
-  order is its box's: `getRenderBand`, its layer's base plus its level. Of two at one order, the
-  later in tree order wins, as on a page.
+  within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element is
+  drawn at its box's rung, the number the cast compares for the box's mesh: its `renderOrder`,
+  `getRenderBand` (the layer's base) plus `getDrawLevel`, and then `BOX_BUCKET_BIAS` (R + 1/2) for a
+  batched box, or `UNBATCHED_BOX_BIAS` (R + 1/4) for one that draws itself, a picture's. Of two at
+  one rung, the later in tree order wins, as on a page.
 - **Clips.** One predicate, `clipBoxContains` in `clip.js`, says whether a point in a clip box's
   frame is inside it, corners included. `clipRaycast` trims the cast's hits with it and the scan
   tests its candidates with it, so rule 5 holds at a rounded corner on both sides. An element's own
@@ -219,17 +233,34 @@ cast's order. Its rules:
 - **What the scan cannot name.** It names elements, never meshes. A plugin's object stays the
   cast's: a press or a wheel on one goes to the scene, and a drag over one is over the element the
   scan finds beneath it. An SVG shape is its `<svg>`, and a field's caret is its field. A
-  self-drawing mesh competes with a box in the cast by its rung of the level (the table below), and
-  in the scan by its element's box.
+  pseudo-element is not visited: the scan walks elements, and tests each against its own border box.
+  A `::before` or `::after` box placed outside its element's (a badge at `top: -8px`) is a hit for
+  the cast, which names the element, and a miss for the scan, which finds what is beneath.
 - **What it costs.** The scan visits every element of the panel, since a child can overflow its
   parent. That is affordable for a drag's frames, a wheel on a gap and one note per missed press. It
   is not for hover, which runs every frame for every ray. Presses and hover move to the scan only
   once it reads a per-layer list of boxes in reverse paint order, kept with the batch, which sorts
   that order already. That list is not built.
 
-Two cases are known where the two still disagree. Of two flow siblings level with each other, the
-cast takes the one it found first and the scan the later one. A run of text draws at its element's
-content level, a level past the box, and the scan orders the element by its box.
+Where the two disagree, and which is right:
+
+- **Level flow siblings that overlap.** A page gives the later sibling the hit, and so does the
+  scan. The cast keeps the first of them it found (`onTop`): the nearer by a rounding error, or the
+  one it cast first, which need not be the later. The scan is right. The cast stays as it is until
+  presses move to the scan.
+- **Text over a sibling's box.** A run draws at its element's content order, R + 1, over a level
+  sibling's box at R + 1/2, and the cast, meeting the run, picks the run's element. The scan orders
+  each element by its box, and picks the sibling. The cast is right, and this is a limit of the scan
+  until it reads the runs under the point.
+- **A pseudo-element's box outside its element.** The cast is right, as above. The scan is to visit
+  pseudo-elements as the paint children they are.
+- **A box that is not a ray target, over one that is.** A translucent cover or a badge without
+  `cursor: pointer` over a button: the cast meets only the button and gives it the press, the scan
+  gives it to the cover, and a page gives the click to the cover. Likewise, a card's background is
+  the blocker to the cast and the card to the scan. Whether such a box is to stop a press once
+  presses move to the scan changes what apps see, and is open. Until it is decided, the differential
+  test compares the two only where the scan's element is a ray target or inside one
+  (`isInRayTarget`), and compares nothing elsewhere.
 
 ## Within a level: the rungs
 

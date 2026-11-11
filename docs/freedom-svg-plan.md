@@ -60,10 +60,11 @@ appear" for the showcase's visual suite, which photographs the scene in a real b
   `PortalPluginsContext` carries the list; `render()` takes `portalPlugins` and sets it, and
   `PortalOptions.plugins` prepends per portal, for a panel that wants something the rest of the
   scene does not.
-- **`portal.js`** — `createObjectForNode` asks the plugins first, in order, before its own `switch`.
-  An element in the SVG namespace that no plugin claims produces no object, and neither does
-  anything under it (the walk stops at a node with no object), nor a text node whose parent is an
-  SVG element. The `<svg>` root is the exception: it is a real CSS box and stays one, plugin or not.
+- **`portalNodes.js`** — `createObjectForNode` asks the plugins first, in order, before its own
+  `switch`. An element in the SVG namespace that no plugin claims produces no object, and neither
+  does anything under it (the walk stops at a node with no object), nor a text node whose parent is
+  an SVG element. The `<svg>` root is the exception: it is a real CSS box and stays one, plugin or
+  not.
 - **`render.js`** — `RenderOptions.portalPlugins`.
 
 ### The plugin: `justdom-three/svg`

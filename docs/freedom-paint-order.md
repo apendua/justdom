@@ -238,25 +238,28 @@ The scan's rules:
   once it reads a per-layer list of boxes in reverse paint order, kept with the batch, which sorts
   that order already. That list is not built.
 
-Where the two disagree, and which is right:
+Where the two disagree, and which is right. The maintainer decided on 2026-11-11 that the two are to
+agree everywhere on this list: each case is fixed on the side that is wrong, and none stays as an
+exception. None of the fixes is built yet.
 
 - **Level flow siblings that overlap.** A page gives the later sibling the hit, and so does the
   scan. The cast keeps the first of them it found (`onTop`): the nearer by a rounding error, or the
-  one it cast first, which need not be the later. The scan is right. The cast stays as it is until
-  presses move to the scan.
+  one it cast first, which need not be the later. The scan is right, and the cast is to break the
+  tie the same way.
 - **Content over a sibling's box.** A run of text, or a picture an element holds, draws at its
   element's content order, R + 1, over a level sibling's box at R + 1/2, and the cast, meeting it,
   picks its element. The scan orders each element by its box, and picks the sibling. The cast is
-  right, and this is a limit of the scan until it reads what an element draws under the point.
+  right, and the scan is to read what an element draws under the point.
 - **A pseudo-element's box outside its element.** The cast is right, as above. The scan is to visit
   pseudo-elements as the paint children they are.
 - **A box that is not a ray target, over one that is.** A translucent cover or a badge without
   `cursor: pointer` over a button: the cast meets only the button and gives it the press, the scan
   gives it to the cover, and a page gives the click to the cover. Likewise, a card's background is
-  the blocker to the cast and the card to the scan. Whether such a box is to stop a press once
-  presses move to the scan changes what apps see, and is open. Until it is decided, the differential
-  test compares the two only where the scan's element is a ray target or inside one
-  (`isInRayTarget`), and compares nothing elsewhere.
+  the blocker to the cast and the card to the scan. The box takes the press, as on a page, and the
+  button hears nothing of it. A press that lands on an element in no ray target reaches nothing, as
+  a press on the panel's background does today, and in development the missed-press note names the
+  element. Until that is built, the differential test compares the two only where the scan's element
+  is a ray target or inside one (`isInRayTarget`), and compares nothing elsewhere.
 
 `input/hitTest.test.js` is that differential test. It casts and scans a grid of rays, straight on
 and slanting, over every scene in `test/paintOrderScenes.js` and a few of its own where draw order,

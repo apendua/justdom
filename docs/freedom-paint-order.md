@@ -240,10 +240,14 @@ The scan's rules:
 
 Where the two disagree, and which is right. On 2026-11-11 the maintainer decided that the two are to
 agree on this list wherever the fix is simple and needs no change of architecture, by fixing the
-side that is wrong, and that a fix that does need one comes back to the maintainer first. Each fix
-below does: it needs the scan on every press and hover frame, which the per-layer list under _What
-it costs_ is for, or the scan reading what an element draws. The maintainer chose the same day not
-to build them for now, so each case stays a known difference, with the side that is right named.
+side that is wrong, and that a fix that does need one comes back to the maintainer first. Two of the
+fixes below do. The box over a button needs the scan on every press and hover frame, which the
+per-layer list under _What it costs_ is for, and content over a sibling's box needs the scan to read
+what an element draws. The other two were not assessed apart from those: the cast breaking a level
+tie by tree order, which needs the interaction manager to be handed the hits' tree order as it is
+handed their draw order, and the scan visiting pseudo-elements. The maintainer chose the same day
+not to build any of the four for now, so each case stays a known difference, with the side that is
+right named.
 
 - **Level flow siblings that overlap.** A page gives the later sibling the hit, and so does the
   scan. The cast keeps the first of them it found (`onTop`): the nearer by a rounding error, or the

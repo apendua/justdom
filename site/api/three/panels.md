@@ -260,17 +260,17 @@ keeps its colours baked into the texture and re-draws per change.
 inline style, `hidden`, an app's own `data-*` or `aria-*` flag. Changing one restyles the element
 and its subtree, and re-measures the element's subtree. It restyles the element's siblings too when
 a rule of the document could carry the change to them: a selector with `+` or `~` (in it or inside
-`:has()`, `:is()` or `:not()`), or an `:nth-child(… of …)`, that names the attribute, or names a
-class or an id for `class` and `id`. Such a selector with a pseudo-class other than the structural
-ones, the user-action ones and `:checked`, or a stylesheet that cannot be read, makes every
-attribute reach the siblings. The SVG geometry below never does. Then the element and what comes
-after it in its parent re-measure where they are, every item in the row when the parent is a flex
-row. The change climbs on to the parent's own siblings if the parent changed size or is an inline
-box, and so on up to the panel, which resizes with what it holds. So a menu opened by a class, or a
-section shown by taking `hidden` off, resizes the panel as it would if it were mounted. A change
-that moved nothing costs a client rect for the element, for each element after it and for the
-parent, a text measurement for each text node after it, and a client rect for each positioned box in
-the panel.
+`:has()`, `:is()` or `:not()`), or an `:nth-child(… of …)` or `:nth-last-child(… of …)`, that names
+the attribute, or names a class or an id for `class` and `id`. Such a selector with a pseudo-class
+other than the structural ones, the user-action ones and `:checked`, or a stylesheet that cannot be
+read, makes every attribute reach the siblings. The SVG geometry below never does. Then the element
+and what comes after it in its parent re-measure where they are, every item in the row when the
+parent is a flex row. The change climbs on to the parent's own siblings if the parent changed size
+or is an inline box, and so on up to the panel, which resizes with what it holds. So a menu opened
+by a class, or a section shown by taking `hidden` off, resizes the panel as it would if it were
+mounted. A change that moved nothing costs a client rect for the element, for each element after it
+and for the parent, a text measurement for each text node after it, and a client rect for each
+positioned box in the panel.
 
 Two changes stay cheaper. An inline `style` write that moves no box but the element's own
 re-measures the element's subtree and nothing around it: a write of properties that move no box at

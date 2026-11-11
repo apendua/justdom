@@ -160,6 +160,9 @@ export function text(ctx, textNode) {
           reveal: reveal?.uniform ?? null,
         },
         [
+          // Reads nothing reactive, so this runs once, in the pass in
+          // which the run's `add` asks for a rebuild: the `moved` is never
+          // the only thing pending, and says what kind of change a place is.
           effects((obj) => {
             place(obj, 0, 0, 0.01);
             batch?.moved(obj);

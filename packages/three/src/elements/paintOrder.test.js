@@ -31,6 +31,7 @@ import { getLayerOrder, isProxy, PANEL_PIECES } from "./layerOrder.js";
 import { ARRAYS_PER_DRAW, PaintBatch } from "./paintBatch.js";
 import { LayerTree } from "./layerTree.js";
 import { createPortal } from "./portal.js";
+import { buffers, drawn, draws, watchBatch } from "../test/batchBuffers.js";
 import { rectGeometry } from "./sdfRect.js";
 
 /**
@@ -190,20 +191,6 @@ function proxiesOf(panel) {
 }
 
 /**
- * The panel's draws of boxes and runs (`paintBatch.js`), in the order they
- * draw.
- *
- * @param {THREE.Object3D} panel
- * @returns {THREE.InstancedMesh[]}
- */
-function draws(panel) {
-  return drawn(panel)
-    .filter((mesh) => mesh instanceof THREE.InstancedMesh && !isProxy(mesh))
-    .map((mesh) => /** @type {THREE.InstancedMesh} */ (mesh))
-    .sort((a, b) => a.renderOrder - b.renderOrder);
-}
-
-/**
  * What each instance of a draw is, by the sign of its `aSize.z`.
  *
  * @param {THREE.InstancedMesh} draw
@@ -212,32 +199,6 @@ function draws(panel) {
 function kinds(draw) {
   const size = /** @type {THREE.InstancedBufferAttribute} */ (draw.geometry.getAttribute("aSize"));
   return Array.from({ length: draw.count }, (_, i) => (size.getZ(i) < -0.5 ? "run" : "box"));
-}
-
-/**
- * Every mesh the panel draws: visible, with a material that draws, and with
- * instances to draw if it is instanced.
- *
- * @param {THREE.Object3D} panel
- * @returns {THREE.Mesh[]}
- */
-function drawn(panel) {
-  /** @type {THREE.Mesh[]} */
-  const meshes = [];
-  panel.traverseVisible((object) => {
-    if (!(object instanceof THREE.Mesh)) {
-      return;
-    }
-    const material = /** @type {THREE.Material} */ (object.material);
-    if (!material.visible) {
-      return;
-    }
-    if (object instanceof THREE.InstancedMesh && object.count === 0) {
-      return;
-    }
-    meshes.push(object);
-  });
-  return meshes;
 }
 
 /**
@@ -1469,56 +1430,6 @@ describe("a panel drawn in paint order", () => {
     canvas.restore();
   });
 
-  /**
-   * Count what the panel's batch is told, and keep the batch, until
-   * `restore`.
-   */
-  const watchBatch = () => {
-    const { invalidate, changed } = PaintBatch.prototype;
-    const watched = {
-      invalidate: 0,
-      changed: 0,
-      /** @type {PaintBatch | null} */
-      batch: null,
-      restore() {
-        PaintBatch.prototype.invalidate = invalidate;
-        PaintBatch.prototype.changed = changed;
-      },
-    };
-    PaintBatch.prototype.invalidate = function () {
-      watched.invalidate += 1;
-      watched.batch = this;
-      return invalidate.call(this);
-    };
-    PaintBatch.prototype.changed = function (mesh) {
-      watched.changed += 1;
-      watched.batch = this;
-      return changed.call(this, mesh);
-    };
-    return watched;
-  };
-
-  /**
-   * Every buffer of every draw the panel has, over the instances each draws.
-   *
-   * @param {THREE.Object3D} panel
-   * @returns {number[][]}
-   */
-  const buffers = (panel) =>
-    draws(panel).flatMap((draw) => [
-      Array.from(draw.instanceMatrix.array.subarray(0, draw.count * 16)),
-      ...Object.values(draw.geometry.attributes)
-        .filter((attribute) => attribute instanceof THREE.InstancedBufferAttribute)
-        .map((attribute) =>
-          Array.from(
-            /** @type {Float32Array} */ (attribute.array).subarray(
-              0,
-              draw.count * attribute.itemSize,
-            ),
-          ),
-        ),
-    ]);
-
   test("a restyle reaches the batch only when it changes what a box draws", async () => {
     // Every box writes its numbers through `BoxNumbers`, which tells the
     // batch only when a write changed one. A text colour on a box with no
@@ -1905,6 +1816,47 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
     restoreRange();
     canvas.restore();
+  });
+
+  test("a scroll of a list item writes its marker's run where it is", async () => {
+    // A marker is a run whose origin follows its item's scroll
+    // (`listMarker.js` takes the scroll off its y), so a scroll moves the
+    // run with nothing structural to rebuild for. Goes red with the run's
+    // `moved` deleted from `surfaceRun.js`: its matrix stays where it was.
+    // jsdom computes no `::marker`; it takes the item's style, as in
+    // `paintOrderScenes.js`.
+    const computeStyle = window.getComputedStyle;
+    window.getComputedStyle = (element, pseudo) =>
+      computeStyle(element, pseudo === "::marker" ? null : pseudo);
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    const g = await page([
+      {
+        id: "item",
+        tag: "li",
+        style: "position: absolute; display: list-item; list-style-type: disc; overflow: hidden",
+        at: [40, 40, 200, 40],
+        text: "abc",
+      },
+    ]);
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      scrollTo(/** @type {HTMLElement} */ (g.get("item")), 10);
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.ok(batch, "the batch is told");
+      assert.equal(watched.invalidate, 0, "nothing structural");
+      const patched = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(patched, buffers(g.panel), "what a rebuild writes");
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+    restoreRange();
+    canvas.restore();
+    window.getComputedStyle = computeStyle;
   });
 
   test("a text colour writes its run where it is", async () => {

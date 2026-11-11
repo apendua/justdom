@@ -165,8 +165,10 @@ function generatedBox(ctx, generated, surface) {
       const at = frame();
       placeAndScale(obj, at.x, at.y, lifted.get() ? -OVERLAY_LIFT : 0, 1, 1, 1);
       // The batch places what it draws from its matrix, and writes the
-      // matrices under it where they are. Being lifted or not also makes
-      // it a layer or not, and the panel's walk rebuilds for that.
+      // matrices under it where they are. Being lifted or set down also
+      // moves the box to another band, and the effects that write that
+      // order (`numbers.order` below and the run's in `textRun.js`) ask
+      // for the rebuild.
       panelBatch?.moved(obj);
     }),
     // A lifted one is one of the planes the panel's walk orders, for as

@@ -20,7 +20,9 @@ import {
  * uniforms, and the size, order and visibility of its mesh. Each write
  * compares before it writes, and calls `mark` when it changed anything, so a
  * box cannot change what the batch draws without telling it, and an effect
- * that runs again with the same values tells it nothing.
+ * that runs again with the same values tells it nothing. `mark` tells the
+ * panel's batch even for a box that draws itself, whose visibility and order
+ * the batch's walk still reads.
  *
  * What it does not cover is written elsewhere and told the batch there: the
  * matrix of the box's object, which the motion step and the place effect in
@@ -104,10 +106,8 @@ export class BoxNumbers {
       !mesh.matrixAutoUpdate &&
       position.x === x &&
       position.y === y &&
-      position.z === 0 &&
       scale.x === scaleX &&
-      scale.y === scaleY &&
-      scale.z === 1
+      scale.y === scaleY
     ) {
       return;
     }

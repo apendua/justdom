@@ -1656,6 +1656,40 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  test("breaks the draw at a picture once it is shown", async () => {
+    // The same page with the picture hidden at first. A box that draws
+    // itself is still read by the batch's walk, so showing it has to reach
+    // the batch, though the batch does not draw it. Goes red with the
+    // picture's numbers telling only the batch that draws it, which is
+    // none: the cards stay one draw, under the picture.
+    const g = await page([
+      {
+        id: "under",
+        style: CARD,
+        at: [20, 20, 100, 100],
+        children: [
+          { id: "picture", tag: "img", style: "visibility: hidden", at: [40, 40, 60, 60] },
+        ],
+      },
+      { id: "over", style: CARD, at: [60, 60, 100, 100] },
+    ]);
+    await g.walk();
+    assert.deepEqual(
+      draws(g.panel).map((draw) => draw.count),
+      [2],
+      "both cards in one draw while the picture is hidden",
+    );
+    g.get("picture").style.visibility = "visible";
+    await g.settle();
+    await g.walk();
+    assert.deepEqual(
+      draws(g.panel).map((draw) => draw.count),
+      [1, 1],
+      "one draw on each side of the picture",
+    );
+    g.teardown();
+  });
+
   test("keeps a cut layer's draws apart from the root's", async () => {
     // A proxy copies a whole draw to the further piece, so a draw of the
     // swung card holds the card alone and not the root's card drawn after

@@ -20,6 +20,7 @@ import {
 } from "./elevation.js";
 import { isBlocker } from "./blocker.js";
 import { getLayerOrder } from "./layerOrder.js";
+import { PaintBatch } from "./paintBatch.js";
 import { comparePaintOrder } from "./layerTree.js";
 import { fakeClock } from "../test/clock.js";
 import { countEvaluations } from "../test/evaluations.js";
@@ -643,6 +644,48 @@ describe("an element's ::before and ::after in a panel", () => {
 
       panel.cleanup();
     } finally {
+      THREE.TextureLoader.prototype.load = load;
+    }
+  });
+
+  test("a ::before with a picture tells the panel's batch when it is shown", async () => {
+    // Its quad draws itself, but the batch's walk still reads it, for its
+    // visibility and its order, so showing it is the batch's business. Goes
+    // red with its numbers telling only the batch that draws it, which is
+    // none.
+    const load = THREE.TextureLoader.prototype.load;
+    THREE.TextureLoader.prototype.load = function (_url, onLoad) {
+      const texture = new THREE.Texture(
+        /** @type {HTMLImageElement} */ ({ width: 12, height: 14 }),
+      );
+      onLoad?.(/** @type {THREE.Texture<HTMLImageElement>} */ (texture));
+      return /** @type {THREE.Texture<HTMLImageElement>} */ (texture);
+    };
+    const invalidate = PaintBatch.prototype.invalidate;
+    try {
+      pseudoRule(".pic", "before", 'url("/icon.png")', "visibility: hidden");
+      const panel = generatedPanel(
+        `<div class="pic" data-rect="0,0,200,40" data-before="0,0,12,14" data-picture="0,0,12,14"></div>`,
+      );
+      await settle(panel.portal);
+      const [quad] = panel.quads();
+      assert.equal(quad.visible, false);
+
+      let asked = 0;
+      PaintBatch.prototype.invalidate = function () {
+        asked += 1;
+        return invalidate.call(this);
+      };
+      pseudoRules[0].css = "visibility: visible";
+      const host = /** @type {HTMLElement} */ (panel.root.querySelector(".pic"));
+      host.classList.add("shown");
+      await pump();
+      assert.equal(quad.visible, true);
+      assert.ok(asked > 0, "the panel's batch is told");
+
+      panel.cleanup();
+    } finally {
+      PaintBatch.prototype.invalidate = invalidate;
       THREE.TextureLoader.prototype.load = load;
     }
   });

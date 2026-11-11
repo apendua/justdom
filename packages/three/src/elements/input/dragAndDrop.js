@@ -309,8 +309,8 @@ function elementAt(element, objectOf, ray) {
   orders.length = 0;
   gather(element, objectOf, ray);
   let nearest = Infinity;
-  for (const distance of distances) {
-    nearest = Math.min(nearest, distance);
+  for (let i = 0; i < distances.length; i++) {
+    nearest = Math.min(nearest, distances[i]);
   }
   /** @type {HTMLElement | null} */
   let hit = null;

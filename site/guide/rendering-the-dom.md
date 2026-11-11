@@ -106,6 +106,38 @@ children(
 `keyedList(entries, renderItem)` is the same over `[key, item]` pairs, for items whose identity is
 not their key.
 
+## Showing one thing or another
+
+`when(condition, render)` mounts what `render` makes while `condition` holds, and takes it down when
+it stops holding. `branch(select, render)` mounts one of several alternatives: `render(key)` runs
+when `select` gives a key it did not give last time, after the alternative that was mounted has been
+taken down. Both read their first argument reactively, and both leave what is mounted alone while
+the answer stays the same.
+
+```js
+import { $, branch, children, text, when } from "justdom-core";
+
+children(
+  when(
+    () => session.get() !== null,
+    () => $("button", [children(text`Leave`)]),
+  ),
+  branch(
+    () => (state.isWaiting ? "waiting" : "ready"),
+    (key) => (key === "waiting" ? $("progress") : $("span", [children(text`Ready`)])),
+  ),
+);
+```
+
+`Nothing()` is the alternative that shows nothing.
+
+These mount and unmount. An element that is taken down loses its state, such as what was typed in a
+field, and `render` builds a new one the next time. To keep the element and only stop showing it,
+write its `hidden` property or a class: `set("hidden", () => !open.get())`. Mounting is the one to
+reach for when the thing is costly to keep, when it should start afresh each time, or when it is
+mirrored into a panel that measures its children: a panel measures again when a child is mounted or
+taken down, and not when one is hidden.
+
 ## Stylesheets
 
 A component brings its styles with it. `` className`...` `` takes a block of declarations and

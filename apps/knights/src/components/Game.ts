@@ -1,4 +1,4 @@
-import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "justdom-core";
+import { $, $$, CLASS_NAME, Nothing, attr, branch, children, set, stylesheet } from "justdom-core";
 import { component, makeNonReactive, store } from "justdom-signal";
 import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
 import { sessionStarted } from "../headset";
@@ -8,7 +8,6 @@ import MenuModal from "./MenuModal";
 import Music from "./Music";
 import Pattern from "./Pattern";
 import Toolbar from "./Toolbar";
-import branch from "./branch";
 import type { Dimensions } from "./types";
 
 const BLOCKED_FIELD_PATTERN = "blockedFieldPattern";
@@ -140,7 +139,7 @@ const Game = component((ctx: WeakKey) => {
             (gameId) => {
               const game = getGame();
               if (!gameId || !game) {
-                return text``;
+                return Nothing();
               }
               return Board(ctx, {
                 game,

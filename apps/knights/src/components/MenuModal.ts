@@ -1,10 +1,21 @@
-import { $, CLASS_NAME, attr, children, on, renderText, set, stylesheet, text } from "justdom-core";
+import {
+  $,
+  CLASS_NAME,
+  attr,
+  children,
+  on,
+  renderText,
+  set,
+  stylesheet,
+  text,
+  when,
+} from "justdom-core";
 import { component } from "justdom-signal";
 import { HOTSEAT, VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import { narrow } from "../viewport";
 import ActionItem from "./ActionItem";
 import { menuItem, modal, modalFill } from "./styles";
-import { LeaveItem, PassthroughItem, inSession, modeName, mountedWhile } from "./toolbarItems";
+import { LeaveItem, PassthroughItem, inSession, modeName } from "./toolbarItems";
 
 interface MenuModalProps {
   isVisible: boolean;
@@ -65,7 +76,7 @@ const MenuModal = component((ctx: WeakKey, props: MenuModalProps) => {
         children(
           newGame("New Game vs Computer", VERSUS_COMPUTER),
           newGame("New Game — Hotseat", HOTSEAT),
-          mountedWhile(
+          when(
             () => narrow.get(),
             () =>
               $("li", [
@@ -74,10 +85,8 @@ const MenuModal = component((ctx: WeakKey, props: MenuModalProps) => {
                 children(text`Playing ${() => modeName(props.mode)}`),
               ]),
           ),
-          mountedWhile(narrowSession, PassthroughItem),
-          mountedWhile(narrowSession, () =>
-            LeaveItem("Leave the headset", () => props.onClose?.()),
-          ),
+          when(narrowSession, PassthroughItem),
+          when(narrowSession, () => LeaveItem("Leave the headset", () => props.onClose?.())),
           $("li", [
             set("className", menuItem),
             on("click", () => props.onClose?.()),

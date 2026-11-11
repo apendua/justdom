@@ -1,16 +1,7 @@
-import { attr, children, list, on, set, text, $, type Mountable } from "justdom-core";
-import type { Subscribable } from "justdom-signal";
+import { attr, children, on, set, text, $ } from "justdom-core";
 import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
 import { VERSUS_COMPUTER, type GameMode } from "../store/Root";
 import { menuItem } from "./styles";
-
-/**
- * Mount what `render` makes while `when` holds, and take it down when it
- * stops. Not hidden and shown: a panel measures the toolbar again when its
- * children change, and not when one of them is hidden.
- */
-export const mountedWhile = (when: () => boolean, render: () => Subscribable<Mountable>) =>
-  list(() => (when() ? [true] : []), render);
 
 /**
  * The passthrough switch, pressable only in a session that can show the

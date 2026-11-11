@@ -46,6 +46,9 @@ or `style(values)`, which writes it once.
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list(items, renderItem)`        | Renders an iterable, keyed by item identity. `items` is a getter or a subscribable; `renderItem(item, getIndex)` is called once per item and returns its mountable, and `getIndex()` is a reactive read of the item's current position. |
 | `keyedList(entries, renderItem)` | The same over `[key, item]` pairs, keyed by `key`, with `renderItem(item, key, getIndex)`.                                                                                                                                              |
+| `when(condition, render)`        | Mounts what `render()` makes while the getter `condition` holds, and takes it down when it stops. `render` runs again each time it comes to hold.                                                                                       |
+| `branch(select, render)`         | Mounts `render(key)` for the key the getter `select` gives, and replaces it when the key changes. The same key again leaves it mounted.                                                                                                 |
+| `Nothing()`                      | A mountable that puts nothing in the document, for an alternative that shows nothing.                                                                                                                                                   |
 
 A list re-ordered moves the rows that stayed, mounts the ones that arrived and takes down the ones
 that left, with the index reads updated in one batch.

@@ -1,6 +1,5 @@
-import { $, attr, children, on, set, text } from "justdom-core";
+import { $, attr, branch, children, on, set, text } from "justdom-core";
 import { component, store } from "justdom-signal";
-import branch from "./branch";
 import { menuItem, spinner } from "./styles";
 
 interface ActionItemProps {

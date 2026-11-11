@@ -1,13 +1,23 @@
-import { $, CLASS_NAME, attr, children, on, set, stylesheet, text } from "justdom-core";
+import {
+  $,
+  CLASS_NAME,
+  attr,
+  branch,
+  children,
+  on,
+  set,
+  stylesheet,
+  text,
+  when,
+} from "justdom-core";
 import { component } from "justdom-signal";
 import { ATTACKER } from "../constants";
 import type Game from "../store/Game";
 import type { GameMode } from "../store/Root";
 import { narrow } from "../viewport";
 import ActionItem from "./ActionItem";
-import branch from "./branch";
 import { menuItem, menuItems } from "./styles";
-import { LeaveItem, PassthroughItem, inSession, modeName, mountedWhile } from "./toolbarItems";
+import { LeaveItem, PassthroughItem, inSession, modeName } from "./toolbarItems";
 
 interface ToolbarProps {
   game: Game | null;
@@ -105,7 +115,7 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
             on("click", () => props.onMenuOpen?.()),
             children(text`☰`),
           ]),
-          mountedWhile(wide, () => label(() => modeName(props.mode))),
+          when(wide, () => label(() => modeName(props.mode))),
           branch(
             () => mainSlot(props.game),
             (key) => {
@@ -139,11 +149,11 @@ const Toolbar = component((ctx: WeakKey, props: ToolbarProps) => {
             },
           ),
           label(() => (props.game ? `Round ${props.game.currentRound + 1}` : "")),
-          mountedWhile(wide, () =>
+          when(wide, () =>
             $("li", [set("className", menuItem), attr({ "data-disabled": "" }), children(text`⚙`)]),
           ),
-          mountedWhile(wideSession, PassthroughItem),
-          mountedWhile(wideSession, () => LeaveItem("×")),
+          when(wideSession, PassthroughItem),
+          when(wideSession, () => LeaveItem("×")),
         ),
       ]),
     ),

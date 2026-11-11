@@ -21,10 +21,12 @@
  *   window or the container changed in between.
  * - The renderer's size, the camera's aspect and what `size(ctx)` reports
  *   change together, in one application, and never one without the others.
- * - Each application also puts back the camera's field of view and zoom as
- *   they were when the following started. A session writes the headset's
+ * - The end of a session puts back the camera's field of view and zoom as
+ *   they were when the session started. A session writes the headset's
  *   projection onto the flat camera, `fov` and `zoom` included, and nothing
- *   else would undo that.
+ *   else would undo that. Any other application leaves both alone, so a
+ *   zoom the page set (a pinch, an app's own `camera.zoom`) survives a
+ *   resize.
  * - An application after the first is followed at once by a draw, when the
  *   caller gives one. Setting the size clears the canvas, and a container's
  *   observer reports after the frame's draw and before its paint, so
@@ -115,7 +117,7 @@ export function containerSize(element, Observer = globalThis.ResizeObserver) {
  * @returns {() => void} Stops following.
  */
 export function followSize(renderer, camera, source, { onSize, draw }) {
-  const { fov, zoom } = camera;
+  let { fov, zoom } = camera;
   function apply() {
     if (renderer.xr.isPresenting) {
       return false;
@@ -123,8 +125,6 @@ export function followSize(renderer, camera, source, { onSize, draw }) {
     const next = source.read();
     renderer.setPixelRatio(next.pixelRatio);
     renderer.setSize(next.width, next.height);
-    camera.fov = fov;
-    camera.zoom = zoom;
     // A container laid out at nothing yet has no aspect; keep the last one
     // rather than hand the projection a NaN.
     if (next.width > 0 && next.height > 0) {
@@ -139,12 +139,22 @@ export function followSize(renderer, camera, source, { onSize, draw }) {
       draw?.();
     }
   };
+  const onSessionStart = () => {
+    ({ fov, zoom } = camera);
+  };
+  const onSessionEnd = () => {
+    camera.fov = fov;
+    camera.zoom = zoom;
+    applyAndDraw();
+  };
   apply();
   const unsubscribe = source.subscribe(applyAndDraw);
-  renderer.xr.addEventListener("sessionend", applyAndDraw);
+  renderer.xr.addEventListener("sessionstart", onSessionStart);
+  renderer.xr.addEventListener("sessionend", onSessionEnd);
   return () => {
     unsubscribe();
-    renderer.xr.removeEventListener("sessionend", applyAndDraw);
+    renderer.xr.removeEventListener("sessionstart", onSessionStart);
+    renderer.xr.removeEventListener("sessionend", onSessionEnd);
   };
 }
 

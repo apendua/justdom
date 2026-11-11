@@ -3,7 +3,6 @@ import { keyedList } from "../core.js";
 import { children } from "../operators.js";
 import {
   counterpart,
-  createMeasurementClone,
   getAttributeCached,
   getChildNodes,
   getComputedStyleCached,
@@ -12,6 +11,7 @@ import {
   nodeDerived,
   withMeasuringRange,
 } from "../elements/mirror.js";
+import { createMeasurementClone } from "../elements/mirror/measurementClones.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
 import {
   generateTextTexture,

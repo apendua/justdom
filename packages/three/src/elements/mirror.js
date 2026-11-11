@@ -46,8 +46,6 @@ import {
 } from "./panelFrame.js";
 import { copyStillStyle, parkMeasurementClone } from "./mirror/measurementClones.js";
 
-export { createMeasurementClone, describeStillStyle } from "./mirror/measurementClones.js";
-
 /**
  * @import {RevealLayout, RevealLine, TextLine} from './textLines.js';
  * @import {TextBounds} from './textHelpers.js';

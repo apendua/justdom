@@ -1,7 +1,6 @@
 import { Derived } from "justdom-signal";
 import { getGeneratedSelectors } from "./documentStyles.js";
 import {
-  describeStillStyle,
   getBorderBoxSize,
   getChildNodes,
   getComputedStyleCached,
@@ -9,6 +8,7 @@ import {
   nodeCache,
   nodeDerived,
 } from "./mirror.js";
+import { describeStillStyle } from "./mirror/measurementClones.js";
 import { ownedImage } from "./image.js";
 import { parseAlpha } from "./cssColor.js";
 import { getDrawnBorderColor } from "./borderColor.js";

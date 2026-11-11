@@ -4,9 +4,10 @@
  * Two sources, one shape. The window is what a headset app wants: its canvas
  * is the page. A container is what a page with other things on it wants: the
  * canvas fills the element's content box and follows it as the page lays the
- * element out again. Each source is read in full on every change, the pixel
- * ratio included, so a canvas dragged to a screen of another density, or a
- * page zoomed, is drawn at the density it is now shown at.
+ * element out again. Each source is read in full on every change it
+ * reports, the pixel ratio included. A change of the ratio alone (a window
+ * dragged to a screen of another density, a page zoomed around a container
+ * sized in CSS pixels) is not reported, and is read at the next resize.
  *
  * The rules for applying a size:
  *
@@ -20,6 +21,14 @@
  *   window or the container changed in between.
  * - The renderer's size, the camera's aspect and what `size(ctx)` reports
  *   change together, in one application, and never one without the others.
+ * - Each application also puts back the camera's field of view and zoom as
+ *   they were when the following started. A session writes the headset's
+ *   projection onto the flat camera, `fov` and `zoom` included, and nothing
+ *   else would undo that.
+ * - An application after the first is followed at once by a draw, when the
+ *   caller gives one. Setting the size clears the canvas, and a container's
+ *   observer reports after the frame's draw and before its paint, so
+ *   without the draw every frame of a resize would be shown blank.
  */
 
 /**
@@ -97,33 +106,45 @@ export function containerSize(element, Observer = globalThis.ResizeObserver) {
  * @param {Pick<THREE.WebGLRenderer, "setPixelRatio" | "setSize"> & {
  *   xr: Pick<THREE.WebXRManager, "isPresenting" | "addEventListener" | "removeEventListener">;
  * }} renderer
- * @param {Pick<THREE.PerspectiveCamera, "aspect" | "updateProjectionMatrix">} camera
+ * @param {Pick<THREE.PerspectiveCamera, "aspect" | "fov" | "zoom" | "updateProjectionMatrix">} camera
  * @param {SizeSource} source
- * @param {(size: ViewSize) => void} onSize
+ * @param {object} then
+ * @param {(size: ViewSize) => void} then.onSize Told every size applied.
+ * @param {() => void} [then.draw] Draws the scene, after every application
+ *   but the first, which comes before there is a scene to draw.
  * @returns {() => void} Stops following.
  */
-export function followSize(renderer, camera, source, onSize) {
+export function followSize(renderer, camera, source, { onSize, draw }) {
+  const { fov, zoom } = camera;
   function apply() {
     if (renderer.xr.isPresenting) {
-      return;
+      return false;
     }
     const next = source.read();
     renderer.setPixelRatio(next.pixelRatio);
     renderer.setSize(next.width, next.height);
+    camera.fov = fov;
+    camera.zoom = zoom;
     // A container laid out at nothing yet has no aspect; keep the last one
     // rather than hand the projection a NaN.
     if (next.width > 0 && next.height > 0) {
       camera.aspect = next.width / next.height;
-      camera.updateProjectionMatrix();
     }
+    camera.updateProjectionMatrix();
     onSize(next);
+    return true;
   }
+  const applyAndDraw = () => {
+    if (apply()) {
+      draw?.();
+    }
+  };
   apply();
-  const unsubscribe = source.subscribe(apply);
-  renderer.xr.addEventListener("sessionend", apply);
+  const unsubscribe = source.subscribe(applyAndDraw);
+  renderer.xr.addEventListener("sessionend", applyAndDraw);
   return () => {
     unsubscribe();
-    renderer.xr.removeEventListener("sessionend", apply);
+    renderer.xr.removeEventListener("sessionend", applyAndDraw);
   };
 }
 

@@ -52,8 +52,12 @@ and takes it out again when the renderer goes. The element needs a size from the
 since the canvas takes the size it is given.
 
 On every resize the size, the device pixel ratio, the camera's aspect and `size(ctx)` are read and
-set together. Nothing changes while a session is presenting, since the headset's layer has its own
-size, and the size is read again when the session ends, so a resize during a session is not lost.
+set together, and the scene is drawn again at once, so a resize never shows a cleared canvas. A
+change of the pixel ratio alone, such as a window dragged to a screen of another density, is read at
+the next resize. Nothing changes while a session is presenting, since the headset's layer has its
+own size, and the size is read again when the session ends, so a resize during a session is not
+lost. The session's end also puts back the camera's `fov` and `zoom`, which the headset's projection
+overwrote.
 
 ### Entering and leaving a session
 

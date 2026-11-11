@@ -206,9 +206,15 @@ export function render(fn, options = {}) {
 
     const { container } = options;
     subscriber.add(
-      followSize(renderer, camera, container ? containerSize(container) : windowSize(), (next) => {
-        width.set(next.width);
-        height.set(next.height);
+      followSize(renderer, camera, container ? containerSize(container) : windowSize(), {
+        onSize: (next) => {
+          width.set(next.width);
+          height.set(next.height);
+        },
+        // The scene as it stands, so a resize is not shown as a cleared
+        // canvas. Not with `presentingOnly`, which draws nothing outside a
+        // session. `scene` is declared below; no draw comes before it is.
+        draw: options.presentingOnly ? undefined : () => renderer.render(scene, camera),
       }),
     );
     if (container) {

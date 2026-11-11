@@ -386,8 +386,8 @@ const positionCache = nodeCache();
 
 /**
  * The element's computed `position`, behind its own equality gate: the clip
- * and anchoring decisions in `mirror.js` read it constantly, and a hover
- * restyle that did not move it must not re-run them.
+ * and anchoring decisions in `geometryReads.js` read it constantly, and a
+ * hover restyle that did not move it must not re-run them.
  *
  * @param {Element} element
  * @returns {string}

@@ -10,10 +10,10 @@ import { matrixScratch, readMatrix, readNumber, scanned } from "./cssNumbers.js"
  * reports the transformed axis-aligned bounds, and a box that will get the
  * transform applied as its own object matrix has to be measured *without*
  * it. So transformed elements are measured off their layout offsets instead,
- * by `getBoxOffset`. Text has no offsets, so it is measured with the
- * transforms briefly switched off, against a detached clone. Both live in
- * `mirror.js` beside the client-rect readers they stand in for, and this
- * module keeps the matrices.
+ * by `getBoxOffset`, which lives in `mirror/geometryReads.js` beside the
+ * client-rect reader it stands in for. Text has no offsets, so it is
+ * measured with the transforms briefly switched off, against a detached
+ * clone, in `mirror.js`. This module keeps the matrices.
  */
 
 /**

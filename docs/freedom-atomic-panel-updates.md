@@ -37,8 +37,8 @@ kinds of thing, and they are not the same size:
 
 - **The reading.** `getComputedStyleCached`, `getBorderBoxSize`, `getObjectPosition`,
   `getTextLayout`, the text selectors that rasterize a run — every one of them a `Derived` in
-  `mirror.js` or `text.js`, and every one of them the thing that costs: a `getComputedStyle`, a
-  client rect, a `Range` measurement, a canvas draw.
+  `mirror.js`, the modules under `elements/mirror/` or `text.js`, and every one of them the thing
+  that costs: a `getComputedStyle`, a client rect, a `Range` measurement, a canvas draw.
 - **The writing.** The effects in `box()` and `text()`: `place()`, a `placeAndScale()`, a handful of
   uniform writes, `setFromElement` copying numbers into a store, `batchChanged()`. A few hundred of
   these fit in a fraction of a millisecond.

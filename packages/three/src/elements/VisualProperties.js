@@ -705,13 +705,9 @@ export default class VisualProperties {
     if (parseAlpha(props.backgroundColor) > 0 || this.background !== null) {
       return true;
     }
-    if (
-      parseAlpha(props.borderColor) > 0 &&
-      (this.borderTopWidth > 0 ||
-        this.borderRightWidth > 0 ||
-        this.borderBottomWidth > 0 ||
-        this.borderLeftWidth > 0)
-    ) {
+    // The colour of a side that has a width (`getDrawnBorderColor`), so no
+    // width needs reading here.
+    if (parseAlpha(props.borderColor) > 0) {
       return true;
     }
     if (this.outlineWidth > 0 && parseAlpha(props.outlineColor) > 0) {

@@ -261,6 +261,16 @@ export function drawQuad(mesh, uniforms, batch, paints) {
       // that draws itself. It follows the draw the box is in now, from the
       // first run at mount on.
       registerDrawOrder(mesh, drawnBy ? BOX_BUCKET_BIAS : 0);
+      // A mesh that will not be drawn has no business being tested against
+      // the frustum for it. Three asks that question, a bounding-sphere
+      // transform per mesh per frame, before it looks at whether the
+      // material is visible, so this is the difference between a box that is
+      // not drawn and a box that costs nothing. It goes with the material
+      // and not with a place in the batch, which a box that paints nothing
+      // does not take. It is safe by the same token: nothing consults the
+      // answer. (What remains is three's per-mesh geometry bookkeeping,
+      // which only leaving the mesh out of the scene would avoid.)
+      mesh.frustumCulled = !drawnBy;
       if (drawnBy) {
         // Shared, invisible, and never disposed — see `batchedBoxMaterial`.
         // The numbers live in `uniforms` instead, which is what the batch

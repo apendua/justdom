@@ -1487,6 +1487,21 @@ describe("a panel drawn in paint order", () => {
         .flatMap(kinds)
         .filter((kind) => kind === "box").length;
     assert.equal(boxes(), 0, "no row paints, so none is drawn");
+    // Nor is any of them tested against the frustum every frame, which
+    // three does before it sees the material is invisible.
+    /** @type {THREE.Mesh[]} */
+    const culled = [];
+    g.panel.traverse((object) => {
+      if (
+        object instanceof THREE.Mesh &&
+        !(object instanceof THREE.InstancedMesh) &&
+        object.geometry === rectGeometry &&
+        object.frustumCulled
+      ) {
+        culled.push(object);
+      }
+    });
+    assert.deepEqual(culled, [], "a box the batch draws, or would draw, is not culled");
 
     g.get("row3").style.background = "rgb(0, 0, 255)";
     await g.settle();

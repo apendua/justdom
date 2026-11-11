@@ -364,15 +364,8 @@ export class BoxBatch {
     // being out of anything else — the ray still finds it, and `visible` still
     // means what it meant. This used to set the flag per mesh, which a shared
     // material cannot have: clearing it on one box's teardown would put every
-    // other box on the page back into the draw.
-    // A mesh that will not be drawn has no business being tested against the
-    // frustum for it. Three asks that question — a bounding-sphere transform
-    // per mesh per frame — before it looks at whether the material is visible,
-    // so this is the difference between a box that is not drawn and a box that
-    // costs nothing. It is safe by the same token: nothing consults the answer.
-    // (What remains is three's per-mesh geometry bookkeeping, which only
-    // dropping the mesh from the render traversal altogether would avoid.)
-    mesh.frustumCulled = false;
+    // other box on the page back into the draw. Nor is it culled
+    // (`drawQuad` in `div.js`), whether or not it is a member.
     this.invalidate();
   }
 
@@ -385,7 +378,6 @@ export class BoxBatch {
       return;
     }
     // No visibility to restore: the material was never this mesh's to hide.
-    mesh.frustumCulled = true;
     if (this.#drawn.delete(mesh)) {
       this.invalidate();
     }

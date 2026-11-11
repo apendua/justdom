@@ -76,26 +76,37 @@ import { disposeInstancedMesh, grownCapacity, stackAt } from "./instancing.js";
  *
  * - Structural (`invalidate`): anything that can change which instances
  *   there are or where they sit in the order. A member added or removed, a
- *   `renderOrder` or a `visible` changed, a matrix changed, a box gaining
- *   or losing a shadow layer or an outline, or a shadow layer turning inset
- *   or outer, a run changing its size class, a layer becoming cut or
- *   uncut, a layer's base moving. A site that has not said which kind its
- *   change is calls this, and stays correct.
- * - A patch (`changed(mesh)`): a box's numbers changed and nothing else.
+ *   `renderOrder` or a `visible` changed, a matrix changed, a run changing
+ *   its size class, a layer becoming cut or uncut, a layer's base moving.
+ *   A site that has not said which kind its change is calls this, and
+ *   stays correct.
+ * - A patch (`changed(mesh)`): a box's numbers changed. A box gaining or
+ *   losing a shadow layer or an outline, or a shadow layer turning inset or
+ *   outer, arrives this way too, since `BoxNumbers` sees only numbers: the
+ *   check against the record below is what makes it a rebuild.
  *
  * What a rebuild leaves behind is a record: for each box it took, where its
  * instance and each of its decorations went, by draw and index. The record
  * holds until the next rebuild, which makes it again.
  *
  * A flush runs a rebuild when anything structural is pending. Otherwise it
- * checks every box marked changed against the record before it writes any:
- * the box has a record, is still a member with the same numbers, is
- * visible, draws at the order the record has, and has the decorations the
- * record has, in the same order and of the same kinds. If any box fails,
- * the flush runs a rebuild instead, so the patch path never guesses. If
- * all pass, it writes those boxes' instances where the record says, and
- * marks the draws they are in for upload. A rebuild, run for any reason,
- * drops what was marked changed, since it writes everything.
+ * checks every box marked changed against the record before it writes any.
+ * A box with no record is passed over: with nothing structural pending, the
+ * last walk did not reach it, so nothing draws it, and it is drawn again
+ * only after an `invalidate` (shown, added, an ancestor shown), whose
+ * rebuild reads its numbers then. A box with a record has to have the
+ * decorations the record has, in the same order and of the same kinds. If
+ * any box fails, the flush runs a rebuild instead, so the patch path never
+ * guesses. If all pass, it writes those boxes' instances where the record
+ * says, and marks the draws they are in for upload. A rebuild, run for any
+ * reason, drops what was marked changed, since it writes everything.
+ *
+ * The check also asks that the box is still a member with the same numbers,
+ * is visible, and draws at the order the record has. Every writer of those
+ * calls `invalidate` today (`BoxNumbers.show` and `order`, `BoxBatch.add`
+ * and `remove`, `LayerOrder` rebasing a mesh), so these checks fail only
+ * for a writer that forgot to: a second guard, which turns that writer's
+ * mistake into a rebuild rather than a box drawn as it was.
  */
 
 /**
@@ -481,11 +492,15 @@ class Draw {
    * Mark for upload each buffer whose drawn instances changed since it was
    * last marked (`markChanged`).
    *
+   * @param {boolean} [matrices] Whether the instance matrices may have
+   *   changed too.
    * @returns {void}
    */
-  markAttributes() {
+  markAttributes(matrices = true) {
     const mesh = /** @type {THREE.InstancedMesh} */ (this.mesh);
-    markChanged(mesh.instanceMatrix, mesh.count);
+    if (matrices) {
+      markChanged(mesh.instanceMatrix, mesh.count);
+    }
     for (const [name] of ATTRIBUTES) {
       markChanged(
         /** @type {THREE.InstancedBufferAttribute} */ (mesh.geometry.getAttribute(name)),
@@ -540,11 +555,14 @@ export class PaintBatch {
   #structural = false;
   /**
    * The boxes whose numbers changed since the last flush, and nothing else
-   * about them.
+   * about them: each once, in a list walked by index, since a hover or a
+   * colour animation patches every frame.
    *
-   * @type {Set<Object3D>}
+   * @type {Object3D[]}
    */
-  #changed = new Set();
+  #changed = [];
+  /** @type {Set<Object3D>} */
+  #changedSet = new Set();
   #disposed = false;
 
   /**
@@ -564,12 +582,12 @@ export class PaintBatch {
   #drawAt = [];
   /** @type {number[]} */
   #indexAt = [];
-  /** The draws a patch wrote to, to mark for upload. @type {Set<Draw>} */
-  #touched = new Set();
+  /** The draws a patch writes to, to mark for upload. @type {Draw[]} */
+  #touched = [];
 
   /**
    * How many instances the last flush wrote, a rebuild's or a patch's. For
-   * tests and the bench.
+   * tests.
    */
   written = 0;
 
@@ -723,7 +741,10 @@ export class PaintBatch {
    * @returns {void}
    */
   changed(mesh) {
-    this.#changed.add(mesh);
+    if (!this.#changedSet.has(mesh)) {
+      this.#changedSet.add(mesh);
+      this.#changed.push(mesh);
+    }
     this.#schedule();
   }
 
@@ -747,7 +768,13 @@ export class PaintBatch {
     if (this.#structural || !this.#patch()) {
       this.rebuild();
     }
-    this.#changed.clear();
+    this.#clearChanged();
+  }
+
+  /** @returns {void} */
+  #clearChanged() {
+    this.#changed.length = 0;
+    this.#changedSet.clear();
   }
 
   /**
@@ -758,43 +785,48 @@ export class PaintBatch {
    * @returns {boolean}
    */
   #patch() {
-    for (const mesh of this.#changed) {
-      if (!this.#matches(mesh)) {
+    const changed = this.#changed;
+    for (let k = 0; k < changed.length; k++) {
+      if (this.#slots.has(changed[k]) && !this.#matches(changed[k])) {
         return false;
       }
     }
     const touched = this.#touched;
-    touched.clear();
     let written = 0;
-    for (const mesh of this.#changed) {
-      const first = /** @type {number} */ (this.#slots.get(mesh));
+    for (let k = 0; k < changed.length; k++) {
+      const first = this.#slots.get(changed[k]);
+      if (first === undefined) {
+        continue;
+      }
       const box = this.#boxes[first];
       for (let i = first; i < this.#boxes.length && this.#boxes[i] === box; i++) {
         const draw = this.#draws[this.#drawAt[i]];
         this.#writeBox(draw, this.#indexAt[i], i);
-        touched.add(draw);
+        if (!touched.includes(draw)) {
+          touched.push(draw);
+        }
         written += 1;
       }
     }
-    for (const draw of touched) {
-      draw.markAttributes();
+    // A patch writes no matrix, so the matrices are not compared.
+    for (let k = 0; k < touched.length; k++) {
+      touched[k].markAttributes(false);
     }
+    touched.length = 0;
     this.written = written;
     return true;
   }
 
   /**
-   * Whether a box is drawn where and as the last rebuild recorded it, so
-   * that writing its numbers there draws what a rebuild would.
+   * Whether a box the last rebuild recorded is drawn where and as it
+   * recorded it, so that writing its numbers there draws what a rebuild
+   * would.
    *
    * @param {Object3D} object
    * @returns {boolean}
    */
   #matches(object) {
-    const first = this.#slots.get(object);
-    if (first === undefined) {
-      return false;
-    }
+    const first = /** @type {number} */ (this.#slots.get(object));
     const mesh = /** @type {THREE.Mesh} */ (object);
     const box = this.#boxes[first];
     if (
@@ -809,11 +841,7 @@ export class PaintBatch {
     let at = first + 1;
     for (let layer = shadowCount(box) - 1; layer >= 0; layer--) {
       const kind = isInsetShadow(box, layer) ? DECORATION_INSET_SHADOW : DECORATION_OUTER_SHADOW;
-      if (
-        this.#boxes[at] !== box ||
-        this.#decorations[at] !== kind ||
-        this.#shadowLayers[at] !== layer
-      ) {
+      if (this.#boxes[at] !== box || this.#decorations[at] !== kind) {
         return false;
       }
       at += 1;
@@ -858,7 +886,7 @@ export class PaintBatch {
       }
     }
     this.#structural = false;
-    this.#changed.clear();
+    this.#clearChanged();
     this.#slots.clear();
     this.written = 0;
     this.#orders.length = 0;

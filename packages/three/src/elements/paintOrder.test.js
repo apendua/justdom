@@ -1552,16 +1552,43 @@ describe("a panel drawn in paint order", () => {
 
   test("a box restyled among many writes its own instances, as a rebuild would", async () => {
     // One card's colour changing among a hundred writes that card's
-    // instance and its decorations, not a hundred, and the buffers come out
-    // as a rebuild from scratch makes them.
+    // instance and its decorations, not a hundred, marks for upload the
+    // buffers of its own draw that changed and no other, and the buffers
+    // come out as a rebuild from scratch makes them. A picture in the first
+    // card breaks the stretch, so the outlines' rings, which draw after
+    // every box, are a second draw, and only their colour stays as it was.
+    // Then another card, before any rebuild: a patch after a patch writes
+    // its own boxes alone.
     const g = await page(
       Array.from({ length: 100 }, (_, i) => ({
         id: `card${i}`,
         style: `${CARD}; box-shadow: rgb(0, 0, 0) 0px 2px 4px; outline-style: solid; outline-width: 1px; outline-color: rgb(0, 0, 0)`,
         at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+        ...(i === 0 ? { children: [{ id: "picture", tag: "img", at: [10, 2, 16, 16] }] } : {}),
       })),
     );
     await g.walk();
+    /**
+     * The version of every buffer of every draw, by draw and name.
+     *
+     * @returns {Record<string, number>[]}
+     */
+    const versions = () =>
+      draws(g.panel).map((draw) => ({
+        instanceMatrix: draw.instanceMatrix.version,
+        ...Object.fromEntries(
+          Object.entries(draw.geometry.attributes).map(([name, attribute]) => [
+            name,
+            /** @type {THREE.BufferAttribute} */ (attribute).version,
+          ]),
+        ),
+      }));
+    const before = versions();
+    assert.deepEqual(
+      draws(g.panel).map((draw) => draw.count),
+      [200, 100],
+      "the boxes and shadows, then the rings",
+    );
     const watched = watchBatch();
     try {
       g.get("card42").style.background = "rgb(0, 128, 0)";
@@ -1569,6 +1596,17 @@ describe("a panel drawn in paint order", () => {
       const batch = /** @type {PaintBatch} */ (watched.batch);
       assert.equal(watched.invalidate, 0);
       assert.equal(batch.written, 3, "the box, its shadow and its outline");
+      const after = versions();
+      assert.deepEqual(
+        Object.keys(after[0]).filter((name) => after[0][name] !== before[0][name]),
+        ["aFillColor"],
+        "the boxes' draw uploads its colours alone",
+      );
+      assert.deepEqual(after[1], before[1], "the rings' draw uploads nothing");
+      g.get("card7").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      assert.equal(watched.invalidate, 0);
+      assert.equal(batch.written, 3, "the second card's alone");
       const patched = buffers(g.panel);
       batch.rebuild();
       assert.equal(batch.written, 300);
@@ -1622,10 +1660,106 @@ describe("a panel drawn in paint order", () => {
     g.teardown();
   });
 
+  test("a box the last walk did not reach is passed over by a patch", async () => {
+    // A hidden card is drawn by nothing, so its colour changing writes
+    // nothing, and the other cards' colours are still patched. Showing it
+    // rebuilds, and draws it in its new colour.
+    const g = await page(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    g.get("card3").style.visibility = "hidden";
+    await g.settle();
+    const watched = watchBatch();
+    try {
+      g.get("card3").style.background = "rgb(0, 128, 0)";
+      g.get("card5").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(watched.invalidate, 0);
+      assert.equal(batch.written, 1, "the shown card alone");
+      g.get("card3").style.visibility = "visible";
+      await g.settle();
+      assert.equal(batch.written, 10, "showing it rebuilds");
+      const flushed = buffers(g.panel);
+      batch.rebuild();
+      assert.deepEqual(flushed, buffers(g.panel));
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
+  test("a box changed past its writer's back is rebuilt, not patched", async () => {
+    // Every writer of a box's visibility, order and membership tells the
+    // batch by `invalidate`. One that forgot, and then said only that the
+    // numbers changed, still gets a rebuild: the patch checks the record.
+    const g = await page(
+      Array.from({ length: 4 }, (_, i) => ({
+        id: `card${i}`,
+        style: CARD,
+        at: /** @type {[number, number, number, number]} */ ([0, i * 20, 200, 20]),
+      })),
+    );
+    await g.walk();
+    const watched = watchBatch();
+    try {
+      g.get("card1").style.background = "rgb(0, 0, 255)";
+      await g.settle();
+      const batch = /** @type {PaintBatch} */ (watched.batch);
+      assert.equal(batch.written, 1, "patched");
+      /** @type {THREE.Mesh[]} */
+      const members = [];
+      g.panel.traverse((object) => {
+        if (object instanceof THREE.Mesh && batch.boxes.numbersOf(object)) {
+          members.push(object);
+        }
+      });
+      const [mesh] = members;
+      const total = () => draws(g.panel).reduce((sum, draw) => sum + draw.count, 0);
+
+      mesh.visible = false;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "hidden: rebuilt");
+      mesh.visible = true;
+      batch.invalidate();
+      batch.flush();
+
+      mesh.renderOrder += 1;
+      batch.changed(mesh);
+      batch.flush();
+      assert.equal(batch.written, total(), "reordered: rebuilt");
+      mesh.renderOrder -= 1;
+      batch.invalidate();
+      batch.flush();
+
+      const numbersOf = batch.boxes.numbersOf;
+      batch.boxes.numbersOf = () => undefined;
+      try {
+        batch.changed(mesh);
+        batch.flush();
+        assert.equal(batch.written, total(), "no longer a member: rebuilt");
+      } finally {
+        batch.boxes.numbersOf = numbersOf;
+      }
+    } finally {
+      watched.restore();
+    }
+    g.teardown();
+  });
+
   test("after any run of restyles, the buffers are what a rebuild makes", async () => {
     // A seeded sequence of restyles of boxes among twenty, patched or
-    // rebuilt as each flush decides, compared after each with a rebuild
-    // from scratch.
+    // rebuilt as each flush decides. Some change only a box's numbers, and
+    // some are structural: a box hidden, shown, lifted by a z-index, or
+    // taken out of the batch by a transparent background. Compared with a
+    // rebuild from scratch every fourth step, so that patches run one after
+    // another against an older record in between.
     const g = await page(
       Array.from({ length: 20 }, (_, i) => ({
         id: `card${i}`,
@@ -1659,11 +1793,14 @@ describe("a panel drawn in paint order", () => {
       ["outline-width", ["0px", "1px", "3px"]],
       ["outline-color", ["rgb(255, 0, 0)", "rgb(0, 0, 255)"]],
       ["opacity", ["1", "0.5"]],
+      ["visibility", ["visible", "hidden"]],
+      ["z-index", ["auto", "1", "2"]],
+      ["background", ["rgba(0, 0, 0, 0)", "rgb(255, 255, 255)"]],
     ];
     const watched = watchBatch();
     let patched = 0;
     try {
-      for (let step = 0; step < 40; step++) {
+      for (let step = 0; step < 60; step++) {
         const touched = 1 + Math.floor(random() * 3);
         for (let k = 0; k < touched; k++) {
           const [name, values] = /** @type {[string, string[]]} */ (
@@ -1676,13 +1813,14 @@ describe("a panel drawn in paint order", () => {
         if (!batch) {
           continue;
         }
-        const flushed = buffers(g.panel);
-        const written = batch.written;
-        batch.rebuild();
-        if (written < batch.written) {
+        if (batch.written < draws(g.panel).reduce((sum, draw) => sum + draw.count, 0)) {
           patched += 1;
         }
-        assert.deepEqual(flushed, buffers(g.panel), `step ${step}`);
+        if (step % 4 === 3) {
+          const flushed = buffers(g.panel);
+          batch.rebuild();
+          assert.deepEqual(flushed, buffers(g.panel), `step ${step}`);
+        }
       }
     } finally {
       watched.restore();

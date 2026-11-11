@@ -38,9 +38,11 @@ render(Scene).subscribe((renderer) => {
 
 `render(fn, options)` owns the `WebGLRenderer`, the scene, the camera, resize handling and, when the
 device supports it, the WebXR session. It emits the renderer once it is built, which is when the
-page puts its canvas somewhere. The tree it is given decorates that scene rather than producing one:
-a root reads the scene from the context it is handed and mounts effects on it, which is what
-`effectsOnly` is for, a component with no value to hand back.
+page puts its canvas somewhere. A page with other things on it passes `container` instead, and
+`render()` puts the canvas in that element and sizes it to the element rather than the window. The
+tree it is given decorates that scene rather than producing one: a root reads the scene from the
+context it is handed and mounts effects on it, which is what `effectsOnly` is for, a component with
+no value to hand back.
 
 Everything the tree needs comes down through `ctx`, a `WeakKey` the context mechanism of
 `justdom-signal` hangs values on:

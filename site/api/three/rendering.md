@@ -15,6 +15,9 @@ rather than producing one. `getCamera(ctx)`, `getScene(ctx)`, `getXRSession(ctx)
 
 | Option                  | Default                                         | What it does                                                                                                                                                                                                                                              |
 | ----------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `container`             | the window                                      | The element to draw in. The canvas is put in it, fills its content box and follows it as the page lays it out again. See [Size](#size).                                                                                                                   |
+| `camera`                | `{ fov: 70, near: 0.1, far: 20 }`               | The flat camera's vertical field of view in degrees and its near and far planes in metres. A session draws with the headset's cameras, which take only the near and far planes from it.                                                                   |
+| `renderer`              | none                                            | Parameters for the `WebGLRenderer`, laid over `render()`'s default `powerPreference: "high-performance"`. All of three's `WebGLRendererParameters` but `canvas`, `context` and `antialias`, which is the option below.                                    |
 | `antialias`             | `true`                                          | The renderer's antialiasing.                                                                                                                                                                                                                              |
 | `foveation`             | `0`                                             | Fixed foveation for the headset's layer, 0 to 1.                                                                                                                                                                                                          |
 | `presentingOnly`        | `false`                                         | Draw, run `useFrame` and pump portals only while a session is presenting. For a page with a flat interface of its own.                                                                                                                                    |
@@ -39,6 +42,18 @@ for a frame callback to be registered and never called. `runFrame(renderer, time
 frame for such a renderer — the renderer's frame stream, then every `useFrame` callback, as
 `render()`'s loop does before the late callbacks and the draw — so a test can see a carry follow the
 hand or a panel mount.
+
+### Size
+
+Without a `container` the canvas is the window's inner size and the page puts `renderer.domElement`
+where it likes, which is what a headset app wants. With one, `render()` puts the canvas in the
+element as a block, sizes it to the element's content box and follows it with a `ResizeObserver`,
+and takes it out again when the renderer goes. The element needs a size from the page's layout,
+since the canvas takes the size it is given.
+
+On every resize the size, the device pixel ratio, the camera's aspect and `size(ctx)` are read and
+set together. Nothing changes while a session is presenting, since the headset's layer has its own
+size, and the size is read again when the session ends, so a resize during a session is not lost.
 
 ### Entering and leaving a session
 

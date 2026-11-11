@@ -32,6 +32,7 @@ import { fitRayToHit } from "./pointers.js";
 import { reportCrash } from "./crash.js";
 import { mouse, renderPointer } from "./mouse.js";
 import { addToParent } from "./operators.js";
+import { containerSize, followSize, putCanvasIn, windowSize } from "./viewport.js";
 
 /**
  * @import { Source, Subscribable } from "justdom-signal";
@@ -492,7 +493,30 @@ export function frames(ctx) {
 }
 
 /**
+ * The `WebGLRenderer`'s own parameters, less the two that would hand it a
+ * canvas or a context, since `render()` makes the canvas and the page puts
+ * it where it likes, and less `antialias`, which is `render()`'s own option
+ * of that name: one setting is said in one place.
+ *
+ * @typedef {Omit<THREE.WebGLRendererParameters, "canvas" | "context" | "antialias">} RendererParameters
+ */
+
+/**
  * @typedef {object} RenderOptions
+ * @property {HTMLElement} [container] The element to draw in: the canvas is
+ *   put in it, fills its content box and follows it as it is laid out again,
+ *   and is taken out of it when the renderer goes. The element needs a size
+ *   of its own, from the page's layout, since the canvas takes the size it
+ *   is given. Without one the canvas is the window's size and the page puts
+ *   it where it likes, which is what a headset app wants.
+ * @property {{ fov?: number; near?: number; far?: number }} [camera] The
+ *   flat camera's field of view in degrees, from bottom to top, and its near
+ *   and far planes in metres: 70, 0.1 and 20 unless they are given. A
+ *   session draws with the headset's own cameras instead, which take only
+ *   the near and far planes from this one.
+ * @property {RendererParameters} [renderer] Handed to the `WebGLRenderer`,
+ *   over `render()`'s own default of `powerPreference: "high-performance"`.
+ *   Antialiasing is the `antialias` option's.
  * @property {(grip: THREE.XRGripSpace) => THREE.Object3D} [createControllerModel]
  * @property {(hand: THREE.XRHandSpace) => THREE.Object3D} [createHandModel]
  *   Something to draw for a tracked hand, given its hand space: three's
@@ -502,7 +526,8 @@ export function frames(ctx) {
  *   a tracked hand still points and pinches; it is just not drawn.
  * @property {(renderer: THREE.WebGLRenderer) => void} [onBeforeRender]
  * @property {(renderer: THREE.WebGLRenderer) => void} [onAfterRender]
- * @property {boolean} [antialias] On unless it is turned off; see `render`.
+ * @property {boolean} [antialias] On unless it is turned off; see
+ *   `rendererParameters`.
  * @property {number} [foveation] Fixed foveation for the headset's layer, from
  *   0 (every pixel at full resolution) to 1 (the most the browser will blur
  *   towards the edges). Off unless it is turned up; see `render`.
@@ -555,6 +580,40 @@ export function frames(ctx) {
  */
 
 /**
+ * What `render` builds its `WebGLRenderer` with: the caller's `renderer`
+ * parameters over a default of its own, and `antialias` from the option of
+ * that name.
+ *
+ * Antialiasing is on by default, which is the opposite of three's own
+ * default. Every scene here is flat-shaded blocks and thin lines — the two
+ * things aliasing is least kind to — and in a headset the edges sit still in
+ * the world while your head moves, so they crawl. three hands these
+ * attributes to the XRWebGLLayer, so this is 4x MSAA on the headset rather
+ * than a flat-canvas nicety.
+ *
+ * @param {RenderOptions} options
+ * @returns {THREE.WebGLRendererParameters}
+ */
+export function rendererParameters(options) {
+  return {
+    powerPreference: "high-performance",
+    ...options.renderer,
+    antialias: options.antialias ?? true,
+  };
+}
+
+/**
+ * The flat camera `render` draws with: 70 degrees, 0.1 and 20 metres unless
+ * `options` says otherwise. Its aspect is the size source's to set.
+ *
+ * @param {RenderOptions["camera"]} [options]
+ * @returns {THREE.PerspectiveCamera}
+ */
+export function renderCamera(options = {}) {
+  return new THREE.PerspectiveCamera(options.fov ?? 70, 1, options.near ?? 0.1, options.far ?? 20);
+}
+
+/**
  * What `render` mounts on its scene: the mouse its `pointer` option asks for
  * (`renderPointer`), then the app's tree. The mouse goes first so that it is
  * the oldest on the canvas: the one mounted last drives, so a `mouse(ctx)`
@@ -588,44 +647,28 @@ export function mountScene(scene, ctx, fn, option) {
  */
 export function render(fn, options = {}) {
   return new Stream((subscriber) => {
-    const renderer = new THREE.WebGLRenderer({
-      // On by default, which is the opposite of three's own default. Every
-      // scene here is flat-shaded blocks and thin lines — the two things
-      // aliasing is least kind to — and in a headset the edges sit still in
-      // the world while your head moves, so they crawl. three hands these
-      // attributes to the XRWebGLLayer, so this is 4x MSAA on the headset
-      // rather than a flat-canvas nicety.
-      antialias: options.antialias ?? true,
-      powerPreference: "high-performance",
-    });
+    const renderer = new THREE.WebGLRenderer(rendererParameters(options));
     // `BehaviorSubject` was two things at once here: somewhere to announce a
     // resize from, and somewhere to read the current size back. A `Signal` is
     // the announcement, `observable(() => …)` below is the view of it the
-    // context carries, and the window is where the numbers come from — read
-    // once per resize rather than out of the signal, so that nothing here is a
-    // tracked read in whatever computation happened to subscribe.
-    const width = Signal.of(window.innerWidth);
-    const height = Signal.of(window.innerHeight);
+    // context carries, and the size source is where the numbers come from —
+    // read once per resize rather than out of the signal, so that nothing
+    // here is a tracked read in whatever computation happened to subscribe.
+    const width = Signal.of(0);
+    const height = Signal.of(0);
 
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    const camera = renderCamera(options.camera);
 
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 20);
-
-    function onResize() {
-      const nextWidth = window.innerWidth;
-      const nextHeight = window.innerHeight;
-      width.set(nextWidth);
-      height.set(nextHeight);
-      camera.aspect = nextWidth / nextHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(nextWidth, nextHeight);
+    const { container } = options;
+    subscriber.add(
+      followSize(renderer, camera, container ? containerSize(container) : windowSize(), (next) => {
+        width.set(next.width);
+        height.set(next.height);
+      }),
+    );
+    if (container) {
+      subscriber.add(putCanvasIn(container, renderer.domElement));
     }
-
-    window.addEventListener("resize", onResize);
-    subscriber.add(() => {
-      window.removeEventListener("resize", onResize);
-    });
 
     renderer.xr.enabled = true;
     // Off by default, which is again the opposite of three's, whose default

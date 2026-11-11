@@ -10,7 +10,7 @@ import {
   writeHalfPlanes,
 } from "./halfPlanes.js";
 import { LayerTree } from "./layerTree.js";
-import { getBorderBoxSize } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { isGenerated } from "./pseudoElements.js";
 
 /**

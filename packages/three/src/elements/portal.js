@@ -15,10 +15,10 @@ import { sceneService } from "../sceneServices.js";
 import {
   BUSY_ATTRIBUTE,
   createMirror,
-  getBorderBoxSize,
   isBookkeepingMutation,
   LOADING_ATTRIBUTE,
 } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { isPortalRoot } from "./mirror/styleReads.js";
 import { ELEMENT_FLAGS, PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { createAnimationClock } from "./animationClock.js";

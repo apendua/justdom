@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { Derived, effects, just, onCleanup, selector } from "justdom-signal";
 import { children } from "../operators.js";
 import { getRunRenderStyle, isTintableText } from "./textHelpers.js";
-import { getInteriorClipBox, getScrollOffset, getTextLayout } from "./mirror.js";
+import { getTextLayout } from "./mirror.js";
+import { getInteriorClipBox, getScrollOffset } from "./mirror/geometryReads.js";
 import {
   getComputedStyleCached,
   getOpacity,

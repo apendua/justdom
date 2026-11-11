@@ -13,7 +13,7 @@ import {
 } from "justdom-signal";
 import { $, Nothing } from "../operators.js";
 import { box } from "./div.js";
-import { getBorderBoxSize } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { getComputedStyleCached } from "./mirror/styleReads.js";
 import {
   createMarkMaterial,

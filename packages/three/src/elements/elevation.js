@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Signal } from "justdom-signal";
-import { getBorderBoxSize, getBoxOffset, movesAgainstScroll } from "./mirror.js";
+import { getBorderBoxSize, getBoxOffset, movesAgainstScroll } from "./mirror/geometryReads.js";
 import {
   getChildNodes,
   getComputedStyleCached,

@@ -91,13 +91,12 @@ import * as THREE from "three";
  */
 import { getDrawLevel, getLayer, isOverlay, OVERLAY_LIFT } from "../elements/elevation.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "../elements/cssTransform.js";
+import { getFirstLine, getTextLayout } from "../elements/mirror.js";
 import {
   getBorderBoxSize,
   getBoxOffset,
-  getFirstLine,
   getScrollOffset,
-  getTextLayout,
-} from "../elements/mirror.js";
+} from "../elements/mirror/geometryReads.js";
 import {
   getChildNodes,
   getComputedStyleCached,

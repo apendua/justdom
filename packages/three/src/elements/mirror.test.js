@@ -5,15 +5,17 @@ import { batch, Computation, Derived, Effect, selector, toObservable } from "jus
 import {
   createMirror,
   getCheckedCached,
+  getTextLayout,
+  trackCharacterEdges,
+  tracksCharacterEdges,
+} from "./mirror.js";
+import {
   getBorderBoxSize,
   getContentPosition,
   getInteriorClipBox,
   getLocalClipBox,
   getObjectPosition,
-  getTextLayout,
-  trackCharacterEdges,
-  tracksCharacterEdges,
-} from "./mirror.js";
+} from "./mirror/geometryReads.js";
 import {
   getChildNodes,
   getComputedStyleCached,

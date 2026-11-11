@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { Derived, effects, flatMap, observable, onCleanup } from "justdom-signal";
 import { $, children, Nothing } from "../operators.js";
 import VisualProperties from "./VisualProperties.js";
-import { getInteriorClipBox, getScrollOffset } from "./mirror.js";
+import { getInteriorClipBox, getScrollOffset } from "./mirror/geometryReads.js";
 import { hidesVisibility } from "./mirror/styleReads.js";
 import { getGenerated, KIND_BITS, paintsBox } from "./pseudoElements.js";
 import { rectGeometry } from "./sdfRect.js";

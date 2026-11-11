@@ -8,7 +8,12 @@ import { batchedBoxMaterial, createRectMaterial, rectGeometry } from "./sdfRect.
 import { RampSlot } from "./gradient.js";
 import { backgroundImage, contentImage, isImageElement } from "./image.js";
 import { createBlocker, coverBox } from "./blocker.js";
-import { getBorderBoxSize, getBoxOffset, getLocalClipBox, getScrollOffset } from "./mirror.js";
+import {
+  getBorderBoxSize,
+  getBoxOffset,
+  getLocalClipBox,
+  getScrollOffset,
+} from "./mirror/geometryReads.js";
 import { getParentElement, isPortalRoot, isVisibilityHidden } from "./mirror/styleReads.js";
 import { getPaintChildren, isGenerated } from "./pseudoElements.js";
 import { clipBoxShows, clipRaycast, UNCLIPPED } from "./clip.js";

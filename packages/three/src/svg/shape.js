@@ -26,7 +26,7 @@ import { getContentRenderOrder } from "../elements/elevation.js";
 import { BOX_BUCKET_BIAS } from "../elements/boxBatch.js";
 import { MARK_MATERIAL_SETTINGS } from "../elements/textHelpers.js";
 import { RampSlot } from "../elements/gradient.js";
-import { getBorderBoxSize, getInteriorClipBox } from "../elements/mirror.js";
+import { getBorderBoxSize, getInteriorClipBox } from "../elements/mirror/geometryReads.js";
 import {
   getAttributeCached,
   getChildNodes,

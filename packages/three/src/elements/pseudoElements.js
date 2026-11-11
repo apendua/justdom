@@ -1,6 +1,7 @@
 import { Derived } from "justdom-signal";
 import { getGeneratedSelectors } from "./documentStyles.js";
-import { getBorderBoxSize, measureGeneratedBox } from "./mirror.js";
+import { measureGeneratedBox } from "./mirror.js";
+import { getBorderBoxSize } from "./mirror/geometryReads.js";
 import { getChildNodes, getComputedStyleCached } from "./mirror/styleReads.js";
 import { nodeDerived } from "./mirror/records.js";
 import { nodeCache } from "./mirror/nodeCaches.js";

@@ -1,4 +1,4 @@
-import { $, attr, children, list, on, renderText, set, text } from "justdom-core";
+import { $, attr, children, list, on, renderText, set, text, when } from "justdom-core";
 import { effects, flatMap, observable, onCleanup, Signal } from "justdom-signal";
 import { getPortalRoot } from "justdom-three/page";
 
@@ -53,9 +53,6 @@ import { getPortalRoot } from "justdom-three/page";
  * @property {readonly [open: string, closed: string]} [caretMarks] What the
  *   caret says when the menu is open and when it is shut.
  */
-
-/** The list is mounted or not; the item it holds is only there to be counted. */
-const MENU = "menu";
 
 const DEFAULT_CARET_MARKS = /** @type {const} */ (["▲", "▼"]);
 
@@ -201,7 +198,7 @@ export function dropdown(props) {
             : []),
         ),
       ]),
-      list(() => (open.get() ? [MENU] : []), menu),
+      when(() => open.get(), menu),
     ),
   ]);
 }

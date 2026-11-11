@@ -3,7 +3,7 @@ import { component, effects, set, emit, observable, on, Op, store } from "justdo
 import { dom } from "justdom-three";
 import type { AudioOutputSelection } from "@apendua/sound";
 import { diagnosticsButton, type DiagnosticsControls } from "justdom-three-ui";
-import { children, list, $, text } from "justdom-core";
+import { branch, children, when, $, text } from "justdom-core";
 import {
   actionButton,
   actionButtonClass,
@@ -126,8 +126,8 @@ const GameUI = component(
       $("div", [
         children(
           // The banner only exists once there is something to celebrate.
-          list(
-            () => (props.won ? ["won"] : []),
+          when(
+            () => props.won,
             () =>
               $("div", [
                 set("className", victoryBanner),
@@ -198,7 +198,7 @@ const GameUI = component(
                 set("className", panelTitle),
                 children(text`${() => (building() ? "Build" : "Siege")}`),
               ]),
-              component(() => (building() ? buildActions() : siegeActions()))(),
+              branch(building, (build) => (build ? buildActions() : siegeActions())),
             ),
           ]),
           $("div", [
@@ -208,7 +208,7 @@ const GameUI = component(
                 set("className", panelTitle),
                 children(text`${() => (building() ? "Controls" : "The Slingshot")}`),
               ]),
-              component(() => (building() ? buildHelp() : siegeHelp()))(),
+              branch(building, (build) => (build ? buildHelp() : siegeHelp())),
             ),
           ]),
           musicCard(

@@ -195,17 +195,33 @@ the module that makes the scene, never from the page's entry.
   follows the element when the window is resized during a session, rather than keeping the one it
   had as the session started.
 
+- `sessionCanvas(renderer, { zIndex }?)` gives the canvas of the renderer `render()` emits to the
+  session: it puts the canvas in the page, fixed over everything at `zIndex` (1 unless given), and
+  shows it only between `sessionstart` and `sessionend`. A headset shows the page nothing while
+  presenting, so this is for the emulator, where the session is drawn on the canvas. It returns a
+  function that takes the canvas out again.
+- `whilePresenting(ctx, render)` mounts what `render()` makes for as long as a session is
+  presenting, and takes it down when the session ends. `render` runs again for the next session. It
+  is for a panel: one kept up between sessions would go on mirroring the page into a scene nobody is
+  looking at.
+
 ```ts
 import { effects } from "justdom-signal";
-import { dom } from "justdom-three";
-import { clientRect } from "justdom-xr/scene";
+import { dom, render } from "justdom-three";
+import { clientRect, sessionCanvas, whilePresenting } from "justdom-xr/scene";
 
-dom(ctx, board, [
-  effects((o) => {
-    const { width, height } = clientRect(board);
-    o.scale.setScalar(boardScale(width, height));
-  }),
-]);
+whilePresenting(ctx, () =>
+  dom(ctx, board, [
+    effects((o) => {
+      const { width, height } = clientRect(board);
+      o.scale.setScalar(boardScale(width, height));
+    }),
+  ]),
+);
+
+render(scene, { presentingOnly: true }).subscribe((renderer) => {
+  sessionCanvas(renderer);
+});
 ```
 
 ## `justdom-xr/theming`

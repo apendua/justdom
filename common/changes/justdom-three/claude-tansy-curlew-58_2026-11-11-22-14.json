@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Add when(condition, render) and branch(select, render) for scenes, the conditionals justdom-core has, for Three objects",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

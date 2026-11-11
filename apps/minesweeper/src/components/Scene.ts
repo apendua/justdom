@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { $, children, cursors, dom, getScene, getXRSession, Nothing } from "justdom-three";
+import { $, children, cursors, dom, getScene, getXRSession } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, useEffects } from "justdom-signal";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
-import { Backdrop, clientRect } from "justdom-xr/scene";
+import { Backdrop, clientRect, whilePresenting } from "justdom-xr/scene";
 import { BOARD_AT, boardScale, MENU_AT, MENU_PITCH, MENU_SCALE, MENU_YAW } from "../placement";
 
 /**
@@ -65,11 +65,8 @@ export const Scene = (board: HTMLElement, menu: HTMLElement) =>
           }),
         ]),
         $(new THREE.AmbientLight(0xffffff, 2)),
-        component(() => {
-          if (!getXRSession(ctx)) {
-            return Nothing();
-          }
-          return dom(
+        whilePresenting(ctx, () =>
+          dom(
             ctx,
             board,
             [
@@ -82,13 +79,10 @@ export const Scene = (board: HTMLElement, menu: HTMLElement) =>
               }),
             ],
             { opaqueToRays: false },
-          );
-        })(),
-        component(() => {
-          if (!getXRSession(ctx)) {
-            return Nothing();
-          }
-          return dom(
+          ),
+        ),
+        whilePresenting(ctx, () =>
+          dom(
             ctx,
             menu,
             [
@@ -99,8 +93,8 @@ export const Scene = (board: HTMLElement, menu: HTMLElement) =>
               }),
             ],
             { draggable: true },
-          );
-        })(),
+          ),
+        ),
         cursors(ctx, { color: "#ff0000" }),
       ),
     ]);

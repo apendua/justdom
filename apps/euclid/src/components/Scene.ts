@@ -1,10 +1,10 @@
 import * as THREE from "three";
-import { $, children, cursors, dom, getScene, getXRSession, Nothing } from "justdom-three";
+import { $, children, cursors, dom, getScene, getXRSession } from "justdom-three";
 import type { PortalOptions } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, useEffects } from "justdom-signal";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
-import { Backdrop, clientRect } from "justdom-xr/scene";
+import { Backdrop, clientRect, whilePresenting } from "justdom-xr/scene";
 import {
   BOARD_AT,
   boardScale,
@@ -41,18 +41,15 @@ export interface Mounts {
  * player's move added on top of where it is placed here. `options` is laid
  * over that, for a panel that needs more.
  */
-const Panel = component(
-  (
-    ctx: WeakKey,
-    element: HTMLElement,
-    at: (rect: DOMRect) => Vec3,
-    scale: (rect: DOMRect) => number,
-    options: PortalOptions = {},
-  ) => {
-    if (!getXRSession(ctx)) {
-      return Nothing();
-    }
-    return dom(
+const Panel = (
+  ctx: WeakKey,
+  element: HTMLElement,
+  at: (rect: DOMRect) => Vec3,
+  scale: (rect: DOMRect) => number,
+  options: PortalOptions = {},
+) =>
+  whilePresenting(ctx, () =>
+    dom(
       ctx,
       element,
       [
@@ -66,9 +63,8 @@ const Panel = component(
         }),
       ],
       { draggable: true, ...options },
-    );
-  },
-);
+    ),
+  );
 
 /**
  * The scene: the page's own toolbar, program and drawing, each mirrored

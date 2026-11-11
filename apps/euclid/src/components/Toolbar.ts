@@ -9,9 +9,9 @@ import {
   set,
   stylesheet,
   text,
+  when,
 } from "justdom-core";
-import type { Mountable } from "justdom-core";
-import { component, type Subscribable } from "justdom-signal";
+import { component } from "justdom-signal";
 import { dropdown, type DropdownClasses } from "justdom-three-ui";
 import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
 import { EXAMPLES } from "../examples";
@@ -280,10 +280,6 @@ const TOOLS: ToolButton[] = [
 /** How much one press of a zoom button zooms. */
 const ZOOM_STEP = 1.25;
 
-/** What `render` makes, mounted while `when` holds and taken down after. */
-const whenever = (when: () => boolean, render: () => Subscribable<Mountable>) =>
-  list(() => (when() ? [true] : []), render);
-
 const inSession = () => xrSession.get() !== null;
 
 /**
@@ -365,7 +361,7 @@ const Toolbar = component((store: AppStore) => {
             on("click", () => store.fitView()),
             children(text`Fit view`),
           ]),
-          whenever(
+          when(
             () => !inSession(),
             () =>
               $("span", [
@@ -394,7 +390,7 @@ const Toolbar = component((store: AppStore) => {
         selected: () => store.exampleName.get(),
         onSelect: (name) => store.loadExample(name),
       }),
-      whenever(inSession, () =>
+      when(inSession, () =>
         $("button", [
           set("className", buttonStyle),
           set({
@@ -408,7 +404,7 @@ const Toolbar = component((store: AppStore) => {
           children(text`Passthrough`),
         ]),
       ),
-      whenever(inSession, () =>
+      when(inSession, () =>
         $("button", [
           set("className", closeStyle),
           set({ type: "button", title: "Leave the headset" }),

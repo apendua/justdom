@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { children, cursors, $, dom, getScene, getXRSession, Nothing } from "justdom-three";
+import { children, cursors, $, dom, getScene, getXRSession } from "justdom-three";
 import { createDiagnostics, useDiagnostics, type DiagnosticsControls } from "justdom-three-ui";
-import { component, effects, effectsOnly, useEffects } from "justdom-signal";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
-import { Backdrop } from "justdom-xr/scene";
+import { Backdrop, whilePresenting } from "justdom-xr/scene";
 
 declare global {
   interface Window {
@@ -88,19 +88,16 @@ export const Scene = (panel: HTMLElement) =>
             o.position.set(0, 0, -0.8);
           }),
           children(
-            component(() => {
-              if (!getXRSession(ctx)) {
-                return Nothing();
-              }
-              return dom(ctx, panel, [
+            whilePresenting(ctx, () =>
+              dom(ctx, panel, [
                 effects((obj) => {
                   // A little above the group's origin, which puts the
                   // middle of the panel a touch under eye level once it is
                   // scaled down and pushed away.
                   obj.position.set(0, 1, 0);
                 }),
-              ]);
-            })(),
+              ]),
+            ),
           ),
         ]),
         cursors(ctx, { color: "#ff0000" }),

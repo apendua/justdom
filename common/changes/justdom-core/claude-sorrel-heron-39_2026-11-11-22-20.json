@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Add when(condition, render), branch(select, render) and Nothing(), for mounting one thing or another",
+      "type": "minor",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

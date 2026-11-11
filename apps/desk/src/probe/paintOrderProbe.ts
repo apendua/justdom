@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { render, createXRButton, children, cursors, $, dom, getScene } from "justdom-three";
-import { inputModels } from "justdom-xr/scene";
+import { inputModels, sessionCanvas } from "justdom-xr/scene";
 import { installEmulator } from "justdom-xr/offer";
 import { canPresent } from "justdom-xr/session";
 import { effects, effectsOnly, Stream, useEffects } from "justdom-signal";
@@ -305,18 +305,12 @@ async function start(): Promise<void> {
   }).subscribe({
     next: (drawing) => {
       renderer = drawing;
-      const canvas = drawing.domElement;
-      canvas.style.cssText = "position: fixed; inset: 0; display: none; z-index: 60";
-      document.body.append(canvas);
+      sessionCanvas(drawing, { zIndex: 60 });
       drawing.xr.addEventListener("sessionstart", () => {
-        canvas.style.display = "block";
         const session = drawing.xr.getSession();
         if (session) {
           timeFrames(session, drawing);
         }
-      });
-      drawing.xr.addEventListener("sessionend", () => {
-        canvas.style.display = "none";
       });
       createXRButton(drawing, { ar: {}, vr: {} }).then((enter) => document.body.append(enter));
     },

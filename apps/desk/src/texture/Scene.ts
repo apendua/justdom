@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { enterSession } from "justdom-xr/session";
+import { whilePresenting } from "justdom-xr/scene";
 import {
   $,
   children,
@@ -9,7 +10,6 @@ import {
   getXRSession,
   htmlTextureMaterial,
   interactions,
-  Nothing,
   RendererContext,
   requestPaint,
   type XREventMap,
@@ -103,145 +103,147 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
       }),
       children(
         ...lights(),
-        component(() => {
-          if (!getXRSession(ctx)) {
-            return Nothing();
-          }
-          const { look, root, elements } = desk.get();
-          const canvas = RendererContext.get(ctx).domElement;
-          const home = root.parentElement;
-          canvas.setAttribute("layoutsubtree", "");
-          canvas.append(root);
-          requestPaint(canvas);
-          // The looks write `:hover` and `:active` alone, which a panel's
-          // portal rewrites to answer the flags the forwarder sets. Nothing
-          // here mirrors the desk, so the session asks for the rewrite.
-          const stopFollowing = followUserActions();
+        // A `component`, so that the room is built again if the desk changes
+        // its look during a session.
+        whilePresenting(
+          ctx,
+          component(() => {
+            const { look, root, elements } = desk.get();
+            const canvas = RendererContext.get(ctx).domElement;
+            const home = root.parentElement;
+            canvas.setAttribute("layoutsubtree", "");
+            canvas.append(root);
+            requestPaint(canvas);
+            // The looks write `:hover` and `:active` alone, which a panel's
+            // portal rewrites to answer the flags the forwarder sets. Nothing
+            // here mirrors the desk, so the session asks for the rewrite.
+            const stopFollowing = followUserActions();
 
-          // A pointer for each hand, the first to point the primary one.
-          const forwarders = new Map<object, PointerForwarder>();
-          const forwarderOf = (controller: object) => {
-            let forwarder = forwarders.get(controller);
-            if (!forwarder) {
-              forwarder = createPointerForwarder({
-                pointerId: forwarders.size + 1,
-                isPrimary: forwarders.size === 0,
-              });
-              forwarders.set(controller, forwarder);
-            }
-            return forwarder;
-          };
-
-          // The texture is made on the first paint, and not before. Made
-          // earlier, three moves the desk into the canvas itself on the
-          // first frame and asks for a paint, and on every frame after it
-          // uploads again, which throws until the paint has come ("No
-          // cached paint record"): a session's frames do not wait for the
-          // page's. Made from an element the canvas already holds, the
-          // `HTMLTexture` sets the canvas's `onpaint` to mark it for upload
-          // on every paint after, so here a paint only fits the panels.
-          let texture: THREE.HTMLTexture | null = null;
-          const meshes: PanelMesh[] = [];
-          const fits: (() => void)[] = [];
-          const onPaint = () => {
-            if (!texture) {
-              texture = new THREE.HTMLTexture(root);
-              texture.colorSpace = THREE.SRGBColorSpace;
-              // Rows from the element's top, as `fitToZone` counts them.
-              // three flips a texture's rows on upload unless told not to,
-              // and `texElementImage2D` honours it.
-              texture.flipY = false;
-              for (const mesh of meshes) {
-                mesh.material.map = texture;
-                mesh.material.needsUpdate = true;
-                mesh.visible = true;
-              }
-            }
-            fits.forEach((fit) => fit());
-          };
-          canvas.addEventListener("paint", onPaint);
-
-          onCleanup(() => {
-            canvas.removeEventListener("paint", onPaint);
-            forwarders.forEach((forwarder) => forwarder.cancel());
-            texture?.dispose();
-            if (home && root.parentElement !== home) {
-              home.append(root);
-            }
-            canvas.removeAttribute("layoutsubtree");
-            stopFollowing();
-          });
-
-          const panel = (zone: HTMLElement) => {
-            const mesh = panelMesh();
-            const pointAt = (intersection: THREE.Intersection | undefined) => {
-              const uv = intersection?.uv;
-              if (!uv) {
-                return null;
-              }
-              const rect = root.getBoundingClientRect();
-              return {
-                panel: zone,
-                clientX: rect.left + uv.x * rect.width,
-                clientY: rect.top + uv.y * rect.height,
-              };
-            };
-            return $(mesh, [
-              makeInteractive(),
-              effects((m) => {
-                const fit = () => fitToZone(m, zone, root);
-                fit();
-                fits.push(fit);
-                meshes.push(m);
-                onCleanup(() => {
-                  fits.splice(fits.indexOf(fit), 1);
-                  meshes.splice(meshes.indexOf(m), 1);
-                  m.geometry.dispose();
-                  m.material.dispose();
+            // A pointer for each hand, the first to point the primary one.
+            const forwarders = new Map<object, PointerForwarder>();
+            const forwarderOf = (controller: object) => {
+              let forwarder = forwarders.get(controller);
+              if (!forwarder) {
+                forwarder = createPointerForwarder({
+                  pointerId: forwarders.size + 1,
+                  isPrimary: forwarders.size === 0,
                 });
-              }),
-              on("pointerenter", (e) => forwarderOf(e.controller).move(pointAt(e.intersection))),
-              on("pointermove", (e) => forwarderOf(e.controller).move(pointAt(e.intersection))),
-              on("pointerleave", (e) => {
-                if (e.lost) {
-                  forwarderOf(e.controller).cancel();
-                } else {
-                  forwarderOf(e.controller).move(null);
-                }
-              }),
-              on("selectstart", (e) => forwarderOf(e.controller).press()),
-              on("selectend", (e) => {
-                if (e.lost) {
-                  forwarderOf(e.controller).cancel();
-                } else {
-                  forwarderOf(e.controller).release();
-                }
-              }),
-            ]);
-          };
+                forwarders.set(controller, forwarder);
+              }
+              return forwarder;
+            };
 
-          return $(new THREE.Group(), [
-            effects(() => {
-              getScene(ctx).background = new THREE.Color(look.room.backdrop);
-            }),
-            children(
-              $(room(look.room), [disposedWithIt]),
-              ...(look.mug ? [$(mug(), [disposedWithIt])] : []),
-              ...look.placements.flatMap((placement) => {
-                const zone = elements.get(placement.id);
-                if (!zone) {
-                  return [];
+            // The texture is made on the first paint, and not before. Made
+            // earlier, three moves the desk into the canvas itself on the
+            // first frame and asks for a paint, and on every frame after it
+            // uploads again, which throws until the paint has come ("No
+            // cached paint record"): a session's frames do not wait for the
+            // page's. Made from an element the canvas already holds, the
+            // `HTMLTexture` sets the canvas's `onpaint` to mark it for upload
+            // on every paint after, so here a paint only fits the panels.
+            let texture: THREE.HTMLTexture | null = null;
+            const meshes: PanelMesh[] = [];
+            const fits: (() => void)[] = [];
+            const onPaint = () => {
+              if (!texture) {
+                texture = new THREE.HTMLTexture(root);
+                texture.colorSpace = THREE.SRGBColorSpace;
+                // Rows from the element's top, as `fitToZone` counts them.
+                // three flips a texture's rows on upload unless told not to,
+                // and `texElementImage2D` honours it.
+                texture.flipY = false;
+                for (const mesh of meshes) {
+                  mesh.material.map = texture;
+                  mesh.material.needsUpdate = true;
+                  mesh.visible = true;
                 }
-                return [
-                  $(new THREE.Group(), [
-                    effects((group) => pose(group, placement)),
-                    children(panel(zone)),
-                  ]),
-                ];
+              }
+              fits.forEach((fit) => fit());
+            };
+            canvas.addEventListener("paint", onPaint);
+
+            onCleanup(() => {
+              canvas.removeEventListener("paint", onPaint);
+              forwarders.forEach((forwarder) => forwarder.cancel());
+              texture?.dispose();
+              if (home && root.parentElement !== home) {
+                home.append(root);
+              }
+              canvas.removeAttribute("layoutsubtree");
+              stopFollowing();
+            });
+
+            const panel = (zone: HTMLElement) => {
+              const mesh = panelMesh();
+              const pointAt = (intersection: THREE.Intersection | undefined) => {
+                const uv = intersection?.uv;
+                if (!uv) {
+                  return null;
+                }
+                const rect = root.getBoundingClientRect();
+                return {
+                  panel: zone,
+                  clientX: rect.left + uv.x * rect.width,
+                  clientY: rect.top + uv.y * rect.height,
+                };
+              };
+              return $(mesh, [
+                makeInteractive(),
+                effects((m) => {
+                  const fit = () => fitToZone(m, zone, root);
+                  fit();
+                  fits.push(fit);
+                  meshes.push(m);
+                  onCleanup(() => {
+                    fits.splice(fits.indexOf(fit), 1);
+                    meshes.splice(meshes.indexOf(m), 1);
+                    m.geometry.dispose();
+                    m.material.dispose();
+                  });
+                }),
+                on("pointerenter", (e) => forwarderOf(e.controller).move(pointAt(e.intersection))),
+                on("pointermove", (e) => forwarderOf(e.controller).move(pointAt(e.intersection))),
+                on("pointerleave", (e) => {
+                  if (e.lost) {
+                    forwarderOf(e.controller).cancel();
+                  } else {
+                    forwarderOf(e.controller).move(null);
+                  }
+                }),
+                on("selectstart", (e) => forwarderOf(e.controller).press()),
+                on("selectend", (e) => {
+                  if (e.lost) {
+                    forwarderOf(e.controller).cancel();
+                  } else {
+                    forwarderOf(e.controller).release();
+                  }
+                }),
+              ]);
+            };
+
+            return $(new THREE.Group(), [
+              effects(() => {
+                getScene(ctx).background = new THREE.Color(look.room.backdrop);
               }),
-            ),
-          ]);
-        })(),
+              children(
+                $(room(look.room), [disposedWithIt]),
+                ...(look.mug ? [$(mug(), [disposedWithIt])] : []),
+                ...look.placements.flatMap((placement) => {
+                  const zone = elements.get(placement.id);
+                  if (!zone) {
+                    return [];
+                  }
+                  return [
+                    $(new THREE.Group(), [
+                      effects((group) => pose(group, placement)),
+                      children(panel(zone)),
+                    ]),
+                  ];
+                }),
+              ),
+            ]);
+          }),
+        ),
         cursors(ctx, { color: "#ff5a3c" }),
       ),
     ]);

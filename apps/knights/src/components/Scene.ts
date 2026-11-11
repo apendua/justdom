@@ -1,19 +1,10 @@
 import * as THREE from "three";
 import { createMusicControls, Music } from "@apendua/sound/xr";
-import {
-  $,
-  children,
-  cursors,
-  dom,
-  getCamera,
-  getScene,
-  getXRSession,
-  Nothing,
-} from "justdom-three";
+import { $, children, cursors, dom, getCamera, getScene, getXRSession } from "justdom-three";
 import { createDiagnostics, useDiagnostics } from "justdom-three-ui";
-import { component, effects, effectsOnly, useEffects } from "justdom-signal";
+import { effects, effectsOnly, useEffects } from "justdom-signal";
 import { enterSession } from "justdom-xr/session";
-import { Backdrop, clientRect } from "justdom-xr/scene";
+import { Backdrop, clientRect, whilePresenting } from "justdom-xr/scene";
 import { GAME_AT, gameScale } from "../placement";
 import stepsToTheThrone from "../assets/steps_to_the_throne.mp3";
 import { MUSIC_VOLUME } from "./Music";
@@ -90,11 +81,8 @@ export const Scene = (root: HTMLElement) =>
           }),
         ]),
         $(new THREE.AmbientLight(0xffffff, 2)),
-        component(() => {
-          if (!getXRSession(ctx)) {
-            return Nothing();
-          }
-          return dom(
+        whilePresenting(ctx, () =>
+          dom(
             ctx,
             root,
             [
@@ -106,8 +94,8 @@ export const Scene = (root: HTMLElement) =>
               }),
             ],
             { draggable: true, atomic: false },
-          );
-        })(),
+          ),
+        ),
         cursors(ctx, { color: "#ff0000" }),
       ),
     ]);

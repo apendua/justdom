@@ -289,6 +289,77 @@ export function keyedList(items, renderItem) {
   );
 }
 
+/** The one item of the list `when` renders while its condition holds. */
+const SHOWN = [true];
+
+/** The empty list `when` renders otherwise, and `Nothing` always. */
+const HIDDEN = /** @type {never[]} */ ([]);
+
+/**
+ * Mounts what `render` makes while `condition` holds, and takes it down when
+ * it stops holding.
+ *
+ * This is mounting, not hiding. The nodes are not in the document while the
+ * condition is false, whatever `render` built holds no state across two
+ * spells of it, and `render` runs again each time the condition comes to
+ * hold. To keep an element and its state and only stop showing it, write
+ * its `hidden` property or a class. It is a `list` of one item or of none,
+ * so a condition that is read again and still holds leaves what is mounted
+ * alone.
+ *
+ * @param {() => unknown} condition Read reactively, and taken as a boolean.
+ * @param {() => Subscribable<Mountable>} render
+ * @returns {Source<Mountable>}
+ */
+export function when(condition, render) {
+  return list(
+    () => (condition() ? SHOWN : HIDDEN),
+    () => render(),
+  );
+}
+
+/**
+ * Mounts one of several alternatives, chosen by a key.
+ *
+ * `render(key)` runs when `select` first gives a key and again each time it
+ * gives a different one. A key read again and found the same leaves what is
+ * mounted alone, with whatever state it holds. Keys are compared by
+ * identity, as the items of a `list` are, so strings, numbers and booleans
+ * are the usual ones.
+ *
+ * A replacement goes in the order a `list` replaces an item: the old
+ * alternative's nodes leave the document, `render(key)` runs and the new
+ * alternative is mounted, and only then are the old one's effects disposed
+ * and its `onCleanup` run. So for a moment both are live, and an alternative
+ * that holds something only one may hold, such as a listener on `window`,
+ * has to allow for the next one taking it before it lets go.
+ *
+ * @template K
+ * @param {() => K} select Read reactively.
+ * @param {(key: K) => Subscribable<Mountable>} render
+ * @returns {Source<Mountable>}
+ */
+export function branch(select, render) {
+  return list(
+    () => [select()],
+    (key) => render(key),
+  );
+}
+
+/**
+ * Something to mount that puts nothing in the document: the alternative of
+ * a `branch` that shows nothing, or a component that has nothing to show.
+ *
+ * @returns {Source<Mountable>}
+ */
+export function Nothing() {
+  return renderer.renderList(
+    just(HIDDEN),
+    (item) => item,
+    (item) => item,
+  );
+}
+
 /**
  * A node's stream, emitting the node as something to mount.
  *

@@ -2,7 +2,7 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { just, Signal, set, toObservable } from "justdom-signal";
 import { userEvent } from "@testing-library/user-event";
-import { $, children, keyedList, list } from "./dom.js";
+import { $, branch, children, keyedList, list, Nothing, when } from "./dom.js";
 import { text } from "./text.js";
 import { className } from "./stylesheet.js";
 import { on } from "./operators.js";
@@ -197,6 +197,97 @@ describe("hydrate()", () => {
       "expected the server stylesheet to be adopted, not duplicated",
     );
     document.head.innerHTML = "";
+  });
+
+  describe("when and branch", () => {
+    it("should adopt what a condition that holds rendered, and take it down later", () => {
+      const shown = Signal.of(true);
+      const build = () =>
+        $("div", [
+          children(
+            $("header"),
+            when(
+              () => shown.get(),
+              () => $("p", [children(text`shown`)]),
+            ),
+            $("footer"),
+          ),
+        ]);
+      const root = serverRendered(renderToString(build));
+      const adopted = root.querySelector("p");
+
+      const created = recordCreations(() => {
+        hydrate(root, build()).subscribe();
+      });
+      assert.deepEqual(created.elements, [], "expected no elements to be created");
+      assert.strictEqual(root.querySelector("p"), adopted, "expected the same node");
+
+      shown.set(false);
+      assert.strictEqual(root.querySelector("p"), null);
+      shown.set(true);
+      assert.deepEqual(
+        Array.from(root.querySelectorAll("div > *")).map((element) => element.tagName),
+        ["HEADER", "P", "FOOTER"],
+        "expected it back between its siblings",
+      );
+    });
+
+    it("should mount between adopted siblings what the server left out", () => {
+      const shown = Signal.of(false);
+      const build = () =>
+        $("div", [
+          children(
+            $("header"),
+            when(
+              () => shown.get(),
+              () => $("p"),
+            ),
+            Nothing(),
+            $("footer"),
+          ),
+        ]);
+      const root = serverRendered(renderToString(build));
+      const header = root.querySelector("header");
+
+      const created = recordCreations(() => {
+        hydrate(root, build()).subscribe();
+      });
+      assert.deepEqual(created.elements, [], "expected no elements to be created");
+
+      shown.set(true);
+      assert.deepEqual(
+        Array.from(root.querySelectorAll("div > *")).map((element) => element.tagName),
+        ["HEADER", "P", "FOOTER"],
+      );
+      assert.strictEqual(root.querySelector("header"), header, "expected the header to survive");
+    });
+
+    it("should adopt a branch's alternative and replace it when the key changes", () => {
+      const state = Signal.of("waiting");
+      const build = () =>
+        $("div", [
+          children(
+            branch(
+              () => state.get(),
+              (key) => (key === "waiting" ? $("progress") : $("p")),
+            ),
+          ),
+        ]);
+      const root = serverRendered(renderToString(build));
+      const adopted = root.querySelector("progress");
+
+      const created = recordCreations(() => {
+        hydrate(root, build()).subscribe();
+      });
+      assert.deepEqual(created.elements, [], "expected no elements to be created");
+      assert.strictEqual(root.querySelector("progress"), adopted, "expected the same node");
+
+      state.set("ready");
+      assert.deepEqual(
+        Array.from(root.querySelectorAll("div > *")).map((element) => element.tagName),
+        ["P"],
+      );
+    });
   });
 
   describe("lists", () => {

@@ -11,7 +11,17 @@
  * player's hands. The game is won when every brick is lying on the ground.
  */
 import * as THREE from "three";
-import { children, keyedList, Nothing, $, getXRSession, useFrame, getCamera } from "justdom-three";
+import {
+  branch,
+  children,
+  keyedList,
+  Nothing,
+  when,
+  $,
+  getXRSession,
+  useFrame,
+  getCamera,
+} from "justdom-three";
 import {
   batch,
   component,
@@ -377,79 +387,82 @@ const Game = component((ctx: WeakKey) => {
       Grid(ctx, [set({ size: 12, cellWidth: 0.5 })]),
       // Inside the board, so a click sounds from the cell it belongs to.
       $(clicks.object),
-      component(() => {
-        if (gameSession.phase.get() !== "build") {
-          return Nothing();
-        }
-        return Palette(ctx, [
-          set({
-            // Parked to the right of the board, tipped up towards the player.
-            position: new THREE.Vector3(6.5, 0.4, 2),
-            rotation: new THREE.Euler(0.3, -Math.PI / 8, 0),
-          }),
-          on("dragstart", () => {
-            beginPlacement();
-          }),
-          on("dragmove", (event) => {
-            updatePreview(event, event.brickType);
-          }),
-          on("dragend", (event) => {
-            const drop = dropPose();
-            delete preview.type;
-            if (!drop) {
-              return;
-            }
-            castle.place({ type: event.brickType, ...drop });
-            clicks.play(drop.position);
-          }),
-        ]);
-      })(),
-      component(() => {
-        const type = preview.type;
-        if (!type) {
-          return Nothing();
-        }
-        return Brick(ctx, [
-          set({
-            type,
-            get style() {
-              return preview.blocked ? "blocked" : "ghost";
-            },
-            interactive: false,
-            bodyType: null,
-            get position() {
-              return preview.position;
-            },
-            get rotation() {
-              return preview.rotation;
-            },
-          }),
-        ]);
-      })(),
+      when(
+        () => gameSession.phase.get() === "build",
+        () =>
+          Palette(ctx, [
+            set({
+              // Parked to the right of the board, tipped up towards the player.
+              position: new THREE.Vector3(6.5, 0.4, 2),
+              rotation: new THREE.Euler(0.3, -Math.PI / 8, 0),
+            }),
+            on("dragstart", () => {
+              beginPlacement();
+            }),
+            on("dragmove", (event) => {
+              updatePreview(event, event.brickType);
+            }),
+            on("dragend", (event) => {
+              const drop = dropPose();
+              delete preview.type;
+              if (!drop) {
+                return;
+              }
+              castle.place({ type: event.brickType, ...drop });
+              clicks.play(drop.position);
+            }),
+          ]),
+      ),
+      branch(
+        () => preview.type,
+        (type) => {
+          if (!type) {
+            return Nothing();
+          }
+          return Brick(ctx, [
+            set({
+              type,
+              get style() {
+                return preview.blocked ? "blocked" : "ghost";
+              },
+              interactive: false,
+              bodyType: null,
+              get position() {
+                return preview.position;
+              },
+              get rotation() {
+                return preview.rotation;
+              },
+            }),
+          ]);
+        },
+      ),
       // The brick a gripped copy was pulled off, standing still where it was
       // while the copy travels with the hand.
-      component(() => {
-        const type = gripped.type;
-        if (!type) {
-          return Nothing();
-        }
-        return Brick(ctx, [
-          set({
-            type,
-            // Scenery for the length of a drag: it must not swallow the ray
-            // placing the copy, and it is only standing in for a brick that
-            // has not gone anywhere.
-            interactive: false,
-            bodyType: null,
-            get position() {
-              return gripped.position;
-            },
-            get rotation() {
-              return gripped.rotation;
-            },
-          }),
-        ]);
-      })(),
+      branch(
+        () => gripped.type,
+        (type) => {
+          if (!type) {
+            return Nothing();
+          }
+          return Brick(ctx, [
+            set({
+              type,
+              // Scenery for the length of a drag: it must not swallow the ray
+              // placing the copy, and it is only standing in for a brick that
+              // has not gone anywhere.
+              interactive: false,
+              bodyType: null,
+              get position() {
+                return gripped.position;
+              },
+              get rotation() {
+                return gripped.rotation;
+              },
+            }),
+          ]);
+        },
+      ),
       keyedList(
         observeFn(castle.bricks).entries(),
         component((brick: BrickState, brickId: string) => {
@@ -543,24 +556,23 @@ const Game = component((ctx: WeakKey) => {
           ]);
         }),
       ),
-      component(() => {
-        if (gameSession.phase.get() !== "siege") {
-          return Nothing();
-        }
-        return Slingshot(ctx, [
-          set({
-            get forkHand() {
-              return gameSession.forkHand.get();
-            },
-            get gazeAim() {
-              return gameSession.gazeAim.get();
-            },
-          }),
-          on("shoot", (shot) => {
-            fire(shot);
-          }),
-        ]);
-      })(),
+      when(
+        () => gameSession.phase.get() === "siege",
+        () =>
+          Slingshot(ctx, [
+            set({
+              get forkHand() {
+                return gameSession.forkHand.get();
+              },
+              get gazeAim() {
+                return gameSession.gazeAim.get();
+              },
+            }),
+            on("shoot", (shot) => {
+              fire(shot);
+            }),
+          ]),
+      ),
     ),
   ]);
 });

@@ -116,6 +116,9 @@ says when an opaque backdrop should stand round the viewer.
 round the viewer for an AR session, where three clears the frame to transparent whatever
 `scene.background` says; `inputModels()`, the controller and hand models for `render()`'s options,
 loaded from three's default CDN when a controller connects, or from the app's own copy of the
-profiles when it names one; and `clientRect(element)`, an element's rect read again when it is
-resized, for a panel whose scale follows the page's layout. This entry imports three.js, so import
-it from the module that makes the scene, never from the page's entry.
+profiles when it names one; `clientRect(element)`, an element's rect read again when it is resized,
+for a panel whose scale follows the page's layout; `whilePresenting(ctx, render)`, which mounts a
+panel only for as long as a session is presenting; and `sessionCanvas(renderer)`, which puts the
+renderer's canvas over the page for the length of a session, so that one under the emulator can be
+watched. This entry imports three.js, so import it from the module that makes the scene, never from
+the page's entry.

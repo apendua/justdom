@@ -4,12 +4,12 @@ import {
   children,
   className,
   CLASS_NAME,
-  list,
   on,
   set,
   style,
   stylesheet,
   text,
+  when,
 } from "justdom-core";
 import type { Mountable } from "justdom-core";
 import { component, type Subscribable } from "justdom-signal";
@@ -239,8 +239,7 @@ const heading = (caption: string) =>
  * What only a session has, mounted while there is one and taken down when
  * it ends.
  */
-const inSession = (render: () => Subscribable<Mountable>) =>
-  list(() => (xrSession.get() ? [true] : []), render);
+const inSession = (render: () => Subscribable<Mountable>) => when(() => xrSession.get(), render);
 
 /**
  * The menu: the board's size, the mines left, how the game stands, and a

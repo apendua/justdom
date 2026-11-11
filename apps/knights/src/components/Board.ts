@@ -1,4 +1,4 @@
-import { $$, attr, children, list, on } from "justdom-core";
+import { $$, attr, children, list, on, when } from "justdom-core";
 import { component } from "justdom-signal";
 import { ANIMATION_IDLE, KNIGHT } from "../constants";
 import { areTheSameField } from "../helpers/map";
@@ -211,11 +211,10 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
             },
           }),
       ),
-      // A preview of the move the player is about to make. The key is constant,
-      // so the preview stays mounted — and keeps animating — while the cursor
-      // moves around the board.
-      list(
-        () => (board.ghost ? ["ghost"] : []),
+      // A preview of the move the player is about to make. It stays mounted,
+      // and keeps animating, while the cursor moves around the board.
+      when(
+        () => board.ghost,
         () =>
           ActorView(ctx, {
             ...dimensions,

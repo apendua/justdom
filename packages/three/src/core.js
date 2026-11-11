@@ -403,6 +403,52 @@ export function list(items, renderItem) {
   });
 }
 
+const SHOWN = [true];
+const HIDDEN = /** @type {never[]} */ ([]);
+
+/**
+ * Mounts what `render()` makes while `condition()` holds, and takes it out
+ * of the scene when it stops holding. `condition` is read reactively. While
+ * it keeps holding, what is mounted is left alone, and `render` runs again
+ * each time it comes to hold after not holding. This is `when` from
+ * `justdom-core`, for Three objects.
+ *
+ * @param {() => unknown} condition
+ * @param {() => Subscribable<Component>} render
+ * @returns {Source<Component>}
+ */
+export function when(condition, render) {
+  return list(
+    () => (condition() ? SHOWN : HIDDEN),
+    () => render(),
+  );
+}
+
+/**
+ * Mounts `render(key)` for the key `select()` gives, and replaces it with
+ * another when the key changes. `select` is read reactively, and keys are
+ * compared by identity, so while it gives the same key what is mounted is
+ * left alone. This is `branch` from `justdom-core`, for Three objects.
+ *
+ * A replacement goes in the order this package's `list` replaces an item,
+ * which is not `justdom-core`'s: `render(key)` runs and the new alternative
+ * is added while the old one is still in the scene, then the old one is
+ * taken out, and only then are its effects disposed. So for a moment both
+ * are in the scene, and an alternative that holds something only one may
+ * hold, such as a physics body, has to allow for that.
+ *
+ * @template K
+ * @param {() => K} select
+ * @param {(key: K) => Subscribable<Component>} render
+ * @returns {Source<Component>}
+ */
+export function branch(select, render) {
+  return list(
+    () => [select()],
+    (key) => render(key),
+  );
+}
+
 /**
  * @template K
  * @template T

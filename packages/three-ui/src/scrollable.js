@@ -1,4 +1,4 @@
-import { $, children, list, set, style, text } from "justdom-core";
+import { $, children, set, style, text, when } from "justdom-core";
 import { Derived, effects, onCleanup, Signal } from "justdom-signal";
 import { getPortalRoot, scrollElementBy } from "justdom-three/page";
 
@@ -43,9 +43,6 @@ import { getPortalRoot, scrollElementBy } from "justdom-three/page";
  *   starts repeating, in ms.
  * @property {number} [repeatInterval] How often it repeats after that.
  */
-
-/** The bar is mounted or not; the item is only there to be counted. */
-const BAR = "bar";
 
 const DEFAULT_MARKS = /** @type {const} */ (["▲", "▼"]);
 
@@ -343,7 +340,7 @@ export function scrollable(props) {
         children(...content),
       ]),
       // Mounted only while there is something to scroll.
-      list(() => (scrollable.get() ? [BAR] : []), bar),
+      when(() => scrollable.get(), bar),
     ),
   ]);
 }

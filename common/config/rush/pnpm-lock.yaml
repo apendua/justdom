@@ -172,6 +172,9 @@ importers:
 
   ../../apps/knights:
     dependencies:
+      '@apendua/sound':
+        specifier: workspace:*
+        version: link:../../packages/sound
       '@types/node':
         specifier: ^24.7.0
         version: 24.19.2

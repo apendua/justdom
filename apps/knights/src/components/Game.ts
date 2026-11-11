@@ -1,6 +1,7 @@
 import { $, $$, CLASS_NAME, attr, children, set, stylesheet, text } from "justdom-core";
 import { component, makeNonReactive, store } from "justdom-signal";
 import { ASSETS_PREFIX, SVG_HEIGHT, SVG_WIDTH } from "../constants";
+import { pageOnly } from "../headset";
 import { RootContext } from "../store/Root";
 import Board from "./Board";
 import MenuModal from "./MenuModal";
@@ -119,7 +120,12 @@ const Game = component((ctx: WeakKey) => {
   return $("div", [
     set("className", container),
     children(
-      Music(ctx),
+      // On a page that can open a headset the music is the session's, and
+      // the scene plays it.
+      branch(
+        () => (pageOnly.get() ? "page" : "session"),
+        (where) => (where === "page" ? Music(ctx) : text``),
+      ),
       $("img", [
         set("className", backdrop),
         set({ src: `${ASSETS_PREFIX}/assets/background_01_2048.jpg`, alt: "" }),

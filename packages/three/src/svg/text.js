@@ -9,8 +9,8 @@ import {
   getReflowContext,
   getTextDataCached,
   nodeDerived,
-  withMeasuringRange,
 } from "../elements/mirror.js";
+import { withMeasuringRange } from "../elements/mirror/textLayout.js";
 import { createMeasurementClone } from "../elements/mirror/measurementClones.js";
 import { isSvgElement, SVG_NAMESPACE } from "../elements/plugins.js";
 import {

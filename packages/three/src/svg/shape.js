@@ -36,8 +36,8 @@ import {
   getParentElement,
   hidesVisibility,
   isVisibilityHidden,
-  nodeCache,
 } from "../elements/mirror.js";
+import { nodeCache } from "../elements/mirror/nodeCaches.js";
 import {
   findSvgElement,
   isSvgElement,

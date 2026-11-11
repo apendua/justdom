@@ -1,4 +1,4 @@
-import { resetMeasuringRangeForTests } from "../elements/mirror.js";
+import { resetMeasuringRangeForTests } from "../elements/mirror/textLayout.js";
 
 // The text helpers resolve colours through a bare `getComputedStyle`, which
 // jsdom-env installs on `window` and not on the global, so a test that draws

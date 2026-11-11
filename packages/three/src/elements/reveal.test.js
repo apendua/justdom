@@ -9,7 +9,8 @@ import {
   makeReveal,
   solveCut,
 } from "./reveal.js";
-import { createMirror, resetMeasuringRangeForTests, tracksCharacterEdges } from "./mirror.js";
+import { createMirror, tracksCharacterEdges } from "./mirror.js";
+import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { text } from "./text.js";
 import { UNBOUNDED } from "./clip.js";
 

@@ -26,9 +26,9 @@ import {
   getComputedStyleCached,
   getParentElement,
   isPortalRoot,
-  nodeCache,
   nodeDerived,
 } from "./mirror.js";
+import { nodeCache } from "./mirror/nodeCaches.js";
 import { ACTIVE_ATTRIBUTE, getPortalRoot, HOVER_ATTRIBUTE } from "./portalRoot.js";
 import { describeElement } from "./panelFrame.js";
 import { movesList, sampleRay, ScrollDragsContext } from "./scroll.js";

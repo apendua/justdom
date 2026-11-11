@@ -11,9 +11,9 @@ import {
   hasTransform,
   isTransformed,
   movesAgainstScroll,
-  nodeCache,
   nodeDerived,
 } from "./mirror.js";
+import { nodeCache } from "./mirror/nodeCaches.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { composeTransform, getOwnTransform, hasDepthTransform } from "./cssTransform.js";
 import { isSvgElement } from "./plugins.js";

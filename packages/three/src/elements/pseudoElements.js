@@ -5,9 +5,9 @@ import {
   getChildNodes,
   getComputedStyleCached,
   measureGeneratedBox,
-  nodeCache,
   nodeDerived,
 } from "./mirror.js";
+import { nodeCache } from "./mirror/nodeCaches.js";
 import { describeStillStyle } from "./mirror/measurementClones.js";
 import { ownedImage } from "./image.js";
 import { parseAlpha } from "./cssColor.js";

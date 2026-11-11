@@ -1,16 +1,17 @@
 /**
- * Every cache the package keeps per node is a `nodeCache()` (`mirror.js`),
- * so that `forgetNode` empties it when a node passes to another panel, and
- * the second panel does not find the first one's signals under it.
+ * Every cache the package keeps per node is a `nodeCache()`
+ * (`elements/mirror/nodeCaches.js`), so that `forgetNode` empties it when a
+ * node passes to another panel, and the second panel does not find the
+ * first one's signals under it.
  *
- * The test reads the sources under `src/elements/` and `src/svg/` for a
- * `new WeakMap` whose type, in the comment block straight above it, has a key
- * that names a node (`Node`, `Text`, any `…Node` or `…Element`, alone or in
- * a union), and fails on each one. A type written as a cast on the
- * initialiser is not read. A map that is right to be plain says why in the
- * run of `//` lines just above its declaration, whose first line starts
- * `// Not a nodeCache:`, such as a map that lives inside one call, or one its
- * owner empties itself.
+ * The test reads the sources under `src/elements/` and `src/svg/`, and the
+ * folders under them, for a `new WeakMap` whose type, in the comment block
+ * straight above it, has a key that names a node (`Node`, `Text`, any
+ * `…Node` or `…Element`, alone or in a union), and fails on each one. A type
+ * written as a cast on the initialiser is not read. A map that is right to
+ * be plain says why in the run of `//` lines just above its declaration,
+ * whose first line starts `// Not a nodeCache:`, such as a map that lives
+ * inside one call, or one its owner empties itself.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -23,13 +24,25 @@ const DIRECTORIES = ["elements", "svg"];
 const NODE_KEYS = /@type \{WeakMap<[^,]*\b(\w*Node|\w*Element|Text)\b/;
 const MARKER = /^\s*\/\/ Not a nodeCache: \S/;
 
+/**
+ * The modules under `directory`, in the folders under it too.
+ *
+ * @param {string} directory A path under `src/`.
+ * @returns {string[]}
+ */
+function modulesIn(directory) {
+  return readdirSync(join(SRC, directory), { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return modulesIn(path);
+    }
+    return entry.name.endsWith(".js") && !entry.name.endsWith(".test.js") ? [path] : [];
+  });
+}
+
 /** @returns {string[]} */
 function sources() {
-  return DIRECTORIES.flatMap((directory) =>
-    readdirSync(join(SRC, directory))
-      .filter((name) => name.endsWith(".js") && !name.endsWith(".test.js"))
-      .map((name) => join(directory, name)),
-  );
+  return DIRECTORIES.flatMap(modulesIn);
 }
 
 /**
@@ -89,6 +102,11 @@ test("the scan finds an unmarked map keyed by a node, in each form the package w
     "const object = new WeakMap();",
   ].join("\n");
   assert.deepEqual(unmarkedNodeMaps(source), [2, 4, 10, 18]);
+});
+
+test("the scan reads the folders under elements/ too", () => {
+  // The mirror's split puts its caches in `elements/mirror/`.
+  assert.ok(sources().includes(join("elements", "mirror", "geometryReads.js")));
 });
 
 test("a cache kept per node is a nodeCache, or says why not", () => {

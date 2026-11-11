@@ -6,7 +6,7 @@ import { stubCanvas } from "../test/stubCanvas.js";
 import { isRunMesh } from "../test/runMesh.js";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { createPortal as createHeldPortal } from "./portal.js";
-import { resetMeasuringRangeForTests } from "./mirror.js";
+import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { batchedBoxMaterial, rectGeometry } from "./sdfRect.js";
 import { getGenerated, parseGeneratedContent } from "./pseudoElements.js";
 import {

@@ -11,8 +11,8 @@ import {
   getComputedStyleCached,
   getTransformStyle,
   LOADING_ATTRIBUTE,
-  resetMeasuringRangeForTests,
 } from "./mirror.js";
+import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { acquireImage, releaseImage } from "./image.js";
 import { createPortal as createHeldPortal } from "./portal.js";
 import { getPortalRoot } from "./portalRoot.js";

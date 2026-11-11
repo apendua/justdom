@@ -1,4 +1,4 @@
-import { resetMeasuringRangeForTests } from "../elements/mirror.js";
+import { resetMeasuringRangeForTests } from "../elements/mirror/textLayout.js";
 
 /**
  * The layout jsdom does not do for an SVG `<text>`, shared by the tests that

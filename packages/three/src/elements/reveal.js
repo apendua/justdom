@@ -1,5 +1,6 @@
 import { Derived, fromObservable, just, observable, Signal, Stream } from "justdom-signal";
-import { getTextLayout, nodeCache, trackCharacterEdges } from "./mirror.js";
+import { getTextLayout, trackCharacterEdges } from "./mirror.js";
+import { nodeCache } from "./mirror/nodeCaches.js";
 import { UNBOUNDED } from "./clip.js";
 
 /**

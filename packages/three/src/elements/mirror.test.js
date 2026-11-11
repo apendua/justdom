@@ -16,10 +16,10 @@ import {
   getTransformStyle,
   isTransformed,
   isVisibilityHidden,
-  resetMeasuringRangeForTests,
   trackCharacterEdges,
   tracksCharacterEdges,
 } from "./mirror.js";
+import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { PORTAL_ATTRIBUTE } from "./portalRoot.js";
 import { hasDepthTransform } from "./cssTransform.js";
 import { getPaintLayer } from "./elevation.js";

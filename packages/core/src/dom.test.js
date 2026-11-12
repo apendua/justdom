@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fc from "fast-check";
 import { just, onCleanup, Signal, Stream } from "justdom-signal";
 import { $, $$, branch, children, list, Nothing, toMountable, when } from "./dom.js";
 import { replaceSegment } from "./helpers.js";
@@ -915,5 +916,157 @@ describe("unmounting", () => {
     assert.equal(markup(root), "");
     // The section, and the dialog it had put in the other element.
     assert.equal(calls.removeChild, 2);
+  });
+});
+
+describe("a list item of several nodes", () => {
+  /**
+   * An item that is a list of its own: two elements between two comments.
+   *
+   * @param {string[]} released
+   * @param {string} name
+   */
+  const Pair = (released, name) =>
+    list(
+      () => [1, 2],
+      (n) =>
+        $("b", [
+          (b) => {
+            b.textContent = `${name}${n}`;
+            onCleanup(() => released.push(`${name}${n}`));
+          },
+        ]),
+    );
+
+  /**
+   * @param {string[]} names
+   */
+  const pairs = (names) => names.map((name) => `<b>${name}1</b><b>${name}2</b>`).join("");
+
+  /**
+   * @param {string[]} initial
+   */
+  function mountPairs(initial) {
+    const items = Signal.of(initial);
+    /** @type {string[]} */
+    const released = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("main");
+    const mounted = just(root, [
+      children(
+        list(
+          () => items.get(),
+          (name) => Pair(released, name),
+        ),
+      ),
+    ]).subscribe({ error: (err) => errors.push(err) });
+    return { items, released, errors, root, mounted };
+  }
+
+  it("leaves when it is taken off the list, and is let go of", () => {
+    const { items, released, errors, root } = mountPairs(["a", "b", "c"]);
+    assert.strictEqual(markup(root), pairs(["a", "b", "c"]));
+
+    items.set(["a", "c"]);
+
+    assert.deepStrictEqual(errors, []);
+    assert.strictEqual(markup(root), pairs(["a", "c"]));
+    assert.deepStrictEqual(released.sort(), ["b1", "b2"]);
+
+    items.set([]);
+    assert.deepStrictEqual(errors, []);
+    assert.strictEqual(markup(root), "");
+    assert.strictEqual(released.length, 6);
+  });
+
+  it("keeps the order of its nodes when it moves, in front of another or to the end", () => {
+    const { items, errors, root, mounted } = mountPairs(["a", "b", "c"]);
+
+    items.set(["c", "a", "b"]);
+    assert.strictEqual(markup(root), pairs(["c", "a", "b"]));
+
+    items.set(["a", "b", "c"]);
+    assert.strictEqual(markup(root), pairs(["a", "b", "c"]));
+
+    // Each item still knows its own span: one that leaves after the moves
+    // takes its two elements and nothing else.
+    items.set(["c", "a"]);
+    assert.strictEqual(markup(root), pairs(["c", "a"]));
+    assert.deepStrictEqual(errors, []);
+
+    mounted.unsubscribe();
+    assert.strictEqual(root.childNodes.length, 0);
+  });
+
+  it("renders any new order in that order", () => {
+    const pool = [..."abcdefgh"];
+    const order = fc.uniqueArray(fc.constantFrom(...pool), { maxLength: pool.length });
+    fc.assert(
+      fc.property(order, order, order, (first, second, third) => {
+        const { items, errors, root, mounted } = mountPairs(first);
+        items.set(second);
+        assert.strictEqual(markup(root), pairs(second));
+        items.set(third);
+        assert.strictEqual(markup(root), pairs(third));
+        mounted.unsubscribe();
+        assert.deepStrictEqual(errors, []);
+        assert.strictEqual(root.childNodes.length, 0);
+      }),
+    );
+  });
+});
+
+describe("nodes that are gone before their mounting is taken down", () => {
+  it("takes the list down when an item fails after it was mounted", () => {
+    const broken = Signal.of(false);
+    /** @type {string[]} */
+    const released = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("ul");
+    just(root, [
+      children(
+        list(
+          () => ["a", "b"],
+          (name) =>
+            $("li", [
+              () => onCleanup(() => released.push(name)),
+              () => {
+                if (name === "a" && broken.get()) {
+                  throw new Error("a failed");
+                }
+              },
+            ]),
+        ),
+      ),
+    ]).subscribe({ error: (err) => errors.push(err) });
+    assert.strictEqual(markup(root), "<li></li><li></li>");
+
+    // The failure reaches the root, which takes the tree out from the top
+    // while the list is still closing. The list finds its items' nodes gone
+    // and lets the items go all the same.
+    broken.set(true);
+
+    assert.strictEqual(errors.length, 1);
+    assert.match(String(errors[0]), /a failed/);
+    assert.deepStrictEqual(released.sort(), ["a", "b"]);
+    assert.strictEqual(root.childNodes.length, 0);
+  });
+
+  it("lets go of the children a second children() on the element replaced", () => {
+    /** @type {string[]} */
+    const released = [];
+    const root = document.createElement("main");
+    const mounted = just(root, [
+      children($("i", [() => onCleanup(() => released.push("first"))])),
+      children($("b", [() => onCleanup(() => released.push("second"))])),
+    ]).subscribe();
+    assert.strictEqual(markup(root), "<b></b>");
+
+    mounted.unsubscribe();
+
+    assert.deepStrictEqual(released, ["first", "second"]);
+    assert.strictEqual(markup(root), "");
   });
 });

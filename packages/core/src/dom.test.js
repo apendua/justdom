@@ -105,6 +105,197 @@ describe("$$()", () => {
   });
 });
 
+describe("an element as a child", () => {
+  /**
+   * Counts the subscriptions `source` is given from here on.
+   *
+   * @param {import("justdom-signal").Subscribable<unknown>} source
+   * @returns {() => number}
+   */
+  function countSubscriptions(source) {
+    let count = 0;
+    const subscribe = source.subscribe.bind(source);
+    source.subscribe = /** @type {typeof source.subscribe} */ (
+      (subscriber) => {
+        count += 1;
+        return subscribe(subscriber);
+      }
+    );
+    return () => count;
+  }
+
+  it("is mounted by its parent without a subscription, built before it goes in", () => {
+    /** @type {string[]} */
+    const log = [];
+    const child = $("span", [
+      (span) => {
+        log.push(span.parentNode ? "in the tree" : "loose");
+        span.textContent = "hello";
+        onCleanup(() => log.push("let go"));
+      },
+    ]);
+    const subscriptions = countSubscriptions(child);
+    const root = document.createElement("main");
+
+    const mounted = just(root, [children(child, child)]).subscribe();
+
+    assert.strictEqual(subscriptions(), 0);
+    assert.strictEqual(markup(root), "<span>hello</span><span>hello</span>");
+    assert.deepStrictEqual(log, ["loose", "loose"]);
+
+    mounted.unsubscribe();
+    assert.strictEqual(markup(root), "");
+    assert.deepStrictEqual(log, ["loose", "loose", "let go", "let go"]);
+  });
+
+  it("is mounted by a list without a subscription, and leaves with one removal", () => {
+    const items = Signal.of(["a", "b"]);
+    /** @type {string[]} */
+    const released = [];
+    /** @type {Array<() => number>} */
+    const subscriptions = [];
+    const root = document.createElement("ul");
+    just(root, [
+      children(
+        list(
+          () => items.get(),
+          (name) => {
+            const item = $("li", [
+              children($("b")),
+              (li) => {
+                li.title = name;
+                onCleanup(() => released.push(name));
+              },
+            ]);
+            subscriptions.push(countSubscriptions(item));
+            return item;
+          },
+        ),
+      ),
+    ]).subscribe();
+    items.set(["c", "a", "b"]);
+
+    assert.deepStrictEqual(
+      subscriptions.map((count) => count()),
+      [0, 0, 0],
+    );
+    assert.strictEqual(
+      markup(root),
+      '<li title="c"><b></b></li><li title="a"><b></b></li><li title="b"><b></b></li>',
+    );
+
+    const calls = countDomCalls(() => items.set(["c", "b"]));
+    assert.strictEqual(calls.removeChild, 1);
+    assert.strictEqual(markup(root), '<li title="c"><b></b></li><li title="b"><b></b></li>');
+    assert.deepStrictEqual(released, ["a"]);
+
+    items.set([]);
+    assert.strictEqual(markup(root), "");
+    assert.deepStrictEqual(released.sort(), ["a", "b", "c"]);
+  });
+
+  it("fails its parent when an effect throws on the way in, and mounts no child after it", () => {
+    const failure = new Error("on the way in");
+    /** @type {string[]} */
+    const log = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("main");
+    just(root, [
+      children(
+        $("i", [() => onCleanup(() => log.push("first let go"))]),
+        $("b", [
+          () => onCleanup(() => log.push("second let go")),
+          () => {
+            throw failure;
+          },
+        ]),
+        $("u", [() => log.push("third mounted")]),
+      ),
+    ]).subscribe({ error: (err) => errors.push(err) });
+
+    assert.deepStrictEqual(errors, [failure]);
+    assert.deepStrictEqual(log, ["second let go", "first let go"]);
+    assert.strictEqual(markup(root), "");
+  });
+
+  it("fails its parent when an effect fails later, and comes down with it", () => {
+    const broken = Signal.of(false);
+    /** @type {string[]} */
+    const log = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("main");
+    just(root, [
+      children(
+        $("i", [() => onCleanup(() => log.push("sibling let go"))]),
+        $("b", [
+          () => {
+            if (broken.get()) {
+              throw new Error("later");
+            }
+          },
+          () => onCleanup(() => log.push("let go")),
+        ]),
+      ),
+    ]).subscribe({ error: (err) => errors.push(err) });
+    assert.strictEqual(markup(root), "<i></i><b></b>");
+
+    broken.set(true);
+
+    assert.strictEqual(errors.length, 1);
+    assert.match(String(errors[0]), /later/);
+    assert.deepStrictEqual(log, ["sibling let go", "let go"]);
+    assert.strictEqual(markup(root), "");
+  });
+
+  it("fails the list when an item's effect throws on the way in", () => {
+    const items = Signal.of(["a"]);
+    /** @type {string[]} */
+    const released = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("ul");
+    const render = (/** @type {string} */ name) =>
+      $("li", [
+        () => onCleanup(() => released.push(name)),
+        () => {
+          if (name === "bad") {
+            throw new Error(`${name} failed`);
+          }
+        },
+      ]);
+    just(root, [children(list(() => items.get(), render))]).subscribe({
+      error: (err) => errors.push(err),
+    });
+    assert.strictEqual(markup(root), "<li></li>");
+
+    items.set(["a", "bad"]);
+    assert.match(String(errors[0]), /bad failed/);
+    assert.deepStrictEqual(released.sort(), ["a", "bad"]);
+    assert.strictEqual(markup(root), "");
+  });
+
+  it("still answers a subscriber with its mountable", () => {
+    const element = $("p", [
+      (p) => {
+        p.textContent = "subscribed";
+      },
+    ]);
+    const root = document.createElement("main");
+    const placeholder = root.appendChild(document.createComment(""));
+
+    const subscription = element.subscribe({
+      next: (mountable) => {
+        mountable.replace([placeholder, placeholder]);
+      },
+    });
+
+    assert.strictEqual(markup(root), "<p>subscribed</p>");
+    subscription.unsubscribe();
+  });
+});
+
 describe("children()", () => {
   it("reports a child's failure, now or later, to whoever mounted the element", () => {
     const failure = new Error("child failed");

@@ -76,6 +76,29 @@
  */
 
 /**
+ * A source of exactly one node, which a parent can mount without subscribing
+ * to it.
+ *
+ * A child is a `Subscribable` of mountables, and subscribing is how a parent
+ * mounts one in general: the child may arrive late, and may be replaced. An
+ * element does neither. It is one node, there at once and for good, and a
+ * parent that knows so can make the node, mount the element's effects on
+ * it and insert it, with no stream, subscriber and mountable in between.
+ * `$()` and `$$()` answer with a source that offers this beside `subscribe`.
+ *
+ * `createNode` makes the node, or claims it under hydration. `mountNode`
+ * mounts the source's effects on it and hands back the mounting. It throws
+ * when the effects fail on the way in, with what was mounted taken down, and
+ * sends a later failure to `onError`. The parent inserts the node after
+ * `mountNode` returns, so a subtree is built before it is attached.
+ *
+ * @template {INode<T>} T
+ * @typedef {object} NodeSourceOf
+ * @property {() => T} createNode
+ * @property {(node: T, onError: (error: unknown) => void) => { unsubscribe(): void }} mountNode
+ */
+
+/**
  * Somewhere to build a tree before it is mounted.
  *
  * @template {INode<T>} T

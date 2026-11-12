@@ -12,15 +12,32 @@ import {
 
 /**
  * @import { MonoTypeOperator, Subscribable, Source, Unsubscribable } from "justdom-signal";
- * @import { ContainerOf, INode, MountableOf, SegmentOf } from "./nodes.js"
+ * @import { ContainerOf, INode, MountableOf, NodeSourceOf, SegmentOf } from "./nodes.js"
  */
+
+/**
+ * Ends `subscription` and takes `segment`, the nodes it had in the tree,
+ * out of it (see `unmountSegment`). With no segment, the nodes being gone
+ * already, only the subscription ends.
+ *
+ * @template {INode<N>} N
+ * @param {SegmentOf<N> | undefined} segment
+ * @param {Unsubscribable} subscription
+ * @returns {void}
+ */
+function unmount(segment, subscription) {
+  if (segment) {
+    unmountSegment(segment, () => subscription.unsubscribe());
+  } else {
+    subscription.unsubscribe();
+  }
+}
 
 /**
  * Passes `source` on, and when the subscription ends unmounts the segment
  * `takeSegment` hands over: the source is unsubscribed, then the segment's
- * nodes come out of the tree (see `unmountSegment`). `takeSegment` gives
- * nothing when the nodes are already gone, and then only the source is
- * unsubscribed.
+ * nodes come out of the tree. `takeSegment` gives nothing when the nodes
+ * are already gone, and then only the source is unsubscribed.
  *
  * @template {INode<N>} N
  * @template T
@@ -31,16 +48,25 @@ function unmounting(takeSegment) {
   return (source) => {
     return new Stream((subscriber) => {
       const subscription = source.subscribe(subscriber);
-      return () => {
-        const segment = takeSegment();
-        if (segment) {
-          unmountSegment(segment, () => subscription.unsubscribe());
-        } else {
-          subscription.unsubscribe();
-        }
-      };
+      return () => unmount(takeSegment(), subscription);
     });
   };
+}
+
+/**
+ * `child` as a source of one node, when it is one: what `$()` and `$$()`
+ * answer with (see `NodeSourceOf`). Such a child is mounted without being
+ * subscribed to. Anything else gives `null`, and is subscribed to.
+ *
+ * @template {INode<T>} T
+ * @param {Subscribable<MountableOf<T>>} child
+ * @returns {NodeSourceOf<T> | null}
+ */
+function asNodeSource(child) {
+  const candidate = /** @type {Partial<NodeSourceOf<T>>} */ (child);
+  return typeof candidate.mountNode === "function"
+    ? /** @type {NodeSourceOf<T>} */ (candidate)
+    : null;
 }
 
 /**
@@ -149,11 +175,14 @@ export default class ListRenderer {
    * Mounts `children` straight into `parent`, which holds nothing yet, and
    * hands back the mounting, to be unsubscribed when the children should go.
    *
-   * The children are subscribed in order. One that emits while it is being
-   * subscribed, an element or a list, has its nodes inserted at the end of
-   * `parent` at once. One that has not emitted by then gets a placeholder
-   * there, which its first emission replaces. Later emissions replace the
-   * span the child occupies, as in `renderFragment`.
+   * The children are mounted in order. A child that is a source of one
+   * node, an element, is not subscribed to: its node is made, its effects
+   * are mounted on it, and it is inserted at the end of `parent`. Any other
+   * child is subscribed to. One that emits while it is being subscribed, a
+   * list say, has its nodes inserted at the end of `parent` at once. One
+   * that has not emitted by then gets a placeholder there, which its first
+   * emission replaces. Later emissions replace the span the child
+   * occupies, as in `renderFragment`.
    *
    * A failure, a child's or a throw while placing one, goes to `fail`, and
    * the children after it are not mounted.
@@ -189,6 +218,19 @@ export default class ListRenderer {
       },
     );
     for (let i = 0; i < children.length && !failed; i++) {
+      const source = asNodeSource(children[i]);
+      if (source) {
+        try {
+          const node = source.createNode();
+          // Mounted before it is inserted, so the subtree is built off
+          // the document, as a subscription builds it before it emits.
+          subscriptions.push(source.mountNode(node, onError));
+          segments[i] = toSegment(parent.insertBefore(node, null));
+        } catch (error) {
+          onError(error);
+        }
+        continue;
+      }
       let placed = false;
       subscriptions.push(
         children[i].subscribe({
@@ -282,6 +324,12 @@ export default class ListRenderer {
       const childIndexes = new Map();
       /** @type {Subject<K>} */
       const childIndexesSubject = new Subject();
+      /**
+       * Where an item's failure goes: it fails the list.
+       *
+       * @param {unknown} error
+       */
+      const fail = (error) => subscriber.error(error);
       /**
        * @param {U} item
        * @returns {() => number}
@@ -413,10 +461,22 @@ export default class ListRenderer {
               if (!parentNode) {
                 throw new Error("Cannot add an item to a list that was removed.");
               }
+              const rendered = render(item, createGetIndex(item));
+              const source = asNodeSource(rendered);
+              if (source) {
+                // An element is not subscribed to: its node is made, its
+                // effects are mounted on it, and it goes in. A throw on the
+                // way fails the list, like any other throw in here.
+                const node = source.createNode();
+                const mounted = source.mountNode(node, fail);
+                childSegments.set(key, toSegment(parentNode.insertBefore(node, before)));
+                childSubscriptions.set(key, {
+                  unsubscribe: () => unmount(takeSegment(key), mounted),
+                });
+                continue;
+              }
               let placed = false;
-              const subscription = unmounting(() => takeSegment(key))(
-                render(item, createGetIndex(item)),
-              ).subscribe({
+              const subscription = unmounting(() => takeSegment(key))(rendered).subscribe({
                 next: (newMountable) => {
                   if (!placed) {
                     placed = true;
@@ -428,9 +488,7 @@ export default class ListRenderer {
                     childSegments.set(key, newMountable.replace(oldSegment));
                   }
                 },
-                error: (error) => {
-                  subscriber.error(error);
-                },
+                error: fail,
               });
               if (!placed) {
                 placed = true;

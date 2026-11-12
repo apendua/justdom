@@ -13,11 +13,11 @@ npm install justdom-core justdom-signal
 
 ## Elements
 
-| Function               | What it does                                                                                                                                                                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `$(tag, effects?)`     | A source of a mountable: an HTML element with `effects` mounted on it. The element is created when the source is subscribed, not when `$()` is called, so a source mounted in two places gives each a node of its own, and nodes are acquired top-down in document order. |
-| `$$(tag, effects?)`    | The same for an SVG element, created in the SVG namespace.                                                                                                                                                                                                                |
-| `children(...sources)` | An entity effect that renders the sources as the element's children, in order. Each source emits mountables, and a new emission replaces the span of nodes the last one placed. A source may be an element, text, a list or a component.                                  |
+| Function               | What it does                                                                                                                                                                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$(tag, effects?)`     | A source of a mountable: an HTML element with `effects` mounted on it. The element is created when the source is mounted, not when `$()` is called, so a source mounted in two places gives each a node of its own, and nodes are acquired top-down in document order. |
+| `$$(tag, effects?)`    | The same for an SVG element, created in the SVG namespace.                                                                                                                                                                                                             |
+| `children(...sources)` | An entity effect that renders the sources as the element's children, in order. Each source emits mountables, and a new emission replaces the span of nodes the last one placed. A source may be an element, text, a list or a component.                               |
 
 A **mountable** is a tree that has not been put anywhere yet. Its one required method,
 `replace(segment)`, swaps it into a span of sibling nodes. It may also offer
@@ -26,6 +26,12 @@ A **mountable** is a tree that has not been put anywhere yet. Its one required m
 that it then replaces, so `insert` saves a node and two DOM calls. Everything that can be a child is
 a `Subscribable` of mountables, and `justdom-three` declares the same shape so that a tree built
 here can be mounted in a scene without the two packages depending on each other.
+
+What `$()` and `$$()` answer with is also a **node source**: it offers `createNode()` and
+`mountNode(node, onError)` beside `subscribe`. An element is one node, there at once and for good,
+so `children()` and the lists do not subscribe to such a child. They make the node, mount its
+effects on it and insert it. The element and its effects are the same as for a subscriber. A source
+wrapped in an operator is a plain `Subscribable` again and is subscribed to.
 
 ## Operators
 

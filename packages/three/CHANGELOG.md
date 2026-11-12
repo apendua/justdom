@@ -1,6 +1,21 @@
 # Change Log - justdom-three
 
-This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+This log was last generated on Thu, 12 Nov 2026 13:53:02 GMT and should not be manually modified.
+
+## 0.35.1
+Thu, 12 Nov 2026 13:53:02 GMT
+
+### Patches
+
+- Move the input modules into src/elements/input/
+- Move the portal modules into src/elements/portal/
+- The element under a drag or a thumbstick wheel is found along the ray and in the order the panel draws, as a press finds it
+- A differential test holds where the press hit test and the drag hit test may name different elements
+- Move the outline debugging modules into src/elements/dev/
+- Rounded clip corners cut a ray's hits as they cut the drawing, for presses and for drags
+- Drags and the wheel's scan now see an element's ::before and ::after, so a drag over a badge drawn outside its element is over that element
+- Of level hits drawn at one order, the cast picks the one in the later element in tree order, as a page does, rather than the first it found
+- A ray meets a blocker in the plane of the box it covers, so a slanting ray past an overlay's edge no longer presses the overlay
 
 ## 0.35.0
 Wed, 11 Nov 2026 23:41:15 GMT

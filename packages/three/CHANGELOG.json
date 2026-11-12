@@ -2,6 +2,42 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.35.1",
+      "tag": "justdom-three_v0.35.1",
+      "date": "Thu, 12 Nov 2026 13:53:02 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Move the input modules into src/elements/input/"
+          },
+          {
+            "comment": "Move the portal modules into src/elements/portal/"
+          },
+          {
+            "comment": "The element under a drag or a thumbstick wheel is found along the ray and in the order the panel draws, as a press finds it"
+          },
+          {
+            "comment": "A differential test holds where the press hit test and the drag hit test may name different elements"
+          },
+          {
+            "comment": "Move the outline debugging modules into src/elements/dev/"
+          },
+          {
+            "comment": "Rounded clip corners cut a ray's hits as they cut the drawing, for presses and for drags"
+          },
+          {
+            "comment": "Drags and the wheel's scan now see an element's ::before and ::after, so a drag over a badge drawn outside its element is over that element"
+          },
+          {
+            "comment": "Of level hits drawn at one order, the cast picks the one in the later element in tree order, as a page does, rather than the first it found"
+          },
+          {
+            "comment": "A ray meets a blocker in the plane of the box it covers, so a slanting ray past an overlay's edge no longer presses the overlay"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.35.0",
       "tag": "justdom-three_v0.35.0",
       "date": "Wed, 11 Nov 2026 23:41:15 GMT",

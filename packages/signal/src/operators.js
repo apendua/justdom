@@ -23,8 +23,8 @@ export { failuresOf };
  * Run `fn` against the entity, and keep re-running it whenever anything it
  * read changes.
  *
- * An `EntityEffect` *is* that already — every entry of a mounting is the body
- * of its own `Effect` — so this is the identity, kept because a call site
+ * An `EntityEffect` *is* that already — every entry of a mounting runs as
+ * the body of its own `Effect` — so this is the identity, kept because a call site
  * that says `effects(fn)` says what the function is for. A plain lambda in
  * the same position means exactly the same thing.
  *
@@ -42,8 +42,8 @@ export function effects(fn) {
  * take that mounting down when the next value arrives, and take the last one
  * down on unsubscribe.
  *
- * A mounting's array needs none of this — every entry there is the body of its
- * own `Effect` already, which is why `effects` above is the identity — but a
+ * A mounting's array needs none of this — every entry there runs as the body
+ * of its own `Effect` already, which is why `effects` above is the identity — but a
  * pipeline that *receives* entities rather than holding one does, and saying
  * the same thing as `flatMap` into an effect loses the value on the way
  * through.

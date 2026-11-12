@@ -298,6 +298,17 @@ export class Effect extends ReactiveNode {
     // its dependencies open from birth, and that is what keeps everything it
     // reads awake.
     this.connect();
+    if (Effect.#adopting) {
+      // The first run is already on the stack, started by `Effect.adopt`'s
+      // caller, and this effect stands as it would partway through it.
+      // `settleAdopted` is the rest of the constructor.
+      Effect.#adopting = false;
+      this.state = CLEAN;
+      this.#constructing = true;
+      this.#running = true;
+      this.#runs = 1;
+      return;
+    }
     if (options.deferred) {
       updateQueue.enqueue(this);
       return;
@@ -314,6 +325,73 @@ export class Effect extends ReactiveNode {
     } catch (err) {
       // An effect that could not get through its first run has no business
       // staying subscribed to what it managed to read on the way.
+      this.dispose();
+      throw err;
+    } finally {
+      this.#constructing = false;
+    }
+  }
+
+  /**
+   * Whether the constructor now running was called by `adopt`.
+   *
+   * @type {boolean}
+   */
+  static #adopting = false;
+
+  /**
+   * An effect for a run that is already under way.
+   *
+   * `just` runs each entry of a mounting without an effect, since most of
+   * them read nothing and an effect would have nothing to wait for. An entry
+   * that does read something needs one from that read on, because a
+   * dependency is attached when it is read and has to be attached to what
+   * will hear it. So the effect is built at the first read, with the run
+   * that is on the stack as its first run: it is running, it has run once,
+   * and its constructor has not returned. The caller records the rest of the
+   * run's reads and teardowns on it, and hands the run's outcome to
+   * `settleAdopted` once the run has unwound.
+   *
+   * `run` is what later runs call. It is not called here.
+   *
+   * @internal
+   * @param {EffectRun} run
+   * @param {EffectOptions} [options] `deferred` has no meaning here.
+   * @returns {Effect}
+   */
+  static adopt(run, options) {
+    Effect.#adopting = true;
+    try {
+      return new Effect(run, options);
+    } finally {
+      Effect.#adopting = false;
+    }
+  }
+
+  /**
+   * The end of the first run of an effect built by `adopt`, and the end of
+   * its construction. What a constructor that had run it would do from the
+   * point where the run returned or threw: the dependencies are settled, a
+   * returned teardown is registered, a failure reported during the run ends
+   * the effect, and a run that invalidated itself runs again.
+   *
+   * A failure is thrown, as from the constructor, with the effect disposed.
+   *
+   * @internal
+   * @param {boolean} threw whether the run threw
+   * @param {unknown} outcome what it threw, or what it returned
+   * @returns {void}
+   */
+  settleAdopted(threw, outcome) {
+    try {
+      this.settleDependencies();
+      if (threw) {
+        this.#runThrew(outcome);
+      } else if (this.#runReturned(outcome)) {
+        this.state = CLEAN;
+        this.#execute();
+      }
+    } catch (err) {
       this.dispose();
       throw err;
     } finally {
@@ -582,97 +660,112 @@ export class Effect extends ReactiveNode {
       try {
         teardown = this.track(this.#invoke);
       } catch (err) {
-        this.#running = false;
-        this.#applyPendingFailure();
-        const unheard = this.#unheardFailure;
-        this.#unheardFailure = null;
-        if (err instanceof NoValueError) {
-          if (unheard) {
-            // The run was interrupted by the effect failing and *then* hit a
-            // "not yet" — but a failed effect has nothing to wait for, so the
-            // failure is the news, not the missing value.
-            this.#deliverUnheard(unheard.value);
-            return;
-          }
-          // Not an error so much as "not yet". The effect stays subscribed to
-          // whatever it did manage to read, and will be told when that moves.
-          this.#requeueIfStale();
-          return;
-        }
-        // A parked failure, if there was one, is dropped in favour of the
-        // throw: reading the very dependency whose death was parked throws
-        // the same error, and delivering both would hand one failure to the
-        // handler twice.
-        const onError = this.#handler();
-        if (onError) {
-          onError(err);
-          this.#settleOrGiveUp();
-          this.#requeueIfStale();
-          return;
-        }
-        throw err;
-      }
-      this.#running = false;
-      try {
-        if (typeof teardown === "function") {
-          if (teardown.length > 0) {
-            // `length` counts what a function *requires*: a rest parameter or a
-            // default makes it zero, and both of those can be called with
-            // nothing, so this fires on exactly the functions that cannot. Which
-            // in practice means one returned by accident — a method reference, a
-            // callback meant for somebody else — rather than a teardown.
-            throw new Error(
-              `Effect "${this.#name}" returned a teardown taking ${teardown.length} argument(s). ` +
-                `A teardown is called with none, so this one can never be given what it asks for.`,
-            );
-          }
-          // Registered after the run, because `track` clears the previous
-          // run's cleanups on the way in. On an effect the run disposed — by
-          // something that is not a failure, the run calling `dispose()` on
-          // its own effect — `onCleanup` runs it at once, since the sweep
-          // that would have run it has already been and gone. A failure does
-          // not get there: it waits in `#pendingFailure` to be applied below,
-          // *after* this teardown is registered, precisely so that the sweep
-          // pays it.
-          this.onCleanup(/** @type {() => void} */ (teardown));
-        }
-      } catch (err) {
-        // Settling the teardown threw: one that takes arguments is refused
-        // above, and one called here because the run disposed its own effect
-        // can throw on its own account.
-        //
-        // Two things still have to happen before that exception is allowed to
-        // leave. The ending is not optional — an effect left holding an
-        // unapplied failure is a zombie, not disposed, still queueable, still
-        // subscribed to everything it read. And neither is saying what it
-        // died of: the delivery below is what this exception would otherwise
-        // jump straight over, which is how a death reaches `onError` at all.
-        this.#applyPendingFailure();
-        this.#reportUnheardDeath();
-        throw err;
-      }
-      // The run has unwound and its teardown is settled, so a failure that has
-      // been waiting for exactly that can now end the effect — sweeping this
-      // run's teardown along with everything else the run registered.
-      this.#applyPendingFailure();
-      if (this.#unheardFailure) {
-        // The effect has ended and nobody heard — see `handleUnheardFailure`.
-        // The run has unwound and its teardown is settled, so the failure can
-        // finally travel: to `onError`, or up the stack that is still here —
-        // the constructor for a first run, the drain for a queued one.
-        const unheard = this.#unheardFailure;
-        this.#unheardFailure = null;
-        this.#deliverUnheard(unheard.value);
+        this.#runThrew(err);
         return;
       }
-      this.#settleOrGiveUp();
-      if (this.#disposed || this.state === CLEAN) {
+      if (!this.#runReturned(teardown)) {
         return;
       }
       // Something invalidated this effect while it was running — its own
       // write, most likely. Go round again.
       this.state = CLEAN;
     }
+  }
+
+  /**
+   * What follows a run that threw `err`, once it has unwound. Returns when
+   * the effect carries on, and throws when the failure has to travel the
+   * stack.
+   *
+   * @param {unknown} err
+   * @returns {void}
+   */
+  #runThrew(err) {
+    this.#running = false;
+    this.#applyPendingFailure();
+    const unheard = this.#unheardFailure;
+    this.#unheardFailure = null;
+    if (err instanceof NoValueError) {
+      if (unheard) {
+        // The run was interrupted by the effect failing and *then* hit a
+        // "not yet" — but a failed effect has nothing to wait for, so the
+        // failure is the news, not the missing value.
+        this.#deliverUnheard(unheard.value);
+        return;
+      }
+      // Not an error so much as "not yet". The effect stays subscribed to
+      // whatever it did manage to read, and will be told when that moves.
+      this.#requeueIfStale();
+      return;
+    }
+    // A parked failure, if there was one, is dropped in favour of the
+    // throw: reading the very dependency whose death was parked throws
+    // the same error, and delivering both would hand one failure to the
+    // handler twice.
+    const onError = this.#handler();
+    if (onError) {
+      onError(err);
+      this.#settleOrGiveUp();
+      this.#requeueIfStale();
+      return;
+    }
+    throw err;
+  }
+
+  /**
+   * What follows a run that returned `teardown`, once it has unwound. Says
+   * whether the effect has to run again at once, because something
+   * invalidated it while it was running.
+   *
+   * @param {unknown} teardown
+   * @returns {boolean}
+   */
+  #runReturned(teardown) {
+    this.#running = false;
+    try {
+      if (typeof teardown === "function") {
+        assertTeardown(this.#name, teardown);
+        // Registered after the run, because `track` clears the previous
+        // run's cleanups on the way in. On an effect the run disposed — by
+        // something that is not a failure, the run calling `dispose()` on
+        // its own effect — `onCleanup` runs it at once, since the sweep
+        // that would have run it has already been and gone. A failure does
+        // not get there: it waits in `#pendingFailure` to be applied below,
+        // *after* this teardown is registered, precisely so that the sweep
+        // pays it.
+        this.onCleanup(/** @type {() => void} */ (teardown));
+      }
+    } catch (err) {
+      // Settling the teardown threw: one that takes arguments is refused
+      // above, and one called here because the run disposed its own effect
+      // can throw on its own account.
+      //
+      // Two things still have to happen before that exception is allowed to
+      // leave. The ending is not optional — an effect left holding an
+      // unapplied failure is a zombie, not disposed, still queueable, still
+      // subscribed to everything it read. And neither is saying what it
+      // died of: the delivery below is what this exception would otherwise
+      // jump straight over, which is how a death reaches `onError` at all.
+      this.#applyPendingFailure();
+      this.#reportUnheardDeath();
+      throw err;
+    }
+    // The run has unwound and its teardown is settled, so a failure that has
+    // been waiting for exactly that can now end the effect — sweeping this
+    // run's teardown along with everything else the run registered.
+    this.#applyPendingFailure();
+    if (this.#unheardFailure) {
+      // The effect has ended and nobody heard — see `handleUnheardFailure`.
+      // The run has unwound and its teardown is settled, so the failure can
+      // finally travel: to `onError`, or up the stack that is still here —
+      // the constructor for a first run, the drain for a queued one.
+      const unheard = this.#unheardFailure;
+      this.#unheardFailure = null;
+      this.#deliverUnheard(unheard.value);
+      return false;
+    }
+    this.#settleOrGiveUp();
+    return !this.#disposed && this.state !== CLEAN;
   }
 
   /**
@@ -935,6 +1028,28 @@ export class Effect extends ReactiveNode {
           `resolve that, so the cycle itself has to be broken.`,
       );
     }
+  }
+}
+
+/**
+ * Refuses a teardown that takes arguments, the runtime half of `Teardown`.
+ *
+ * `length` counts what a function *requires*: a rest parameter or a default
+ * makes it zero, and both of those can be called with nothing, so this fires
+ * on exactly the functions that cannot. Which in practice means one returned
+ * by accident — a method reference, a callback meant for somebody else —
+ * rather than a teardown.
+ *
+ * @param {string} name the effect's name, for the message
+ * @param {Function} teardown
+ * @returns {void}
+ */
+export function assertTeardown(name, teardown) {
+  if (teardown.length > 0) {
+    throw new Error(
+      `Effect "${name}" returned a teardown taking ${teardown.length} argument(s). ` +
+        `A teardown is called with none, so this one can never be given what it asks for.`,
+    );
   }
 }
 

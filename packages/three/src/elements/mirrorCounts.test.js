@@ -38,12 +38,15 @@ import { measureBoard, measureList } from "../test/benchCases.js";
  * box that paints nothing stopped taking an instance: the
  * `VisualProperties.paints` memo that decides it. Those three and "hover"
  * came down again when such a box, if it takes no ray either, stopped
- * mounting a quad at all, and with it the effects that write one.
+ * mounting a quad at all, and with it the effects that write one. "mount"
+ * and "+1 row" came down when an entry of a mounting that reads nothing
+ * stopped being an `Effect` (`Mounting` in justdom-signal): its one run is
+ * no longer an evaluation of a node.
  */
 const CEILINGS = {
   list: {
-    mount: { evaluations: 26027, rectReads: 203 },
-    "+1 row": { evaluations: 307, rectReads: 5 },
+    mount: { evaluations: 23627, rectReads: 203 },
+    "+1 row": { evaluations: 283, rectReads: 5 },
     "insert top": { evaluations: 4413, rectReads: 106 },
     hover: { evaluations: 35, rectReads: 0 },
     "app attr": { evaluations: 381, rectReads: 106 },

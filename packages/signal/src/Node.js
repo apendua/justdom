@@ -396,22 +396,33 @@ export default class ReactiveNode {
     try {
       return withComputation(this, fn);
     } finally {
-      // One pass, doing both halves of the bookkeeping: drop what went
-      // unread, and record where everything else stood. The versions are
-      // taken here rather than at the moment of each read because a
-      // dependency is only settled once it has been resolved, and resolving
-      // it is what the read was doing. The map is read again here rather
-      // than held from the top, because a node's first read is what gives
-      // it a map of its own.
-      const edges = this.#edges;
-      for (const [dependency, edge] of edges) {
-        if (!edge.seen) {
-          edges.delete(dependency);
-          this.#detach(dependency, edge);
-          continue;
-        }
-        edge.version = versionOf(dependency, edge);
+      this.settleDependencies();
+    }
+  }
+
+  /**
+   * The bookkeeping at the end of an evaluation, in one pass: drop what went
+   * unread, and record where everything else stood. The versions are taken
+   * here rather than at the moment of each read because a dependency is only
+   * settled once it has been resolved, and resolving it is what the read was
+   * doing. The map is read here rather than held from the top of `track`,
+   * because a node's first read is what gives it a map of its own.
+   *
+   * `track` ends with it. It is a method of its own for an evaluation that
+   * `track` did not start, the first run of an effect that was built partway
+   * through it (see `Effect.adopt`).
+   *
+   * @returns {void}
+   */
+  settleDependencies() {
+    const edges = this.#edges;
+    for (const [dependency, edge] of edges) {
+      if (!edge.seen) {
+        edges.delete(dependency);
+        this.#detach(dependency, edge);
+        continue;
       }
+      edge.version = versionOf(dependency, edge);
     }
   }
 

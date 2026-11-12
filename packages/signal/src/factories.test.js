@@ -4,7 +4,7 @@ import { makeNonReactive, onCleanup } from "./index.js";
 import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
 import { effects, set } from "./operators.js";
-import { observable, component, effectsOnly, just } from "./factories.js";
+import { observable, component, effectsOnly, just, mount } from "./factories.js";
 import { Effect, Signal, UpdateChannel, useEffect, withChannel } from "./index.js";
 
 /**
@@ -656,5 +656,112 @@ describe("just()", () => {
       });
       assert.match(String(errors[0]), /returned a teardown taking 1 argument/);
     });
+  });
+});
+
+describe("mount()", () => {
+  it("mounts the effects on the entity, and takes them down when unsubscribed", () => {
+    const value = Signal.of(1);
+    /** @type {string[]} */
+    const log = [];
+    const entity = { seen: 0 };
+    const mounting = mount(
+      entity,
+      [
+        (target) => {
+          target.seen = value.get();
+        },
+        () => () => log.push("taken down"),
+      ],
+      () => log.push("failed"),
+    );
+    assert.strictEqual(entity.seen, 1);
+
+    value.set(2);
+    assert.strictEqual(entity.seen, 2, "an entry that reads is an effect, as in a just");
+
+    mounting.unsubscribe();
+    value.set(3);
+    assert.strictEqual(entity.seen, 2);
+    assert.deepStrictEqual(log, ["taken down"]);
+  });
+
+  it("throws a failure on the way in, with what was mounted taken down", () => {
+    const failure = new Error("on the way in");
+    /** @type {string[]} */
+    const log = [];
+    assert.throws(
+      () =>
+        mount(
+          {},
+          [
+            () => () => log.push("first taken down"),
+            () => {
+              onCleanup(() => log.push("second taken down"));
+              throw failure;
+            },
+            () => log.push("third ran"),
+          ],
+          () => log.push("failed"),
+        ),
+      failure,
+    );
+    assert.deepStrictEqual(log, ["second taken down", "first taken down"]);
+  });
+
+  it("sends a later failure to onError, and stays up until it is unsubscribed", () => {
+    const value = Signal.of(1);
+    /** @type {string[]} */
+    const log = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const mounting = mount(
+      {},
+      [
+        () => {
+          if (value.get() === 2) {
+            throw new Error("second run");
+          }
+        },
+        () => () => log.push("taken down"),
+      ],
+      (err) => errors.push(err),
+    );
+
+    value.set(2);
+    assert.match(String(errors[0]), /second run/);
+    assert.strictEqual(errors.length, 1);
+    assert.deepStrictEqual(log, [], "the holder decides when the mounting ends");
+
+    mounting.unsubscribe();
+    assert.deepStrictEqual(log, ["taken down"]);
+  });
+
+  it("drops a failure reported after it was unsubscribed", () => {
+    /** @type {((err: unknown) => void) | undefined} */
+    let report;
+    /** @type {unknown[]} */
+    const errors = [];
+    const mounting = mount(
+      {},
+      [
+        (_, { fail }) => {
+          report = fail;
+        },
+      ],
+      (err) => errors.push(err),
+    );
+
+    mounting.unsubscribe();
+    report?.(new Error("after the end"));
+
+    assert.deepStrictEqual(errors, []);
+  });
+
+  it("builds no mounting for an entity with no effects", () => {
+    const first = mount({}, [], () => {});
+    const second = mount({}, [], () => {});
+    assert.strictEqual(first, second);
+    first.unsubscribe();
   });
 });

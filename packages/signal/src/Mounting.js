@@ -6,12 +6,11 @@ import { defaultChannel } from "./scheduler.js";
  * @import { Dependency } from "./core.js";
  * @import { EffectContext, EffectOptions } from "./Effect.js";
  * @import UpdateChannel from "./UpdateChannel.js";
- * @import { Subscriber } from "./Stream.js";
  * @import { EntityEffect } from "./types.js";
  */
 
 /**
- * The entries of one `just`, mounted for one subscriber.
+ * The entries of one `just` or one `mount`, mounted for one holder.
  *
  * Each entry behaves as the body of its own `Effect`, and most entries never
  * need one. A static `set`, a `children`, an event listener: they run once,
@@ -33,7 +32,8 @@ import { defaultChannel } from "./scheduler.js";
  * The mounting hands its entries their context, since an entry with no
  * effect has none of its own. Its `fail` does what an effect's does: called
  * while the entry's first run is on the stack, the failure ends the mounting
- * once the run has unwound, and called later, it goes to the subscriber.
+ * once the run has unwound, and called later, it goes to the holder's
+ * `onError`. Called after the mounting was taken down, it does nothing.
  *
  * An entry's effect is built in the channel the mounting was built in,
  * wherever in the entry its first read happens to sit.
@@ -41,8 +41,12 @@ import { defaultChannel } from "./scheduler.js";
  * @template T
  */
 export class Mounting {
-  /** @type {Subscriber<T>} */
-  #subscriber;
+  /**
+   * Where a failure goes once the mounting stands.
+   *
+   * @type {(err: unknown) => void}
+   */
+  #onError;
 
   /**
    * What taking the mounting down owes, in the order of the entries: a
@@ -105,6 +109,14 @@ export class Mounting {
   #channel = /** @type {UpdateChannel | null} */ (activeChannel) ?? defaultChannel;
 
   /**
+   * Whether the mounting was taken down. A failure reported after that is
+   * dropped.
+   *
+   * @type {boolean}
+   */
+  #ended = false;
+
+  /**
    * What an entry is handed on its first run: `fail`, and nothing else of
    * the mounting.
    *
@@ -113,10 +125,10 @@ export class Mounting {
   #context = { fail: (err) => this.#fail(err) };
 
   /**
-   * @param {Subscriber<T>} subscriber
+   * @param {(err: unknown) => void} onError
    */
-  constructor(subscriber) {
-    this.#subscriber = subscriber;
+  constructor(onError) {
+    this.#onError = onError;
   }
 
   /**
@@ -128,8 +140,12 @@ export class Mounting {
   #fail(err) {
     if (!this.#entry) {
       // No run on the stack, so the mounting stands, or has gone. This is
-      // where the `onError` of an entry's effect lands as well.
-      this.#subscriber.error(err);
+      // where the `onError` of an entry's effect lands as well. A mounting
+      // that has gone has no holder left to tell: the failure of something
+      // that was taken down is dropped, as a closed subscription drops it.
+      if (!this.#ended) {
+        this.#onError(err);
+      }
       return;
     }
     if (this.#effect) {
@@ -211,6 +227,7 @@ export class Mounting {
    * @returns {void}
    */
   unsubscribe() {
+    this.#ended = true;
     this.#release(0);
   }
 

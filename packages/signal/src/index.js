@@ -51,7 +51,7 @@ export {
   observeFn,
 } from "./operators.js";
 export { memo, memoFn, decorate, mutate } from "./decorators.js";
-export { observable, component, effectsOnly, just } from "./factories.js";
+export { observable, component, effectsOnly, just, mount } from "./factories.js";
 export { all, each } from "./util.js";
 export { default as store, emit, isStore, replace, reshape, trackWrites } from "./store.js";
 export { default as selector, arraySelector } from "./selector.js";

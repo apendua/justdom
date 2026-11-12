@@ -6,7 +6,7 @@ import { toEffect, toObservable } from "./interop.js";
 import { onEachValue, subscribeTo } from "./util.js";
 
 /**
- * @import { Subscribable, Source } from './subscribable.js';
+ * @import { Subscribable, Source, Unsubscribable } from './subscribable.js';
  * @import { EntityEffect } from './types.js';
  */
 
@@ -137,8 +137,8 @@ export function just(valueOrFactory, effects = []) {
     });
   }
   return new Stream((/** @type {import("./Stream.js").Subscriber<T>} */ subscriber) => {
-    /** @type {Mounting<T>} */
-    const mounting = new Mounting(subscriber);
+    /** @type {Unsubscribable | undefined} */
+    let mounting;
     try {
       const entity =
         typeof valueOrFactory === "function"
@@ -150,18 +150,57 @@ export function just(valueOrFactory, effects = []) {
             // looked at, and in justdom-three that means rebuilding a subtree.
             withComputation(null, /** @type {() => T} */ (valueOrFactory))
           : valueOrFactory;
-      for (const fn of effects) {
-        // A failure while the mounting is being built is thrown by `mount`,
-        // so it lands in the `catch` below and reaches the subscriber
-        // synchronously, with everything already mounted taken down again.
-        // Later news goes to the error channel and ends the mounting.
-        mounting.mount(fn, entity);
-      }
+      // A failure while the mounting is being built is thrown by `mount`,
+      // so it lands in the `catch` below and reaches the subscriber
+      // synchronously, with everything already mounted taken down again.
+      // Later news goes to the error channel and ends the mounting.
+      mounting = mount(entity, effects, (err) => subscriber.error(err));
       subscriber.next(entity);
     } catch (err) {
-      mounting.unsubscribe();
+      mounting?.unsubscribe();
       subscriber.error(err);
     }
     return mounting;
   });
+}
+
+/** What `mount` hands back when there was nothing to mount. */
+const NOTHING_MOUNTED = { unsubscribe() {} };
+
+/**
+ * Mount `effects` on `entity`, and hand back the mounting, to be
+ * unsubscribed when the effects should come down.
+ *
+ * This is the inside of `just`, for a holder that has the entity already
+ * and has no use for an observable of it: a parent mounting the element
+ * that is its child, say, which would otherwise subscribe to a `just` only
+ * to be handed the node it could have made itself. The entries run as they
+ * do in a `just`, each as the body of its own `Effect` (see `Mounting`).
+ *
+ * A failure while the effects are being mounted is thrown, with what was
+ * mounted taken down again. One that arrives later goes to `onError`, and
+ * the mounting stays up until the holder unsubscribes it. One that arrives
+ * after that is dropped: what was taken down has nobody left to fail.
+ *
+ * @template T
+ * @param {T} entity
+ * @param {EntityEffect<T>[]} effects
+ * @param {(err: unknown) => void} onError
+ * @returns {Unsubscribable}
+ */
+export function mount(entity, effects, onError) {
+  if (effects.length === 0) {
+    return NOTHING_MOUNTED;
+  }
+  /** @type {Mounting<T>} */
+  const mounting = new Mounting(onError);
+  try {
+    for (const fn of effects) {
+      mounting.mount(fn, entity);
+    }
+  } catch (err) {
+    mounting.unsubscribe();
+    throw err;
+  }
+  return mounting;
 }

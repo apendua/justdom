@@ -1,4 +1,13 @@
-import { each, just, observable, onCleanup, Stream, use, withComputation } from "justdom-signal";
+import {
+  each,
+  just,
+  mount,
+  observable,
+  onCleanup,
+  Stream,
+  use,
+  withComputation,
+} from "justdom-signal";
 import ListRenderer from "./ListRenderer.js";
 import { insertSegment, replaceSegment, toSegment, unmountSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
@@ -7,57 +16,117 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
  * @import {EntityEffect, Subscribable, Source, Unsubscribable} from 'justdom-signal';
- * @import {Mountable, Container} from "./types.js";
+ * @import {Mountable, Container, NodeSource} from "./types.js";
  */
 
 /**
  * Creates an element observable.
  *
- * The element is created by the factory `just` runs per subscription, not
- * when `$()` is called. That matters for two reasons:
+ * The element is created when the observable is mounted, by a parent or
+ * for a subscriber (see `ElementSource`), not when `$()` is called. That
+ * matters for two reasons:
  *
  * - Creating at mount time means elements are acquired top-down, in document
  *   order, matching the order the mountings are built — argument evaluation
  *   alone would give the reverse. Hydration's cursor depends on that order.
  * - The same element observable can be mounted in more than one place. Eager
  *   creation gave every subscriber the *same* node, so the second mount stole
- *   it from the first and only one copy was rendered. A cold `just` runs the
- *   factory afresh for each subscriber, so every mount gets an element of its
- *   own.
+ *   it from the first and only one copy was rendered. The element is made
+ *   afresh for each mount, so every mount gets an element of its own.
  *
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
- * @returns {Source<Mountable>}
+ * @returns {Source<Mountable> & NodeSource}
  */
 export function $(tag, effects = []) {
-  return asMountable(
-    just(
-      () =>
-        /** @type {HTMLElementTagNameMap[Tag]} */ (
-          claimElement(tag) ?? document.createElement(tag)
-        ),
-      effects,
-    ),
-  );
+  return new ElementSource(tag, null, effects);
 }
 
 /**
  * @template {keyof SVGElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {EntityEffect<SVGElementTagNameMap[Tag]>[]} effects
- * @returns {Source<Mountable>}
+ * @returns {Source<Mountable> & NodeSource}
  */
 export function $$(tag, effects = []) {
-  return asMountable(
-    just(
-      () =>
-        /** @type {SVGElementTagNameMap[Tag]} */ (
-          claimElement(tag, SVG_NAMESPACE) ?? document.createElementNS(SVG_NAMESPACE, tag)
-        ),
-      effects,
-    ),
-  );
+  return new ElementSource(tag, SVG_NAMESPACE, effects);
+}
+
+/**
+ * What `$()` and `$$()` answer with: a source of one element's mountable,
+ * which a parent can also mount directly (`NodeSourceOf` in `nodes.js`).
+ *
+ * Subscribed, it does what `asMountable(just(create, effects))` did before
+ * it had a class: a fresh element for every subscriber, with the effects
+ * mounted on it, emitted as a mountable. A failure on the way in or later
+ * is the subscriber's error. A parent that mounts its children itself,
+ * `children()` or a list, calls `createNode` and `mountNode` and skips the
+ * stream, its subscriber and the mountable. The element and its effects
+ * are the same either way.
+ *
+ * @template {Element} E
+ * @extends {Stream<Mountable>}
+ * @implements {NodeSource}
+ */
+class ElementSource extends Stream {
+  /** @type {string} */
+  #tag;
+
+  /** @type {string | null} */
+  #namespace;
+
+  /** @type {EntityEffect<E>[]} */
+  #effects;
+
+  /**
+   * @param {string} tag
+   * @param {string | null} namespace
+   * @param {EntityEffect<E>[]} effects
+   */
+  constructor(tag, namespace, effects) {
+    super((subscriber) => {
+      /** @type {Unsubscribable | undefined} */
+      let mounting;
+      try {
+        const node = this.createNode();
+        mounting = this.mountNode(node, (error) => subscriber.error(error));
+        subscriber.next(toMountable(node));
+      } catch (error) {
+        mounting?.unsubscribe();
+        subscriber.error(error);
+      }
+      return mounting;
+    });
+    this.#tag = tag;
+    this.#namespace = namespace;
+    this.#effects = effects;
+  }
+
+  /**
+   * The element, claimed from the markup under hydration and created
+   * otherwise.
+   *
+   * @returns {E}
+   */
+  createNode() {
+    const tag = this.#tag;
+    const namespace = this.#namespace;
+    return /** @type {E} */ (
+      namespace === null
+        ? (claimElement(tag) ?? document.createElement(tag))
+        : (claimElement(tag, namespace) ?? document.createElementNS(namespace, tag))
+    );
+  }
+
+  /**
+   * @param {Node} node an element `createNode` made
+   * @param {(error: unknown) => void} onError
+   * @returns {Unsubscribable}
+   */
+  mountNode(node, onError) {
+    return mount(/** @type {E} */ (node), this.#effects, onError);
+  }
 }
 
 /**

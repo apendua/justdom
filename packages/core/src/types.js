@@ -13,7 +13,7 @@
  */
 
 /**
- * @import { ContainerOf, MountableOf, SegmentOf } from "./nodes.js";
+ * @import { ContainerOf, MountableOf, NodeSourceOf, SegmentOf } from "./nodes.js";
  */
 
 /**
@@ -35,6 +35,13 @@
  * Somewhere to build a tree before it is mounted.
  *
  * @typedef {ContainerOf<Node>} Container
+ */
+
+/**
+ * A source of exactly one node, which a parent can mount without
+ * subscribing to it. What `$()` and `$$()` answer with is one.
+ *
+ * @typedef {NodeSourceOf<Node>} NodeSource
  */
 
 export {};

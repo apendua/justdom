@@ -1,12 +1,13 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { just, Signal, set, toObservable } from "justdom-signal";
+import { just, onCleanup, Signal, set, toObservable } from "justdom-signal";
 import { userEvent } from "@testing-library/user-event";
 import { $, branch, children, keyedList, list, Nothing, when } from "./dom.js";
 import { text } from "./text.js";
 import { className } from "./stylesheet.js";
 import { on } from "./operators.js";
 import { hydrate } from "./hydrate.js";
+import { countDomCalls } from "./test/domCalls.js";
 import { suspend, waitFor, withFallback } from "./suspend.js";
 
 /**
@@ -168,6 +169,42 @@ describe("hydrate()", () => {
 
     subscription.unsubscribe();
     assert.strictEqual(root.querySelectorAll("p").length, 0);
+  });
+
+  it("should let go of a child subscribed after an earlier one failed", () => {
+    const root = serverRendered("<!----><div><!----><p></p><b></b><!----></div><!---->");
+    /** @type {string[]} */
+    const released = [];
+    /** @type {unknown[]} */
+    const errors = [];
+
+    hydrate(
+      root,
+      $("div", [
+        children(
+          $("p", [
+            () => {
+              throw new Error("boom");
+            },
+          ]),
+          $("b", [() => onCleanup(() => released.push("b"))]),
+        ),
+      ]),
+    ).subscribe({ error: (error) => errors.push(error) });
+
+    assert.strictEqual(errors.length, 1);
+    assert.deepEqual(released, ["b"]);
+  });
+
+  it("should take an adopted tree out with one removal, however deep it is", () => {
+    const build = () => $("section", [children($("p", [children($("em"))]), $("p"))]);
+    const root = serverRendered(renderToString(build));
+    const subscription = hydrate(root, build()).subscribe();
+
+    const calls = countDomCalls(() => subscription.unsubscribe());
+
+    assert.strictEqual(calls.removeChild, 1);
+    assert.strictEqual(root.querySelectorAll("section").length, 0);
   });
 
   it("should adopt the stylesheet the server injected", () => {

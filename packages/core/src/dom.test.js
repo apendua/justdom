@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { just, Signal, Stream } from "justdom-signal";
-import { $, $$, branch, children, Nothing, when } from "./dom.js";
+import { just, onCleanup, Signal, Stream } from "justdom-signal";
+import { $, $$, branch, children, list, Nothing, when } from "./dom.js";
+import { countDomCalls } from "./test/domCalls.js";
 import { text } from "./text.js";
 
 /**
@@ -294,5 +295,160 @@ describe("Nothing()", () => {
     just(root, [children($("header"), Nothing(), $("footer"))]).subscribe();
     assert.strictEqual(markup(root), "<header></header><footer></footer>");
     assert.strictEqual(root.children.length, 2);
+  });
+});
+
+describe("unmounting", () => {
+  /**
+   * A table row of five elements, three levels deep, that reports when the
+   * innermost one is let go of.
+   *
+   * @param {string[]} released
+   * @param {string} name
+   */
+  const Row = (released, name) =>
+    $("tr", [
+      children(
+        $("td", [
+          children($("a", [children($("span", [() => onCleanup(() => released.push(name))]))])),
+        ]),
+        $("td"),
+      ),
+    ]);
+
+  it("takes an item that left a list out with one removal, however deep it is", () => {
+    const items = Signal.of(["a", "b", "c"]);
+    /** @type {string[]} */
+    const released = [];
+    const root = document.createElement("table");
+    just(root, [
+      children(
+        list(
+          () => items.get(),
+          (name) => Row(released, name),
+        ),
+      ),
+    ]).subscribe();
+    assert.equal(root.querySelectorAll("tr").length, 3);
+
+    const calls = countDomCalls(() => items.set(["a", "c"]));
+
+    assert.equal(calls.removeChild, 1);
+    assert.equal(root.querySelectorAll("tr").length, 2);
+    assert.deepEqual(released, ["b"]);
+  });
+
+  it("takes one removal per item to empty a list", () => {
+    const items = Signal.of(["a", "b", "c"]);
+    /** @type {string[]} */
+    const released = [];
+    const root = document.createElement("table");
+    just(root, [
+      children(
+        list(
+          () => items.get(),
+          (name) => Row(released, name),
+        ),
+      ),
+    ]).subscribe();
+
+    const calls = countDomCalls(() => items.set([]));
+
+    assert.equal(calls.removeChild, 3);
+    assert.equal(root.querySelectorAll("tr").length, 0);
+    assert.deepEqual(released.sort(), ["a", "b", "c"]);
+  });
+
+  it("removes each child of the element whose mounting ends, and nothing below it", () => {
+    /** @type {string[]} */
+    const released = [];
+    const root = document.createElement("table");
+    const mounting = just(root, [
+      children(Row(released, "first"), Row(released, "second")),
+    ]).subscribe();
+
+    const calls = countDomCalls(() => mounting.unsubscribe());
+
+    assert.equal(calls.removeChild, 2);
+    assert.equal(markup(root), "");
+    assert.deepEqual(released, ["first", "second"]);
+  });
+
+  it("removes an item with one removal when the item holds a list of its own", () => {
+    const items = Signal.of(["a", "b"]);
+    const root = document.createElement("table");
+    just(root, [
+      children(
+        list(
+          () => items.get(),
+          () =>
+            $("tr", [
+              children(
+                list(
+                  () => ["x", "y", "z"],
+                  () => $("td"),
+                ),
+              ),
+            ]),
+        ),
+      ),
+    ]).subscribe();
+    assert.equal(root.querySelectorAll("td").length, 6);
+
+    const calls = countDomCalls(() => items.set(["a"]));
+
+    // The inner list's segment is longer than one node, so it cannot be
+    // named as leaving, and the row above it has to stay named.
+    assert.equal(calls.removeChild, 1);
+    assert.equal(root.querySelectorAll("td").length, 3);
+  });
+
+  it("removes the nodes of a child whose cleanup throws", () => {
+    const root = document.createElement("div");
+    const mounting = just(root, [
+      children(
+        $("p", [
+          () =>
+            onCleanup(() => {
+              throw new Error("boom");
+            }),
+        ]),
+        $("b"),
+      ),
+    ]).subscribe();
+    assert.equal(markup(root), "<p></p><b></b>");
+
+    assert.throws(() => mounting.unsubscribe(), /boom/);
+
+    assert.equal(markup(root), "");
+  });
+
+  it("still removes what a leaving subtree mounted somewhere else", () => {
+    const shown = Signal.of(true);
+    const elsewhere = document.createElement("aside");
+    const root = document.createElement("main");
+    const dialog = just(elsewhere, [children($("dialog", [children($("p"))]))]);
+    just(root, [
+      children(
+        when(
+          () => shown.get(),
+          () =>
+            $("section", [
+              () => {
+                const mounted = dialog.subscribe();
+                onCleanup(() => mounted.unsubscribe());
+              },
+            ]),
+        ),
+      ),
+    ]).subscribe();
+    assert.equal(markup(elsewhere), "<dialog><p></p></dialog>");
+
+    const calls = countDomCalls(() => shown.set(false));
+
+    assert.equal(markup(elsewhere), "");
+    assert.equal(markup(root), "");
+    // The section, and the dialog it had put in the other element.
+    assert.equal(calls.removeChild, 2);
   });
 });

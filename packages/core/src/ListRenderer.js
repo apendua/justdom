@@ -1,4 +1,4 @@
-import { removeSegment, toSegment } from "./helpers.js";
+import { releaseLeaving, removeSegment, toSegment, unmountSegment } from "./helpers.js";
 import {
   addDependency,
   batch,
@@ -16,19 +16,29 @@ import {
  */
 
 /**
+ * Passes `source` on, and when the subscription ends unmounts the segment
+ * `takeSegment` hands over: the source is unsubscribed, then the segment's
+ * nodes come out of the tree (see `unmountSegment`). `takeSegment` gives
+ * nothing when the nodes are already gone, and then only the source is
+ * unsubscribed.
+ *
+ * @template {INode<N>} N
  * @template T
- * @param {() => void} fn
+ * @param {() => SegmentOf<N> | undefined} takeSegment
  * @returns {MonoTypeOperator<T>}
  */
-function teardown(fn) {
+function unmounting(takeSegment) {
   return (source) => {
     return new Stream((subscriber) => {
-      // The subscription goes on the teardown list first, so it is undone
-      // before `fn` — which is the order RxJS put them in, and the order the
-      // callers below assume: the child is unsubscribed, then its nodes come
-      // out of the document.
-      subscriber.add(source.subscribe(subscriber));
-      return fn;
+      const subscription = source.subscribe(subscriber);
+      return () => {
+        const segment = takeSegment();
+        if (segment) {
+          unmountSegment(segment, () => subscription.unsubscribe());
+        } else {
+          subscription.unsubscribe();
+        }
+      };
     });
   };
 }
@@ -108,27 +118,26 @@ export default class ListRenderer {
         },
       );
       children.forEach((child, i) => {
-        // The subscription goes on the teardown list first, so it is undone
-        // before the nodes come out of the document.
-        subscriber.add(
-          child.subscribe({
-            next: (newMountable) => {
-              try {
-                replace(i, newMountable);
-              } catch (error) {
-                subscriber.error(error);
-              }
-            },
-            error: (error) => {
+        const subscription = child.subscribe({
+          next: (newMountable) => {
+            try {
+              replace(i, newMountable);
+            } catch (error) {
               subscriber.error(error);
-            },
-          }),
-        );
+            }
+          },
+          error: (error) => {
+            subscriber.error(error);
+          },
+        });
+        // The child is unsubscribed, then its nodes come out of the document.
         subscriber.add(() => {
           const oldSegment = segments[i];
           if (oldSegment) {
-            removeSegment(oldSegment);
             segments[i] = null;
+            unmountSegment(oldSegment, () => subscription.unsubscribe());
+          } else {
+            subscription.unsubscribe();
           }
         });
       });
@@ -183,6 +192,19 @@ export default class ListRenderer {
         };
       };
       /**
+       * Forgets an item whose subscription is ending, and hands back the
+       * nodes it still has in the tree, if any.
+       *
+       * @param {K} key
+       * @returns {SegmentOf<T> | undefined}
+       */
+      const takeSegment = (key) => {
+        const segment = childSegments.get(key);
+        childSegments.delete(key);
+        childSubscriptions.delete(key);
+        return segment;
+      };
+      /**
        * Adopts the markup for the initial set of items.
        *
        * There is nothing to diff against on the way in, so none of the moving
@@ -204,14 +226,7 @@ export default class ListRenderer {
           const segment = hydration.claimItem(() => {
             childSubscriptions.set(
               key,
-              teardown(() => {
-                const oldSegment = childSegments.get(key);
-                if (oldSegment) {
-                  removeSegment(oldSegment);
-                  childSegments.delete(key);
-                }
-                childSubscriptions.delete(key);
-              })(render(item, createGetIndex(item))).subscribe({
+              unmounting(() => takeSegment(key))(render(item, createGetIndex(item))).subscribe({
                 next: (newMountable) => {
                   if (!adopted) {
                     // The markup this item adopted is already in place.
@@ -250,10 +265,13 @@ export default class ListRenderer {
           // the walk below, so every item in front of it found a next sibling
           // it did not expect and was re-inserted: removing the n-th item
           // moved the n - 1 items before it.
+          /** @type {Map<K, SegmentOf<T>>} */
+          const departed = new Map();
           for (const [key, childSegment] of childSegments.entries()) {
             if (!newItemsSet.has(key)) {
               removeSegment(childSegment);
               childSegments.delete(key);
+              departed.set(key, childSegment);
             }
           }
           const staying = longestRunInOrder(newItemsArray, getKey, childIndexes);
@@ -291,14 +309,7 @@ export default class ListRenderer {
             if (!childSubscriptions.has(key)) {
               childSubscriptions.set(
                 key,
-                teardown(() => {
-                  const oldSegment = childSegments.get(key);
-                  if (oldSegment) {
-                    removeSegment(oldSegment);
-                    childSegments.delete(key);
-                  }
-                  childSubscriptions.delete(key);
-                })(render(item, createGetIndex(item))).subscribe({
+                unmounting(() => takeSegment(key))(render(item, createGetIndex(item))).subscribe({
                   next: (newMountable) => {
                     const oldSegment = childSegments.get(key);
                     if (oldSegment) {
@@ -373,7 +384,14 @@ export default class ListRenderer {
           });
           for (const [key, childSubscription] of childSubscriptions.entries()) {
             if (!newItemsSet.has(key)) {
-              childSubscription.unsubscribe();
+              // Its nodes left before the walk, with everything under them,
+              // so nothing inside has to be removed on its own.
+              const segment = departed.get(key);
+              if (segment) {
+                releaseLeaving(segment, () => childSubscription.unsubscribe());
+              } else {
+                childSubscription.unsubscribe();
+              }
               childSubscriptions.delete(key);
             }
           }

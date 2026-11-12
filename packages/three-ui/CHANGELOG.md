@@ -1,6 +1,11 @@
 # Change Log - justdom-three-ui
 
-This log was last generated on Wed, 11 Nov 2026 23:41:15 GMT and should not be manually modified.
+This log was last generated on Thu, 12 Nov 2026 13:53:02 GMT and should not be manually modified.
+
+## 0.5.1
+Thu, 12 Nov 2026 13:53:02 GMT
+
+_Version update only_
 
 ## 0.5.0
 Wed, 11 Nov 2026 23:41:15 GMT

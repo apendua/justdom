@@ -5,7 +5,7 @@ import { on } from "./Emitter.js";
 import store, { emit } from "./store.js";
 import { effects, set } from "./operators.js";
 import { observable, component, effectsOnly, just } from "./factories.js";
-import { Effect, Signal, useEffect } from "./index.js";
+import { Effect, Signal, UpdateChannel, useEffect, withChannel } from "./index.js";
 
 /**
  * @import { Source } from './subscribable.js';
@@ -540,6 +540,92 @@ describe("just()", () => {
       assert.deepStrictEqual(log, ["the run goes on", "its own", "earlier entry"]);
       assert.strictEqual(errors.length, 1);
       assert.match(String(errors[0]), /reported/);
+    });
+
+    it("fails the mounting when an entry reports a failure and then reads", () => {
+      const value = Signal.of(1);
+      /** @type {string[]} */
+      const log = [];
+      /** @type {unknown[]} */
+      const errors = [];
+      const next = mock.fn();
+      just({}, [
+        (_, { fail }) => {
+          fail(new Error("reported"));
+          value.get();
+          log.push("the run goes on");
+        },
+        () => log.push("never mounted"),
+      ]).subscribe({ next, error: (err) => errors.push(err) });
+
+      assert.deepStrictEqual(log, ["the run goes on"]);
+      assert.strictEqual(next.mock.callCount(), 0);
+      assert.strictEqual(errors.length, 1);
+      assert.match(String(errors[0]), /reported/);
+    });
+
+    it("fails the mounting when an entry reads and then reports a failure", () => {
+      const value = Signal.of(1);
+      /** @type {string[]} */
+      const log = [];
+      /** @type {unknown[]} */
+      const errors = [];
+      const next = mock.fn();
+      just({}, [
+        (_, { fail }) => {
+          value.get();
+          onCleanup(() => log.push("taken down"));
+          fail(new Error("reported"));
+          log.push("the run goes on");
+        },
+      ]).subscribe({ next, error: (err) => errors.push(err) });
+
+      assert.deepStrictEqual(log, ["the run goes on", "taken down"]);
+      assert.strictEqual(next.mock.callCount(), 0);
+      assert.strictEqual(errors.length, 1);
+      assert.match(String(errors[0]), /reported/);
+    });
+
+    it("hands an entry a context that holds fail and nothing else", () => {
+      /** @type {object | undefined} */
+      let context;
+      const subscription = just({}, [
+        (_, handed) => {
+          context = handed;
+        },
+      ]).subscribe();
+
+      assert.deepStrictEqual(Reflect.ownKeys(context ?? {}), ["fail"]);
+      assert.strictEqual(Object.getPrototypeOf(context), Object.prototype);
+      subscription.unsubscribe();
+    });
+
+    it("builds an entry's effect in the channel the mounting was built in", () => {
+      const inner = new UpdateChannel({ manual: true });
+      const outer = new UpdateChannel({ manual: true });
+      const value = Signal.of(1);
+      /** @type {number[]} */
+      const inDefault = [];
+      /** @type {number[]} */
+      const inOuter = [];
+      // The first read sits inside a channel of the entry's own. The effect
+      // belongs to the channel around the mounting all the same.
+      const entry = (/** @type {number[]} */ seen) => () => {
+        withChannel(inner, () => seen.push(value.get()));
+      };
+      const first = just({}, [entry(inDefault)]).subscribe();
+      const second = withChannel(outer, () => just({}, [entry(inOuter)]).subscribe());
+
+      value.set(2);
+      assert.deepStrictEqual(inDefault, [1, 2], "the default channel runs at once");
+      assert.deepStrictEqual(inOuter, [1], "a manual one waits to be flushed");
+
+      inner.flush();
+      assert.deepStrictEqual(inOuter, [1], "and it is not the entry's inner channel");
+      outer.flush();
+      assert.deepStrictEqual(inOuter, [1, 2]);
+      first.unsubscribe();
+      second.unsubscribe();
     });
 
     it("hands a failure an entry with no effect reports later to the subscriber", () => {

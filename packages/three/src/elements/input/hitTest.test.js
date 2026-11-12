@@ -8,7 +8,7 @@
  * counts per scene are held to `EXPECTED`. A difference in no case fails.
  */
 
-import { describe, test } from "node:test";
+import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import {
@@ -17,6 +17,7 @@ import {
   LAYER_SCENES,
   mountScene,
 } from "../../test/paintOrderScenes.js";
+import { stubCanvas } from "../../test/stubCanvas.js";
 import { getBoxDrawOrder, getObjectDrawOrder } from "../../drawOrder.js";
 import { getPanel, hitElement } from "./dragAndDrop.js";
 import { isInRayTarget } from "./pointerForwarding.js";
@@ -73,6 +74,11 @@ const SLANTS = [0, 0.5];
  * over the label before it. A page hit-tests what `opacity: 0` hides, and
  * so do both.
  *
+ * The faded menu's run is sized by a canvas measurement, and the real
+ * canvas measures in whatever font the machine has, so its count was 132
+ * on a CI runner and 110 on a Mac. The scenes are mounted over the stub
+ * canvas (`stubCanvas`), whose glyphs are one size everywhere.
+ *
  * @type {Record<string, { compared: number } & Partial<Record<Case, number>>>}
  */
 const EXPECTED = {
@@ -90,7 +96,7 @@ const EXPECTED = {
   "a closed overlay": { compared: 1152 },
   "a hidden group, one child shown": { compared: 1152 },
   "a select of ten options": { compared: 1152, content: 32 },
-  "a menu faded to opacity 0": { compared: 1152, content: 132 },
+  "a menu faded to opacity 0": { compared: 1152, content: 88 },
   "an svg with a clip, a symbol and a use": { compared: 1152 },
   "a positioned badge over later flow siblings": { compared: 1152 },
   "a row cut by its scroller's edge": { compared: 1152 },
@@ -317,6 +323,13 @@ async function differences(build) {
 }
 
 describe("the cast and the scan", () => {
+  /** @type {() => void} */
+  let restore;
+  before(() => {
+    ({ restore } = stubCanvas());
+  });
+  after(() => restore());
+
   for (const scene of [...BENCH_SCENES, ...LAYER_SCENES, ...HIDDEN_SCENES, ...RULE_SCENES]) {
     test(`differ on ${scene.name} only where the hit test rules say`, async () => {
       const { counts, compared, odd } = await differences(scene.build);

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The cast and scan test no longer depends on the machine's fonts.",
+      "type": "none",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

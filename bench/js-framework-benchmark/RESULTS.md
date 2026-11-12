@@ -115,24 +115,27 @@ tables above are still 0.5.0's.
 ## 2026-11-12, what the entry does on 0.7.0 and on the open changes
 
 Not a run of the suite. `node profile.mjs --published --source <checkout>` in the same 4-core
-container (Chromium 1243, headless), measuring the published justdom-core 0.7.0 with justdom-signal
-1.3.0 beside a checkout with pull requests #213 to #219 applied (`71d468c`). The page has no
-stylesheet, so these are script times with no layout or paint in them, and only the two columns
-compare.
+container (Chromium 153.0.8010.12, headless), measuring the published justdom-core 0.7.0 with
+justdom-signal 1.3.0 beside a checkout with pull requests #213 to #219 applied (`ea48c68`). The page
+has no stylesheet, so these are script times with no layout or paint in them, and only the two
+columns compare.
 
 | case                     | 0.7.0 script | #213 to #219 script |
 | ------------------------ | -----------: | ------------------: |
-| `01_run1k`               |      43.3 ms |             15.5 ms |
-| `02_replace1k`           |      56.7 ms |             23.9 ms |
+| `01_run1k`               |      45.0 ms |             15.3 ms |
+| `02_replace1k`           |      60.2 ms |             24.1 ms |
 | `03_update10th1k`        |       0.6 ms |              0.7 ms |
-| `04_select1k`            |       0.5 ms |              0.2 ms |
-| `05_swap1k`              |       1.1 ms |              1.2 ms |
-| `06_remove-one-1k`       |       1.9 ms |              1.5 ms |
-| `07_create10k`           |     644.6 ms |            225.0 ms |
-| `08_create1k-after1k_x2` |      45.6 ms |             17.3 ms |
-| `09_clear1k`             |      16.4 ms |              7.6 ms |
+| `04_select1k`            |       0.6 ms |              0.2 ms |
+| `05_swap1k`              |       1.1 ms |              1.1 ms |
+| `06_remove-one-1k`       |       1.2 ms |              1.2 ms |
+| `07_create10k`           |     630.5 ms |            224.0 ms |
+| `08_create1k-after1k_x2` |      45.7 ms |             18.2 ms |
+| `09_clear1k`             |      17.1 ms |              9.1 ms |
 
-Each is the median of nine pages. The four cases under 2 ms are within the noise of each other.
+Each is the median of nine pages. The page's clock moves in steps of 0.1 ms, so a time under 2 ms
+has one or two digits in it. Of the four such cases, `04_select1k` is a real difference, which is
+#219's change: the same checkout measured twice reads 0.2 ms both times. The other three are within
+the noise of each other.
 
 Creating 1,000 rows, 8 elements and 4 bindings each:
 
@@ -144,7 +147,7 @@ Creating 1,000 rows, 8 elements and 4 bindings each:
 | `insertBefore`              |  19,000 |        8,000 |
 | `appendChild`               |  12,000 |            0 |
 | `replaceChild`              |  12,000 |            0 |
-| allocated (sampled)         | 24.9 MB |       9.7 MB |
+| allocated (sampled)         | 24.2 MB |       9.6 MB |
 | `removeChild` to clear them |   8,000 |        1,000 |
 
 **What 0.7.0 pays for.** Every element built its children in a fragment between two comments and

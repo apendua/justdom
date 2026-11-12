@@ -25,10 +25,10 @@
 //   --dev            Build without minifying, so `cpu` and `alloc` name
 //                    functions as the source does.
 //
-// The page opens from disk with no stylesheet, so nothing here measures
-// layout or paint: a row is laid out as bare inline text. Read the numbers
-// against each other, between two builds on one machine, not against the
-// suite's.
+// Every mode measures the click handler, from the click to its return. The
+// page opens from disk with no stylesheet, so nothing here measures layout
+// or paint: a row is laid out as bare inline text. Read the numbers against
+// each other, between two builds on one machine, not against the suite's.
 
 import { createRequire } from "node:module";
 import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -36,6 +36,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
+import { TERSER_OPTIONS } from "./frameworks/keyed/justdom/rollup.config.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const entry = join(here, "frameworks/keyed/justdom");
@@ -61,54 +62,55 @@ const clickRow = (/** @type {number} */ row, /** @type {number} */ column) =>
   `document.querySelector("tbody>tr:nth-of-type(${row})>td:nth-of-type(${column})>a").click()`;
 
 /**
- * The suite's nine CPU cases, as it drives them: what warms the page up and
- * how often, what puts the table in place, and the one action that is
- * measured.
+ * @param {number} times
+ * @param {string[]} steps
+ * @returns {string[]}
+ */
+const repeat = (times, steps) => Array.from({ length: times }, () => steps).flat();
+
+/**
+ * The suite's nine CPU cases, with the steps of `benchmarksPuppeteer.ts` at
+ * the commit `run.mjs` pins: what warms the page up, what puts the table in
+ * place, and the one action that is measured. The suite sends each click
+ * through the browser as a mouse event. Here it is `click()` called from
+ * script, which reaches the same handler.
  *
- * @type {Record<string, { warm: string[]; times: number; setup: string[]; act: string }>}
+ * @type {Record<string, { warm: string[]; setup: string[]; act: string }>}
  */
 const CASES = {
-  "01_run1k": { warm: [click("run"), click("clear")], times: 5, setup: [], act: click("run") },
-  "02_replace1k": { warm: [click("run")], times: 5, setup: [], act: click("run") },
+  "01_run1k": { warm: repeat(5, [click("run"), click("clear")]), setup: [], act: click("run") },
+  "02_replace1k": { warm: repeat(5, [click("run")]), setup: [], act: click("run") },
   "03_update10th1k": {
-    warm: [click("update")],
-    times: 3,
+    warm: repeat(3, [click("update")]),
     setup: [click("run")],
     act: click("update"),
   },
-  "04_select1k": {
-    warm: [clickRow(5, 2), clickRow(9, 2), clickRow(3, 2)],
-    times: 2,
-    setup: [click("run")],
-    act: clickRow(2, 2),
-  },
+  // The suite's loop over the warm-up rows is commented out, which leaves
+  // one click.
+  "04_select1k": { warm: [clickRow(5, 2)], setup: [click("run")], act: clickRow(2, 2) },
+  // Six, where the others have five: the suite's loop runs to `i <= 5`.
   "05_swap1k": {
-    warm: [click("swaprows")],
-    times: 4,
+    warm: repeat(6, [click("swaprows")]),
     setup: [click("run")],
     act: click("swaprows"),
   },
   "06_remove-one-1k": {
-    warm: [clickRow(9, 3), clickRow(8, 3), clickRow(7, 3)],
-    times: 1,
+    warm: [9, 8, 7, 6, 5, 6].map((row) => clickRow(row, 3)),
     setup: [click("run")],
     act: clickRow(4, 3),
   },
   "07_create10k": {
-    warm: [click("run"), click("clear")],
-    times: 5,
+    warm: repeat(5, [click("run"), click("clear")]),
     setup: [],
     act: click("runlots"),
   },
   "08_create1k-after1k_x2": {
-    warm: [click("run"), click("clear")],
-    times: 5,
+    warm: repeat(5, [click("run"), click("clear")]),
     setup: [click("run")],
     act: click("add"),
   },
   "09_clear1k": {
-    warm: [click("run"), click("clear")],
-    times: 5,
+    warm: repeat(5, [click("run"), click("clear")]),
     setup: [click("run")],
     act: click("clear"),
   },
@@ -122,23 +124,36 @@ const SETTLED = `new Promise((done) => requestAnimationFrame(() => setTimeout(do
 
 /**
  * Counts, in `window.__calls`, the DOM calls that build, move and remove
- * nodes, and the writes of the three properties the entry binds.
+ * nodes, the listeners added and removed, and the writes of the properties
+ * that put content in a node.
  */
 const COUNT_CALLS = `(() => {
   const calls = (window.__calls = {});
   const count = (name) => { calls[name] = (calls[name] || 0) + 1; };
   const wrap = (owner, name) => {
     const original = owner[name];
+    if (typeof original !== "function") {
+      return;
+    }
     owner[name] = function () { count(name); return original.apply(this, arguments); };
   };
   for (const name of ["insertBefore", "appendChild", "removeChild", "replaceChild", "cloneNode"]) {
     wrap(Node.prototype, name);
   }
   for (const name of ["createElement", "createElementNS", "createComment", "createTextNode",
-    "createDocumentFragment"]) {
+    "createDocumentFragment", "importNode"]) {
     wrap(Document.prototype, name);
   }
-  for (const name of ["setAttribute", "remove", "replaceChildren", "append"]) {
+  for (const name of ["append", "prepend", "replaceChildren", "moveBefore"]) {
+    wrap(Element.prototype, name);
+    wrap(DocumentFragment.prototype, name);
+  }
+  for (const name of ["before", "after", "replaceWith", "remove"]) {
+    wrap(Element.prototype, name);
+    wrap(CharacterData.prototype, name);
+  }
+  for (const name of ["setAttribute", "insertAdjacentElement", "insertAdjacentHTML",
+    "insertAdjacentText"]) {
     wrap(Element.prototype, name);
   }
   for (const name of ["addEventListener", "removeEventListener"]) {
@@ -152,6 +167,7 @@ const COUNT_CALLS = `(() => {
     });
   };
   written(Element.prototype, "className");
+  written(Element.prototype, "innerHTML");
   written(Node.prototype, "textContent");
   written(CharacterData.prototype, "data");
 })()`;
@@ -203,8 +219,7 @@ async function build(label, source) {
     plugins: [
       { name: "justdom-sources", resolveId: (id) => sources[id] ?? null },
       nodeResolve({ rootDir: entry }),
-      // The entry's own settings, from its `rollup.config.js`.
-      !options.dev && terser({ module: true, compress: { passes: 3 }, mangle: true }),
+      !options.dev && terser(TERSER_OPTIONS),
     ].filter(Boolean),
   });
   await bundle.write({ file: join(out, "dist/main.js"), format: "iife" });
@@ -218,7 +233,11 @@ const median = (values) => [...values].sort((a, b) => a - b)[values.length >> 1]
 
 /**
  * Opens a page, brings it to the point where `name`'s action is next, and
- * hands it to `measure`.
+ * hands it to `measure` with a function that runs the action. That function
+ * returns when the click handler has, and does not wait for the frame after
+ * it. The entry does all its work in the handler, so every mode measures
+ * the same stretch, and the garbage Chrome collects in the next frame is in
+ * none of them.
  *
  * @template T
  * @param {import("playwright").Browser} browser
@@ -228,7 +247,7 @@ const median = (values) => [...values].sort((a, b) => a - b)[values.length >> 1]
  * @returns {Promise<T>}
  */
 async function withCase(browser, url, name, measure) {
-  const { warm, times, setup, act } = CASES[name];
+  const { warm, setup, act } = CASES[name];
   const tab = await browser.newPage({ viewport: { width: 1200, height: 900 } });
   try {
     const cdp = await tab.context().newCDPSession(tab);
@@ -246,17 +265,17 @@ async function withCase(browser, url, name, measure) {
     if (SETUP_FIRST.has(name)) {
       await setUp();
     }
-    for (let i = 0; i < times; i++) {
-      for (const step of warm) {
-        await run(step);
-      }
+    for (const step of warm) {
+      await run(step);
     }
     if (!SETUP_FIRST.has(name)) {
       await setUp();
     }
     await tab.evaluate("window.gc()");
     await tab.evaluate(SETTLED);
-    return await measure(tab, cdp, () => run(act));
+    return await measure(tab, cdp, async () => {
+      await tab.evaluate(act);
+    });
   } finally {
     await tab.close();
   }
@@ -331,7 +350,7 @@ async function measureCase(browser, url, name) {
       });
     }
     return [
-      `  script ${total.toFixed(1)} ms, self time by function`,
+      `  sampled ${total.toFixed(1)} ms, self time by function`,
       ...topRows(self, (ms) => `${ms.toFixed(2)} ms`),
     ];
   }

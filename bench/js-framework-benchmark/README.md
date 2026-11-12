@@ -127,12 +127,15 @@ npm run check
 
 `profile.mjs` measures what the entry does for each of the suite's nine CPU cases, where the suite
 measures how long it takes against the others. It drives the built entry in Playwright's Chromium
-the way the suite does (the same warm-up, the same click) and reports one of four things:
+through the suite's own steps for each case (the same warm-up and the same button, clicked from
+script where the suite sends a mouse event) and reports one of four things:
 
 - `--mode time`, the default: the script time of the click, as the median of nine pages.
-- `--mode calls`: every DOM call that creates, moves or removes a node, every listener added or
-  removed, and every write of `className`, `textContent` and a text node's `data`.
-- `--mode cpu`: the script time by function, from Chrome's sampling profiler.
+- `--mode calls`: the DOM calls that create, move or remove a node, the listeners added and removed,
+  and the writes of `className`, `innerHTML`, `textContent` and a text node's `data`. `COUNT_CALLS`
+  in the script is the list of what is counted.
+- `--mode cpu`: where that time goes by function, from Chrome's sampling profiler. Its total is
+  higher than the time `time` reports, since the profiler slows the script it samples.
 - `--mode alloc`: the bytes allocated, by the function that allocated them.
 
 ```
@@ -154,6 +157,10 @@ node profile.mjs --published --source ../.. --mode alloc --only 01
 `--only`, `--runs` and `--top` narrow a run, and the header of the script lists them. The builds and
 the last report of each mode go to `work/profile/`.
 
-The page opens from disk without the suite's stylesheet, so none of this measures layout or paint,
-and the times are not the suite's. They compare two builds on one machine. The counts are exact. The
-allocation is sampled and depends on the Chrome version, so it moves by a few percent.
+Every mode measures the click handler, from the click to its return, which is where the entry does
+all its work. Garbage that Chrome collects in the frame after the click is in none of them, and a
+build that allocates more leaves more of it. The page opens from disk without the suite's
+stylesheet, so none of this measures layout or paint, and the times are not the suite's. The page's
+clock moves in steps of 0.1 ms, so a time under 2 ms has one or two digits in it. They compare two
+builds on one machine. The counts are exact. The allocation is sampled and depends on the Chrome
+version, so it moves by a few percent.

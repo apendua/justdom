@@ -85,24 +85,39 @@ describe("KeyRelays", () => {
     assert.deepStrictEqual([leaving.runs, staying.runs], [1, 2]);
   });
 
+  /**
+   * Three computations that each tracked `key` before anything held them
+   * open, so each has a relay of its own, and then the subscribers that
+   * hold them. The chain runs from the last one connected to the first.
+   *
+   * @param {KeyRelays<string>} relays
+   * @param {string} key
+   */
+  function threeRelays(relays, key) {
+    const readers = [0, 1, 2].map(() => {
+      const computation = new Computation();
+      computation.track(() => relays.track(key));
+      return { computation, woken: 0 };
+    });
+    /** @param {number} index */
+    const hold = (index) =>
+      readers[index].computation.subscribe({
+        next: () => {
+          readers[index].woken += 1;
+        },
+      });
+    return {
+      readers,
+      hold,
+      held: readers.map((_, index) => hold(index)),
+      woken: () => readers.map((reader) => reader.woken),
+    };
+  }
+
   it("wakes both relays when two readers each made one before either connected", () => {
     /** @type {KeyRelays<string>} */
     const relays = new KeyRelays();
-    // A computation that tracks before anything holds it open has its
-    // relay made and not yet registered. Three of them make three relays.
-    const readers = [0, 1, 2].map(() => {
-      const computation = new Computation();
-      computation.track(() => relays.track("a"));
-      return { computation, woken: 0 };
-    });
-    const held = readers.map((reader) =>
-      reader.computation.subscribe({
-        next: () => {
-          reader.woken += 1;
-        },
-      }),
-    );
-    const woken = () => readers.map((reader) => reader.woken);
+    const { held, woken } = threeRelays(relays, "a");
 
     batch(() => relays.invalidate("a"));
     assert.deepStrictEqual(woken(), [1, 1, 1]);
@@ -120,5 +135,38 @@ describe("KeyRelays", () => {
     held[1].unsubscribe();
     batch(() => relays.invalidate("a"));
     assert.deepStrictEqual(woken(), [1, 3, 2]);
+  });
+
+  it("takes a relay out of the chain when it leaves from behind the head", () => {
+    /** @type {KeyRelays<string>} */
+    const relays = new KeyRelays();
+    const { held, hold, woken } = threeRelays(relays, "a");
+
+    // The first to connect is the last in the chain. It leaves and comes
+    // back, which puts it at the head. Left in the chain as well, it would
+    // close the chain into a ring.
+    held[0].unsubscribe();
+    held[0] = hold(0);
+
+    batch(() => relays.invalidate("a"));
+    assert.deepStrictEqual(woken(), [1, 1, 1]);
+  });
+
+  it("wakes the whole chain when waking its head takes the head out", () => {
+    /** @type {KeyRelays<string>} */
+    const relays = new KeyRelays();
+    const { readers, held, woken } = threeRelays(relays, "a");
+
+    // The last to connect is the head. Its second subscriber lets go of
+    // both when it is woken, so the head disconnects in mid-walk.
+    const second = readers[2].computation.subscribe({
+      next: () => {
+        held[2].unsubscribe();
+        second.unsubscribe();
+      },
+    });
+
+    batch(() => relays.invalidate("a"));
+    assert.deepStrictEqual(woken(), [1, 1, 1]);
   });
 });

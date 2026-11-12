@@ -130,6 +130,20 @@ describe("ReactiveMap", () => {
     assert.deepStrictEqual(values, ["false/undefined", "true/2", "true/3", "false/undefined"]);
   });
 
+  it("wakes a reader of the key NaN when it is set and deleted", () => {
+    const map = new ReactiveMap();
+    /** @type {(number | undefined)[]} */
+    const values = [];
+    new Effect(() => {
+      values.push(map.get(NaN));
+    });
+
+    map.set(NaN, 1);
+    map.set(NaN, 2);
+    map.delete(NaN);
+    assert.deepStrictEqual(values, [undefined, 1, 2, undefined]);
+  });
+
   it("reports one mutation as one update, not one per dependent", () => {
     // A computation reading two things that the same mutation changes must
     // see it once, and must never see the map halfway through it. Announcing

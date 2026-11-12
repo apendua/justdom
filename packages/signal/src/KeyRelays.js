@@ -20,7 +20,10 @@ import { activeComputation } from "./core.js";
  * - `invalidate(key)` wakes the relays registered for the key, and
  *   `invalidateAll()` every registered relay. The collection calls them
  *   inside the `batch` of the mutation, so that a reader of two keys, or
- *   of a key and the collection's size, runs once.
+ *   of a key and the collection's size, runs once. It calls them after it
+ *   has told its own stream of events, so a write wakes the readers of the
+ *   whole collection, of `size` and of the iterators, and then the readers
+ *   of its key.
  * - A relay that is not connected hears nothing, and nothing waits on it:
  *   a reader that holds its dependencies open has connected the relay, and
  *   one that does not reads the collection again when it is asked.

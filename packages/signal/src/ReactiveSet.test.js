@@ -98,6 +98,19 @@ describe("ReactiveSet", () => {
     assert.deepStrictEqual(values, [false, true]);
   });
 
+  it("wakes a reader of NaN when NaN is added and deleted", () => {
+    const set = new ReactiveSet();
+    /** @type {boolean[]} */
+    const values = [];
+    new Effect(() => {
+      values.push(set.has(NaN));
+    });
+
+    set.add(NaN);
+    set.delete(NaN);
+    assert.deepStrictEqual(values, [false, true, false]);
+  });
+
   it("lets a value go when its last reader does, and tracks it again later", () => {
     const set = new ReactiveSet();
     /** @type {boolean[]} */

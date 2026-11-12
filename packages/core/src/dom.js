@@ -180,18 +180,13 @@ const renderer = new ListRenderer({
  * @returns {EntityEffect<T>}
  */
 export function children(...children) {
-  // Held, not chosen: the fragment emits its mountable once, when it has
-  // built it, and its children replace their own segments from then on. So
-  // the holder has no ordering to contribute, and a plain subscription is the
-  // whole of it. Not `use`, whose edge would put three more streams around
-  // it for every element with children. Its failure goes where `use` would
-  // have sent it, the mounting's own channel.
   return (node, { fail }) => {
     if (isHydrating()) {
       use(hydrateFragment(node, children));
       return;
     }
-    if (!node.firstChild) {
+    const { firstChild, lastChild } = node;
+    if (!firstChild || !lastChild) {
       // The usual case, an element that holds nothing yet: the children
       // mount straight into it. The element is not in the document while
       // its effects mount, so building in it is as far off the document as
@@ -203,15 +198,19 @@ export function children(...children) {
     }
     // An element that already holds something: the children are built on
     // the side and take the place of everything it held.
+    //
+    // Held, not chosen: the fragment emits its mountable once, while it is
+    // being subscribed, and its children replace their own segments from
+    // then on. So the holder has no ordering to contribute, and a plain
+    // subscription is the whole of it. Not `use`, whose edge would put three
+    // more streams around it. Its failure goes where `use` would have sent
+    // it, the mounting's own channel.
+    /** @type {[Node, Node]} */
+    const held = [firstChild, lastChild];
     const subscription = withComputation(null, () =>
       renderer.renderFragment(children).subscribe({
         next: (mountable) => {
-          if (!node.firstChild || !node.lastChild) {
-            const placeholder = node.appendChild(document.createComment(""));
-            mountable.replace([placeholder, placeholder]);
-          } else {
-            mountable.replace([node.firstChild, node.lastChild]);
-          }
+          mountable.replace(held);
         },
         error: fail,
       }),

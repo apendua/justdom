@@ -182,6 +182,82 @@ describe("children()", () => {
     assert.equal(root.innerHTML, "<header></header><section></section><footer></footer>");
   });
 
+  it("fails the mounting when a child cannot be placed, and mounts no child after it", () => {
+    const broken = just({
+      replace: () => {
+        throw new Error("cannot be placed");
+      },
+    });
+    /** @type {unknown[]} */
+    const errors = [];
+    /** @type {string[]} */
+    const created = [];
+    const root = document.createElement("main");
+
+    just(root, [
+      children(
+        $("header"),
+        /** @type {import("justdom-signal").Subscribable<import("./types.js").Mountable>} */ (
+          broken
+        ),
+        $("footer", [() => created.push("footer")]),
+      ),
+    ]).subscribe({ error: (error) => errors.push(error) });
+
+    assert.equal(errors.length, 1);
+    assert.match(String(errors[0]), /cannot be placed/);
+    assert.deepEqual(created, []);
+    assert.equal(markup(root), "");
+  });
+
+  it("holds the place of a list item that arrives late, and lets it leave", () => {
+    const items = Signal.of(["a", "c"]);
+    /** @type {Map<string, () => void>} */
+    const arrive = new Map();
+    const root = document.createElement("ul");
+    just(root, [
+      children(
+        list(
+          () => items.get(),
+          (name) =>
+            name === "b"
+              ? new Stream((subscriber) => {
+                  arrive.set(name, () => subscriber.next(toMountable(document.createElement("b"))));
+                })
+              : $("li"),
+        ),
+      ),
+    ]).subscribe();
+
+    items.set(["a", "b", "c"]);
+    assert.equal(root.innerHTML, "<!----><li></li><!----><li></li><!---->");
+
+    arrive.get("b")?.();
+    assert.equal(root.innerHTML, "<!----><li></li><b></b><li></li><!---->");
+
+    items.set(["a", "c"]);
+    assert.equal(root.innerHTML, "<!----><li></li><li></li><!---->");
+  });
+
+  it("moves a list that is mounted a second time, with its comments and in order", () => {
+    /** @type {import("./types.js").Mountable | undefined} */
+    let mountable;
+    list(
+      () => ["a", "b"],
+      (name) => $(name === "a" ? "i" : "b"),
+    ).subscribe({ next: (value) => (mountable = value) });
+    assert.ok(mountable);
+    const first = document.createElement("p");
+    const second = document.createElement("p");
+
+    just(first, [children(just(mountable))]).subscribe();
+    assert.equal(first.innerHTML, "<!----><i></i><b></b><!---->");
+
+    just(second, [children(just(mountable))]).subscribe();
+    assert.equal(first.innerHTML, "");
+    assert.equal(second.innerHTML, "<!----><i></i><b></b><!---->");
+  });
+
   it("keeps the two comments around a list, and inserts each item once", () => {
     const items = Signal.of(["a", "b", "c"]);
     const root = document.createElement("ul");

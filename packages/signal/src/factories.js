@@ -1,6 +1,6 @@
 import { Stream } from "./Stream.js";
 import { Derived } from "./Derived.js";
-import { Effect } from "./Effect.js";
+import { Mounting } from "./Mounting.js";
 import { withComputation } from "./core.js";
 import { toEffect, toObservable } from "./interop.js";
 import { onEachValue, subscribeTo } from "./util.js";
@@ -97,13 +97,16 @@ export function effectsOnly(fn) {
  * `THREE.Mesh` built with its own constructor arguments. Anything callable is
  * treated as a factory.
  *
- * Each entry of `effects` is its own `Effect`, so one re-runs without the
- * others. A failure while the mounting is being built — the factory or a
- * first run throwing, a subscription erroring on the way in — reaches the
- * subscriber synchronously, with everything already mounted taken down
- * again; later news arrives on the error channel and ends the mounting. A
- * subscriber arriving after another's failure simply builds its own
- * mounting, which is the retry `share`'s reset used to provide.
+ * Each entry of `effects` behaves as the body of its own `Effect`, so one
+ * re-runs without the others. An entry is only given an `Effect` once it
+ * reads something that can change; one that reads nothing runs once, and a
+ * teardown it leaves is kept by the mounting (see `Mounting`). A failure
+ * while the mounting is being built — the factory or a first run throwing,
+ * a subscription erroring on the way in — reaches the subscriber
+ * synchronously, with everything already mounted taken down again; later
+ * news arrives on the error channel and ends the mounting. A subscriber
+ * arriving after another's failure simply builds its own mounting, which is
+ * the retry `share`'s reset used to provide.
  *
  * @template T
  * @overload
@@ -134,18 +137,8 @@ export function just(valueOrFactory, effects = []) {
     });
   }
   return new Stream((/** @type {import("./Stream.js").Subscriber<T>} */ subscriber) => {
-    // Built from a literal rather than pushed onto `[]`, which V8 would give
-    // room for seventeen: there is one of these per element.
-    /** @type {Effect[] | null} */
-    let mounted = null;
-    const dispose = () => {
-      if (!mounted) {
-        return;
-      }
-      for (const effect of mounted) {
-        effect.dispose();
-      }
-    };
+    /** @type {Mounting<T>} */
+    const mounting = new Mounting(subscriber);
     try {
       const entity =
         typeof valueOrFactory === "function"
@@ -158,35 +151,17 @@ export function just(valueOrFactory, effects = []) {
             withComputation(null, /** @type {() => T} */ (valueOrFactory))
           : valueOrFactory;
       for (const fn of effects) {
-        // `onError` is the whole of the wiring: it hears a run failing — a
-        // throw, a `context.fail` — and, as the effect's listener of last
-        // resort, the effect itself failing when a dependency dies. It hears
-        // none of that during the mounting itself, because an `Effect` that
-        // cannot get through construction throws instead, whichever kind of
-        // failure it was — so a failure while this mounting is being built
-        // lands in the `catch` below and reaches the subscriber
-        // synchronously, with everything already mounted taken down again,
-        // and later news goes to the error channel and ends the mounting.
-        const effect = new Effect((context) => fn(entity, context), {
-          name: "just",
-          onError: (err) => subscriber.error(err),
-        });
-        // One that read nothing and owes nothing, a static `set` most often,
-        // is done with for good, and holding it would only keep it alive.
-        if (effect.isInert()) {
-          continue;
-        }
-        if (mounted) {
-          mounted.push(effect);
-        } else {
-          mounted = [effect];
-        }
+        // A failure while the mounting is being built is thrown by `mount`,
+        // so it lands in the `catch` below and reaches the subscriber
+        // synchronously, with everything already mounted taken down again.
+        // Later news goes to the error channel and ends the mounting.
+        mounting.mount(fn, entity);
       }
       subscriber.next(entity);
     } catch (err) {
-      dispose();
+      mounting.unsubscribe();
       subscriber.error(err);
     }
-    return dispose;
+    return mounting;
   });
 }

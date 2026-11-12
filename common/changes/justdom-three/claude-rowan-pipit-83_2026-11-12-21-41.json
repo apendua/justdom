@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The count gate's ceilings for mount and +1 row come down with justdom-signal's mountings.",
+      "type": "none",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -103,3 +103,11 @@ is 85 ms, in the same band as Lit, Preact and Svelte.
   these numbers justdom would enter the official table behind every library it is compared with
   here.
 - The desktop run with `node run.mjs` replaces this pilot's numbers once it is done.
+
+## Since the pilot
+
+justdom-core 0.6.0 made the first three of those changes: a keyed list moves only the rows outside
+the longest run that kept its order and takes departed rows out before it moves anything, so a swap
+moves two rows and a removal moves none, and each element holds less in memory. The entry is now
+pinned to justdom-core 0.7.0 with justdom-signal 1.3.0, so the next run measures them; the pilot's
+tables above are still 0.5.0's.

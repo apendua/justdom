@@ -61,9 +61,18 @@
 /**
  * A tree that has not been put anywhere yet.
  *
+ * `replace` swaps whatever occupies a span for the tree's own nodes. `insert`
+ * puts them into `parent` in front of `before`, or at its end when `before`
+ * is `null`. Both report the span the nodes occupy afterwards.
+ *
+ * `insert` is what lets a tree be mounted with no placeholder to replace, and
+ * it is optional: a mountable made outside this package may have `replace`
+ * alone, and whoever mounts it then makes a placeholder for it to replace.
+ *
  * @template {INode<T>} T
  * @typedef {object} MountableOf
  * @property {(segment: SegmentOf<T>) => SegmentOf<T>} replace
+ * @property {(parent: T, before: T | null) => SegmentOf<T>} [insert]
  */
 
 /**
@@ -72,6 +81,8 @@
  * @template {INode<T>} T
  * @typedef {object} ContainerOf
  * @property {(child: T) => T} appendChild
+ * @property {() => T} end The node that closes the container. What the
+ *   container holds sits in front of it.
  * @property {() => MountableOf<T>} toMountable
  */
 

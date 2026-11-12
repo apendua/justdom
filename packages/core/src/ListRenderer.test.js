@@ -258,6 +258,9 @@ function createContainer() {
       }
       return envelope[1].parentNode.insertBefore(child, envelope[1]);
     },
+    end() {
+      return envelope[1];
+    },
     toMountable() {
       return {
         /**

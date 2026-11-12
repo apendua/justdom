@@ -146,6 +146,120 @@ export default class ListRenderer {
   }
 
   /**
+   * Mounts `children` straight into `parent`, which holds nothing yet, and
+   * hands back the mounting, to be unsubscribed when the children should go.
+   *
+   * The children are subscribed in order. One that emits while it is being
+   * subscribed, an element or a list, has its nodes inserted at the end of
+   * `parent` at once. One that has not emitted by then gets a placeholder
+   * there, which its first emission replaces. Later emissions replace the
+   * span the child occupies, as in `renderFragment`.
+   *
+   * A failure, a child's or a throw while placing one, goes to `fail`, and
+   * the children after it are not mounted.
+   *
+   * @param {T} parent
+   * @param {Array<Subscribable<MountableOf<T>>>} children
+   * @param {(error: unknown) => void} fail
+   * @returns {Unsubscribable}
+   */
+  mountChildren(parent, children, fail) {
+    /** @type {Array<SegmentOf<T> | null>} */
+    const segments = [];
+    /** @type {Unsubscribable[]} */
+    const subscriptions = [];
+    let failed = false;
+    /** @param {unknown} error */
+    const onError = (error) => {
+      failed = true;
+      fail(error);
+    };
+    // Non-reactive, like the first placement, which runs inside the
+    // caller's own non-reactive subscribe: a replacement is not a read.
+    const replace = makeNonReactive(
+      /**
+       * @param {number} i
+       * @param {MountableOf<T>} newMountable
+       */
+      (i, newMountable) => {
+        const oldSegment = segments[i];
+        if (oldSegment) {
+          segments[i] = newMountable.replace(oldSegment);
+        }
+      },
+    );
+    for (let i = 0; i < children.length && !failed; i++) {
+      let placed = false;
+      subscriptions.push(
+        children[i].subscribe({
+          next: (newMountable) => {
+            try {
+              if (placed) {
+                replace(i, newMountable);
+              } else {
+                placed = true;
+                segments[i] = this.#place(newMountable, parent, null);
+              }
+            } catch (error) {
+              onError(error);
+            }
+          },
+          error: onError,
+        }),
+      );
+      if (!placed) {
+        placed = true;
+        segments[i] = toSegment(parent.insertBefore(this.#createPlaceholder(), null));
+      }
+    }
+    return {
+      unsubscribe: () => {
+        /** @type {{ value: unknown } | null} */
+        let failure = null;
+        for (let i = 0; i < subscriptions.length; i++) {
+          const subscription = subscriptions[i];
+          const oldSegment = segments[i];
+          // The child is unsubscribed, then its nodes come out of the
+          // document. A child whose cleanup throws does not strand the
+          // ones after it: they all go, and the first failure is raised
+          // once they have, as with the teardowns of a `Stream`.
+          try {
+            if (oldSegment) {
+              segments[i] = null;
+              unmountSegment(oldSegment, () => subscription.unsubscribe());
+            } else {
+              subscription.unsubscribe();
+            }
+          } catch (error) {
+            failure = failure ?? { value: error };
+          }
+        }
+        if (failure) {
+          throw failure.value;
+        }
+      },
+    };
+  }
+
+  /**
+   * Puts a tree that is not in the document yet into `parent`, in front of
+   * `before` or at the end. A mountable with no `insert` of its own gets a
+   * placeholder there to replace.
+   *
+   * @param {MountableOf<T>} mountable
+   * @param {T} parent
+   * @param {T | null} before
+   * @returns {SegmentOf<T>}
+   */
+  #place(mountable, parent, before) {
+    if (mountable.insert) {
+      return mountable.insert(parent, before);
+    }
+    const placeholder = parent.insertBefore(this.#createPlaceholder(), before);
+    return mountable.replace(toSegment(placeholder));
+  }
+
+  /**
    * Creates a list observable from an array of items and a render function.
    * @template U
    * @template K
@@ -288,39 +402,44 @@ export default class ListRenderer {
               nextSegment = childSegments.get(k);
               i += 1;
             }
-            if (!childSegments.has(key)) {
-              // NOTE: Only put placeholder where the new item should be inserted. The actual element
-              //       will be inserted by the subscription.
-              if (!nextSegment) {
-                const newPlaceholder = container.appendChild(this.#createPlaceholder());
-                childSegments.set(key, toSegment(newPlaceholder));
-              } else {
-                const nextNode = nextSegment[0];
-                const { parentNode } = nextNode;
-                if (parentNode) {
-                  const newPlaceholder = parentNode.insertBefore(
-                    this.#createPlaceholder(),
-                    nextNode,
-                  );
-                  childSegments.set(key, toSegment(newPlaceholder));
-                }
-              }
-            }
             if (!childSubscriptions.has(key)) {
-              childSubscriptions.set(
-                key,
-                unmounting(() => takeSegment(key))(render(item, createGetIndex(item))).subscribe({
-                  next: (newMountable) => {
-                    const oldSegment = childSegments.get(key);
-                    if (oldSegment) {
-                      childSegments.set(key, newMountable.replace(oldSegment));
-                    }
-                  },
-                  error: (error) => {
-                    subscriber.error(error);
-                  },
-                }),
-              );
+              // A new item goes in front of its successor, or at the end of
+              // the container. One that emits while it is being subscribed
+              // has its nodes inserted there at once. One that has not
+              // emitted by then gets a placeholder, which its first emission
+              // replaces.
+              const before = nextSegment ? nextSegment[0] : container.end();
+              const { parentNode } = before;
+              if (!parentNode) {
+                throw new Error("Cannot add an item to a list that was removed.");
+              }
+              let placed = false;
+              const subscription = unmounting(() => takeSegment(key))(
+                render(item, createGetIndex(item)),
+              ).subscribe({
+                next: (newMountable) => {
+                  if (!placed) {
+                    placed = true;
+                    childSegments.set(key, this.#place(newMountable, parentNode, before));
+                    return;
+                  }
+                  const oldSegment = childSegments.get(key);
+                  if (oldSegment) {
+                    childSegments.set(key, newMountable.replace(oldSegment));
+                  }
+                },
+                error: (error) => {
+                  subscriber.error(error);
+                },
+              });
+              if (!placed) {
+                placed = true;
+                childSegments.set(
+                  key,
+                  toSegment(parentNode.insertBefore(this.#createPlaceholder(), before)),
+                );
+              }
+              childSubscriptions.set(key, subscription);
             } else if (!staying.has(key)) {
               // Only an item outside the longest run of items that kept
               // their order moves; the run stays where it is and the others

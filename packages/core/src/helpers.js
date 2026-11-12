@@ -45,6 +45,28 @@ export function replaceSegment(newSegment, oldSegment) {
 }
 
 /**
+ * Moves the nodes of `segment` into `parent`, in front of `before`, or to its
+ * end when `before` is `null`, keeping their order.
+ *
+ * @template {INode<T>} T
+ * @param {SegmentOf<T>} segment
+ * @param {T} parent
+ * @param {T | null} before
+ * @returns {SegmentOf<T>}
+ */
+export function insertSegment(segment, parent, before) {
+  /** @type {T | null} */
+  let node = segment[0];
+  while (node) {
+    /** @type {T | null} */
+    const next = node === segment[1] ? null : node.nextSibling;
+    parent.insertBefore(node, before);
+    node = next;
+  }
+  return segment;
+}
+
+/**
  * @template {INode<T>} T
  * @param {SegmentOf<T>} segment
  */

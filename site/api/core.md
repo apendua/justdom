@@ -19,10 +19,13 @@ npm install justdom-core justdom-signal
 | `$$(tag, effects?)`    | The same for an SVG element, created in the SVG namespace.                                                                                                                                                                                                                |
 | `children(...sources)` | An entity effect that renders the sources as the element's children, in order. Each source emits mountables, and a new emission replaces the span of nodes the last one placed. A source may be an element, text, a list or a component.                                  |
 
-A **mountable** is a tree that has not been put anywhere yet, with one method, `replace(segment)`,
-that swaps it into a span of sibling nodes. Everything that can be a child is a `Subscribable` of
-mountables, and `justdom-three` declares the same shape so that a tree built here can be mounted in
-a scene without the two packages depending on each other.
+A **mountable** is a tree that has not been put anywhere yet. Its one required method,
+`replace(segment)`, swaps it into a span of sibling nodes. It may also offer
+`insert(parent, before)`, which puts it into `parent` in front of `before`, or at the end when
+`before` is `null`. A mountable that only has `replace` is mounted through a placeholder comment
+that it then replaces, so `insert` saves a node and two DOM calls. Everything that can be a child is
+a `Subscribable` of mountables, and `justdom-three` declares the same shape so that a tree built
+here can be mounted in a scene without the two packages depending on each other.
 
 ## Operators
 
@@ -94,7 +97,7 @@ synchronous server render can only ever have serialized the fallback.
 
 `hydrate(root, ...content)` returns a source that, when subscribed, mounts `content` into `root` by
 claiming the nodes already there instead of creating new ones: elements by tag, text nodes, and the
-comment anchors `children` and the lists leave. Nodes are claimed left to right, in the order the
+pair of comments a list leaves around its items. Nodes are claimed left to right, in the order the
 tree subscribes, which is document order. A text node's content is written anyway rather than
 trusted. If the markup does not line up with what the tree renders, the mismatch is logged with
 `console.warn`, `root` is emptied and the tree is mounted from scratch, so a mismatch costs

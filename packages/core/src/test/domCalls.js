@@ -14,23 +14,25 @@ const COUNTED = /** @type {const} */ ([
 ]);
 
 /**
- * The prototype that defines `name` for `object`, which is where a wrapper
- * has to go to be seen by every node. Looked up from the document, because
- * the test environment does not expose `Node` and `Document` as globals.
+ * The object that defines `name` for `object`, which is where a wrapper has
+ * to go to be seen by every node: a prototype, looked up from the document
+ * because the test environment does not expose `Node` and `Document` as
+ * globals. It is the document itself for a method an earlier test assigned
+ * on it, since that assignment hides the prototype's from then on.
  *
  * @param {object} object
  * @param {string} name
  * @returns {Record<string, (...args: unknown[]) => unknown>}
  */
 function definerOf(object, name) {
-  let prototype = Object.getPrototypeOf(object);
-  while (prototype && !Object.hasOwn(prototype, name)) {
-    prototype = Object.getPrototypeOf(prototype);
+  let definer = object;
+  while (definer && !Object.hasOwn(definer, name)) {
+    definer = Object.getPrototypeOf(definer);
   }
-  if (!prototype) {
+  if (!definer) {
     throw new Error(`Nothing defines ${name}().`);
   }
-  return prototype;
+  return /** @type {Record<string, (...args: unknown[]) => unknown>} */ (definer);
 }
 
 /**

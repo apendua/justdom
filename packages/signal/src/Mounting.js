@@ -1,9 +1,11 @@
 import { Effect, assertTeardown } from "./Effect.js";
-import { NoValueError, callWithComputation, withComputation } from "./core.js";
+import { NoValueError, activeChannel, callWithComputation, withComputation } from "./core.js";
+import { defaultChannel } from "./scheduler.js";
 
 /**
  * @import { Dependency } from "./core.js";
- * @import { EffectContext } from "./Effect.js";
+ * @import { EffectContext, EffectOptions } from "./Effect.js";
+ * @import UpdateChannel from "./UpdateChannel.js";
  * @import { Subscriber } from "./Stream.js";
  * @import { EntityEffect } from "./types.js";
  */
@@ -28,14 +30,15 @@ import { NoValueError, callWithComputation, withComputation } from "./core.js";
  * Nothing runs twice, and an entry is not asked what kind it is: whether it
  * gets an effect is decided by what its run did.
  *
- * The mounting is also the context its entries are handed, since an entry
- * with no effect has no context of its own. `fail` does what an effect's
- * does: called while the entry's first run is on the stack, the failure ends
- * the mounting once the run has unwound, and called later, it goes to the
- * subscriber.
+ * The mounting hands its entries their context, since an entry with no
+ * effect has none of its own. Its `fail` does what an effect's does: called
+ * while the entry's first run is on the stack, the failure ends the mounting
+ * once the run has unwound, and called later, it goes to the subscriber.
+ *
+ * An entry's effect is built in the channel the mounting was built in,
+ * wherever in the entry its first read happens to sit.
  *
  * @template T
- * @implements {EffectContext}
  */
 export class Mounting {
   /** @type {Subscriber<T>} */
@@ -87,9 +90,27 @@ export class Mounting {
    * What every effect of this mounting is built with. Made for the first
    * one.
    *
-   * @type {import("./Effect.js").EffectOptions | null}
+   * @type {EffectOptions | null}
    */
   #options = null;
+
+  /**
+   * The channel the mounting was built in, which is the channel of its
+   * effects. An effect built on its own takes the channel that is active
+   * when it is built, and an entry's is built at its first read, which may
+   * sit inside a `withChannel` of the entry's own.
+   *
+   * @type {UpdateChannel}
+   */
+  #channel = /** @type {UpdateChannel | null} */ (activeChannel) ?? defaultChannel;
+
+  /**
+   * What an entry is handed on its first run: `fail`, and nothing else of
+   * the mounting.
+   *
+   * @type {EffectContext}
+   */
+  #context = { fail: (err) => this.#fail(err) };
 
   /**
    * @param {Subscriber<T>} subscriber
@@ -99,13 +120,12 @@ export class Mounting {
   }
 
   /**
-   * Report a failure that happened after the entry's run returned. A
-   * property and not a method, because an entry takes it off the context:
-   * `(entity, { fail }) => ...`.
+   * Report a failure that happened after the entry's run returned.
    *
-   * @type {(err: unknown) => void}
+   * @param {unknown} err
+   * @returns {void}
    */
-  fail = (err) => {
+  #fail(err) {
     if (!this.#entry) {
       // No run on the stack, so the mounting stands, or has gone. This is
       // where the `onError` of an entry's effect lands as well.
@@ -119,7 +139,7 @@ export class Mounting {
       return;
     }
     this.#pending = this.#pending ?? { value: err };
-  };
+  }
 
   /**
    * Run one entry on `entity`, and keep what it leaves behind.
@@ -139,7 +159,7 @@ export class Mounting {
     /** @type {unknown} */
     let teardown;
     try {
-      teardown = callWithComputation(this, entry, entity, this);
+      teardown = callWithComputation(this, entry, entity, this.#context);
     } catch (err) {
       const effect = this.#finish();
       if (effect) {
@@ -246,9 +266,17 @@ export class Mounting {
       // when a dependency dies. It hears none of that during the first run:
       // an effect whose constructor has not returned throws instead, which
       // is what `settleAdopted` does.
-      this.#options = { name: "just", onError: this.fail };
+      this.#options = { name: "just", onError: this.#context.fail, channel: this.#channel };
     }
     const effect = Effect.adopt((context) => entry(entity, context), this.#options);
+    // A failure the run reported before this read is the effect's now. The
+    // effect is running, so it keeps the failure until the run has unwound,
+    // as it would have had the effect been there to take the report.
+    const pending = this.#pending;
+    if (pending) {
+      this.#pending = null;
+      effect.fail(pending.value);
+    }
     // What the run has registered so far is the run's own, to be paid before
     // the entry runs again, so it goes with the effect.
     const owed = this.#owed;

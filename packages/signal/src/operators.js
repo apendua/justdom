@@ -24,9 +24,9 @@ export { failuresOf };
  * read changes.
  *
  * An `EntityEffect` *is* that already — every entry of a mounting runs as
- * the body of its own `Effect` — so this is the identity, kept because a call site
- * that says `effects(fn)` says what the function is for. A plain lambda in
- * the same position means exactly the same thing.
+ * the body of its own `Effect` — so this is the identity, kept because a
+ * call site that says `effects(fn)` says what the function is for. A plain
+ * lambda in the same position means exactly the same thing.
  *
  * @template T
  * @param {(value: T) => void} fn
@@ -43,10 +43,10 @@ export function effects(fn) {
  * down on unsubscribe.
  *
  * A mounting's array needs none of this — every entry there runs as the body
- * of its own `Effect` already, which is why `effects` above is the identity — but a
- * pipeline that *receives* entities rather than holding one does, and saying
- * the same thing as `flatMap` into an effect loses the value on the way
- * through.
+ * of its own `Effect` already, which is why `effects` above is the identity —
+ * but a pipeline that *receives* entities rather than holding one does, and
+ * saying the same thing as `flatMap` into an effect loses the value on the
+ * way through.
  *
  * `rxEffects` in `justdom-signal/rxjs` is this, carried into RxJS: same
  * mounting, an `Observable` to `.pipe()` on the way out.

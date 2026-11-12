@@ -100,12 +100,13 @@ export function effectsOnly(fn) {
  * Each entry of `effects` behaves as the body of its own `Effect`, so one
  * re-runs without the others. An entry is only given an `Effect` once it
  * reads something that can change; one that reads nothing runs once, and a
- * teardown it leaves is kept by the mounting (see `Mounting`). A failure while the mounting is being built — the factory or a
- * first run throwing, a subscription erroring on the way in — reaches the
- * subscriber synchronously, with everything already mounted taken down
- * again; later news arrives on the error channel and ends the mounting. A
- * subscriber arriving after another's failure simply builds its own
- * mounting, which is the retry `share`'s reset used to provide.
+ * teardown it leaves is kept by the mounting (see `Mounting`). A failure
+ * while the mounting is being built — the factory or a first run throwing,
+ * a subscription erroring on the way in — reaches the subscriber
+ * synchronously, with everything already mounted taken down again; later
+ * news arrives on the error channel and ends the mounting. A subscriber
+ * arriving after another's failure simply builds its own mounting, which is
+ * the retry `share`'s reset used to provide.
  *
  * @template T
  * @overload

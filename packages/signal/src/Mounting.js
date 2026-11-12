@@ -33,7 +33,7 @@ import { defaultChannel } from "./scheduler.js";
  * effect has none of its own. Its `fail` does what an effect's does: called
  * while the entry's first run is on the stack, the failure ends the mounting
  * once the run has unwound, and called later, it goes to the holder's
- * `onError`.
+ * `onError`. Called after the mounting was taken down, it does nothing.
  *
  * An entry's effect is built in the channel the mounting was built in,
  * wherever in the entry its first read happens to sit.
@@ -109,6 +109,14 @@ export class Mounting {
   #channel = /** @type {UpdateChannel | null} */ (activeChannel) ?? defaultChannel;
 
   /**
+   * Whether the mounting was taken down. A failure reported after that is
+   * dropped.
+   *
+   * @type {boolean}
+   */
+  #ended = false;
+
+  /**
    * What an entry is handed on its first run: `fail`, and nothing else of
    * the mounting.
    *
@@ -132,8 +140,12 @@ export class Mounting {
   #fail(err) {
     if (!this.#entry) {
       // No run on the stack, so the mounting stands, or has gone. This is
-      // where the `onError` of an entry's effect lands as well.
-      this.#onError(err);
+      // where the `onError` of an entry's effect lands as well. A mounting
+      // that has gone has no holder left to tell: the failure of something
+      // that was taken down is dropped, as a closed subscription drops it.
+      if (!this.#ended) {
+        this.#onError(err);
+      }
       return;
     }
     if (this.#effect) {
@@ -215,6 +227,7 @@ export class Mounting {
    * @returns {void}
    */
   unsubscribe() {
+    this.#ended = true;
     this.#release(0);
   }
 

@@ -179,7 +179,8 @@ const NOTHING_MOUNTED = { unsubscribe() {} };
  *
  * A failure while the effects are being mounted is thrown, with what was
  * mounted taken down again. One that arrives later goes to `onError`, and
- * the mounting stays up until the holder unsubscribes it.
+ * the mounting stays up until the holder unsubscribes it. One that arrives
+ * after that is dropped: what was taken down has nobody left to fail.
  *
  * @template T
  * @param {T} entity

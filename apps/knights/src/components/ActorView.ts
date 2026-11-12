@@ -70,21 +70,27 @@ function directionFromVector(v: Point): number {
   return v.x < 0 ? -d : d;
 }
 
-class ActorViewStore {
-  #props: ActorViewProps;
+/**
+ * What one stack on the board looks like at the moment: where it is drawn,
+ * which way it faces and which animation it plays. The board makes one for
+ * each stack and reads where they are drawn to put them in order (see
+ * `drawOrder`), and `ActorView` draws it.
+ */
+export class ActorViewStore {
+  public readonly props: ActorViewProps;
   #state = store({ moveProgress: 0, moveSpeed: 0 });
 
   public constructor(props: ActorViewProps) {
-    this.#props = props;
+    this.props = props;
   }
 
   @memo()
   public get mapping(): (field: FieldCoords) => Point {
-    return createMapping(this.#props);
+    return createMapping(this.props);
   }
 
   public get movePath(): FieldCoords[] | null {
-    return this.#props.movePath ?? null;
+    return this.props.movePath ?? null;
   }
 
   public get isMoving(): boolean {
@@ -132,7 +138,7 @@ class ActorViewStore {
 
     if (!movePath || i < 0 || i === movePath.length - 1) {
       // Standing still: face the other side of the board.
-      return { x: this.#props.side === ATTACKER ? 1 : -1, y: 0 };
+      return { x: this.props.side === ATTACKER ? 1 : -1, y: 0 };
     }
     const p0 = this.mapping(movePath[i + 0]);
     const p1 = this.mapping(movePath[i + 1]);
@@ -141,26 +147,26 @@ class ActorViewStore {
   }
 
   public get direction(): number {
-    return this.#props.direction || directionFromVector(this.directionVector);
+    return this.props.direction || directionFromVector(this.directionVector);
   }
 
   public get animation(): AnimationType {
-    if (this.#props.animation) {
-      return this.#props.animation;
+    if (this.props.animation) {
+      return this.props.animation;
     }
-    if (this.#props.totalHealth === 0) {
+    if (this.props.totalHealth === 0) {
       return ANIMATION_DEAD;
     }
     if (this.isMoving) {
       return ANIMATION_WALK;
     }
-    if (this.#props.isHit) {
-      return this.#props.isDying ? ANIMATION_FALL : ANIMATION_HIT;
+    if (this.props.isHit) {
+      return this.props.isDying ? ANIMATION_FALL : ANIMATION_HIT;
     }
-    if (this.#props.isAttacking) {
+    if (this.props.isAttacking) {
       return ANIMATION_ATTACK;
     }
-    return this.#props.isActive ? ANIMATION_ACTIVE : ANIMATION_IDLE;
+    return this.props.isActive ? ANIMATION_ACTIVE : ANIMATION_IDLE;
   }
 
   /**
@@ -172,7 +178,7 @@ class ActorViewStore {
     const i = this.pathIndex;
 
     if (!this.isMoving || !movePath || i < 0) {
-      return this.mapping(this.#props);
+      return this.mapping(this.props);
     }
     const posOnSegment = (movePath.length - 1) * this.#state.moveProgress - i;
     const p0 = this.mapping(movePath[i]);
@@ -188,7 +194,7 @@ class ActorViewStore {
    * How many units are still standing, as shown on the badge.
    */
   public get amount(): number {
-    const { totalHealth, toughness } = this.#props;
+    const { totalHealth, toughness } = this.props;
     if (totalHealth === undefined || !toughness) {
       return 0;
     }
@@ -235,10 +241,21 @@ const StatusBar = component((_: WeakKey, props: StatusBarProps) => {
 });
 
 /**
+ * Puts the stacks in the order they are drawn: far to near, which on this
+ * board is top to bottom, so that a stack nearer the viewer covers the ones
+ * behind it. A stack is placed by where it is drawn now, not by the field it
+ * stands on, so one walking down the board passes in front of each stack it
+ * walks by. Stacks drawn at the same height keep the order they came in.
+ */
+export function drawOrder(views: readonly ActorViewStore[]): ActorViewStore[] {
+  return [...views].sort((a, b) => a.position.y - b.position.y);
+}
+
+/**
  * One stack on the board: its sprite, and the badge that counts its units.
  */
-const ActorView = component((ctx: WeakKey, props: ActorViewProps) => {
-  const actor = new ActorViewStore(props);
+const ActorView = component((ctx: WeakKey, actor: ActorViewStore) => {
+  const props = actor.props;
 
   return $$("g", [
     attr("opacity", () => props.opacity ?? 1.0),

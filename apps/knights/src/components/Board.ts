@@ -6,7 +6,7 @@ import { createInverseMapping } from "../helpers/mappings";
 import type { Point } from "../helpers/vector";
 import BoardStore from "../store/Board";
 import type Game from "../store/Game";
-import ActorView from "./ActorView";
+import ActorView, { ActorViewStore, drawOrder } from "./ActorView";
 import Field from "./Field";
 import FieldSet from "./FieldSet";
 import type { Dimensions } from "./types";
@@ -36,6 +36,45 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
       return props.isActive;
     },
   });
+
+  // One for each stack, for as long as the game lasts: no stack joins it
+  // later, and one that falls stays on the board.
+  const views = game.actors.map(
+    (actor) =>
+      new ActorViewStore({
+        ...dimensions,
+        type: actor.type,
+        side: actor.side,
+        toughness: actor.toughness,
+        get row() {
+          return actor.row;
+        },
+        get column() {
+          return actor.column;
+        },
+        get movePath() {
+          return actor.movePath;
+        },
+        get totalHealth() {
+          return actor.totalHealth;
+        },
+        get isAttacking() {
+          return actor.isAttacking;
+        },
+        get isHit() {
+          return actor.isHit;
+        },
+        get isDying() {
+          return actor.isDying;
+        },
+        get direction() {
+          return actor.direction;
+        },
+        get isActive() {
+          return game.currentActor === actor;
+        },
+      }),
+  );
 
   let rootRef: SVGGElement | undefined;
   const toFieldCoords = createInverseMapping(dimensions);
@@ -172,70 +211,39 @@ const Board = component((ctx: WeakKey, props: BoardProps) => {
         cutHoles: true,
         borderWidth: 2,
       }),
-      // The stacks, drawn back to front so that the ones further down the board
-      // overlap the ones behind them.
+      // The stacks, drawn far to near.
       list(
-        () => [...game.actors].sort((a1, a2) => a1.row - a2.row),
-        (actor) =>
-          ActorView(ctx, {
-            ...dimensions,
-            type: actor.type,
-            side: actor.side,
-            toughness: actor.toughness,
-            get row() {
-              return actor.row;
-            },
-            get column() {
-              return actor.column;
-            },
-            get movePath() {
-              return actor.movePath;
-            },
-            get totalHealth() {
-              return actor.totalHealth;
-            },
-            get isAttacking() {
-              return actor.isAttacking;
-            },
-            get isHit() {
-              return actor.isHit;
-            },
-            get isDying() {
-              return actor.isDying;
-            },
-            get direction() {
-              return actor.direction;
-            },
-            get isActive() {
-              return game.currentActor === actor;
-            },
-          }),
+        () => drawOrder(views),
+        (view) => ActorView(ctx, view),
       ),
       // A preview of the move the player is about to make. It stays mounted,
       // and keeps animating, while the cursor moves around the board.
       when(
         () => board.ghost,
         () =>
-          ActorView(ctx, {
-            ...dimensions,
-            get type() {
-              return board.ghost?.type ?? KNIGHT;
-            },
-            get row() {
-              return board.ghost?.row ?? -1;
-            },
-            get column() {
-              return board.ghost?.column ?? -1;
-            },
-            get animation() {
-              return board.ghost?.animation ?? ANIMATION_IDLE;
-            },
-            get direction() {
-              return board.ghost?.direction ?? 0;
-            },
-            forceLoop: true,
-            opacity: 0.4,
-          }),
+          ActorView(
+            ctx,
+            new ActorViewStore({
+              ...dimensions,
+              get type() {
+                return board.ghost?.type ?? KNIGHT;
+              },
+              get row() {
+                return board.ghost?.row ?? -1;
+              },
+              get column() {
+                return board.ghost?.column ?? -1;
+              },
+              get animation() {
+                return board.ghost?.animation ?? ANIMATION_IDLE;
+              },
+              get direction() {
+                return board.ghost?.direction ?? 0;
+              },
+              forceLoop: true,
+              opacity: 0.4,
+            }),
+          ),
       ),
     ),
     (node: SVGGElement) => {

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Move the input modules into src/elements/input/",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

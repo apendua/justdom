@@ -1,4 +1,8 @@
 /**
+ * @import { Generated } from "./elements/pseudoElements.js";
+ */
+
+/**
  * Where what goes over everything draws: the cursor and a drag's ghost.
  * Panels draw at a layer's base plus its level (see `getRenderBand` in
  * elevation.js), and a draggable panel's strips at `HANDLE_RENDER_ORDER`,
@@ -43,4 +47,148 @@ export function registerDrawOrder(object, after = 0) {
 export function getObjectDrawOrder(object) {
   const after = drawnAfter.get(object);
   return after === undefined ? -Infinity : object.renderOrder + after;
+}
+
+/**
+ * The DOM node each panel object mirrors, one map for every portal, which
+ * writes it as it builds an object and drops the entry as it takes one
+ * down (`portalNodes.js`).
+ *
+ * @type {WeakMap<import('three').Object3D, Node>}
+ */
+export const objectNodes = new WeakMap();
+
+/**
+ * The pseudo-element each `::before` or `::after` group draws, written by
+ * `generatedContent.js` while the group is up. A pseudo-element is no node,
+ * so it is kept apart from `objectNodes`, which the portals also read.
+ *
+ * @type {WeakMap<import('three').Object3D, Generated>}
+ */
+export const generatedObjects = new WeakMap();
+
+/**
+ * Whether `a` is drawn after `b` in tree order, which is the later drawn
+ * of two at one draw order, as on a page. Each object is read as the
+ * nearest node a panel object above it mirrors, or the pseudo-element
+ * whose group it is in. A page paints an element's `::before` after the
+ * element's own box and before its children, and its `::after` after
+ * everything inside it. Objects in no panel, or in one place, are in no
+ * order.
+ *
+ * @param {import('three').Object3D} a
+ * @param {import('three').Object3D} b
+ * @returns {boolean}
+ */
+export function isLaterInTree(a, b) {
+  return placeAbove(a, placeA) && placeAbove(b, placeB) && isLaterPlace(placeA, placeB);
+}
+
+/**
+ * Where a page paints a node or a pseudo-element in tree order: at a node's
+ * start (`START`), just after its element's start for a `::before`
+ * (`BEFORE`), or after all its element holds for an `::after` (`END`).
+ *
+ * @typedef {{ node: Node, at: number }} Place
+ */
+const START = 0;
+const BEFORE = 1;
+const END = 2;
+
+/** Written by each `isLaterInTree`, so a tie allocates nothing. */
+const placeA = /** @type {Place} */ ({
+  node: /** @type {Node} */ (/** @type {unknown} */ (null)),
+  at: START,
+});
+const placeB = /** @type {Place} */ ({
+  node: /** @type {Node} */ (/** @type {unknown} */ (null)),
+  at: START,
+});
+
+/**
+ * @param {Place} a
+ * @param {Place} b
+ * @returns {boolean}
+ */
+function isLaterPlace(a, b) {
+  if (a.node === b.node) {
+    return a.at > b.at;
+  }
+  const relation = b.node.compareDocumentPosition(a.node);
+  if (relation & Node.DOCUMENT_POSITION_CONTAINED_BY) {
+    // `a` is inside `b`: after `b`'s start, before its end.
+    return b.at !== END;
+  }
+  if (relation & Node.DOCUMENT_POSITION_CONTAINS) {
+    // `b` is inside `a`: only `a`'s end comes after it.
+    return a.at === END;
+  }
+  return (relation & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/**
+ * Write where `object` is painted into `place`.
+ *
+ * @param {import('three').Object3D} object
+ * @param {Place} place
+ * @returns {boolean} Whether it is in a panel.
+ */
+function placeAbove(object, place) {
+  for (
+    let node = /** @type {import('three').Object3D | null} */ (object);
+    node;
+    node = node.parent
+  ) {
+    const generated = generatedObjects.get(node);
+    if (generated) {
+      place.node = generated.element;
+      place.at = generated.kind === "before" ? BEFORE : END;
+      return true;
+    }
+    const found = objectNodes.get(node);
+    if (found) {
+      place.node = found;
+      place.at = START;
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Each element's box mesh, and each `::before` and `::after` quad, while
+ * it has one mounted.
+ *
+ * @type {WeakMap<Element | Generated, import('three').Object3D>}
+ */
+const boxes = new WeakMap();
+
+/**
+ * Say which mesh draws an element's box, or a pseudo-element's quad, or
+ * that none does any more, so the scan that hit-tests elements
+ * (`hitElement` in `elements/input/dragAndDrop.js`) orders the box by the
+ * number the cast compares for that mesh.
+ *
+ * @param {Element | Generated} element
+ * @param {import('three').Object3D | null} mesh
+ * @returns {void}
+ */
+export function setBoxMesh(element, mesh) {
+  if (mesh) {
+    boxes.set(element, mesh);
+  } else {
+    boxes.delete(element);
+  }
+}
+
+/**
+ * The order an element's box is drawn at, as the cast reads it for the box's
+ * mesh (`getObjectDrawOrder`), or `undefined` while no box mesh is mounted.
+ *
+ * @param {Element | Generated} element
+ * @returns {number | undefined}
+ */
+export function getBoxDrawOrder(element) {
+  const mesh = boxes.get(element);
+  return mesh ? getObjectDrawOrder(mesh) : undefined;
 }

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext } from "../../interactions.js";
 import { createMirror } from "../mirror.js";
-import { PORTAL_ATTRIBUTE } from "../portalRoot.js";
+import { PORTAL_ATTRIBUTE } from "../portal/portalRoot.js";
 import { checkbox } from "./checkbox.js";
 import { bubble, forwardedPanel } from "../../test/rays.js";
 

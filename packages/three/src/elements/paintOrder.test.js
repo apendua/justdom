@@ -30,7 +30,7 @@ import { halfPlanesOf } from "./paint/halfPlanes.js";
 import { getLayerOrder, isProxy, PANEL_PIECES } from "./paint/layerOrder.js";
 import { ARRAYS_PER_DRAW, PaintBatch } from "./paint/paintBatch.js";
 import { LayerTree } from "./paint/layerTree.js";
-import { createPortal } from "./portal.js";
+import { createPortal } from "./portal/portal.js";
 import { buffers, drawn, draws, watchBatch } from "../test/batchBuffers.js";
 import { rectGeometry } from "./paint/sdfRect.js";
 

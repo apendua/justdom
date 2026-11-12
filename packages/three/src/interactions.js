@@ -9,7 +9,7 @@ import {
   Stream,
   withComputation,
 } from "justdom-signal";
-import { getObjectDrawOrder } from "./drawOrder.js";
+import { getObjectDrawOrder, isLaterInTree } from "./drawOrder.js";
 import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
@@ -729,15 +729,16 @@ function byDistance(a, b) {
  * matrix inversions, far below any distance a panel puts between things it
  * means to stack.
  */
-const LEVEL = 1e-6;
+export const LEVEL = 1e-6;
 
 /**
  * The hit drawn on top, among those sorted by distance: the nearest, unless
  * hits level with it are drawn over it. A panel puts its content level, and of
  * level hits the later draw order (`getObjectDrawOrder`) is drawn over the
- * earlier, since nothing in a panel writes depth but its depth quad. The first
- * of the latest, so hits drawn at one order, and hits no panel draws, keep the
- * order the cast found them in.
+ * earlier, since nothing in a panel writes depth but its depth quad. Of level
+ * hits drawn at one order, the one painted later in tree order, a
+ * `::before` and an `::after` in their places (`isLaterInTree`), as on a
+ * page; hits no panel draws keep the order the cast found them in.
  *
  * @param {THREE.Intersection<THREE.Object3D<XREventMap>>[]} sorted
  * @returns {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined}
@@ -751,7 +752,10 @@ function onTop(sorted) {
   for (let i = 1; i < sorted.length && sorted[i].distance - sorted[0].distance <= LEVEL; i++) {
     const next = sorted[i];
     const nextOrder = getObjectDrawOrder(next.object);
-    if (nextOrder > order) {
+    if (
+      nextOrder > order ||
+      (nextOrder === order && order !== -Infinity && isLaterInTree(next.object, hit.object))
+    ) {
       hit = next;
       order = nextOrder;
     }

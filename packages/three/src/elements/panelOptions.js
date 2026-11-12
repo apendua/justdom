@@ -1,9 +1,9 @@
 import { PanelOptionsContext } from "../panelContexts.js";
 
 /**
- * @import {HapticOptions} from './haptics.js';
- * @import {LoadingFrameOptions} from './loadingFrame.js';
- * @import {PortalKeyboardOptions} from './portalKeyboard.js';
+ * @import {HapticOptions} from './input/haptics.js';
+ * @import {LoadingFrameOptions} from './portal/loadingFrame.js';
+ * @import {PortalKeyboardOptions} from './portal/portalKeyboard.js';
  */
 
 /**

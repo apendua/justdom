@@ -11,7 +11,7 @@ import {
   setWorldMatrix,
 } from "./interactions.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
-import { registerDrawOrder } from "./drawOrder.js";
+import { objectNodes, registerDrawOrder } from "./drawOrder.js";
 import { BOX_BUCKET_BIAS } from "./elements/paint/boxBatch.js";
 
 /**
@@ -952,6 +952,27 @@ describe("getIntersection", () => {
     manager.add(text);
     manager.add(box);
     assert.equal(manager.getIntersection(fakeController())?.object, box);
+  });
+
+  test("of level hits drawn at one order, the one in the later element wins", () => {
+    // Two flow siblings' boxes that overlap, level and in one bucket: a page
+    // gives the later sibling the hit. The cast finds the earlier first.
+    // Goes red with the first found kept.
+    const manager = new InteractionManager();
+    const parent = document.createElement("div");
+    const [earlier, later] = [0, 1].map(() => parent.appendChild(document.createElement("div")));
+    const first = targetMesh(5);
+    const second = targetMesh(5);
+    for (const [mesh, element] of /** @type {const} */ ([
+      [first, earlier],
+      [second, later],
+    ])) {
+      mesh.renderOrder = 7;
+      registerDrawOrder(mesh, BOX_BUCKET_BIAS);
+      objectNodes.set(mesh, element);
+      manager.add(mesh);
+    }
+    assert.equal(manager.getIntersection(fakeController())?.object, second);
   });
 
   test("of level hits no panel in paint order draws, the first found wins", () => {

@@ -51,13 +51,13 @@ const PAGE = `<!doctype html>
 </style>
 <script type="module">
   import * as THREE from "three";
-  import { createPortal } from "/packages/three/src/elements/portal.js";
+  import { createPortal } from "/packages/three/src/elements/portal/portal.js";
   import { InteractionContext, InteractionManager } from "/packages/three/src/interactions.js";
   import {
     createPortalScheduler,
     PortalSchedulerContext,
-  } from "/packages/three/src/elements/portalScheduler.js";
-  import { createFrameRequester } from "/packages/three/src/elements/frameRequester.js";
+  } from "/packages/three/src/elements/portal/portalScheduler.js";
+  import { createFrameRequester } from "/packages/three/src/elements/portal/frameRequester.js";
 
   // One scheduler for every portal on the page, as \`render()\` installs one
   // for every portal in a scene: what paces the mounts, and what takes a

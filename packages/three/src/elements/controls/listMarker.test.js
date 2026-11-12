@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { clientRect } from "../../test/clientRect.js";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../../interactions.js";
-import { createPortal as createHeldPortal } from "../portal.js";
+import { createPortal as createHeldPortal } from "../portal/portal.js";
 import { getListItemOrdinal, listMarkerText } from "./listMarker.js";
 import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
 import { stubCanvas, STUB_GLYPH_WIDTH } from "../../test/stubCanvas.js";

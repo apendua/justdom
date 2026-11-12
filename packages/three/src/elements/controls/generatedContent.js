@@ -11,10 +11,9 @@ import { RampSlot } from "../paint/gradient.js";
 import { backgroundImage, contentImageEqual, placeContentImage } from "./image.js";
 import { toLocalClipBox } from "../clip.js";
 import {
+  getBoxRenderOrder,
   getContentRenderOrder,
-  getDrawLevel,
   getLayer,
-  getRenderBand,
   OVERLAY_LIFT,
 } from "../paint/elevation.js";
 import { LayerOrderContext } from "../paint/layerOrder.js";
@@ -24,6 +23,7 @@ import { TextBatchContext } from "../paint/textBatch.js";
 import { drawQuad } from "./div.js";
 import { getRunRenderStyle, isTintableText } from "../textHelpers.js";
 import { surfaceRun } from "../surfaceRun.js";
+import { generatedObjects, setBoxMesh } from "../../drawOrder.js";
 
 /**
  * @import {Source} from 'justdom-signal';
@@ -172,6 +172,21 @@ function generatedBox(ctx, generated, surface) {
       // for the rebuild.
       panelBatch?.moved(obj);
     }),
+    // The scan meets it only while it is up.
+    effects(() => {
+      generated.mounted = true;
+      onCleanup(() => {
+        generated.mounted = false;
+      });
+    }),
+    // What it draws is ordered in tree order as its pseudo-element
+    // (`isLaterInTree`), not as its element.
+    effects((obj) => {
+      generatedObjects.set(obj, generated);
+      onCleanup(() => {
+        generatedObjects.delete(obj);
+      });
+    }),
     // A lifted one is one of the planes the panel's walk orders, for as
     // long as it is one.
     effects((obj) => {
@@ -299,13 +314,18 @@ function generatedQuad(ctx, generated, surface, origin, frame) {
       const corner = frame();
       numbers.place(x - corner.x, y - corner.y, properties.totalWidth, properties.totalHeight);
       numbers.clip(toLocalClipBox(getInteriorClipBox(element), x, y));
-      numbers.order(
-        getRenderBand(generated) + getDrawLevel(generated) + (batch() ? 0 : UNBATCHED_BOX_BIAS),
-      );
+      numbers.order(getBoxRenderOrder(generated) + (batch() ? 0 : UNBATCHED_BOX_BIAS));
       numbers.show(!surface.hidden());
     }),
     effects(() => {
       numbers.image(shown.get());
+    }),
+    // The scan orders the pseudo-element by this mesh while it is mounted.
+    effects(() => {
+      setBoxMesh(generated, mesh);
+      onCleanup(() => {
+        setBoxMesh(generated, null);
+      });
     }),
   ]);
 }

@@ -35,8 +35,8 @@ import {
   paintedBoundsInto,
 } from "../paint/elevation.js";
 import { LayerOrderContext } from "../paint/layerOrder.js";
-import { registerDrawOrder } from "../../drawOrder.js";
-import { isScrollable } from "../scroll.js";
+import { registerDrawOrder, setBoxMesh } from "../../drawOrder.js";
+import { isScrollable } from "../input/scroll.js";
 import { markMoved, place } from "../place.js";
 import { BoxNumbers } from "../boxNumbers.js";
 import { BOX_BUCKET_BIAS, BoxBatchContext, UNBATCHED_BOX_BIAS } from "../paint/boxBatch.js";
@@ -46,8 +46,8 @@ import {
   forwardPointerEvents,
   pressesForRayTarget,
   isRayTarget,
-} from "../pointerForwarding.js";
-import { lazyPanel, pressInit } from "../dragAndDrop.js";
+} from "../input/pointerForwarding.js";
+import { lazyPanel, pressInit } from "../input/dragAndDrop.js";
 import { setContentGroup } from "../contentGroup.js";
 
 /** Scratch for composing a scroll onto a content group's matrix. */
@@ -878,6 +878,13 @@ export function box(ctx, element, options = {}) {
       effects(() => {
         onCleanup(() => {
           rampSlot.release();
+        });
+      }),
+      // The scan orders the element by this mesh while it is mounted.
+      effects(() => {
+        setBoxMesh(element, boxMesh);
+        onCleanup(() => {
+          setBoxMesh(element, null);
         });
       }),
       effects(() => {

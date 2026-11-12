@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { effects, Signal } from "justdom-signal";
 import { $, children } from "./operators.js";
 import { dom } from "./dom.js";
-import { createFrameRequester } from "./elements/frameRequester.js";
+import { createFrameRequester } from "./elements/portal/frameRequester.js";
 import { keepSubtreeMatrices } from "./elements/place.js";
 
 /**

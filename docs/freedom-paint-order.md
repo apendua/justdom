@@ -175,18 +175,117 @@ stay above every slot.
 ## The hit test
 
 `onTop` in `interactions.js` sorts the hits by distance. The nearest wins unless hits within `LEVEL`
-(a micrometre) of it are drawn after it, and then the last drawn of those wins. Each mesh a ray can
-meet on a panel registers how far past its `renderOrder` it draws (`registerDrawOrder` in
-`drawOrder.js`), and `getObjectDrawOrder` reads the sum. A batched box registers `BOX_BUCKET_BIAS`,
-since its ray target is its element's mesh and the panel's one batch lays it at
-`renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a level later. The box, the
-picture, a pseudo-element's box, the run, the caret, the checkbox's tick and the SVG shape register.
-A mesh that did not register reads as `-Infinity`, so where a hit is on no panel the nearest wins as
-it was found.
+(a micrometre) of it are drawn after it, and then the last drawn of those wins. Of those drawn at
+one order, the one painted later in tree order wins, as on a page (`isLaterInTree` in
+`drawOrder.js`, which reads each hit's element from `objectNodes`, the map every portal keeps of the
+node each of its objects mirrors). A `::before` or `::after` is read from `generatedObjects` and
+placed where a page paints it: a `::before` after its element's own box and before its children, an
+`::after` after everything inside its element, so an in-flow `::after` over a child takes the hit.
+Each mesh a ray can meet on a panel registers how far past its `renderOrder` it draws
+(`registerDrawOrder` in `drawOrder.js`), and `getObjectDrawOrder` reads the sum. A batched box
+registers `BOX_BUCKET_BIAS`, since its ray target is its element's mesh and the panel's one batch
+lays it at `renderOrder + BOX_BUCKET_BIAS` (`#walk` in `paintBatch.js`), half a level later. The
+box, the picture, a pseudo-element's box, the run, the caret, the checkbox's tick and the SVG shape
+register. A mesh that did not register reads as `-Infinity`, so where a hit is on no panel the
+nearest wins as it was found.
+
+A blocker, the panel's or an overlay's, sits a little behind the box it covers, so that what the box
+draws is met first. A ray meets it wherever the ray crosses the box's own plane inside the box, and
+nowhere else (`meetAtBox` in `blocker.js`). Its own quad behind would answer wrongly for a slanting
+ray at either edge: a ray past the box's edge can land on the quad, and a ray inside the opposite
+edge can leave the quad's footprint before it reaches the quad's plane.
 
 A split needs nothing on the ray side: a ray meets a plane at one point, and that point is on one
 side of every other plane. A piece behind the root's plane is farther along the ray than the root's
 box, so the root takes the press there.
+
+### Two hit tests, one order
+
+A panel finds the element under a ray in two ways. The cast above meets ray targets only: the
+elements `isInRayTarget` admits (a clickable element, a drag source or a field's label, and what
+sits inside one), the lists, and the panel's blocker plane, which registers no draw order and so
+loses to anything level with it. It serves presses and hover. The scan, `hitElement` in
+`input/dragAndDrop.js`, visits every element, and serves what the cast does not: a drag's target
+each frame, the thumbstick's wheel on a list's gaps or the panel's background, and the missed-press
+note in development. Rule 3 holds for both, so the scan follows the cast's order.
+
+The scan's rules:
+
+- **What it is given.** A ray in world space, not a point. Each element's object is its own border
+  box, top-left origin and y down, in its own plane, so the ray meets each element at one point and
+  one distance along it. A plane the ray is parallel to, or meets behind its origin, gives no
+  candidate, as three's raycast keeps no hit behind the ray. A plane seen from behind is met as from
+  the front, as the cast meets the double-sided box and blocker, until `backface-visibility` is read
+  (see Open cases).
+- **What it visits.** Every element under the portal's root, last child first, a child before its
+  parent. An element's `::after` is visited before its children and its `::before` after them, as a
+  page orders them among its paint children. An object the mirror has culled (`visible` false) is
+  passed over with all it holds. What is inside an `<svg>` is not visited: the `<svg>` is the
+  target, as it is for a click.
+- **What makes a candidate.** The point where the ray meets the element's plane lies inside its
+  border box and inside its clip box (`getLocalClipBox`), the clip box's rounded corners included.
+  An element that `visibility` hides or that says `pointer-events: none` is not a candidate, and its
+  children still are. A `::before` or `::after` that a panel draws makes its element a candidate
+  where the ray meets its quad, in the element's plane or, as an overlay, in its layer's, inside
+  what clips the element's content (`getInteriorClipBox`), unless its own `visibility` or
+  `pointer-events` says otherwise. It is drawn at its quad's rung, read as an element's box is.
+- **Which candidate wins.** The cast's rule, read per element. The nearest wins, unless candidates
+  within `LEVEL` of it are drawn after it, and then the last drawn of those wins. An element is
+  drawn at its box's rung, the number the cast compares for the box's mesh: its `renderOrder`,
+  `getRenderBand` (the layer's base) plus `getDrawLevel`, and then `BOX_BUCKET_BIAS` (R + 1/2) for a
+  batched box, or `UNBATCHED_BOX_BIAS` (R + 1/4) for one that draws itself, a picture's. An element
+  with no box mesh mounted, whose box draws nothing and is no ray target, reads as a batched box
+  would. Of two at one rung, the later in tree order wins, as on a page.
+- **Clips.** One predicate, `clipBoxContains` in `clip.js`, says whether a point in a clip box's
+  frame is inside it, corners included. `clipRaycast` trims the cast's hits with it and the scan
+  tests its candidates with it, so rule 5 holds at a rounded corner on both sides. An element's own
+  `border-radius` cuts neither: a page does not hit an element outside its rounded border, and
+  neither path follows it yet (see Open cases).
+- **A cut layer** needs nothing here, for the reason given above: a ray meets a plane at one point.
+- **What the scan cannot name.** It names elements, never meshes. A plugin's object stays the
+  cast's: a press or a wheel on one goes to the scene, and a drag over one is over the element the
+  scan finds beneath it. An SVG shape is its `<svg>`, and a field's caret is its field, and a
+  `::before` or `::after` is its element.
+- **What it costs.** The scan visits every element of the panel, since a child can overflow its
+  parent. That is affordable for a drag's frames, a wheel on a gap and one note per missed press. It
+  is not for hover, which runs every frame for every ray. Presses and hover move to the scan only
+  once it reads a per-layer list of boxes in reverse paint order, kept with the batch, which sorts
+  that order already. That list is not built.
+
+Where the two disagree, and which is right. On 2026-11-11 the maintainer decided that the two are to
+agree on this list wherever the fix is simple and needs no change of architecture, by fixing the
+side that is wrong, and that a fix that does need one comes back to the maintainer first. Two of the
+fixes below do. The box over a button needs the scan on every press and hover frame, which the
+per-layer list under _What it costs_ is for, and content over a sibling's box needs the scan to read
+what an element draws. The other two need neither: the cast breaking a level tie by tree order,
+which needs only the hits' elements, and the scan visiting pseudo-elements. The maintainer chose the
+same day to build those two and not the first two, which stay known differences, with the side that
+is right named. Both are built: the cast names the later of two level siblings, as the scan does,
+and the scan visits each element's `::before` and `::after`.
+
+- **Content over a sibling's box.** A run of text, or a picture an element holds, draws at its
+  element's content order, R + 1, over a level sibling's box at R + 1/2, and the cast, meeting it,
+  picks its element. The scan orders each element by its box, and picks the sibling. The cast is
+  right, and the scan is to read what an element draws under the point.
+- **A box that is not a ray target, over one that is.** A translucent cover or a badge without
+  `cursor: pointer` over a button: the cast meets only the button and gives it the press, the scan
+  gives it to the cover, and a page gives the click to the cover. Likewise, a card's background is
+  the blocker to the cast and the card to the scan. The page is right: the cover gets the `click`,
+  which bubbles through its parents, and the button hears nothing of it. Today the button gets the
+  press. A press on a card's background goes to the panel's blocker, which clicks the panel's
+  container element and lets the scene see the press too (`portal.js`), or to an overlay's blocker,
+  which clicks the overlay and stops there (`div.js`); no element between hears it. The differential
+  test compares the two only where the scan's element is a ray target or inside one
+  (`isInRayTarget`), and compares nothing elsewhere.
+
+`input/hitTest.test.js` is that differential test. It casts and scans a grid of rays, straight on
+and slanting, over every scene in `test/paintOrderScenes.js` and a few of its own where draw order,
+the clip, a rounded clip corner or culling decides the hit, with every element made a ray target.
+Each difference it finds must be content over a sibling's box, and the count of them, per scene, is
+held there, beside the count of rays compared. A difference of any other kind fails it, a level tie
+included, since both now break one to the later element. Layers in different planes agree. Sibling
+layers on one plane tie, since in jsdom no frame walks the layers and each keeps the base its
+nesting gives it, so the walk's order between layers is not exercised by this test.
 
 ## Within a level: the rungs
 
@@ -223,6 +322,9 @@ shapes.
   says `hidden` and whose plane faces away is left out of the order.
 - **The drag ghost** (`takeSnapshot` in `ghostSnapshot.js`) renders the panel in the order of its
   last walk, from the headset's viewpoint, and not from the ghost camera's.
+- **An element's own rounded border.** A page does not hit an element outside its `border-radius`.
+  Neither hit test reads it: the cast meets the box's whole quad, and the scan its whole border box.
+  When it comes, it goes in `clipBoxContains` with the element's radii, for both at once.
 - **A plugin's own object.** A portal plugin may return any object, and the tree assumes every layer
   is flat. No plugin today returns anything but planar shapes, pictures and text. One that adds a 3D
   object makes it a scene object, drawn by distance with depth, and not a layer.

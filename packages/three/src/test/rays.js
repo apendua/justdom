@@ -5,8 +5,11 @@
  * a release by hand. Importing this module installs nothing.
  */
 import * as THREE from "three";
-import { createPanelForwarder, PointerForwarderContext } from "../elements/pointerForwarding.js";
-import { createPanelScrollDrags, ScrollDragsContext } from "../elements/scroll.js";
+import {
+  createPanelForwarder,
+  PointerForwarderContext,
+} from "../elements/input/pointerForwarding.js";
+import { createPanelScrollDrags, ScrollDragsContext } from "../elements/input/scroll.js";
 
 /**
  * A panel's container and the context its elements are built with: the

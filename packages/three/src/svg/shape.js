@@ -20,7 +20,7 @@ import {
   writeClip,
 } from "../elements/clip.js";
 import { PortalReadyContext } from "../elements/controls/div.js";
-import { forwardPointerEvents, isClickable } from "../elements/pointerForwarding.js";
+import { forwardPointerEvents, isClickable } from "../elements/input/pointerForwarding.js";
 import { markMoved, place } from "../elements/place.js";
 import { getContentRenderOrder } from "../elements/paint/elevation.js";
 import { BOX_BUCKET_BIAS } from "../elements/paint/boxBatch.js";

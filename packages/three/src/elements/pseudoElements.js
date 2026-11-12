@@ -365,6 +365,24 @@ export class Generated {
      * @type {import('three').Object3D | null}
      */
     this.layerObject = null;
+    /**
+     * Whether a panel draws it now: true while `generatedContent.js` has
+     * its box up. An element no box is built for (`markedBox`), a field or
+     * one a plugin claims, never draws one, whatever its rules say.
+     */
+    this.mounted = false;
+    /**
+     * What its quad covers (`quad`), one object for as long as it holds.
+     *
+     * @type {Derived<ClientBox>}
+     */
+    this.quadBox = new Derived(() => {
+      const at = this.layout.get();
+      const placed = at.picture;
+      return placed && !paintsBox(this.style())
+        ? { x: at.x + placed.x, y: at.y + placed.y, width: placed.width, height: placed.height }
+        : { x: at.x, y: at.y, width: at.width, height: at.height };
+    });
   }
 
   /**
@@ -385,11 +403,7 @@ export class Generated {
    * @returns {ClientBox}
    */
   quad() {
-    const at = this.layout.get();
-    const placed = at.picture;
-    return placed && !paintsBox(this.style())
-      ? { x: at.x + placed.x, y: at.y + placed.y, width: placed.width, height: placed.height }
-      : { x: at.x, y: at.y, width: at.width, height: at.height };
+    return this.quadBox.get();
   }
 }
 
@@ -410,6 +424,20 @@ export function getGenerated(element, kind) {
     generatedCache.set(element, entry);
   }
   return (entry[kind] ??= new Generated(element, kind));
+}
+
+/**
+ * The element's `kind` of pseudo-element while a panel draws it
+ * (`Generated.mounted`), or undefined. It makes nothing and reads no
+ * style, so a scan over every element costs a map read for each.
+ *
+ * @param {Element} element
+ * @param {GeneratedKind} kind
+ * @returns {Generated | undefined}
+ */
+export function getMountedGenerated(element, kind) {
+  const generated = generatedCache.get(element)?.[kind];
+  return generated?.mounted ? generated : undefined;
 }
 
 /**

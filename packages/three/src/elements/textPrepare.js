@@ -1,7 +1,7 @@
 import { createProperty } from "justdom-signal";
 
 /**
- * @import {PortalPump, PortalScheduler} from './portalScheduler.js';
+ * @import {PortalPump, PortalScheduler} from './portal/portalScheduler.js';
  * @import {Texture} from 'three';
  * @import {TextBatch} from './paint/textBatch.js';
  */

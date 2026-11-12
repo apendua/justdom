@@ -1,5 +1,5 @@
 import { isSvgElement, isSvgRoot } from "../plugins.js";
-import { classify } from "../animationClock.js";
+import { classify } from "../portal/animationClock.js";
 import { getSiblingReach } from "../css/documentStyles.js";
 import {
   ACTIVE_ATTRIBUTE,
@@ -7,7 +7,7 @@ import {
   FOCUS_ATTRIBUTE,
   HOVER_ATTRIBUTE,
   PORTAL_ATTRIBUTE,
-} from "../portalRoot.js";
+} from "../portal/portalRoot.js";
 import { isOutOfFlowPosition } from "./geometryReads.js";
 
 /**

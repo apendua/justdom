@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A differential test holds where the press hit test and the drag hit test may name different elements",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

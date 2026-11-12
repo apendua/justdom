@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "../interactions.js";
 import { DomMirror } from "./mirror.js";
-import { createPortal } from "./portal.js";
+import { createPortal } from "./portal/portal.js";
 import { findSvgElement, isSvgElement, isSvgRoot, projectWithPlugins } from "./plugins.js";
 import { PortalPluginsContext } from "../panelContexts.js";
 import { svgElements } from "../svg/index.js";
@@ -70,7 +70,7 @@ function buildTree() {
  * runner has no `requestAnimationFrame` — which is the synchronous path.
  *
  * @param {WeakKey} ctx
- * @param {import('./portal.js').PortalOptions} [options]
+ * @param {import('./portal/portal.js').PortalOptions} [options]
  * @param {() => { card: HTMLElement, svg: Element, rect: Element }} [build]
  */
 async function project(ctx, options = {}, build = buildTree) {

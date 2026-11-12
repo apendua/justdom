@@ -23,7 +23,7 @@ import {
   nextMacrotask,
   settle,
 } from "../test/portalHarness.js";
-import { createPortal } from "./portal.js";
+import { createPortal } from "./portal/portal.js";
 
 // three's SVGLoader parses with DOMParser, which jsdom-env does not install.
 if (typeof globalThis.DOMParser === "undefined") {

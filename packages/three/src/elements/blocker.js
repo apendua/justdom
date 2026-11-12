@@ -48,7 +48,63 @@ const material = new THREE.MeshBasicMaterial({
  * @returns {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>}
  */
 export function createBlocker() {
-  return new THREE.Mesh(geometry, material);
+  /** @type {THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>} */
+  const blocker = new THREE.Mesh(geometry, material);
+  blocker.raycast = (raycaster, intersects) => meetAtBox(blocker, raycaster, intersects);
+  return blocker;
+}
+
+/** Scratch for `meetAtBox`, so a cast allocates only the hit it finds. */
+const toParent = new THREE.Matrix4();
+const parentRay = new THREE.Ray();
+const met = new THREE.Vector3();
+const behind = new THREE.Vector3();
+
+/**
+ * Raycast a blocker as the box it covers. A blocker sits a little behind
+ * the box (`coverBox`), so that what the box draws is met before it. Its
+ * own quad is the wrong place to ask whether a ray meets it: a slanting
+ * ray can pass the box's edge and land on the quad behind it, or cross the
+ * box's plane inside the box and leave the quad's footprint before it
+ * reaches the quad's plane. So the ray meets a blocker wherever it crosses
+ * the box's own plane, its parent's z = 0, inside the box (the blocker's
+ * position and scale, which `coverBox` sets), and the hit is at that
+ * point. Its distance is to the blocker's plane, behind what the box draws.
+ * A blocker with no parent is its own box, and raycast as a mesh.
+ *
+ * @param {THREE.Mesh} blocker
+ * @param {THREE.Raycaster} raycaster
+ * @param {THREE.Intersection[]} intersects
+ * @returns {void}
+ */
+function meetAtBox(blocker, raycaster, intersects) {
+  const { parent, position, scale } = blocker;
+  if (!parent) {
+    THREE.Mesh.prototype.raycast.call(blocker, raycaster, intersects);
+    return;
+  }
+  toParent.copy(parent.matrixWorld).invert();
+  parentRay.copy(raycaster.ray).applyMatrix4(toParent);
+  const along = -parentRay.origin.z / parentRay.direction.z;
+  // Parallel to the plane, or crossing it behind the ray's origin.
+  if (!(along >= 0) || !Number.isFinite(along)) {
+    return;
+  }
+  parentRay.at(along, met);
+  if (Math.abs(met.x - position.x) > scale.x / 2 || Math.abs(met.y - position.y) > scale.y / 2) {
+    return;
+  }
+  parentRay.at((position.z - parentRay.origin.z) / parentRay.direction.z, behind);
+  behind.applyMatrix4(parent.matrixWorld);
+  const distance = behind.distanceTo(raycaster.ray.origin);
+  if (distance < raycaster.near || distance > raycaster.far) {
+    return;
+  }
+  intersects.push({
+    distance,
+    point: met.clone().applyMatrix4(parent.matrixWorld),
+    object: blocker,
+  });
 }
 
 /** @returns {THREE.MeshBasicMaterial} */
@@ -103,7 +159,8 @@ export function isBlocker(object) {
  * @param {THREE.Object3D} blocker
  * @param {number} width
  * @param {number} height
- * @param {number} z How far behind the box's own content to sit.
+ * @param {number} z How far behind the box's own content to sit. A ray
+ *   still meets the blocker in the box's plane (`meetAtBox`).
  * @returns {void}
  */
 export function coverBox(blocker, width, height, z) {

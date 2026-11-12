@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { observable, Signal } from "justdom-signal";
 import { $, attr } from "justdom-core";
-import { getPortalRoot } from "./elements/portalRoot.js";
+import { getPortalRoot } from "./elements/portal/portalRoot.js";
 import { LOADING_ATTRIBUTE } from "./elements/mirror/mutationRules.js";
 import { dom } from "./dom.js";
 import { countingManager, nextMacrotask, settle } from "./test/portalHarness.js";

@@ -37,24 +37,27 @@ export {
   carriedPose,
   applyLevelPose,
 } from "./carry.js";
-export { createPortal } from "./elements/portal.js";
+export { createPortal } from "./elements/portal/portal.js";
 export { enableThemingMode, followUserActions } from "./elements/css/documentStyles.js";
-export { enableOutlinesMode, outlinesReport } from "./elements/outlines.js";
+export { enableOutlinesMode, outlinesReport } from "./elements/dev/outlines.js";
 export {
   ACTIVE_ATTRIBUTE,
   FOCUS_ATTRIBUTE,
   HOVER_ATTRIBUTE,
   getPortalRoot,
-} from "./elements/portalRoot.js";
-export { isTextInput, typeIntoInput } from "./elements/typing.js";
-export { PREVIEW_ATTRIBUTE } from "./elements/keyboardPreview.js";
+} from "./elements/portal/portalRoot.js";
+export { isTextInput, typeIntoInput } from "./elements/input/typing.js";
+export { PREVIEW_ATTRIBUTE } from "./elements/input/keyboardPreview.js";
 export { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
 export { withPanelOptions } from "./elements/panelOptions.js";
-export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/haptics.js";
+export { HAPTIC_FLAVORS, playHaptic, playHapticAll } from "./elements/input/haptics.js";
 export { box } from "./elements/controls/div.js";
 export { getContentGroup } from "./elements/contentGroup.js";
 export { makeReveal, solveCut } from "./elements/reveal.js";
-export { createPortalScheduler, PortalSchedulerContext } from "./elements/portalScheduler.js";
+export {
+  createPortalScheduler,
+  PortalSchedulerContext,
+} from "./elements/portal/portalScheduler.js";
 export { createFrameShareBudget } from "./frameShare.js";
 export {
   isRenderingSuspended,
@@ -103,7 +106,7 @@ export {
  */
 
 /**
- * @typedef {import('./elements/portal.js').PortalOptions} PortalOptions
+ * @typedef {import('./elements/portal/portal.js').PortalOptions} PortalOptions
  */
 
 /**
@@ -111,43 +114,43 @@ export {
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticOptions} HapticOptions
+ * @typedef {import('./elements/input/haptics.js').HapticOptions} HapticOptions
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticFlavor} HapticFlavor
+ * @typedef {import('./elements/input/haptics.js').HapticFlavor} HapticFlavor
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticFlavorName} HapticFlavorName
+ * @typedef {import('./elements/input/haptics.js').HapticFlavorName} HapticFlavorName
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticPulse} HapticPulse
+ * @typedef {import('./elements/input/haptics.js').HapticPulse} HapticPulse
  */
 
 /**
- * @typedef {import('./elements/haptics.js').HapticEffect} HapticEffect
+ * @typedef {import('./elements/input/haptics.js').HapticEffect} HapticEffect
  */
 
 /**
- * @typedef {import('./elements/portalKeyboard.js').PortalKeyboardOptions} PortalKeyboardOptions
+ * @typedef {import('./elements/portal/portalKeyboard.js').PortalKeyboardOptions} PortalKeyboardOptions
  */
 
 /**
- * @typedef {import('./elements/portalKeyboard.js').KeyboardTarget} KeyboardTarget
+ * @typedef {import('./elements/portal/portalKeyboard.js').KeyboardTarget} KeyboardTarget
  */
 
 /**
- * @typedef {import('./elements/portalKeyboard.js').KeyboardPlacement} KeyboardPlacement
+ * @typedef {import('./elements/portal/portalKeyboard.js').KeyboardPlacement} KeyboardPlacement
  */
 
 /**
- * @typedef {import('./elements/keyboardPreview.js').KeyboardPreviewOptions} KeyboardPreviewOptions
+ * @typedef {import('./elements/input/keyboardPreview.js').KeyboardPreviewOptions} KeyboardPreviewOptions
  */
 
 /**
- * @typedef {import('./elements/typing.js').KeyPress} KeyPress
+ * @typedef {import('./elements/input/typing.js').KeyPress} KeyPress
  */
 
 /**

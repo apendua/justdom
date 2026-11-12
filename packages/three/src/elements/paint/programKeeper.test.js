@@ -7,7 +7,7 @@ import { stubGlRenderer } from "../../test/stubGl.js";
 import { paintBatch, panel } from "../../test/textRuns.js";
 import { createDepthQuad } from "../blocker.js";
 import { applyClip, applyReveal } from "../clip.js";
-import { createLoadingFrame } from "../loadingFrame.js";
+import { createLoadingFrame } from "../portal/loadingFrame.js";
 import { createPanelHandles } from "../panelHandles.js";
 import { place } from "../place.js";
 import {

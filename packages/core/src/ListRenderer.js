@@ -1,4 +1,10 @@
-import { releaseLeaving, removeSegment, toSegment, unmountSegment } from "./helpers.js";
+import {
+  insertSegment,
+  releaseLeaving,
+  removeSegment,
+  toSegment,
+  unmountSegment,
+} from "./helpers.js";
 import {
   addDependency,
   batch,
@@ -503,42 +509,14 @@ export default class ListRenderer {
               // their order moves; the run stays where it is and the others
               // are placed around it. The walk goes from the end, so the
               // successor an item is placed in front of is already final.
+              // With no successor to sit in front of, the item belongs at
+              // the end of the container. Its nodes keep their order, so
+              // an item of several nodes arrives as it was.
               const childSegment = childSegments.get(key);
-              if (childSegment) {
-                if (nextSegment) {
-                  const { parentNode } = nextSegment[0];
-                  if (
-                    parentNode &&
-                    childSegment &&
-                    childSegment[1].nextSibling !== nextSegment[0]
-                  ) {
-                    /** @type {T | null} */
-                    let node = childSegment[1];
-                    while (node) {
-                      /** @type {T | null} */
-                      const previousSibling = node.previousSibling;
-                      parentNode.insertBefore(node, nextSegment[0]);
-                      if (node === childSegment[0]) {
-                        break;
-                      }
-                      node = previousSibling;
-                    }
-                  }
-                } else {
-                  // No successor to sit in front of, so the item belongs at
-                  // the end of the container.
-                  /** @type {T | null} */
-                  let node = childSegment[1];
-                  while (node) {
-                    /** @type {T | null} */
-                    const previousSibling = node.previousSibling;
-                    container.appendChild(node);
-                    if (node === childSegment[0]) {
-                      break;
-                    }
-                    node = previousSibling;
-                  }
-                }
+              const before = nextSegment ? nextSegment[0] : container.end();
+              const { parentNode } = before;
+              if (childSegment && parentNode && childSegment[1].nextSibling !== before) {
+                insertSegment(childSegment, parentNode, before);
               }
             }
           }

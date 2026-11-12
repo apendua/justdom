@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A list item of several nodes, such as a nested list, leaves without throwing \"Invalid segment\" and keeps the order of its nodes when it moves. A list whose item fails after it was mounted is taken down without throwing, and so is an element with two children() on it.",
+      "type": "patch",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

@@ -175,8 +175,20 @@ export function releaseLeaving(segment, release) {
 /**
  * Takes down what is mounted in `segment` and then removes its nodes, in
  * that order: a mounting is let go of before its nodes come out of the tree.
- * A segment under an ancestor that is itself leaving is not removed. It
- * goes when the ancestor does.
+ *
+ * Two kinds of segment are released and not removed:
+ *
+ * - One under an ancestor that is itself leaving. It goes when the ancestor
+ *   does.
+ * - One that is out of the tree already. Nodes are taken out by whoever
+ *   gets to them first, and that is not always the mounting that put them
+ *   in: a list removes the nodes of an item that left before it lets the
+ *   item go, and those of a longer item come out one by one, so what the
+ *   item mounted inside finds its own nodes loose. A failure travelling up
+ *   takes the tree down from the top while the mounting that failed is
+ *   still closing. A second `children()` on one element replaces what the
+ *   first put there. The mounting still has to be let go of, and has
+ *   nothing left to remove.
  *
  * @template {INode<T>} T
  * @param {SegmentOf<T>} segment
@@ -190,7 +202,7 @@ export function unmountSegment(segment, release) {
   } finally {
     // Also when a cleanup threw: the nodes come out all the same, and a
     // node that was named as leaving does leave.
-    if (!leaving) {
+    if (!leaving && segment[0].parentNode) {
       removeSegment(segment);
     }
   }

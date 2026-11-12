@@ -305,8 +305,9 @@ function hydrateFragment(node, children) {
         subscriber.add(() => {
           const release = () => subscription?.unsubscribe();
           // A mismatch can tear this down mid-flight, with the segment already
-          // detached, so only remove what is still in the document.
-          if (segment && segment[0].parentNode && segment[1].parentNode) {
+          // detached. `unmountSegment` removes only what is still in the
+          // document.
+          if (segment) {
             unmountSegment(segment, release);
           } else {
             release();

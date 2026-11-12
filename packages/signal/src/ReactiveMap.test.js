@@ -1,6 +1,6 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { Effect } from "./index.js";
+import { Effect, Subject } from "./index.js";
 import ReactiveMap from "./ReactiveMap.js";
 
 describe("ReactiveMap", () => {
@@ -107,6 +107,41 @@ describe("ReactiveMap", () => {
     });
     map.set("a", 10);
     assert.deepStrictEqual(values, [undefined, 10]);
+  });
+
+  it("gives a reader of one key no subscription to the map's events", () => {
+    const map = new ReactiveMap();
+    const subscribe = mock.method(Subject.prototype, "subscribe");
+    /** @type {string[]} */
+    const values = [];
+    try {
+      new Effect(() => {
+        values.push(`${map.has("x")}/${map.get("x")}`);
+      });
+      assert.strictEqual(subscribe.mock.callCount(), 0);
+    } finally {
+      subscribe.mock.restore();
+    }
+
+    map.set("y", 1);
+    map.set("x", 2);
+    map.set("x", 3);
+    map.clear();
+    assert.deepStrictEqual(values, ["false/undefined", "true/2", "true/3", "false/undefined"]);
+  });
+
+  it("wakes a reader of the key NaN when it is set and deleted", () => {
+    const map = new ReactiveMap();
+    /** @type {(number | undefined)[]} */
+    const values = [];
+    new Effect(() => {
+      values.push(map.get(NaN));
+    });
+
+    map.set(NaN, 1);
+    map.set(NaN, 2);
+    map.delete(NaN);
+    assert.deepStrictEqual(values, [undefined, 1, 2, undefined]);
   });
 
   it("reports one mutation as one update, not one per dependent", () => {

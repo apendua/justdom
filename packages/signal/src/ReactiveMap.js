@@ -2,11 +2,7 @@ import { addDependency } from "./core.js";
 import { batch } from "./scheduler.js";
 import { filtered, Subject } from "./subscribable.js";
 import LazyIterable from "./LazyIterable.js";
-import { memoizeDependency } from "./memoize.js";
-
-/**
- * @import { Dependency } from './core.js';
- */
+import KeyRelays from "./KeyRelays.js";
 
 /**
  * @template K
@@ -30,10 +26,13 @@ export default class ReactiveMap {
     (event) => event.type === "added" || event.type === "deleted" || event.type === "clear",
   );
 
-  /** @type {(key: K) => Dependency} */
-  #getKeyEvents = memoizeDependency((key) => {
-    return filtered(this.#events, (event) => event.type === "clear" || event.key === key);
-  });
+  /**
+   * What a reader of one key depends on. The other readers depend on
+   * `#events` or on `#structureEvents`.
+   *
+   * @type {KeyRelays<K>}
+   */
+  #keyRelays = new KeyRelays();
 
   get size() {
     addDependency(this.#events);
@@ -45,7 +44,7 @@ export default class ReactiveMap {
    * @returns {V | undefined}
    */
   get(key) {
-    addDependency(this.#getKeyEvents(key));
+    this.#keyRelays.track(key);
     return this.#map.get(key);
   }
 
@@ -54,7 +53,7 @@ export default class ReactiveMap {
    * @returns {boolean}
    */
   has(key) {
-    addDependency(this.#getKeyEvents(key));
+    this.#keyRelays.track(key);
     return this.#map.has(key);
   }
 
@@ -100,6 +99,11 @@ export default class ReactiveMap {
   #notify(event) {
     batch(() => {
       this.#events.next(event);
+      if (event.type === "clear") {
+        this.#keyRelays.invalidateAll();
+      } else {
+        this.#keyRelays.invalidate(event.key);
+      }
     });
   }
 

@@ -1,12 +1,8 @@
 import { addDependency } from "./core.js";
 import { batch } from "./scheduler.js";
-import { filtered, Subject } from "./subscribable.js";
+import { Subject } from "./subscribable.js";
 import LazyIterable from "./LazyIterable.js";
-import { memoizeDependency } from "./memoize.js";
-
-/**
- * @import { Dependency } from './core.js';
- */
+import KeyRelays from "./KeyRelays.js";
 
 /**
  * @template V
@@ -23,10 +19,13 @@ export default class ReactiveSet {
   /** @type {Subject<ReactiveSetEvent<V>>} */
   #events = new Subject();
 
-  /** @type {(value: V) => Dependency} */
-  #getValueEvents = memoizeDependency((value) => {
-    return filtered(this.#events, (event) => event.type === "clear" || event.value === value);
-  });
+  /**
+   * What a reader of one value depends on. A reader of `size` or of
+   * `values()` depends on `#events`, which hears every mutation.
+   *
+   * @type {KeyRelays<V>}
+   */
+  #valueRelays = new KeyRelays();
 
   get size() {
     addDependency(this.#events);
@@ -38,7 +37,7 @@ export default class ReactiveSet {
    * @returns {boolean}
    */
   has(value) {
-    addDependency(this.#getValueEvents(value));
+    this.#valueRelays.track(value);
     return this.#set.has(value);
   }
 
@@ -77,6 +76,11 @@ export default class ReactiveSet {
   #notify(event) {
     batch(() => {
       this.#events.next(event);
+      if (event.type === "clear") {
+        this.#valueRelays.invalidateAll();
+      } else {
+        this.#valueRelays.invalidate(event.value);
+      }
     });
   }
 

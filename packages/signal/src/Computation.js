@@ -11,8 +11,9 @@ import { CLEAN, DIRTY } from "./core.js";
  *
  * A **relay**: a node standing in for a foreign source so that the source can
  * be shared, filtered or cached before the graph depends on it. That is what
- * `memoizeDependency` builds, and what a `ReactiveMap`'s per-key streams are
- * made of. A relay has no value, so it announces every invalidation and bumps
+ * `memoizeDependency` builds. The per-key dependencies of a `ReactiveMap`
+ * are relays with no source at all, which the map invalidates itself (see
+ * `KeyRelays`). A relay has no value, so it announces every invalidation and bumps
  * its version each time — a dependent resolving a `CHECK` against it must
  * conclude "changed", because there is nothing to compare.
  *

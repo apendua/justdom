@@ -122,3 +122,45 @@ cd frameworks/keyed/justdom && npm ci && npm run build-prod && cd ../../..
 npm ci && npx playwright install chromium
 npm run check
 ```
+
+## Profiling the entry
+
+`profile.mjs` measures what the entry does for each of the suite's nine CPU cases, where the suite
+measures how long it takes against the others. It drives the built entry in Playwright's Chromium
+through the suite's own steps for each case (the same warm-up and the same button, clicked from
+script where the suite sends a mouse event) and reports one of four things:
+
+- `--mode time`, the default: the script time of the click, as the median of nine pages.
+- `--mode calls`: the DOM calls that create, move or remove a node, the listeners added and removed,
+  and the writes of `className`, `innerHTML`, `textContent` and a text node's `data`. `COUNT_CALLS`
+  in the script is the list of what is counted.
+- `--mode cpu`: where that time goes by function, from Chrome's sampling profiler. Its total is
+  higher than the time `time` reports, since the profiler slows the script it samples.
+- `--mode alloc`: the bytes allocated, by the function that allocated them.
+
+```
+cd frameworks/keyed/justdom && npm ci && cd ../../..
+npm ci && npx playwright install chromium
+node profile.mjs --mode calls --only 01,09
+```
+
+With `--source <checkout>` it builds the entry against `packages/core/src` and `packages/signal/src`
+of a justdom checkout in place of the published packages, so a change can be measured before it is
+released. Add `--published` to measure the published packages in the same run, for a before and an
+after:
+
+```
+node profile.mjs --published --source ../.. --mode alloc --only 01
+```
+
+`--dev` builds without minifying, so that `cpu` and `alloc` name functions as the source does.
+`--only`, `--runs` and `--top` narrow a run, and the header of the script lists them. The builds and
+the last report of each mode go to `work/profile/`.
+
+Every mode measures the click handler, from the click to its return, which is where the entry does
+all its work. Garbage that Chrome collects in the frame after the click is in none of them, and a
+build that allocates more leaves more of it. The page opens from disk without the suite's
+stylesheet, so none of this measures layout or paint, and the times are not the suite's. The page's
+clock moves in steps of 0.1 ms, so a time under 2 ms has one or two digits in it. They compare two
+builds on one machine. The counts are exact. The allocation is sampled and depends on the Chrome
+version, so it moves by a few percent.

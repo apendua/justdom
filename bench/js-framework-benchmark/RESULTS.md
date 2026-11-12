@@ -111,3 +111,60 @@ the longest run that kept its order and takes departed rows out before it moves 
 moves two rows and a removal moves none, and each element holds less in memory. The entry is now
 pinned to justdom-core 0.7.0 with justdom-signal 1.3.0, so the next run measures them; the pilot's
 tables above are still 0.5.0's.
+
+## 2026-11-12, what the entry does on 0.7.0 and on the open changes
+
+Not a run of the suite. `node profile.mjs --published --source <checkout>` in the same 4-core
+container (Chromium 153.0.8010.12, headless), measuring the published justdom-core 0.7.0 with
+justdom-signal 1.3.0 beside a checkout with pull requests #213 to #219 applied (`ea48c68`). The page
+has no stylesheet, so these are script times with no layout or paint in them, and only the two
+columns compare.
+
+| case                     | 0.7.0 script | #213 to #219 script |
+| ------------------------ | -----------: | ------------------: |
+| `01_run1k`               |      45.0 ms |             15.3 ms |
+| `02_replace1k`           |      60.2 ms |             24.1 ms |
+| `03_update10th1k`        |       0.6 ms |              0.7 ms |
+| `04_select1k`            |       0.6 ms |              0.2 ms |
+| `05_swap1k`              |       1.1 ms |              1.1 ms |
+| `06_remove-one-1k`       |       1.2 ms |              1.2 ms |
+| `07_create10k`           |     630.5 ms |            224.0 ms |
+| `08_create1k-after1k_x2` |      45.7 ms |             18.2 ms |
+| `09_clear1k`             |      17.1 ms |              9.1 ms |
+
+Each is the median of nine pages. The page's clock moves in steps of 0.1 ms, so a time under 2 ms
+has one or two digits in it. Of the four such cases, `04_select1k` is a real difference, which is
+#219's change: the same checkout measured twice reads 0.2 ms both times. The other three are within
+the noise of each other.
+
+Creating 1,000 rows, 8 elements and 4 bindings each:
+
+|                             |   0.7.0 | #213 to #219 |
+| --------------------------- | ------: | -----------: |
+| `createElement`             |   8,000 |        8,000 |
+| `createComment`             |  20,000 |            0 |
+| `createDocumentFragment`    |   4,000 |            0 |
+| `insertBefore`              |  19,000 |        8,000 |
+| `appendChild`               |  12,000 |            0 |
+| `replaceChild`              |  12,000 |            0 |
+| allocated (sampled)         | 24.2 MB |       9.6 MB |
+| `removeChild` to clear them |   8,000 |        1,000 |
+
+**What 0.7.0 pays for.** Every element built its children in a fragment between two comments and
+then replaced a placeholder with it, which is the 20 comments, 4 fragments and 43 insertions and
+replacements per row above. Every entry of an element's effects was an `Effect`, whether or not it
+read anything that could change, and every `on()` built a `Computation` at mount. Every `$()` child
+was two streams and two subscriptions. A row left the document one node at a time, from the leaves
+up.
+
+**What the changes do.** #213 removes a subtree at its root. #214 mounts children straight into an
+empty element. #215 gives an entry an `Effect` only once it reads something reactive, and #216
+builds a listener's `Computation` at the first event. #217 lets a parent mount an element child
+without subscribing to it. #219 replaces the filtered subscription behind each `selected.has(id)`
+with one node the set wakes by lookup. #218 fixes list bugs found on the way and is not a speed
+change. Creation is at the DOM minimum now, one `createElement` and one `insertBefore` per element,
+and a row still builds two effects, one for its class and one for its label.
+
+The suite itself has to be run again, on a desktop, once these are released: its numbers include
+layout and paint, which these do not, so the factors against the other libraries will move by less
+than the script times here.

@@ -1,7 +1,8 @@
 import resolve from "@rollup/plugin-node-resolve";
 import terser from "@rollup/plugin-terser";
 
-const TERSER_OPTIONS = {
+/** Also what `profile.mjs` minifies with, so that it profiles this build. */
+export const TERSER_OPTIONS = {
   module: true,
   compress: { passes: 3 },
   mangle: true,

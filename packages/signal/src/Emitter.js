@@ -1,10 +1,9 @@
 import Computation from "./Computation.js";
-import { withComputation, addDependency, onCleanup } from "./core.js";
+import { withComputation, onCleanup } from "./core.js";
 import { Stream } from "./Stream.js";
-import { failuresOf } from "./operators.js";
 
 /**
- * @import { Source } from './subscribable.js';
+ * @import { Source, Unsubscribable } from './subscribable.js';
  * @import { EntityEffect } from './types.js';
  */
 
@@ -91,9 +90,19 @@ class Emitter {
 /**
  * Listen to `event` on the entity for as long as it stays mounted.
  *
- * The listener runs the handler inside a `Computation`, exactly as before,
- * and the computation's failure — a handler throwing — fails the mounting the
- * way a pipeline error used to.
+ * The listener runs the handler inside a `Computation`, so that what the
+ * handler reads is tracked and released with the listener. The computation
+ * is subscribed for as long as the listener stands, which does two things.
+ * It keeps what the handler read alive between events: a `Derived` it read
+ * holds its value until the next event, and is not computed again for it.
+ * And it hears the computation fail, a dependency of the handler dying,
+ * which fails the mounting.
+ *
+ * The computation is built by the first event. Most listeners in a tree are
+ * never called, a button in each row of a table say, and until one is there
+ * is nothing for a computation to hold. So mounting a listener costs the
+ * listener and its teardown, and reads nothing, which leaves the entry
+ * without an `Effect` of its own in a `just`.
  *
  * @template {keyof TEntity["__EVENT_MAP__"]} TEvent
  * @template {IEmitter<Record<any, any>>} TEntity
@@ -102,13 +111,26 @@ class Emitter {
  * @returns {EntityEffect<TEntity>}
  */
 export function on(event, handler) {
-  return (entity) => {
-    const computation = new Computation();
-    const listener = computation.bind(handler);
+  return (entity, { fail }) => {
+    /** @type {Computation | null} */
+    let computation = null;
+    /** @type {Unsubscribable | null} */
+    let held = null;
+    /** @param {TEntity["__EVENT_MAP__"][TEvent]} e */
+    const listener = (e) => {
+      if (!computation) {
+        const built = new Computation();
+        computation = built;
+        // Non-reactive, as attaching any dependency is: whichever
+        // computation dispatched the event has read nothing here.
+        held = withComputation(null, () => built.subscribe({ error: fail }));
+      }
+      return computation.track(() => handler(e));
+    };
     entity.addEventListener(event, listener);
-    addDependency(failuresOf(computation));
     onCleanup(() => {
       entity.removeEventListener(event, listener);
+      held?.unsubscribe();
     });
   };
 }

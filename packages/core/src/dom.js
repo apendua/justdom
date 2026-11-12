@@ -1,12 +1,12 @@
 import { each, just, observable, onCleanup, Stream, use, withComputation } from "justdom-signal";
 import ListRenderer from "./ListRenderer.js";
-import { removeSegment, replaceSegment, toSegment } from "./helpers.js";
+import { replaceSegment, toSegment, unmountSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 /**
- * @import {EntityEffect, Subscribable, Source} from 'justdom-signal';
+ * @import {EntityEffect, Subscribable, Source, Unsubscribable} from 'justdom-signal';
  * @import {Mountable, Container} from "./types.js";
  */
 
@@ -212,37 +212,48 @@ function hydrateFragment(node, children) {
       for (const child of children) {
         /** @type {[Node, Node] | undefined} */
         let segment;
+        /** @type {Unsubscribable | undefined} */
+        let subscription;
         let adopted = false;
+        // On the list before the child is subscribed, so that a mismatch
+        // thrown while claiming still lets go of the child. The child is
+        // unsubscribed, then its nodes come out of the document.
+        subscriber.add(() => {
+          const release = () => subscription?.unsubscribe();
+          // A mismatch can tear this down mid-flight, with the segment already
+          // detached, so only remove what is still in the document.
+          if (segment && segment[0].parentNode && segment[1].parentNode) {
+            unmountSegment(segment, release);
+          } else {
+            release();
+          }
+        });
         const claimed = claimSegment(() => {
           // No `distinctUntilChanged` in front of this any more. A node-backed
           // child already has the equality cutoff — a recomputation landing on
           // the value it held notifies nobody — and every other child hands
           // back a freshly built mountable per emission, which no comparison
           // was ever going to collapse.
-          subscriber.add(
-            child.subscribe({
-              next: (mountable) => {
-                if (!adopted) {
-                  // Already in the document -- this is the markup we adopted.
-                  adopted = true;
-                  return;
-                }
-                if (segment) {
-                  segment = mountable.replace(segment);
-                }
-              },
-              error: (error) => subscriber.error(error),
-            }),
-          );
-        });
-        segment = claimed.segment;
-        subscriber.add(() => {
-          // A mismatch can tear this down mid-flight, with the segment already
-          // detached, so only remove what is still in the document.
-          if (segment && segment[0].parentNode && segment[1].parentNode) {
-            removeSegment(segment);
+          subscription = child.subscribe({
+            next: (mountable) => {
+              if (!adopted) {
+                // Already in the document -- this is the markup we adopted.
+                adopted = true;
+                return;
+              }
+              if (segment) {
+                segment = mountable.replace(segment);
+              }
+            },
+            error: (error) => subscriber.error(error),
+          });
+          if (subscriber.closed) {
+            // The child failed on the way in, and the teardown above ran
+            // before there was a subscription to end.
+            subscription.unsubscribe();
           }
         });
+        segment = claimed.segment;
       }
       claimComment();
     });

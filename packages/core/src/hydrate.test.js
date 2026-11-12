@@ -7,6 +7,7 @@ import { text } from "./text.js";
 import { className } from "./stylesheet.js";
 import { on } from "./operators.js";
 import { hydrate } from "./hydrate.js";
+import { countDomCalls } from "./test/domCalls.js";
 import { suspend, waitFor, withFallback } from "./suspend.js";
 
 /**
@@ -168,6 +169,17 @@ describe("hydrate()", () => {
 
     subscription.unsubscribe();
     assert.strictEqual(root.querySelectorAll("p").length, 0);
+  });
+
+  it("should take an adopted tree out with one removal, however deep it is", () => {
+    const build = () => $("section", [children($("p", [children($("em"))]), $("p"))]);
+    const root = serverRendered(renderToString(build));
+    const subscription = hydrate(root, build()).subscribe();
+
+    const calls = countDomCalls(() => subscription.unsubscribe());
+
+    assert.strictEqual(calls.removeChild, 1);
+    assert.strictEqual(root.querySelectorAll("section").length, 0);
   });
 
   it("should adopt the stylesheet the server injected", () => {

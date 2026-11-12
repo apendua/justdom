@@ -374,6 +374,55 @@ describe("unmounting", () => {
     assert.deepEqual(released, ["first", "second"]);
   });
 
+  it("removes an item with one removal when the item holds a list of its own", () => {
+    const items = Signal.of(["a", "b"]);
+    const root = document.createElement("table");
+    just(root, [
+      children(
+        list(
+          () => items.get(),
+          () =>
+            $("tr", [
+              children(
+                list(
+                  () => ["x", "y", "z"],
+                  () => $("td"),
+                ),
+              ),
+            ]),
+        ),
+      ),
+    ]).subscribe();
+    assert.equal(root.querySelectorAll("td").length, 6);
+
+    const calls = countDomCalls(() => items.set(["a"]));
+
+    // The inner list's segment is longer than one node, so it cannot be
+    // named as leaving, and the row above it has to stay named.
+    assert.equal(calls.removeChild, 1);
+    assert.equal(root.querySelectorAll("td").length, 3);
+  });
+
+  it("removes the nodes of a child whose cleanup throws", () => {
+    const root = document.createElement("div");
+    const mounting = just(root, [
+      children(
+        $("p", [
+          () =>
+            onCleanup(() => {
+              throw new Error("boom");
+            }),
+        ]),
+        $("b"),
+      ),
+    ]).subscribe();
+    assert.equal(markup(root), "<p></p><b></b>");
+
+    assert.throws(() => mounting.unsubscribe(), /boom/);
+
+    assert.equal(markup(root), "");
+  });
+
   it("still removes what a leaving subtree mounted somewhere else", () => {
     const shown = Signal.of(true);
     const elsewhere = document.createElement("aside");

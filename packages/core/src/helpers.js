@@ -86,6 +86,12 @@ export function toSegment(node) {
  * it here, and a segment found under it stays where it is and leaves with
  * its ancestor.
  *
+ * So the nodes under a removed root stay attached to each other. For an
+ * element `$()` made nobody can tell. A node the caller owns, mounted in
+ * such a subtree, used to end up empty and with no parent, and now keeps
+ * its children and its place under the removed root. Mounting it again
+ * through `children()` replaces what it holds.
+ *
  * The test is containment, by walking up from the segment, and not a bare
  * "something is leaving". A mounting torn down inside a leaving subtree can
  * own nodes elsewhere, a dialog it put on `document.body`, and those still
@@ -157,8 +163,13 @@ export function releaseLeaving(segment, release) {
  */
 export function unmountSegment(segment, release) {
   const leaving = isLeaving(segment[0]);
-  releaseLeaving(segment, release);
-  if (!leaving) {
-    removeSegment(segment);
+  try {
+    releaseLeaving(segment, release);
+  } finally {
+    // Also when a cleanup threw: the nodes come out all the same, and a
+    // node that was named as leaving does leave.
+    if (!leaving) {
+      removeSegment(segment);
+    }
   }
 }

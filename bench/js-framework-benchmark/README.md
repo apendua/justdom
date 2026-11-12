@@ -122,3 +122,38 @@ cd frameworks/keyed/justdom && npm ci && npm run build-prod && cd ../../..
 npm ci && npx playwright install chromium
 npm run check
 ```
+
+## Profiling the entry
+
+`profile.mjs` measures what the entry does for each of the suite's nine CPU cases, where the suite
+measures how long it takes against the others. It drives the built entry in Playwright's Chromium
+the way the suite does (the same warm-up, the same click) and reports one of four things:
+
+- `--mode time`, the default: the script time of the click, as the median of nine pages.
+- `--mode calls`: every DOM call that creates, moves or removes a node, every listener added or
+  removed, and every write of `className`, `textContent` and a text node's `data`.
+- `--mode cpu`: the script time by function, from Chrome's sampling profiler.
+- `--mode alloc`: the bytes allocated, by the function that allocated them.
+
+```
+cd frameworks/keyed/justdom && npm ci && cd ../../..
+npm ci && npx playwright install chromium
+node profile.mjs --mode calls --only 01,09
+```
+
+With `--source <checkout>` it builds the entry against `packages/core/src` and `packages/signal/src`
+of a justdom checkout in place of the published packages, so a change can be measured before it is
+released. Add `--published` to measure the published packages in the same run, for a before and an
+after:
+
+```
+node profile.mjs --published --source ../.. --mode alloc --only 01
+```
+
+`--dev` builds without minifying, so that `cpu` and `alloc` name functions as the source does.
+`--only`, `--runs` and `--top` narrow a run, and the header of the script lists them. The builds and
+the last report of each mode go to `work/profile/`.
+
+The page opens from disk without the suite's stylesheet, so none of this measures layout or paint,
+and the times are not the suite's. They compare two builds on one machine. The counts are exact. The
+allocation is sampled and depends on the Chrome version, so it moves by a few percent.

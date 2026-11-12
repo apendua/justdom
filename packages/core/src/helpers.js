@@ -190,6 +190,11 @@ export function releaseLeaving(segment, release) {
  *   first put there. The mounting still has to be let go of, and has
  *   nothing left to remove.
  *
+ * This covers taking a mounting down, and nothing else. A mounting that is
+ * still up and updates after its nodes were taken out, a child of the
+ * first `children()` that emits again after the second replaced it, still
+ * fails with `Invalid segment`: it has nowhere to put what it emitted.
+ *
  * @template {INode<T>} T
  * @param {SegmentOf<T>} segment
  * @param {() => void} release

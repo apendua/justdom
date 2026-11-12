@@ -125,4 +125,44 @@ describe("EventListener", () => {
     test.emit("anotherEvent", 0);
     assert.strictEqual(spy.mock.callCount(), 1, "the listener went with the mounting");
   });
+
+  it("holds nothing for a listener first called after it was removed", () => {
+    // A dispatcher that walks a copy of its listeners, as three's does.
+    /** @type {Set<(payload: number) => void>} */
+    const listeners = new Set();
+    const entity = {
+      __EVENT_MAP__: /** @type {{ x: number }} */ ({ x: 0 }),
+      /**
+       * @param {"x"} _
+       * @param {(payload: number) => void} listener
+       */
+      addEventListener: (_, listener) => listeners.add(listener),
+      /**
+       * @param {"x"} _
+       * @param {(payload: number) => void} listener
+       */
+      removeEventListener: (_, listener) => listeners.delete(listener),
+    };
+    const source = Signal.of(1);
+    const read = new Derived(() => source.get());
+    /** @type {string[]} */
+    const log = [];
+    /** @type {{ unsubscribe(): void } | undefined} */
+    let second;
+    const first = just(entity, [on("x", () => second?.unsubscribe())]).subscribe();
+    second = just(entity, [
+      on("x", () => {
+        read.get();
+        onCleanup(() => log.push("paid"));
+      }),
+    ]).subscribe();
+
+    for (const listener of Array.from(listeners)) {
+      listener(0);
+    }
+
+    assert.strictEqual(read.isLive(), false, "nothing the late call read is held");
+    assert.deepStrictEqual(log, ["paid"]);
+    first.unsubscribe();
+  });
 });

@@ -116,8 +116,21 @@ export function on(event, handler) {
     let computation = null;
     /** @type {Unsubscribable | null} */
     let held = null;
+    let removed = false;
     /** @param {TEntity["__EVENT_MAP__"][TEvent]} e */
     const listener = (e) => {
+      if (removed) {
+        // A dispatcher that walks a copy of its listeners can call this one
+        // after an earlier listener of the same event took its mounting
+        // down. There is nobody left to hold what the handler reads, so it
+        // runs in a computation of its own that is let go of at once.
+        const passing = new Computation();
+        try {
+          return passing.track(() => handler(e));
+        } finally {
+          passing.cleanup();
+        }
+      }
       if (!computation) {
         const built = new Computation();
         computation = built;
@@ -129,6 +142,7 @@ export function on(event, handler) {
     };
     entity.addEventListener(event, listener);
     onCleanup(() => {
+      removed = true;
       entity.removeEventListener(event, listener);
       held?.unsubscribe();
     });

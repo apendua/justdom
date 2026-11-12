@@ -1,7 +1,7 @@
 {
   "changes": [
     {
-      "comment": "Unmounting a subtree removes its root and nothing below it. A list item or a child that leaves used to take one removeChild per node, from the leaves up.",
+      "comment": "Unmounting a subtree removes its root and nothing below it. A list item or a child that leaves used to take one removeChild per node, from the leaves up. The nodes under a removed root now stay attached to each other, so a node of your own that was mounted in a subtree keeps its children and its parent after the subtree is unmounted.",
       "type": "patch",
       "packageName": "justdom-core"
     }

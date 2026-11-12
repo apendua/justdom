@@ -275,8 +275,9 @@ function hydrateFragment(node, children) {
             error: (error) => subscriber.error(error),
           });
           if (subscriber.closed) {
-            // The child failed on the way in, and the teardown above ran
-            // before there was a subscription to end.
+            // An earlier child failed, which closed the subscriber, so
+            // the teardown above ran before there was a subscription to
+            // end. A child that failed itself is closed already.
             subscription.unsubscribe();
           }
         });

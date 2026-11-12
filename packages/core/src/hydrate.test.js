@@ -172,7 +172,7 @@ describe("hydrate()", () => {
   });
 
   it("should let go of a child subscribed after an earlier one failed", () => {
-    const root = serverRendered("<!----><div><!----><p></p><b></b><!----></div><!---->");
+    const root = serverRendered("<div><p></p><b></b></div>");
     /** @type {string[]} */
     const released = [];
     /** @type {unknown[]} */

@@ -214,17 +214,28 @@ export default class ListRenderer {
     }
     return {
       unsubscribe: () => {
+        /** @type {{ value: unknown } | null} */
+        let failure = null;
         for (let i = 0; i < subscriptions.length; i++) {
           const subscription = subscriptions[i];
           const oldSegment = segments[i];
           // The child is unsubscribed, then its nodes come out of the
-          // document.
-          if (oldSegment) {
-            segments[i] = null;
-            unmountSegment(oldSegment, () => subscription.unsubscribe());
-          } else {
-            subscription.unsubscribe();
+          // document. A child whose cleanup throws does not strand the
+          // ones after it: they all go, and the first failure is raised
+          // once they have, as with the teardowns of a `Stream`.
+          try {
+            if (oldSegment) {
+              segments[i] = null;
+              unmountSegment(oldSegment, () => subscription.unsubscribe());
+            } else {
+              subscription.unsubscribe();
+            }
+          } catch (error) {
+            failure = failure ?? { value: error };
           }
+        }
+        if (failure) {
+          throw failure.value;
         }
       },
     };

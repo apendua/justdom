@@ -45,8 +45,9 @@ eight entries are installed and built on every run. Its options:
   keep it visible "since otherwise it seems like paint events can be skipped leading to wrong
   results".
 - `--count <n>` sets how many times each CPU benchmark runs, 15 by default (`04_select1k` runs 10
-  more). `--benchmark <prefix>` and `--framework keyed/<name>` narrow a run, and each takes one
-  value, so repeat the flag for more: `--framework keyed/justdom --framework keyed/solid`.
+  more), and the memory and startup benchmarks, once each by default, run that many times too.
+  `--benchmark <prefix>` and `--framework keyed/<name>` narrow a run, and each takes one value, so
+  repeat the flag for more: `--framework keyed/justdom --framework keyed/solid`.
 
 `node summarize.mjs results/<run>` prints the results as Markdown tables: each benchmark's median
 and its slowdown factor against the best library, and the geometric means the suite's results page
@@ -62,7 +63,10 @@ The numbers are only as steady as the machine. These steps are for the run that 
 - Plug a laptop into power, and set the power profile to performance: on Linux
   `powerprofilesctl set performance` (or `sudo cpupower frequency-set -g performance`), on macOS
   turn Low Power Mode off. Keep the machine from sleeping, dimming or locking the screen for two
-  hours; on macOS, run the script under `caffeinate -dims node run.mjs`.
+  hours: a blanked or locked screen hides the Chrome window, which is what the suite warns about. On
+  macOS, run the script under `caffeinate -dims node run.mjs`; on Linux, turn off screen blanking
+  and locking in the desktop's settings and run it under
+  `systemd-inhibit --what=idle:sleep node run.mjs --chrome /usr/bin/google-chrome`.
 - Quit everything else: other browsers, editors and their language servers, chat apps, and anything
   that syncs, indexes or backs up (Dropbox, Time Machine, Spotlight's first index of a new disk). A
   reboot before the run is the simplest way to get there.
@@ -74,7 +78,8 @@ The numbers are only as steady as the machine. These steps are for the run that 
 - Do not add CPU throttling or DevTools flags. The suite already slows the CPU on its own for some
   cases (4x for `03`, `04`, `05` and `09`, 2x for `06`), the same way on every library.
 
-Check the setup with a short run first. The first one also does the slow part, the installs:
+Check the setup with a short run first. It also does the slow first installs: the harness and the
+two entries it runs, leaving the other six to the full run:
 
 ```
 node run.mjs --framework keyed/vanillajs --framework keyed/justdom --benchmark 01_ --count 2
@@ -101,7 +106,7 @@ median, the standard deviation where the suite records one, and in brackets the 
 best library in that row, so 1.00 marks the fastest. The last row is the geometric mean of the
 factors, weighted as the suite's results page weights them. Compare factors rather than
 milliseconds: a faster machine shrinks every time, while the factors carry from one machine to
-another.
+another far better, though not exactly.
 
 To keep the run, commit its folder under `results/` and add a dated section to `RESULTS.md` with the
 tables, the machine (CPU, memory, OS), the Chrome version, and anything that went wrong.

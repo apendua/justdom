@@ -3,13 +3,15 @@
 // js-framework-benchmark, from a clean checkout of the suite:
 //
 //   node run.mjs [--chrome <path>] [--headless] [--count <n>]
-//                [--benchmark <prefix> ...] [--framework keyed/<name> ...]
+//                [--benchmark <prefix>]... [--framework keyed/<name>]...
 //
+// `--benchmark` and `--framework` take one value each; repeat them for more.
 // The suite is fetched into `work/` at the commit in UPSTREAM_COMMIT, the
 // entry in `frameworks/keyed/justdom` is copied into it, every framework is
 // installed and built, `isKeyed` checks them, and the result files land in a
 // folder of their own under `results/`. Run it again and it reuses the
-// checkout and the installs, as long as the checkout is still at the pin.
+// checkout and the harness, as long as the checkout is still at the pin; the
+// frameworks are installed and built on every run.
 
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";

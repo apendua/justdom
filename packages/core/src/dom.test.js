@@ -276,23 +276,120 @@ describe("an element as a child", () => {
     assert.strictEqual(markup(root), "");
   });
 
-  it("still answers a subscriber with its mountable", () => {
-    const element = $("p", [
-      (p) => {
-        p.textContent = "subscribed";
-      },
-    ]);
-    const root = document.createElement("main");
+  it("fails the list when an item's effect fails later", () => {
+    const broken = Signal.of(false);
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("ul");
     const placeholder = root.appendChild(document.createComment(""));
-
-    const subscription = element.subscribe({
+    // Subscribed to directly, so that nothing above the list takes the
+    // nodes out while the list is closing.
+    list(
+      () => ["a"],
+      () =>
+        $("li", [
+          () => {
+            if (broken.get()) {
+              throw new Error("later");
+            }
+          },
+        ]),
+    ).subscribe({
       next: (mountable) => {
         mountable.replace([placeholder, placeholder]);
       },
+      error: (err) => errors.push(err),
     });
+    assert.strictEqual(markup(root), "<li></li>");
 
+    broken.set(true);
+
+    assert.strictEqual(errors.length, 1);
+    assert.match(String(errors[0]), /later/);
+    assert.strictEqual(markup(root), "");
+  });
+
+  it("cannot fail the list, or the parent, it has left", () => {
+    const items = Signal.of(["a", "b"]);
+    const shown = Signal.of(true);
+    /** @type {Record<string, (err: unknown) => void>} */
+    const fails = {};
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("main");
+    /** @param {string} name */
+    const reporting = (name) =>
+      $("i", [
+        (_, { fail }) => {
+          fails[name] = fail;
+        },
+      ]);
+    just(root, [
+      children(
+        list(() => items.get(), reporting),
+        when(
+          () => shown.get(),
+          () => $("p", [children(reporting("inner"))]),
+        ),
+      ),
+    ]).subscribe({ error: (err) => errors.push(err) });
+    assert.strictEqual(markup(root), "<i></i><i></i><p><i></i></p>");
+
+    items.set(["b"]);
+    shown.set(false);
+    fails.a(new Error("late from a"));
+    fails.inner(new Error("late from inner"));
+
+    assert.deepStrictEqual(errors, []);
+    assert.strictEqual(markup(root), "<i></i>");
+  });
+
+  it("answers a subscriber with its mountable, and with its failures", () => {
+    const broken = Signal.of(false);
+    /** @type {string[]} */
+    const log = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const element = $("p", [
+      (p) => {
+        p.textContent = "subscribed";
+        onCleanup(() => log.push("let go"));
+      },
+      () => {
+        if (broken.get()) {
+          throw new Error("later");
+        }
+      },
+    ]);
+    const root = document.createElement("main");
+    const first = root.appendChild(document.createComment(""));
+    const second = root.appendChild(document.createComment(""));
+    /** @param {Comment} placeholder */
+    const subscribe = (placeholder) =>
+      element.subscribe({
+        next: (mountable) => {
+          mountable.replace([placeholder, placeholder]);
+        },
+        error: (err) => errors.push(err),
+      });
+
+    const subscription = subscribe(first);
     assert.strictEqual(markup(root), "<p>subscribed</p>");
     subscription.unsubscribe();
+    assert.deepStrictEqual(log, ["let go"]);
+
+    subscribe(second);
+    broken.set(true);
+    assert.strictEqual(errors.length, 1);
+    assert.match(String(errors[0]), /later/);
+    assert.deepStrictEqual(log, ["let go", "let go"]);
+
+    $("p", [
+      () => {
+        throw new Error("on the way in");
+      },
+    ]).subscribe({ error: (err) => errors.push(err) });
+    assert.match(String(errors[1]), /on the way in/);
   });
 });
 

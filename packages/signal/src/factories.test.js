@@ -737,6 +737,27 @@ describe("mount()", () => {
     assert.deepStrictEqual(log, ["taken down"]);
   });
 
+  it("drops a failure reported after it was unsubscribed", () => {
+    /** @type {((err: unknown) => void) | undefined} */
+    let report;
+    /** @type {unknown[]} */
+    const errors = [];
+    const mounting = mount(
+      {},
+      [
+        (_, { fail }) => {
+          report = fail;
+        },
+      ],
+      (err) => errors.push(err),
+    );
+
+    mounting.unsubscribe();
+    report?.(new Error("after the end"));
+
+    assert.deepStrictEqual(errors, []);
+  });
+
   it("builds no mounting for an entity with no effects", () => {
     const first = mount({}, [], () => {});
     const second = mount({}, [], () => {});

@@ -89,8 +89,10 @@
  * `createNode` makes the node, or claims it under hydration. `mountNode`
  * mounts the source's effects on it and hands back the mounting. It throws
  * when the effects fail on the way in, with what was mounted taken down, and
- * sends a later failure to `onError`. The parent inserts the node after
- * `mountNode` returns, so a subtree is built before it is attached.
+ * sends a later failure to `onError`, until the mounting is unsubscribed.
+ * A failure after that is dropped, so a node that has left cannot fail the
+ * parent it left. The parent inserts the node after `mountNode` returns,
+ * so a subtree is built before it is attached.
  *
  * @template {INode<T>} T
  * @typedef {object} NodeSourceOf

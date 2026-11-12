@@ -37,7 +37,7 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
  * @template {keyof HTMLElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {EntityEffect<HTMLElementTagNameMap[Tag]>[]} effects
- * @returns {Source<Mountable>}
+ * @returns {Source<Mountable> & NodeSource}
  */
 export function $(tag, effects = []) {
   return new ElementSource(tag, null, effects);
@@ -47,7 +47,7 @@ export function $(tag, effects = []) {
  * @template {keyof SVGElementTagNameMap} Tag
  * @param {Tag} tag
  * @param {EntityEffect<SVGElementTagNameMap[Tag]>[]} effects
- * @returns {Source<Mountable>}
+ * @returns {Source<Mountable> & NodeSource}
  */
 export function $$(tag, effects = []) {
   return new ElementSource(tag, SVG_NAMESPACE, effects);
@@ -57,12 +57,13 @@ export function $$(tag, effects = []) {
  * What `$()` and `$$()` answer with: a source of one element's mountable,
  * which a parent can also mount directly (`NodeSourceOf` in `nodes.js`).
  *
- * Subscribed, it is `asMountable(just(create, effects))`, as it was before
+ * Subscribed, it does what `asMountable(just(create, effects))` did before
  * it had a class: a fresh element for every subscriber, with the effects
- * mounted on it. A parent that mounts its children itself, `children()` or
- * a list, calls `createNode` and `mountNode` and skips the two streams,
- * their subscribers and the mountable. The element and its effects are the
- * same either way.
+ * mounted on it, emitted as a mountable. A failure on the way in or later
+ * is the subscriber's error. A parent that mounts its children itself,
+ * `children()` or a list, calls `createNode` and `mountNode` and skips the
+ * stream, its subscriber and the mountable. The element and its effects
+ * are the same either way.
  *
  * @template {Element} E
  * @extends {Stream<Mountable>}
@@ -84,9 +85,19 @@ class ElementSource extends Stream {
    * @param {EntityEffect<E>[]} effects
    */
   constructor(tag, namespace, effects) {
-    super((subscriber) =>
-      asMountable(just(() => this.createNode(), effects)).subscribe(subscriber),
-    );
+    super((subscriber) => {
+      /** @type {Unsubscribable | undefined} */
+      let mounting;
+      try {
+        const node = this.createNode();
+        mounting = this.mountNode(node, (error) => subscriber.error(error));
+        subscriber.next(toMountable(node));
+      } catch (error) {
+        mounting?.unsubscribe();
+        subscriber.error(error);
+      }
+      return mounting;
+    });
     this.#tag = tag;
     this.#namespace = namespace;
     this.#effects = effects;

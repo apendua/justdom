@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "children() mounts its children straight into an empty element, with no DocumentFragment and no comments around them; a Mountable may offer insert(parent, before) beside replace. Server markup changes: HTML rendered by 0.7 is rebuilt by this client, with a mismatch warning, rather than adopted, so render and hydrate with the same version.",
+      "type": "minor",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

@@ -485,6 +485,26 @@ describe("hydrate()", () => {
     });
   });
 
+  it("should render children with no comment around them, and adopt that markup", () => {
+    const build = () => $("p", [children($("em", [children(text`bye`)]), $("b"))]);
+    const html = renderToString(build);
+    assert.strictEqual(html, "<p><em>bye</em><b></b></p>");
+
+    const root = serverRendered(html);
+    const emphasis = root.querySelector("em");
+    const warn = mock.method(console, "warn", () => {});
+    try {
+      const created = recordCreations(() => {
+        hydrate(root, build()).subscribe();
+      });
+      assert.deepEqual(created, { elements: [], texts: 0 });
+    } finally {
+      warn.mock.restore();
+    }
+    assert.strictEqual(warn.mock.calls.length, 0, "expected no mismatch");
+    assert.strictEqual(root.querySelector("em"), emphasis);
+  });
+
   describe("mismatches", () => {
     it("should rebuild when the tag does not match", () => {
       const root = serverRendered(renderToString(() => $("p", [children(text`hi`)])));
@@ -502,6 +522,21 @@ describe("hydrate()", () => {
       assert.strictEqual(warn.mock.calls.length, 1, "expected a warning");
       assert.strictEqual(root.querySelectorAll("p").length, 0, "expected the stale node to go");
       assert.strictEqual(root.querySelector("section")?.textContent, "hi");
+    });
+
+    it("should rebuild markup that has a comment pair around its children", () => {
+      // What justdom-core 0.7 and earlier rendered on the server.
+      const root = serverRendered("<!----><p><!---->hi<!----></p><!---->");
+      const warn = mock.method(console, "warn", () => {});
+
+      try {
+        hydrate(root, $("p", [children(text`hi`)])).subscribe();
+      } finally {
+        warn.mock.restore();
+      }
+
+      assert.strictEqual(warn.mock.calls.length, 1, "expected a warning");
+      assert.strictEqual(root.innerHTML, "<p>hi</p>");
     });
 
     it("should rebuild when the markup holds too few children", () => {

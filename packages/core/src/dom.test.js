@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { just, onCleanup, Signal, Stream } from "justdom-signal";
-import { $, $$, branch, children, list, Nothing, when } from "./dom.js";
+import { $, $$, branch, children, list, Nothing, toMountable, when } from "./dom.js";
+import { replaceSegment } from "./helpers.js";
 import { countDomCalls } from "./test/domCalls.js";
 import { text } from "./text.js";
 
@@ -128,6 +129,106 @@ describe("children()", () => {
     assert.deepStrictEqual(heardLater, []);
     failLater?.(failure);
     assert.deepStrictEqual(heardLater, [failure], "a child failing once it is mounted");
+  });
+
+  it("mounts straight into an empty element, one insertion per node and no comment", () => {
+    const tree = $("tr", [
+      children($("td", [children($("a", [children($("span"))]))]), $("td"), text`end`),
+    ]);
+    const root = document.createElement("table");
+
+    const calls = countDomCalls(() => {
+      just(root, [children(tree)]).subscribe();
+    });
+
+    assert.equal(root.innerHTML, "<tr><td><a><span></span></a></td><td></td>end</tr>");
+    assert.deepEqual(calls, {
+      createElement: 5,
+      createComment: 0,
+      createTextNode: 1,
+      createDocumentFragment: 0,
+      insertBefore: 6,
+      appendChild: 0,
+      replaceChild: 0,
+      removeChild: 0,
+    });
+  });
+
+  it("holds the place of a child that arrives late, between its siblings", () => {
+    /** @type {(() => void) | undefined} */
+    let arrive;
+    const late = new Stream((subscriber) => {
+      arrive = () => subscriber.next(toMountable(document.createElement("section")));
+    });
+    const root = document.createElement("main");
+    just(root, [children($("header"), late, $("footer"))]).subscribe();
+    assert.equal(root.innerHTML, "<header></header><!----><footer></footer>");
+
+    arrive?.();
+
+    assert.equal(root.innerHTML, "<header></header><section></section><footer></footer>");
+  });
+
+  it("mounts a child that can only replace, through a placeholder", () => {
+    const node = document.createElement("section");
+    const foreign = just({
+      /** @param {[Node, Node]} segment */
+      replace: (segment) => replaceSegment([node, node], segment),
+    });
+    const root = document.createElement("main");
+
+    just(root, [children($("header"), foreign, $("footer"))]).subscribe();
+
+    assert.equal(root.innerHTML, "<header></header><section></section><footer></footer>");
+  });
+
+  it("keeps the two comments around a list, and inserts each item once", () => {
+    const items = Signal.of(["a", "b", "c"]);
+    const root = document.createElement("ul");
+
+    const calls = countDomCalls(() => {
+      just(root, [
+        children(
+          list(
+            () => items.get(),
+            () => $("li"),
+          ),
+        ),
+      ]).subscribe();
+    });
+
+    assert.equal(root.innerHTML, "<!----><li></li><li></li><li></li><!---->");
+    assert.equal(calls.createComment, 2);
+    assert.equal(calls.replaceChild, 0);
+    // The three items into the list's fragment, and the fragment into the
+    // element.
+    assert.equal(calls.insertBefore, 4);
+
+    const added = countDomCalls(() => items.set(["a", "x", "b", "c"]));
+
+    assert.equal(root.innerHTML, "<!----><li></li><li></li><li></li><li></li><!---->");
+    assert.deepEqual(
+      { ...added, createElement: 0 },
+      {
+        createElement: 0,
+        createComment: 0,
+        createTextNode: 0,
+        createDocumentFragment: 0,
+        insertBefore: 1,
+        appendChild: 0,
+        replaceChild: 0,
+        removeChild: 0,
+      },
+    );
+  });
+
+  it("replaces what an element already held", () => {
+    const root = document.createElement("main");
+    root.innerHTML = "<p>old</p>text";
+
+    just(root, [children($("header"), $("footer"))]).subscribe();
+
+    assert.equal(markup(root), "<header></header><footer></footer>");
   });
 
   it("takes its children out, and lets go of them, when the mounting comes down", () => {

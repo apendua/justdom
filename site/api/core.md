@@ -94,7 +94,7 @@ synchronous server render can only ever have serialized the fallback.
 
 `hydrate(root, ...content)` returns a source that, when subscribed, mounts `content` into `root` by
 claiming the nodes already there instead of creating new ones: elements by tag, text nodes, and the
-comment anchors `children` and the lists leave. Nodes are claimed left to right, in the order the
+pair of comments a list leaves around its items. Nodes are claimed left to right, in the order the
 tree subscribes, which is document order. A text node's content is written anyway rather than
 trusted. If the markup does not line up with what the tree renders, the mismatch is logged with
 `console.warn`, `root` is emptied and the tree is mounted from scratch, so a mismatch costs

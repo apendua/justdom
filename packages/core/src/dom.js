@@ -1,6 +1,6 @@
 import { each, just, observable, onCleanup, Stream, use, withComputation } from "justdom-signal";
 import ListRenderer from "./ListRenderer.js";
-import { replaceSegment, toSegment, unmountSegment } from "./helpers.js";
+import { insertSegment, replaceSegment, toSegment, unmountSegment } from "./helpers.js";
 import { claimComment, claimElement, claimSegment, isHydrating, withCursor } from "./hydrate.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -81,6 +81,9 @@ function createContainer() {
       }
       return envelope[1].parentNode.insertBefore(child, envelope[1]);
     },
+    end() {
+      return envelope[1];
+    },
     toMountable() {
       return {
         /**
@@ -88,6 +91,19 @@ function createContainer() {
          */
         replace: (segment) => {
           return replaceSegment(envelope, segment);
+        },
+        /**
+         * @param {Node} parent
+         * @param {Node | null} before
+         */
+        insert: (parent, before) => {
+          if (envelope[0].parentNode === fragment) {
+            // Still where it was built, so the fragment carries every node
+            // across in one call.
+            parent.insertBefore(fragment, before);
+            return envelope;
+          }
+          return insertSegment(envelope, parent, before);
         },
       };
     },
@@ -135,6 +151,7 @@ function claimContainer() {
       }
       return last.parentNode.insertBefore(child, last);
     },
+    end: endOfContainer,
     toMountable() {
       const last = endOfContainer();
       return {
@@ -174,6 +191,18 @@ export function children(...children) {
       use(hydrateFragment(node, children));
       return;
     }
+    if (!node.firstChild) {
+      // The usual case, an element that holds nothing yet: the children
+      // mount straight into it. The element is not in the document while
+      // its effects mount, so building in it is as far off the document as
+      // building in a fragment, without the fragment, the two comments
+      // around it and the move across.
+      const mounting = withComputation(null, () => renderer.mountChildren(node, children, fail));
+      onCleanup(() => mounting.unsubscribe());
+      return;
+    }
+    // An element that already holds something: the children are built on
+    // the side and take the place of everything it held.
     const subscription = withComputation(null, () =>
       renderer.renderFragment(children).subscribe({
         next: (mountable) => {
@@ -192,13 +221,13 @@ export function children(...children) {
 }
 
 /**
- * The hydrating counterpart of `renderFragment`.
+ * The hydrating counterpart of `mountChildren`.
  *
- * The normal path builds the children inside a detached fragment and then
- * replaces everything the parent already held, which is precisely what must not
- * happen to server rendered markup. Here each child claims the nodes that are
- * already in place instead, and only the *second* and later emissions go
- * through the usual replace, against the segment that was claimed.
+ * The normal path inserts each child's nodes into the parent, which is
+ * precisely what must not happen to server rendered markup. Here each child
+ * claims the nodes that are already in place instead, and only the *second*
+ * and later emissions go through the usual replace, against the segment that
+ * was claimed.
  *
  * @param {Node} node
  * @param {Array<Subscribable<Mountable>>} children
@@ -207,8 +236,6 @@ export function children(...children) {
 function hydrateFragment(node, children) {
   return new Stream((subscriber) => {
     withCursor(node, () => {
-      // Every rendered fragment is bracketed by a pair of comments.
-      claimComment();
       for (const child of children) {
         /** @type {[Node, Node] | undefined} */
         let segment;
@@ -255,7 +282,6 @@ function hydrateFragment(node, children) {
         });
         segment = claimed.segment;
       }
-      claimComment();
     });
     subscriber.next(undefined);
   });
@@ -396,9 +422,41 @@ export function asMountable(source) {
  * @returns {Mountable}
  */
 export function toMountable(node) {
-  return {
-    replace: (segment) => {
-      return replaceSegment(toSegment(node), segment);
-    },
-  };
+  return new NodeMountable(node);
+}
+
+/**
+ * One node as something to mount. A class, so that a node costs one object
+ * and no closure of its own.
+ *
+ * @implements {Mountable}
+ */
+class NodeMountable {
+  /** @type {Node} */
+  #node;
+
+  /**
+   * @param {Node} node
+   */
+  constructor(node) {
+    this.#node = node;
+  }
+
+  /**
+   * @param {[Node, Node]} segment
+   * @returns {[Node, Node]}
+   */
+  replace(segment) {
+    return replaceSegment(toSegment(this.#node), segment);
+  }
+
+  /**
+   * @param {Node} parent
+   * @param {Node | null} before
+   * @returns {[Node, Node]}
+   */
+  insert(parent, before) {
+    parent.insertBefore(this.#node, before);
+    return toSegment(this.#node);
+  }
 }

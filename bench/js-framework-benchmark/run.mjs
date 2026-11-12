@@ -49,8 +49,14 @@ const frameworks = values.framework ?? FRAMEWORKS;
 
 // The suite's installs download a chromedriver and a Chrome of their own.
 // Puppeteer drives the Chrome named by --chrome, or the installed one.
+// `work/` sits inside this repository, so Babel's browserslist lookup would
+// walk up to the repository's own `.browserslistrc` and build the entries for
+// its targets, or fail on a version the entry's browserslist has no data for.
+// BROWSERSLIST_ROOT_PATH stops the lookup at the suite, as in a checkout of
+// the suite on its own.
 const env = {
   ...process.env,
+  BROWSERSLIST_ROOT_PATH: suite,
   CHROMEDRIVER_SKIP_DOWNLOAD: "true",
   PUPPETEER_SKIP_DOWNLOAD: "1",
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1",

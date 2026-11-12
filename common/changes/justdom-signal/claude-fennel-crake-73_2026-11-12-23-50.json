@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A reader of one key of a ReactiveMap, or one value of a ReactiveSet, depends on a relay the collection wakes by one lookup, where each key held a filtered subscription to every event of the collection. A write no longer runs a predicate per key being read, and tracking a key costs one node.",
+      "type": "patch",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

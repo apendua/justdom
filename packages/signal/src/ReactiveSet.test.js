@@ -1,6 +1,6 @@
-import { describe, it } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { Effect } from "./index.js";
+import { Effect, Subject } from "./index.js";
 import ReactiveSet from "./ReactiveSet.js";
 
 describe("ReactiveSet", () => {
@@ -77,6 +77,45 @@ describe("ReactiveSet", () => {
     });
     set.add("a");
     assert.deepStrictEqual(values, [false, true]);
+  });
+
+  it("gives a reader of one value no subscription to the set's events", () => {
+    const set = new ReactiveSet();
+    const subscribe = mock.method(Subject.prototype, "subscribe");
+    /** @type {boolean[]} */
+    const values = [];
+    try {
+      new Effect(() => {
+        values.push(set.has("x"));
+      });
+      assert.strictEqual(subscribe.mock.callCount(), 0);
+    } finally {
+      subscribe.mock.restore();
+    }
+
+    set.add("y");
+    set.add("x");
+    assert.deepStrictEqual(values, [false, true]);
+  });
+
+  it("lets a value go when its last reader does, and tracks it again later", () => {
+    const set = new ReactiveSet();
+    /** @type {boolean[]} */
+    const first = [];
+    /** @type {boolean[]} */
+    const second = [];
+    const effect = new Effect(() => {
+      first.push(set.has("x"));
+    });
+    effect.dispose();
+    set.add("x");
+    new Effect(() => {
+      second.push(set.has("x"));
+    });
+    set.delete("x");
+
+    assert.deepStrictEqual(first, [false]);
+    assert.deepStrictEqual(second, [true, false]);
   });
 
   it("reports one mutation as one update, not one per dependent", () => {

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A press on a list's own area after a drag and drop on the same panel clicks again.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

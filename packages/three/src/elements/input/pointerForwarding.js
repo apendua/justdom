@@ -1117,10 +1117,12 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
     },
     selectstart(e) {
-      // Whether the last press scrolled says nothing of this one, which
-      // may not go on to take hold of a list: a press on a draggable card
-      // after a scroll is still a click.
+      // Whether the last press scrolled, or dragged and dropped, says
+      // nothing of this one, which may not go on to either: a press on a
+      // draggable card after a scroll is still a click, and so is one on a
+      // list's own area after a drag and drop.
       state.drags.forget(e.controller);
+      state.dnd.forget(e.controller);
       const hand = panelHand(e.controller);
       const { select } = hand;
       const first = begin(select, e.originalTarget, false);
@@ -1145,11 +1147,9 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
       // A press that lands on an element that has gone, list or control,
       // is swallowed (see `isGone`), and goes no further than the panel.
-      // Silent to the page, its end included, but still the hand's last
-      // press, which ends the one before's say over `didDrag`.
+      // Silent to the page, its end included.
       if (isGone(first.element)) {
         select.swallowed = true;
-        state.dnd.begin(e.controller, first.element, first.object, false);
         state.stopPropagation(e);
         return;
       }

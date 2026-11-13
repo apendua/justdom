@@ -181,6 +181,11 @@ export function sampleRay(controller, space, world, local) {
  *   Take hold of the list under a press. `onTaken` is told once, on the
  *   frame the press travels past `DRAG_THRESHOLD` and becomes a scroll,
  *   which is when a browser cancels the pointer that pressed.
+ * @property {(controller: THREE.XRTargetRaySpace) => void} forget A new
+ *   press of the hand: let go of the list it holds or glides, and forget
+ *   that its last press scrolled, so that `didScroll` speaks of this press
+ *   alone. Every press of the trigger on the panel starts here, whatever it
+ *   presses, a list or something draggable or nothing; `begin` does too.
  * @property {(controller: THREE.XRTargetRaySpace) => void} end The hand
  *   let go: a glide, if the list was moving fast enough, or nothing. Called
  *   from the controller's own release, which every drag hears (see
@@ -293,9 +298,12 @@ export function createScrollDrags(requestFrames, scene) {
 
   /** @type {ScrollDrags} */
   const gesture = {
-    begin(controller, element, object, onTaken) {
+    forget(controller) {
       drop(controller);
       scrolled.delete(controller);
+    },
+    begin(controller, element, object, onTaken) {
+      gesture.forget(controller);
       const scroller = findScroller(element);
       if (!scroller) {
         return;

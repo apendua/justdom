@@ -65,9 +65,9 @@ function place(mountable, parent, before, createPlaceholder) {
  *
  * A class, and not the closures `mountChildren` used to build per call:
  * every element with children has one of these, so what it is made of is
- * paid per element. It holds two arrays and the holder's `fail`. A child
- * that is one node, the usual one, adds its node and its mounting to them
- * and nothing else.
+ * paid per element. It holds two arrays, the holder's `fail` and one
+ * function its children fail through. A child that is one node, the usual
+ * one, adds its node and its mounting to the arrays and nothing else.
  *
  * @template {INode<N>} N
  * @implements {Unsubscribable}
@@ -94,6 +94,29 @@ class ChildrenMounting {
   #fail;
 
   /**
+   * Whether a child has failed. `mount` stops at the first one that has.
+   *
+   * @type {boolean}
+   */
+  #failed = false;
+
+  /**
+   * Where the failure of any child goes: to the holder, and on record, so
+   * that the children behind it are not mounted. One function for all the
+   * children, since each element with children has one of these.
+   *
+   * A child's failure is not always thrown while the child is mounted. An
+   * effect of an element that is mounted already can run again and fail
+   * while a later sibling is being mounted, and that arrives here too.
+   *
+   * @type {(error: unknown) => void}
+   */
+  #onError = (error) => {
+    this.#failed = true;
+    this.#fail(error);
+  };
+
+  /**
    * @param {number} count how many children there are
    * @param {(error: unknown) => void} fail
    */
@@ -114,31 +137,22 @@ class ChildrenMounting {
   mount(parent, children, createPlaceholder) {
     const held = this.#held;
     const subscriptions = this.#subscriptions;
-    const fail = this.#fail;
-    let failed = false;
-    for (let i = 0; i < children.length && !failed; i++) {
+    const onError = this.#onError;
+    for (let i = 0; i < children.length && !this.#failed; i++) {
       const source = asNodeSource(children[i]);
       if (source) {
         try {
           const node = source.createNode();
           // Mounted before it is inserted, so the subtree is built off
-          // the document, as a subscription builds it before it emits. A
-          // failure while it mounts is thrown, and a later one is the
-          // holder's to hear, so `fail` goes in as it is.
-          subscriptions[i] = source.mountNode(node, fail);
+          // the document, as a subscription builds it before it emits.
+          subscriptions[i] = source.mountNode(node, onError);
           held[i] = parent.insertBefore(node, null);
         } catch (error) {
-          failed = true;
-          fail(error);
+          onError(error);
         }
         continue;
       }
       let placed = false;
-      /** @param {unknown} error */
-      const onError = (error) => {
-        failed = true;
-        fail(error);
-      };
       subscriptions[i] = children[i].subscribe({
         next: (newMountable) => {
           try {

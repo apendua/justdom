@@ -1550,6 +1550,28 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("a press after a drag and drop clicks, on a list's own area as well", async () => {
+    // A drag and drop swallows the click of the press that made it, and of
+    // that press alone: the next press, on the list below its row, clicks.
+    const page = await mirrored((place) => scrollingRow(place, true));
+    const { panel } = page;
+    const hand = rayHand(page.manager);
+    hand.aim(panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(panel, 95, 60);
+    hand.trigger("selectend");
+    await null;
+    const { heard, stop } = hearing(["click"]);
+    hand.aim(panel, 95, 130);
+    hand.trigger("selectstart");
+    hand.trigger("selectend");
+    await null;
+    stop();
+    assert.deepEqual(heard, ["click #list"]);
+    hand.remove();
+    page.teardown();
+  });
+
   test("a press after a scroll clicks, on something draggable as well", async () => {
     // A scroll swallows the click of the press that made it, and of that
     // press alone: the next press, on a draggable card's checkbox, clicks.

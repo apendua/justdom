@@ -355,6 +355,24 @@ describe("dragging a list", () => {
     assert.equal(running(), false, "the loop retires once the glide has settled");
   });
 
+  test("a new press stops a glide and forgets the scroll", () => {
+    const { list, row, rowObject, controller, drags, aimAt, frame } = setup();
+
+    drags.begin(controller, row, rowObject);
+    frame();
+    aimAt(0, -40);
+    frame();
+    drags.end(controller);
+    assert.equal(drags.scrolling(controller), true, "gliding");
+
+    drags.forget(controller);
+    assert.equal(drags.scrolling(controller), false, "the glide is let go");
+    assert.equal(drags.didScroll(controller), false, "and the scroll forgotten");
+    const stopped = list.scrollTop;
+    frame();
+    assert.equal(list.scrollTop, stopped, "the list stays where it was");
+  });
+
   test("letting go without dragging starts no glide", () => {
     const { row, rowObject, controller, drags, frame, running } = setup();
 

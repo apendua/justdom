@@ -1550,6 +1550,33 @@ describe("a ray's pointer events", () => {
     page.teardown();
   });
 
+  test("a press after a scroll clicks, on something draggable as well", async () => {
+    // A scroll swallows the click of the press that made it, and of that
+    // press alone: the next press, on a draggable card's checkbox, clicks.
+    const page = await mirrored((place) => {
+      scrollingRow(place, false);
+      const card = place("div", "card", [200, 20, 150, 100]);
+      card.setAttribute("draggable", "true");
+      place("label", "tick", [210, 30, 100, 30], card).style.cursor = "pointer";
+    });
+    const { panel } = page;
+    const hand = rayHand(page.manager);
+    hand.aim(panel, 95, 100);
+    hand.trigger("selectstart");
+    hand.aim(panel, 95, 60);
+    hand.trigger("selectend");
+    await null;
+    const { heard, stop } = hearing(["click"]);
+    hand.aim(panel, 250, 45);
+    hand.trigger("selectstart");
+    hand.trigger("selectend");
+    await null;
+    stop();
+    assert.deepEqual(heard, ["click #tick"]);
+    hand.remove();
+    page.teardown();
+  });
+
   for (const [gesture, draggable, before, at] of /** @type {const} */ ([
     // The move that crosses the threshold is the last the page hears.
     ["a scroll", false, [], "95,60"],

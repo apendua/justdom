@@ -1117,6 +1117,10 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
       }
     },
     selectstart(e) {
+      // Whether the last press scrolled says nothing of this one, which
+      // may not go on to take hold of a list: a press on a draggable card
+      // after a scroll is still a click.
+      state.drags.forget(e.controller);
       const hand = panelHand(e.controller);
       const { select } = hand;
       const first = begin(select, e.originalTarget, false);

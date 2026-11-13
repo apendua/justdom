@@ -14,6 +14,7 @@ import {
   makeNonReactive,
   Stream,
   Subject,
+  withComputation,
 } from "justdom-signal";
 
 /**
@@ -36,6 +37,197 @@ function unmount(segment, subscription) {
     unmountSegment(segment, () => subscription.unsubscribe());
   } else {
     subscription.unsubscribe();
+  }
+}
+
+/**
+ * Puts a tree that is not in the document yet into `parent`, in front of
+ * `before` or at the end. A mountable with no `insert` of its own gets a
+ * placeholder there to replace.
+ *
+ * @template {INode<N>} N
+ * @param {MountableOf<N>} mountable
+ * @param {N} parent
+ * @param {N | null} before
+ * @param {() => N} createPlaceholder
+ * @returns {SegmentOf<N>}
+ */
+function place(mountable, parent, before, createPlaceholder) {
+  if (mountable.insert) {
+    return mountable.insert(parent, before);
+  }
+  const placeholder = parent.insertBefore(createPlaceholder(), before);
+  return mountable.replace(toSegment(placeholder));
+}
+
+/**
+ * The children `mountChildren` mounted into one parent.
+ *
+ * A class, and not the closures `mountChildren` used to build per call:
+ * every element with children has one of these, so what it is made of is
+ * paid per element. It holds two arrays, the holder's `fail` and one
+ * function its children fail through. A child that is one node, the usual
+ * one, adds its node and its mounting to the arrays and nothing else.
+ *
+ * @template {INode<N>} N
+ * @implements {Unsubscribable}
+ */
+class ChildrenMounting {
+  /**
+   * What each child has in the parent: its one node, for a child that is a
+   * source of one node, or the segment a subscribed child last put there.
+   * `null` once the child was taken down.
+   *
+   * @type {Array<N | SegmentOf<N> | null | undefined>}
+   */
+  #held;
+
+  /**
+   * The mounting or the subscription of each child that got as far as
+   * having one.
+   *
+   * @type {Array<Unsubscribable | undefined>}
+   */
+  #subscriptions;
+
+  /** @type {(error: unknown) => void} */
+  #fail;
+
+  /**
+   * Whether a child has failed. `mount` stops at the first one that has.
+   *
+   * @type {boolean}
+   */
+  #failed = false;
+
+  /**
+   * Where the failure of any child goes: to the holder, and on record, so
+   * that the children behind it are not mounted. One function for all the
+   * children, since each element with children has one of these.
+   *
+   * A child's failure is not always thrown while the child is mounted. An
+   * effect of an element that is mounted already can run again and fail
+   * while a later sibling is being mounted, and that arrives here too.
+   *
+   * @type {(error: unknown) => void}
+   */
+  #onError = (error) => {
+    this.#failed = true;
+    this.#fail(error);
+  };
+
+  /**
+   * @param {number} count how many children there are
+   * @param {(error: unknown) => void} fail
+   */
+  constructor(count, fail) {
+    // Made at their full length. An array that grows by `push` is given
+    // room for seventeen, and most elements have one child or two.
+    this.#held = new Array(count);
+    this.#subscriptions = new Array(count);
+    this.#fail = fail;
+  }
+
+  /**
+   * @param {N} parent
+   * @param {Array<Subscribable<MountableOf<N>>>} children
+   * @param {() => N} createPlaceholder
+   * @returns {void}
+   */
+  mount(parent, children, createPlaceholder) {
+    const held = this.#held;
+    const subscriptions = this.#subscriptions;
+    const onError = this.#onError;
+    for (let i = 0; i < children.length && !this.#failed; i++) {
+      const source = asNodeSource(children[i]);
+      if (source) {
+        try {
+          const node = source.createNode();
+          // Mounted before it is inserted, so the subtree is built off
+          // the document, as a subscription builds it before it emits.
+          subscriptions[i] = source.mountNode(node, onError);
+          held[i] = parent.insertBefore(node, null);
+        } catch (error) {
+          onError(error);
+        }
+        continue;
+      }
+      let placed = false;
+      subscriptions[i] = children[i].subscribe({
+        next: (newMountable) => {
+          try {
+            if (placed) {
+              this.#replace(i, newMountable);
+            } else {
+              placed = true;
+              held[i] = place(newMountable, parent, null, createPlaceholder);
+            }
+          } catch (error) {
+            onError(error);
+          }
+        },
+        error: onError,
+      });
+      if (!placed) {
+        placed = true;
+        held[i] = toSegment(parent.insertBefore(createPlaceholder(), null));
+      }
+    }
+  }
+
+  /**
+   * A subscribed child emitted again: what it emitted takes the place of
+   * what it had.
+   *
+   * @param {number} i
+   * @param {MountableOf<N>} newMountable
+   * @returns {void}
+   */
+  #replace(i, newMountable) {
+    const old = this.#held[i];
+    // Only a subscribed child gets here, and what it holds is a segment.
+    if (Array.isArray(old)) {
+      // Non-reactive, like the first placement, which runs inside the
+      // caller's own non-reactive subscribe: a replacement is not a read.
+      this.#held[i] = withComputation(null, () => newMountable.replace(old));
+    }
+  }
+
+  /**
+   * Takes the children down, in order.
+   *
+   * @returns {void}
+   */
+  unsubscribe() {
+    const held = this.#held;
+    const subscriptions = this.#subscriptions;
+    /** @type {{ value: unknown } | null} */
+    let failure = null;
+    for (let i = 0; i < subscriptions.length; i++) {
+      const subscription = subscriptions[i];
+      if (!subscription) {
+        // A child that failed before it had one, or one behind it.
+        continue;
+      }
+      const old = held[i];
+      // The child is unsubscribed, then its nodes come out of the
+      // document. A child whose cleanup throws does not strand the
+      // ones after it: they all go, and the first failure is raised
+      // once they have, as with the teardowns of a `Stream`.
+      try {
+        if (old) {
+          held[i] = null;
+          unmount(Array.isArray(old) ? old : toSegment(old), subscription);
+        } else {
+          subscription.unsubscribe();
+        }
+      } catch (error) {
+        failure = failure ?? { value: error };
+      }
+    }
+    if (failure) {
+      throw failure.value;
+    }
   }
 }
 
@@ -199,112 +391,10 @@ export default class ListRenderer {
    * @returns {Unsubscribable}
    */
   mountChildren(parent, children, fail) {
-    /** @type {Array<SegmentOf<T> | null>} */
-    const segments = [];
-    /** @type {Unsubscribable[]} */
-    const subscriptions = [];
-    let failed = false;
-    /** @param {unknown} error */
-    const onError = (error) => {
-      failed = true;
-      fail(error);
-    };
-    // Non-reactive, like the first placement, which runs inside the
-    // caller's own non-reactive subscribe: a replacement is not a read.
-    const replace = makeNonReactive(
-      /**
-       * @param {number} i
-       * @param {MountableOf<T>} newMountable
-       */
-      (i, newMountable) => {
-        const oldSegment = segments[i];
-        if (oldSegment) {
-          segments[i] = newMountable.replace(oldSegment);
-        }
-      },
-    );
-    for (let i = 0; i < children.length && !failed; i++) {
-      const source = asNodeSource(children[i]);
-      if (source) {
-        try {
-          const node = source.createNode();
-          // Mounted before it is inserted, so the subtree is built off
-          // the document, as a subscription builds it before it emits.
-          subscriptions.push(source.mountNode(node, onError));
-          segments[i] = toSegment(parent.insertBefore(node, null));
-        } catch (error) {
-          onError(error);
-        }
-        continue;
-      }
-      let placed = false;
-      subscriptions.push(
-        children[i].subscribe({
-          next: (newMountable) => {
-            try {
-              if (placed) {
-                replace(i, newMountable);
-              } else {
-                placed = true;
-                segments[i] = this.#place(newMountable, parent, null);
-              }
-            } catch (error) {
-              onError(error);
-            }
-          },
-          error: onError,
-        }),
-      );
-      if (!placed) {
-        placed = true;
-        segments[i] = toSegment(parent.insertBefore(this.#createPlaceholder(), null));
-      }
-    }
-    return {
-      unsubscribe: () => {
-        /** @type {{ value: unknown } | null} */
-        let failure = null;
-        for (let i = 0; i < subscriptions.length; i++) {
-          const subscription = subscriptions[i];
-          const oldSegment = segments[i];
-          // The child is unsubscribed, then its nodes come out of the
-          // document. A child whose cleanup throws does not strand the
-          // ones after it: they all go, and the first failure is raised
-          // once they have, as with the teardowns of a `Stream`.
-          try {
-            if (oldSegment) {
-              segments[i] = null;
-              unmountSegment(oldSegment, () => subscription.unsubscribe());
-            } else {
-              subscription.unsubscribe();
-            }
-          } catch (error) {
-            failure = failure ?? { value: error };
-          }
-        }
-        if (failure) {
-          throw failure.value;
-        }
-      },
-    };
-  }
-
-  /**
-   * Puts a tree that is not in the document yet into `parent`, in front of
-   * `before` or at the end. A mountable with no `insert` of its own gets a
-   * placeholder there to replace.
-   *
-   * @param {MountableOf<T>} mountable
-   * @param {T} parent
-   * @param {T | null} before
-   * @returns {SegmentOf<T>}
-   */
-  #place(mountable, parent, before) {
-    if (mountable.insert) {
-      return mountable.insert(parent, before);
-    }
-    const placeholder = parent.insertBefore(this.#createPlaceholder(), before);
-    return mountable.replace(toSegment(placeholder));
+    /** @type {ChildrenMounting<T>} */
+    const mounting = new ChildrenMounting(children.length, fail);
+    mounting.mount(parent, children, this.#createPlaceholder);
+    return mounting;
   }
 
   /**
@@ -486,7 +576,10 @@ export default class ListRenderer {
                 next: (newMountable) => {
                   if (!placed) {
                     placed = true;
-                    childSegments.set(key, this.#place(newMountable, parentNode, before));
+                    childSegments.set(
+                      key,
+                      place(newMountable, parentNode, before, this.#createPlaceholder),
+                    );
                     return;
                   }
                   const oldSegment = childSegments.get(key);

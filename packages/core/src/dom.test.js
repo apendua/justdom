@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import fc from "fast-check";
 import { just, onCleanup, Signal, Stream } from "justdom-signal";
 import { $, $$, branch, children, list, Nothing, toMountable, when } from "./dom.js";
@@ -106,6 +108,38 @@ describe("$$()", () => {
   });
 });
 
+describe("what a mounted element keeps", () => {
+  it("lets go of the sources that described its children", async () => {
+    setFlagsFromString("--expose-gc");
+    const collect = /** @type {() => void} */ (runInNewContext("gc"));
+    const root = document.createElement("main");
+    /** @type {WeakRef<object>[]} */
+    const described = [];
+    // The item of a list, since its sources are made while the list renders
+    // and nothing outside the list ever holds them.
+    const Item = () => {
+      const grandchild = $("b", [(b) => void (b.textContent = "deep")]);
+      const child = $("span", [children(grandchild)]);
+      described.push(new WeakRef(child), new WeakRef(grandchild));
+      return $("p", [children(child)]);
+    };
+    const subscription = just(root, [children(list(() => [1], Item))]).subscribe();
+    assert.strictEqual(markup(root), "<p><span><b>deep</b></span></p>");
+
+    // A `WeakRef` keeps its target until the job that made it has ended.
+    await new Promise((resolve) => setImmediate(resolve));
+    collect();
+    assert.deepStrictEqual(
+      described.map((source) => source.deref()),
+      [undefined, undefined],
+    );
+
+    // What was mounted does not need them to come down again.
+    subscription.unsubscribe();
+    assert.strictEqual(markup(root), "");
+  });
+});
+
 describe("an element as a child", () => {
   /**
    * Counts the subscriptions `source` is given from here on.
@@ -124,6 +158,34 @@ describe("an element as a child", () => {
     );
     return () => count;
   }
+
+  it("is not mounted once an earlier sibling has failed, however the failure arrived", () => {
+    const flag = Signal.of(false);
+    /** @type {string[]} */
+    const log = [];
+    /** @type {unknown[]} */
+    const errors = [];
+    const root = document.createElement("main");
+    just(root, [
+      children(
+        // Mounts, and fails when it runs again.
+        $("a", [
+          () => {
+            if (flag.get()) {
+              throw new Error("a, later");
+            }
+          },
+        ]),
+        // Makes the first one run again while this one is being mounted.
+        $("b", [() => flag.set(true)]),
+        $("i", [() => void log.push("i runs")]),
+      ),
+    ]).subscribe({ error: (error) => errors.push(error) });
+
+    assert.deepStrictEqual(log, []);
+    assert.deepStrictEqual(errors, [new Error("a, later")]);
+    assert.strictEqual(markup(root), "");
+  });
 
   it("is mounted by its parent without a subscription, built before it goes in", () => {
     /** @type {string[]} */

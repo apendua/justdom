@@ -244,6 +244,22 @@ const renderer = new ListRenderer({
 });
 
 /**
+ * The teardown that takes `mounting` down.
+ *
+ * Made out here and not inside `children`, where the closure would hold
+ * the scope it was made in, and with it the children the element was
+ * described by: every source under it, their effects and what those hold,
+ * for as long as the element is mounted. Once the children are mounted,
+ * nothing needs their description again.
+ *
+ * @param {Unsubscribable} mounting
+ * @returns {() => void}
+ */
+function unsubscribing(mounting) {
+  return () => mounting.unsubscribe();
+}
+
+/**
  * @template {Node} T
  * @param {Array<Subscribable<Mountable>>} children
  * @returns {EntityEffect<T>}
@@ -261,8 +277,9 @@ export function children(...children) {
       // its effects mount, so building in it is as far off the document as
       // building in a fragment, without the fragment, the two comments
       // around it and the move across.
-      const mounting = withComputation(null, () => renderer.mountChildren(node, children, fail));
-      onCleanup(() => mounting.unsubscribe());
+      onCleanup(
+        unsubscribing(withComputation(null, () => renderer.mountChildren(node, children, fail))),
+      );
       return;
     }
     // An element that already holds something: the children are built on

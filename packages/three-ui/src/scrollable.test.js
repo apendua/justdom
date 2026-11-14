@@ -64,9 +64,9 @@ function mount({ window: shown, content: total, announce = true, overscroll = fa
 
   viewport = host.querySelector(".viewport");
   if (viewport) {
-    // The three numbers the widget samples. `scrollTop` clamps to the
-    // scrollable range, which is what makes "one press past the end" a
-    // no-op rather than a runaway.
+    // The three numbers the widget samples. Unless `overscroll` is set,
+    // `scrollTop` clamps to the scrollable range, which is what makes "one
+    // press past the end" a no-op rather than a runaway.
     Object.defineProperty(viewport, "clientHeight", { get: () => shown });
     Object.defineProperty(viewport, "scrollHeight", { get: () => total });
     Object.defineProperty(viewport, "scrollTop", {

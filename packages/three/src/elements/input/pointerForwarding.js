@@ -1519,12 +1519,19 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
     state.targets.set(target.object, target);
     if (!target.list) {
       state.controls.set(target.element, (state.controls.get(target.element) ?? 0) + 1);
+      controlObjects.set(target.object, (controlObjects.get(target.object) ?? 0) + 1);
     }
     return () => {
       if (state.targets.get(target.object) === target) {
         state.targets.delete(target.object);
       }
       if (!target.list) {
+        const registrations = controlObjects.get(target.object) ?? 0;
+        if (registrations > 1) {
+          controlObjects.set(target.object, registrations - 1);
+        } else {
+          controlObjects.delete(target.object);
+        }
         const count = state.controls.get(target.element) ?? 0;
         if (count > 1) {
           state.controls.set(target.element, count - 1);
@@ -1571,6 +1578,26 @@ export function createPanelForwarder(ctx, container, { thumbstickWheel = false }
  *   a control inside it, has been delivered as a click; see
  *   `BoxOptions.onPress`.
  */
+
+/**
+ * The objects registered as controls (`createPanelForwarder`'s `control`),
+ * on every panel, each with how many times it is: what `isControl` asks.
+ *
+ * @type {WeakMap<THREE.Object3D, number>}
+ */
+const controlObjects = new WeakMap();
+
+/**
+ * Whether an object is registered as a control, something a press on means
+ * something: a button, a checkbox, a field, something draggable. Not a list
+ * the ray scrolls, a panel's background, or anything else a ray meets.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {boolean}
+ */
+export function isControl(object) {
+  return controlObjects.has(object);
+}
 
 /**
  * Being a control: a ray target, whose events the panel's forwarder sends

@@ -1,6 +1,7 @@
 /// <reference types="justdom-signal/dom" preserve="true" />
 export { dropdown } from "./dropdown.js";
 export { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
+export { KEY_REPEAT_DELAY, KEY_REPEAT_INTERVAL, keyRepeat } from "./keyRepeat.js";
 export { scrollable } from "./scrollable.js";
 export {
   chartCeiling,
@@ -49,6 +50,14 @@ export {
 
 /**
  * @typedef {import('./keyboard.js').KeyPress} KeyPress
+ */
+
+/**
+ * @typedef {import('./keyRepeat.js').KeyRepeat} KeyRepeat
+ */
+
+/**
+ * @typedef {import('./keyRepeat.js').KeyRepeatOptions} KeyRepeatOptions
  */
 
 /**

@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { standInForPointerEvent } from "../test/pointerEvent.js";
 import { createPointerForwarder, DRAG_THRESHOLD, elementAt } from "./forwarding.js";
 
 /**
@@ -13,7 +14,8 @@ function box(element: Element, left: number, top: number, width: number, height:
 /**
  * jsdom has no `DragEvent`, `DataTransfer` or `PointerEvent`: a drag event
  * here is a mouse event that carries a transfer, which keeps its data in a
- * map, and a pointer event is a mouse event with an id.
+ * map, and a pointer event is a mouse event with an id
+ * (`standInForPointerEvent`).
  */
 beforeAll(() => {
   class TestDataTransfer {
@@ -36,16 +38,7 @@ beforeAll(() => {
   }
   globalThis.DataTransfer ??= TestDataTransfer as unknown as typeof DataTransfer;
   globalThis.DragEvent ??= TestDragEvent as unknown as typeof DragEvent;
-  class TestPointerEvent extends MouseEvent {
-    pointerId: number;
-    isPrimary: boolean;
-    constructor(type: string, init: PointerEventInit = {}) {
-      super(type, init);
-      this.pointerId = init.pointerId ?? 0;
-      this.isPrimary = init.isPrimary ?? false;
-    }
-  }
-  globalThis.PointerEvent ??= TestPointerEvent as unknown as typeof PointerEvent;
+  standInForPointerEvent();
 });
 
 afterEach(() => {

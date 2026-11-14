@@ -1,5 +1,6 @@
 import { $, attr, children, on, renderText, set, style, text } from "justdom-core";
-import { Derived, flatMap, observable, Signal } from "justdom-signal";
+import { Derived, flatMap, observable, onCleanup, Signal } from "justdom-signal";
+import { keyRepeat } from "./keyRepeat.js";
 
 /**
  * @import {EntityEffect} from "justdom-signal";
@@ -79,9 +80,14 @@ const withModifier = (base, modifier, active) =>
  *   reading the DOM, when the printed label is a glyph or blank.
  * @property {boolean} [spacer] Not a key at all: empty space holding its
  *   `width` in the row, the way a phone board centres its middle row. Renders
- *   with no class, no role and no click, so it is not a ray target either.
+ *   with no class, no role and no press, so it is not a ray target either.
  * @property {number} [width] How wide, in key units — 1 is a letter key, and
  *   every row of the default layout adds up to 10. Defaults to 1.
+ * @property {boolean} [repeat] Whether the key types again while it is held
+ *   down. Defaults to true; the default layouts set it false on `enter` and
+ *   `esc`, which a held press would otherwise submit or dismiss over and
+ *   over. A modifier never repeats, whatever this says: it changes state as
+ *   it goes down and does nothing more while held.
  */
 
 /**
@@ -143,6 +149,11 @@ const withModifier = (base, modifier, active) =>
  *   name.
  * @property {KeyboardLayout} [numericLayout] What a numeric field gets.
  *   Defaults to {@link NUMERIC_LAYOUT}.
+ * @property {import("./keyRepeat.js").KeyRepeatOptions | false} [repeat] How
+ *   a held key repeats: `delay` before it types again and `interval` between
+ *   repeats after that, in ms, defaulting to `KEY_REPEAT_DELAY` and
+ *   `KEY_REPEAT_INTERVAL`. `false` turns repeat off, and a held key types
+ *   once.
  */
 
 /** @type {Record<KeyboardModifier, boolean>} */
@@ -280,10 +291,10 @@ export const MOBILE_LAYOUT = [
       width: 1.5,
       symbols: { label: "ABC", name: "Letters" },
     }),
-    special("Escape", "esc", { key: "Escape", name: "Escape" }),
+    special("Escape", "esc", { key: "Escape", name: "Escape", repeat: false }),
     special("Space", "", { key: " ", name: "Space", width: 5 }),
     special("Period", ".", { key: "." }),
-    special("Enter", "enter", { key: "Enter", name: "Enter", width: 1.5 }),
+    special("Enter", "enter", { key: "Enter", name: "Enter", width: 1.5, repeat: false }),
   ],
 ];
 
@@ -316,9 +327,9 @@ export const NUMERIC_LAYOUT = [
   ],
   [digit("7"), digit("8"), digit("9"), special("Period", ".", { key: ".", name: "Decimal point" })],
   [
-    special("Escape", "esc", { key: "Escape", name: "Escape" }),
+    special("Escape", "esc", { key: "Escape", name: "Escape", repeat: false }),
     { ...digit("0"), width: 2 },
-    special("Enter", "enter", { key: "Enter", name: "Enter" }),
+    special("Enter", "enter", { key: "Enter", name: "Enter", repeat: false }),
   ],
 ];
 
@@ -354,12 +365,12 @@ export function isNumericField(field) {
 }
 
 /**
- * A keyboard made of ordinary elements, clicked rather than typed on, so that
- * it works in a `dom(ctx, …)` portal as well as it does on a page.
+ * A keyboard made of ordinary elements, pressed by a pointer rather than typed
+ * on, so that it works in a `dom(ctx, …)` portal as well as it does on a page.
  *
  * There is nothing to type into a scene with: a headset has no keys, and the
  * one the system offers is chrome — it belongs to the compositor, not to the
- * DOM, so none of it reaches the panel you put it on. Boxes and clicks do
+ * DOM, so none of it reaches the panel you put it on. Boxes and presses do
  * reach it, and that is all this is.
  *
  * The tree is built once and never changes shape: a state change moves a class
@@ -369,7 +380,15 @@ export function isNumericField(field) {
  * the symbols view exactly as it holds for shift: flipping the whole board to
  * digits is the same keys wearing different faces, not a different board.
  *
- * Shift, ctrl, alt, meta and fn are one-shot: engaged by a click, reported on
+ * A key types as it goes down, at its `pointerdown`, which is the trigger
+ * closing on it in a headset, and not at the click that follows the
+ * release: a real key types under the finger, and a board that waited for
+ * the release would type a beat behind the hand. Held down, it types again
+ * after `repeat.delay` and every `repeat.interval` after that, until it is
+ * let go or the ray leaves it; see `keyRepeat` for the whole of the rule.
+ * Only the primary button presses a key, as only it clicks one.
+ *
+ * Shift, ctrl, alt, meta and fn are one-shot: engaged by a press, reported on
  * the next key that types, and released. Nobody chords on a board they have to
  * point at. Caps lock and the symbols view are the exceptions — sticky until
  * clicked off — because a lock that let go by itself would not be one, and a
@@ -387,7 +406,8 @@ export function isNumericField(field) {
  * @returns {import("justdom-signal").Source<Mountable>}
  */
 export function keyboard(props) {
-  const { onKey, classes, layout, field, numericLayout = NUMERIC_LAYOUT } = props;
+  const { onKey, classes, layout, field, numericLayout = NUMERIC_LAYOUT, repeat = {} } = props;
+  const repeater = repeat === false ? null : keyRepeat(repeat);
 
   /** @type {Record<KeyboardModifier, Signal<boolean>>} */
   const held = {
@@ -450,18 +470,25 @@ export function keyboard(props) {
    */
   const nameOf = (entry) => faceOf(entry).name ?? entry.name ?? labelOf(entry);
 
-  /** @param {KeyboardKey} entry */
+  /**
+   * Types the key, or engages the modifier it is.
+   *
+   * @param {KeyboardKey} entry
+   * @returns {KeyPress | null} What it typed, which a repeat types again, or
+   *   null for a modifier or a key that types nothing.
+   */
   const press = (entry) => {
     if (entry.modifier) {
       const signal = held[entry.modifier];
       signal.set(!signal.get());
-      return;
+      return null;
     }
     const key = keyOf(entry);
     if (key === undefined) {
-      return;
+      return null;
     }
-    onKey({
+    /** @type {KeyPress} */
+    const typed = {
       key,
       code: entry.code,
       shiftKey: held.shift.get(),
@@ -470,13 +497,36 @@ export function keyboard(props) {
       metaKey: held.meta.get(),
       capsLock: held.caps.get(),
       fnKey: held.fn.get(),
-    });
+    };
+    onKey(typed);
     // Released after the key they modified, and only those: the sticky ones
     // hold until they are clicked off.
     for (const name of /** @type {KeyboardModifier[]} */ (Object.keys(NO_MODIFIERS))) {
       if (!STICKY.has(name)) {
         held[name].set(false);
       }
+    }
+    return typed;
+  };
+
+  /**
+   * A key going down: it types, and a key that repeats starts repeating
+   * for the pointer that pressed it. Any repeat already running ends
+   * first, as one key repeats at a time.
+   *
+   * @param {KeyboardKey} entry
+   * @param {PointerEvent} event
+   */
+  const pressDown = (entry, event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    repeater?.stop();
+    const typed = press(entry);
+    if (repeater && typed && entry.repeat !== false) {
+      repeater.hold(/** @type {Element} */ (event.currentTarget), event.pointerId, () =>
+        onKey({ ...typed }),
+      );
     }
   };
 
@@ -509,9 +559,20 @@ export function keyboard(props) {
       attr("role", () => "button"),
       attr("data-code", () => entry.code),
       attr("aria-label", () => nameOf(entry)),
-      on("click", () => press(entry)),
+      on("pointerdown", (event) => pressDown(entry, event)),
       children(text`${() => labelOf(entry)}`),
     ];
+    if (repeater) {
+      /** @param {PointerEvent} event */
+      const release = (event) =>
+        repeater.release(/** @type {Element} */ (event.currentTarget), event.pointerId);
+      operators.push(
+        on("pointerup", release),
+        on("pointercancel", release),
+        on("pointerleave", release),
+        (element) => onCleanup(() => repeater.release(element)),
+      );
+    }
     if (modifier) {
       operators.push(attr("aria-pressed", () => (held[modifier].get() ? "true" : "false")));
     }

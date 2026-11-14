@@ -115,8 +115,8 @@ the machine it is plugged into. A button that fails says why on the control pane
 
 ## What you can do
 
-- Type on your own keyboard, or click the keys. The monitor takes commands at its prompt; `HELP`
-  lists them.
+- Type on your own keyboard, or press the keys. A key types as it goes down and repeats while it is
+  held, except Enter and the modifiers. The monitor takes commands at its prompt; `HELP` lists them.
 - Drag a floppy, cassette or cartridge onto the drive, deck or slot under the screen to load what is
   on it.
 - Change the screen's colour from the phosphor control: the PHOSPHOR or AMBER button under the

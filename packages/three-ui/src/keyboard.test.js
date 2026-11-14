@@ -1,4 +1,4 @@
-import { describe, test } from "node:test";
+import { describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { children } from "justdom-core";
 import { just, Signal } from "justdom-signal";
@@ -97,10 +97,40 @@ function keyEl(root, code) {
 }
 
 /**
+ * A pointer going down on a key, as a ray's trigger closing on it sends it.
+ *
+ * @param {HTMLElement} root
+ * @param {string} code
+ * @param {PointerEventInit} [init]
+ */
+function down(root, code, init = {}) {
+  keyEl(root, code).dispatchEvent(
+    new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 0, ...init }),
+  );
+}
+
+/**
+ * A pointer event on a key, other than the press: its release, its cancel,
+ * its leave.
+ *
+ * @param {HTMLElement} root
+ * @param {string} code
+ * @param {"pointerup" | "pointercancel" | "pointerleave"} type
+ * @param {number} [pointerId]
+ */
+function up(root, code, type = "pointerup", pointerId = 2) {
+  keyEl(root, code).dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId }));
+}
+
+/**
+ * A key pressed and let go, and the click that follows.
+ *
  * @param {HTMLElement} root
  * @param {string} code
  */
-function click(root, code) {
+function tap(root, code) {
+  down(root, code);
+  up(root, code);
   keyEl(root, code).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
@@ -108,19 +138,25 @@ function click(root, code) {
  * Mounts a board and collects what it types.
  *
  * @param {KeyboardLayout} [layout]
+ * @param {Partial<import("./keyboard.js").KeyboardProps>} [props]
  */
-function typing(layout) {
+function typing(layout, props = {}) {
   /** @type {KeyPress[]} */
   const pressed = [];
   const { root, cleanup } = mount(
-    keyboard({ classes, onKey: (press) => pressed.push(press), ...(layout ? { layout } : {}) }),
+    keyboard({
+      classes,
+      onKey: (press) => pressed.push(press),
+      ...(layout ? { layout } : {}),
+      ...props,
+    }),
   );
   return {
     root,
     pressed,
     cleanup,
     /** @param {string} code */
-    press: (code) => click(root, code),
+    press: (code) => tap(root, code),
     /** The characters typed so far, in order. */
     typed: () => pressed.map((press) => press.key).join(""),
   };
@@ -463,13 +499,210 @@ describe("keyboard", () => {
     );
 
     assert.equal(root.querySelectorAll("[data-code]").length, 1);
-    click(root, "KeyY");
+    tap(root, "KeyY");
     assert.deepEqual(
       pressed.map(({ key }) => key),
       ["y"],
     );
 
     cleanup();
+  });
+});
+
+describe("a key held down", () => {
+  /**
+   * Lets `ms` go by a millisecond at a time: the mock clock runs a timer a
+   * timer sets for later in the same tick at the next tick, not this one.
+   *
+   * @param {import("node:test").TestContext} t
+   * @param {number} ms
+   */
+  const elapse = (t, ms) => {
+    for (let i = 0; i < ms; i += 1) {
+      t.mock.timers.tick(1);
+    }
+  };
+
+  /**
+   * A board with the timers in the test's hands.
+   *
+   * @param {import("node:test").TestContext} t
+   * @param {Partial<import("./keyboard.js").KeyboardProps>} [props]
+   * @param {KeyboardLayout} [layout]
+   */
+  const held = (t, props, layout) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    return typing(layout, props);
+  };
+
+  test("types as it goes down, before it is let go", (t) => {
+    const board = held(t);
+    down(board.root, "KeyA");
+    assert.equal(board.typed(), "a", "typed at the press");
+    up(board.root, "KeyA");
+    keyEl(board.root, "KeyA").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    assert.equal(board.typed(), "a", "and not again at the release or the click");
+    board.cleanup();
+  });
+
+  test("engages a modifier as it goes down", (t) => {
+    const board = held(t);
+    down(board.root, "ShiftLeft");
+    assert.equal(keyEl(board.root, "ShiftLeft").getAttribute("aria-pressed"), "true");
+    up(board.root, "ShiftLeft");
+    elapse(t, 2000);
+    assert.equal(keyEl(board.root, "ShiftLeft").getAttribute("aria-pressed"), "true");
+    down(board.root, "KeyA");
+    assert.equal(board.typed(), "A");
+    board.cleanup();
+  });
+
+  test("types again after the delay, and at the interval after that, until let go", (t) => {
+    const board = held(t);
+    down(board.root, "Backspace");
+    elapse(t, 499);
+    assert.equal(board.pressed.length, 1, "once, until the delay is up");
+    elapse(t, 1);
+    assert.equal(board.pressed.length, 2, "again at the delay");
+    elapse(t, 49);
+    assert.equal(board.pressed.length, 2);
+    elapse(t, 1);
+    assert.equal(board.pressed.length, 3, "and at the interval");
+    elapse(t, 100);
+    assert.equal(board.pressed.length, 5);
+    up(board.root, "Backspace");
+    elapse(t, 1000);
+    assert.equal(board.pressed.length, 5, "and stops when let go");
+    assert.ok(board.pressed.every(({ key }) => key === "Backspace"));
+    board.cleanup();
+  });
+
+  test("stops when the press is cancelled, or the pointer leaves the key", (t) => {
+    const board = held(t);
+    for (const type of /** @type {const} */ (["pointercancel", "pointerleave"])) {
+      board.pressed.length = 0;
+      down(board.root, "KeyB");
+      elapse(t, 500);
+      assert.equal(board.pressed.length, 2);
+      up(board.root, "KeyB", type);
+      elapse(t, 1000);
+      assert.equal(board.pressed.length, 2, `${type} ends the repeat`);
+    }
+    board.cleanup();
+  });
+
+  test("goes on while another pointer lets go of the same key", (t) => {
+    const board = held(t);
+    down(board.root, "KeyC");
+    up(board.root, "KeyC", "pointerup", 3);
+    up(board.root, "KeyC", "pointerleave", 3);
+    elapse(t, 550);
+    assert.equal(board.typed(), "ccc");
+    up(board.root, "KeyC");
+    board.cleanup();
+  });
+
+  test("repeats one key at a time, the one pressed last", (t) => {
+    const board = held(t);
+    down(board.root, "KeyD");
+    down(board.root, "KeyE", { pointerId: 3 });
+    elapse(t, 500);
+    assert.equal(board.typed(), "dee", "the second press took over");
+    up(board.root, "KeyD");
+    elapse(t, 50);
+    assert.equal(board.typed(), "deee", "the first one's release is not the repeat's");
+    down(board.root, "Enter", { pointerId: 4 });
+    elapse(t, 1000);
+    assert.equal(board.typed(), "deeeEnter", "a key that does not repeat ends it too");
+    board.cleanup();
+  });
+
+  test("types what it typed at the press, shift included", (t) => {
+    const board = held(t);
+    board.press("ShiftLeft");
+    down(board.root, "KeyF");
+    elapse(t, 550);
+    assert.equal(board.typed(), "FFF");
+    assert.ok(board.pressed.every(({ shiftKey }) => shiftKey));
+    assert.equal(keyEl(board.root, "KeyF").textContent, "f", "the one-shot shift let go");
+    up(board.root, "KeyF");
+    board.cleanup();
+  });
+
+  test("does not repeat enter, esc or a modifier", (t) => {
+    const board = held(t);
+    for (const code of ["Enter", "Escape", "Symbols"]) {
+      down(board.root, code);
+      elapse(t, 1000);
+      up(board.root, code);
+    }
+    assert.deepEqual(
+      board.pressed.map(({ key }) => key),
+      ["Enter", "Escape"],
+    );
+    assert.equal(keyEl(board.root, "Symbols").getAttribute("aria-pressed"), "true");
+    board.cleanup();
+  });
+
+  test("on the number pad, repeats the digits and not enter or esc", () => {
+    const repeating = NUMERIC_LAYOUT.flat()
+      .filter((entry) => entry.repeat === false)
+      .map(({ code }) => code)
+      .sort();
+    assert.deepEqual(repeating, ["Enter", "Escape"]);
+  });
+
+  test("takes a delay and an interval of its own", (t) => {
+    const board = held(t, { repeat: { delay: 200, interval: 100 } });
+    down(board.root, "KeyG");
+    elapse(t, 200);
+    assert.equal(board.typed(), "gg");
+    elapse(t, 99);
+    assert.equal(board.typed(), "gg");
+    elapse(t, 1);
+    assert.equal(board.typed(), "ggg");
+    up(board.root, "KeyG");
+    board.cleanup();
+  });
+
+  test("types once with repeat turned off", (t) => {
+    const board = held(t, { repeat: false });
+    down(board.root, "KeyH");
+    elapse(t, 5000);
+    assert.equal(board.typed(), "h");
+    board.cleanup();
+  });
+
+  test("is pressed by the primary button alone", (t) => {
+    const board = held(t);
+    down(board.root, "KeyI", { button: 2 });
+    elapse(t, 1000);
+    assert.equal(board.typed(), "");
+    board.cleanup();
+  });
+
+  test("stops when the key is unmounted", (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const text = document.createElement("input");
+    const number = document.createElement("input");
+    number.type = "number";
+    const current = Signal.of(text);
+    /** @type {string[]} */
+    const typed = [];
+    const { root, cleanup } = mount(
+      keyboard({ classes, onKey: ({ key }) => typed.push(key), field: () => current.get() }),
+    );
+    down(root, "KeyJ");
+    current.set(number);
+    elapse(t, 2000);
+    assert.deepEqual(typed, ["j"], "the board it was on has gone");
+    cleanup();
+
+    const board = typing();
+    down(board.root, "KeyK");
+    board.cleanup();
+    elapse(t, 2000);
+    assert.equal(board.typed(), "k", "and so has this one");
   });
 });
 
@@ -593,8 +826,8 @@ describe("a keyboard that follows its field", () => {
 
     board.current.set(board.number);
     assert.deepEqual(board.codes(), codesOf(NUMERIC_LAYOUT), "the pad, and nothing else");
-    click(board.root(), "Digit7");
-    click(board.root(), "Period");
+    tap(board.root(), "Digit7");
+    tap(board.root(), "Period");
     assert.deepEqual(
       board.pressed.map(({ key }) => key),
       ["7", "."],
@@ -620,8 +853,8 @@ describe("a keyboard that follows its field", () => {
 
   test("lets go of what was held on the board it leaves", () => {
     const board = following();
-    click(board.root(), "Symbols");
-    click(board.root(), "ShiftLeft");
+    tap(board.root(), "Symbols");
+    tap(board.root(), "ShiftLeft");
     board.current.set(board.number);
     board.current.set(board.text);
     assert.equal(keyEl(board.root(), "KeyQ").textContent, "q", "letters, unshifted");
@@ -681,19 +914,26 @@ describe("projecting a keyboard", () => {
     const keys = MOBILE_LAYOUT.flat().filter((entry) => !entry.spacer);
     assert.equal(added.length, keys.length + 1, "one blocker plane, then a mesh per key");
 
-    // A ray landing on a key is a `select` sent from the mesh up through the
-    // panel, which the portal turns back into a click on the element it was
-    // mirrored from. Pointing at all of them in turn is the whole board being
-    // usable in a headset, which is the only claim here that a flat-page test
-    // cannot make. The toggle among them flips the view mid-walk and the
-    // modifiers flip their state — the codes still come back one per typing
-    // key, which is the point: the position reports itself whatever face it
-    // is wearing.
+    // A ray pressing a key is a `selectstart` sent from the mesh up through
+    // the panel, which the portal turns back into a `pointerdown` on the
+    // element it was mirrored from, and the board types at that. Pressing
+    // all of them in turn is the whole board being usable in a headset,
+    // which is the only claim here that a flat-page test cannot make. The
+    // toggle among them flips the view mid-walk and the modifiers flip their
+    // state — the codes still come back one per typing key, which is the
+    // point: the position reports itself whatever face it is wearing. The
+    // release and the click after it type nothing more.
+    const controller = new THREE.Group();
     for (const target of added.slice(1)) {
-      manager.dispatch(
-        /** @type {any} */ (target),
-        /** @type {any} */ ({ type: "select", originalTarget: target, completedOn: target }),
-      );
+      /** @type {any} */
+      const start = { type: "selectstart", controller, originalTarget: target };
+      for (const event of [
+        start,
+        { type: "selectend", controller, originalTarget: target, start },
+        { type: "select", controller, originalTarget: target, completedOn: target, start },
+      ]) {
+        manager.dispatch(/** @type {any} */ (target), /** @type {any} */ (event));
+      }
     }
 
     assert.deepEqual(

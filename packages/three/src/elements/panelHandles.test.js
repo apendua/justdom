@@ -7,7 +7,13 @@ import { countingManager } from "../test/portalHarness.js";
 import { withStart } from "../test/rays.js";
 import { PIECE_BAND } from "./paint/elevation.js";
 import { PANEL_PIECES } from "./paint/layerOrder.js";
-import { createPanelHandles, DEFAULT_HANDLE_WIDTH } from "./panelHandles.js";
+import {
+  createPanelHandles,
+  DEFAULT_HANDLE_WIDTH,
+  HANDLE_NEAR_DISTANCE,
+  HANDLE_OPACITY_ACTIVE,
+  HANDLE_OPACITY_NEAR,
+} from "./panelHandles.js";
 
 /**
  * @import {PanelDragOptions} from './panelHandles.js';
@@ -48,8 +54,39 @@ function setup(options) {
     };
     manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (withStart(event)));
   };
-  return { targets, room, handles, strip, press };
+  /**
+   * A ray's enter, move or leave on `object`, met at `x`, `y` in the face's
+   * px from the panel's centre, as the manager dispatches it.
+   *
+   * @param {"pointerenter" | "pointermove" | "pointerleave"} type
+   * @param {THREE.Object3D} object
+   * @param {number} x
+   * @param {number} y
+   */
+  const point = (type, object, x, y) => {
+    const at = handles.face.localToWorld(new THREE.Vector3(x * UNITS, y * UNITS, 0));
+    const event = {
+      type,
+      target: object,
+      originalTarget: object,
+      controller,
+      inputSource: {},
+      intersection: { object, point: at },
+    };
+    manager.dispatch(/** @type {any} */ (object), /** @type {any} */ (event));
+  };
+  /** @param {string} side */
+  const opacity = (side) => {
+    const bar = /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>} */ (
+      handles.frame.getObjectByName(`panel-handle-${side}-bar`)
+    );
+    return bar.visible ? bar.material.opacity : 0;
+  };
+  return { targets, room, handles, strip, press, point, opacity };
 }
+
+/** The face's units per px in the tests that point at a panel. */
+const UNITS = 0.01;
 
 describe("createPanelHandles", () => {
   test("are out of the raycast until they are laid out", () => {
@@ -147,6 +184,68 @@ describe("createPanelHandles", () => {
     handles.dispose();
     assert.equal(targets.has(top), false);
     assert.equal(room.children.length, 0, "the frame has left the room");
+  });
+
+  /**
+   * Handles around a 200 by 100 px panel, drawn, with something in the face
+   * for a ray to be on.
+   */
+  const pointable = () => {
+    const parts = setup();
+    parts.handles.layout(200, 100, UNITS);
+    parts.handles.setShown(true);
+    const panel = new THREE.Object3D();
+    parts.handles.face.add(panel);
+    return { ...parts, panel };
+  };
+
+  test("stay dark with a ray in the middle of the panel", () => {
+    const { handles, panel, point, opacity } = pointable();
+    point("pointerenter", panel, 0, 0);
+    for (const side of SIDES) {
+      assert.equal(opacity(side), 0, side);
+    }
+    // Just short of the near distance from the top edge.
+    point("pointermove", panel, 0, 50 - HANDLE_NEAR_DISTANCE - 1);
+    assert.equal(opacity("top"), 0, "short of the top edge's distance");
+    handles.dispose();
+  });
+
+  test("show faintly the strip of the edge a ray comes near, and both at a corner", () => {
+    const { handles, panel, point, opacity } = pointable();
+    point("pointerenter", panel, 0, 0);
+    point("pointermove", panel, 0, 50 - HANDLE_NEAR_DISTANCE);
+    assert.equal(opacity("top"), HANDLE_OPACITY_NEAR, "near the top");
+    for (const side of ["bottom", "left", "right"]) {
+      assert.equal(opacity(side), 0, `${side}, with the ray near the top only`);
+    }
+
+    point("pointermove", panel, 100 - 10, -(50 - 10));
+    assert.equal(opacity("bottom"), HANDLE_OPACITY_NEAR, "the corner's bottom strip");
+    assert.equal(opacity("right"), HANDLE_OPACITY_NEAR, "and its right one");
+    assert.equal(opacity("top"), 0, "the top strip went when the ray moved away");
+    assert.equal(opacity("left"), 0);
+
+    point("pointermove", panel, 0, 0);
+    for (const side of SIDES) {
+      assert.equal(opacity(side), 0, `${side}, back in the middle`);
+    }
+    handles.dispose();
+  });
+
+  test("show in full the strip a ray is on, and go dark when it leaves", () => {
+    const { handles, strip, point, opacity } = pointable();
+    const top = strip("top");
+    point("pointerenter", top, 0, 50 + DEFAULT_HANDLE_WIDTH / 2);
+    assert.equal(opacity("top"), HANDLE_OPACITY_ACTIVE);
+    for (const side of ["bottom", "left", "right"]) {
+      assert.equal(opacity(side), 0, `${side}, far from the ray`);
+    }
+    point("pointerleave", top, 0, 50 + DEFAULT_HANDLE_WIDTH / 2);
+    for (const side of SIDES) {
+      assert.equal(opacity(side), 0, `${side}, with the ray gone`);
+    }
+    handles.dispose();
   });
 
   for (const side of SIDES) {

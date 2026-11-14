@@ -26,10 +26,15 @@ import { keepProgram } from "./paint/programKeeper.js";
  * of the panel is drawn (`setShown`), they are out of the scene and out of
  * the raycast: a panel still loading draws nothing, or a loading frame only
  * once its delay has passed, and strips around nothing would be found by a
- * ray and carry an empty space. Once shown, with no ray on the panel they
- * are invisible, though a ray finds them all the same; with a ray anywhere
- * on it they show faintly, so there is something to find; the one a ray is
- * on, and all of them while the panel is being carried, show in full.
+ * ray and carry an empty space. Once shown, a strip is invisible until a
+ * ray comes within `HANDLE_NEAR_DISTANCE` of its edge of the panel, though a
+ * ray finds it all the same. Within that distance it shows faintly, so there
+ * is something to find, and near a corner the two strips that meet there
+ * both do. The one a ray is on, and all of them while the panel is being
+ * carried, show in full. The rule asks only where the ray is, not what it
+ * is on: a key or a checkbox in the middle of a panel lights nothing, and
+ * one at its edge lights that edge's strip as the panel's background there
+ * would.
  *
  * The bars draw after every panel (`HANDLE_RENDER_ORDER`). They are
  * translucent, and so is every box a panel draws, so all of them go in the
@@ -47,7 +52,7 @@ import { keepProgram } from "./paint/programKeeper.js";
  * moves with the panel goes in it: a keyboard hung below the panel. The
  * face, inside it, is the panel and its strips, and only a ray on the face
  * shows them, so typing on a board below the panel does not light up the
- * panel's strips.
+ * panel's strips, however close to the panel's edge the key is.
  */
 
 /**
@@ -63,6 +68,13 @@ export const DEFAULT_HANDLE_WIDTH = 14;
 export const HANDLE_OPACITY_IDLE = 0;
 export const HANDLE_OPACITY_NEAR = 0.25;
 export const HANDLE_OPACITY_ACTIVE = 0.9;
+
+/**
+ * How close to an edge of the panel, in its px, a ray has to come before
+ * that edge's strip shows: about three strips' width, so the strip shows a
+ * little before the ray reaches it.
+ */
+export const HANDLE_NEAR_DISTANCE = 40;
 
 /**
  * Where the bars go in the draw: past the slots the panels draw in, each
@@ -108,7 +120,7 @@ const SIDES = ["top", "bottom", "left", "right"];
  *   otherwise, and what goes with the panel without being part of it.
  * @property {THREE.Group} face In the frame, where the panel goes, centred
  *   on its origin: the strips are laid out around it, and a ray on anything
- *   in it shows them.
+ *   in it near an edge shows that edge's strip.
  * @property {(width: number, height: number, units: number) => void} layout
  *   Fit the strips to a panel this many px across and down, at `units` per
  *   px.
@@ -190,22 +202,71 @@ export function createPanelHandles(ctx, options = {}) {
   });
 
   /**
-   * What each ray is on, among the panel's things: its controls, its
-   * background, the strips. A pointer event bubbles from what the ray met up
-   * to the face, and `originalTarget` is what it met.
+   * Where each ray is on the face, kept as what it means for the strips:
+   * which strip it is on, if any, and which edges it is near, one bit per
+   * side in `SIDES` order. A pointer event bubbles from what the ray met up
+   * to the face, and `originalTarget` is what it met. An entry is made at a
+   * ray's enter and rewritten in place at each move, since a move comes
+   * every frame the hand moves.
    *
-   * @type {Map<unknown, THREE.Object3D>}
+   * @type {Map<unknown, {on: THREE.Object3D | null, near: number}>}
    */
   const pointing = new Map();
   let carrying = false;
 
+  /** The panel's size in px and the face's units per px, once laid out. */
+  let laidWidth = 0;
+  let laidHeight = 0;
+  let unitsPerPx = 0;
+  const local = new THREE.Vector3();
+
+  /**
+   * Which edges a point on the face is within `HANDLE_NEAR_DISTANCE` of. A
+   * point on a strip is past its own edge, so it is near that one too.
+   *
+   * @param {THREE.Vector3} point In world space.
+   */
+  const nearEdges = (point) => {
+    if (unitsPerPx === 0) {
+      return 0;
+    }
+    face.worldToLocal(local.copy(point));
+    const x = local.x / unitsPerPx;
+    const y = local.y / unitsPerPx;
+    const w = laidWidth / 2;
+    const h = laidHeight / 2;
+    return (
+      (h - y <= HANDLE_NEAR_DISTANCE ? 1 : 0) |
+      (y + h <= HANDLE_NEAR_DISTANCE ? 2 : 0) |
+      (x + w <= HANDLE_NEAR_DISTANCE ? 4 : 0) |
+      (w - x <= HANDLE_NEAR_DISTANCE ? 8 : 0)
+    );
+  };
+
+  // What `refresh` gathers from every ray, through a callback made once.
+  // It runs on every move, and a `for...of` over the map would make an
+  // iterator each time.
+  let near = 0;
+  /** @type {Set<THREE.Object3D>} */
+  const pointedAt = new Set();
+  /** @param {{on: THREE.Object3D | null, near: number}} entry */
+  const gather = (entry) => {
+    near |= entry.near;
+    if (entry.on) {
+      pointedAt.add(entry.on);
+    }
+  };
+
   function refresh() {
-    const pointedAt = new Set(pointing.values());
-    for (const { hit, bar } of strips) {
+    near = 0;
+    pointedAt.clear();
+    pointing.forEach(gather);
+    for (let index = 0; index < strips.length; index++) {
+      const { hit, bar } = strips[index];
       const opacity =
         carrying || pointedAt.has(hit)
           ? HANDLE_OPACITY_ACTIVE
-          : pointing.size > 0
+          : near & (1 << index)
             ? HANDLE_OPACITY_NEAR
             : HANDLE_OPACITY_IDLE;
       bar.material.opacity = opacity;
@@ -213,9 +274,26 @@ export function createPanelHandles(ctx, options = {}) {
     }
   }
 
+  /** @param {THREE.Object3D} object */
+  const isStrip = (object) => {
+    for (let index = 0; index < strips.length; index++) {
+      if (strips[index].hit === object) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   /** @param {PointerEvent} event */
-  const onEnter = (event) => {
-    pointing.set(event.controller, /** @type {THREE.Object3D} */ (event.originalTarget));
+  const onPoint = (event) => {
+    const met = /** @type {THREE.Object3D} */ (event.originalTarget);
+    let entry = pointing.get(event.controller);
+    if (!entry) {
+      entry = { on: null, near: 0 };
+      pointing.set(event.controller, entry);
+    }
+    entry.on = isStrip(met) ? met : null;
+    entry.near = nearEdges(event.intersection.point);
     refresh();
   };
   /**
@@ -231,7 +309,8 @@ export function createPanelHandles(ctx, options = {}) {
       refresh();
     }
   };
-  face.addEventListener("pointerenter", onEnter);
+  face.addEventListener("pointerenter", onPoint);
+  face.addEventListener("pointermove", onPoint);
   face.addEventListener("pointerleave", onLeave);
 
   /** @type {Unsubscribable[]} */
@@ -264,6 +343,9 @@ export function createPanelHandles(ctx, options = {}) {
       const w = panelWidth;
       const h = panelHeight;
       const hw = handleWidth;
+      laidWidth = w;
+      laidHeight = h;
+      unitsPerPx = units;
       laidOut = true;
       updateVisible();
       /** @type {Record<Side, [number, number, number, number]>} */
@@ -296,7 +378,8 @@ export function createPanelHandles(ctx, options = {}) {
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }
-      face.removeEventListener("pointerenter", onEnter);
+      face.removeEventListener("pointerenter", onPoint);
+      face.removeEventListener("pointermove", onPoint);
       face.removeEventListener("pointerleave", onLeave);
       group.removeFromParent();
       frame.removeFromParent();

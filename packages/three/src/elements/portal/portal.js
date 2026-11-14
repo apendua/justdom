@@ -247,9 +247,10 @@ export const OBSERVER_OPTIONS = {
  *   turn it on for every panel through the scene's `PanelOptions`.
  * @property {boolean | PanelDragOptions} [draggable] Whether the player can
  *   move the panel. Four strips along its edges are invisible until a ray
- *   is on the panel, faint while one is, and full on the strip a ray is on.
- *   While the panel loads they are not there at all, until its loading
- *   frame shows or, with no frame, until it loads. A press on one picks the panel up with `carry()`, and the
+ *   comes near their edge of the panel, faint while it is, and full on the
+ *   strip a ray is on. While the panel loads they are not there at all,
+ *   until its loading frame shows or, with no frame, until it loads. A
+ *   press on one picks the panel up with `carry()`, and the
  *   release puts it down. Off by default. The carry moves a group the
  *   portal puts between the parent and the panel, so the scene goes on
  *   placing the parent and the player's move is added on top. By default

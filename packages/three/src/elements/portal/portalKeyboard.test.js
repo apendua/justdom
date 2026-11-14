@@ -12,7 +12,7 @@ import {
   KeyboardSlotContext,
 } from "../input/keyboardSlot.js";
 import { CameraContext, RendererContext, SceneContext } from "../../scene.js";
-import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "../panelHandles.js";
+import { HANDLE_OPACITY_ACTIVE } from "../panelHandles.js";
 import { stubCanvas } from "../../test/stubCanvas.js";
 import { rectGeometry } from "../paint/sdfRect.js";
 import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "../controls/textInput.js";
@@ -1370,26 +1370,23 @@ describe("the keyboard's handles", () => {
     }
   });
 
-  test("show faintly with a ray on the board, and fully on the one it is on", async () => {
+  test("show fully on the one a ray is on, and go when it leaves", async () => {
+    // Which strips show faintly is a matter of distance to the board's edge
+    // (`panelHandles.test.js`), and this board, laid out by jsdom, is 0 px
+    // across: every point on it is at its edge.
     const b = await openBoard();
-    const onBoard = b.board();
+    try {
+      const top = /** @type {THREE.Object3D} */ (b.strip("top"));
+      b.dispatch("pointerenter", top);
+      assert.equal(opacity(b.bar("top")), HANDLE_OPACITY_ACTIVE);
 
-    b.dispatch("pointerenter", onBoard);
-    for (const side of SIDES) {
-      assert.equal(opacity(b.bar(side)), HANDLE_OPACITY_NEAR, `${side}, with a ray on a key`);
+      b.dispatch("pointerleave", top);
+      for (const side of SIDES) {
+        assert.equal(opacity(b.bar(side)), 0, `${side}, with the ray gone`);
+      }
+    } finally {
+      b.cleanup();
     }
-
-    // Off the key and onto the top strip, as the manager says it.
-    b.dispatch("pointerleave", onBoard);
-    b.dispatch("pointerenter", /** @type {THREE.Object3D} */ (b.strip("top")));
-    assert.equal(opacity(b.bar("top")), HANDLE_OPACITY_ACTIVE);
-    assert.equal(opacity(b.bar("left")), HANDLE_OPACITY_NEAR);
-
-    b.dispatch("pointerleave", /** @type {THREE.Object3D} */ (b.strip("top")));
-    for (const side of SIDES) {
-      assert.equal(opacity(b.bar(side)), 0, `${side}, with the ray gone`);
-    }
-    b.cleanup();
   });
 
   test("carry the board, and it opens where it was put down", async () => {

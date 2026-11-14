@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A draggable panel's strips show faintly only while a ray is within 40 px of their edge, rather than whenever a ray is anywhere on the panel",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A press on a draggable card after a scroll on the same panel clicks again; the scroll used to swallow every later press on something draggable.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

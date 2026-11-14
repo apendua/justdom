@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A draggable panel's handle strips no longer light up while a ray is on one of its controls, only on its background, a list or a strip.",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

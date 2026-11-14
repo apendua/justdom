@@ -19,6 +19,8 @@ import { rayHand } from "../../test/rayHand.js";
 import { fakeClock } from "../../test/clock.js";
 import { createPortal } from "../portal/portal.js";
 import { PointerForwarderContext } from "./pointerForwarding.js";
+import { RendererContext } from "../../scene.js";
+import { HANDLE_OPACITY_NEAR } from "../panelHandles.js";
 
 /**
  * @import { XREventMap } from "../../core.js";
@@ -237,6 +239,8 @@ function nest({ outer, inner, build, haptics = null }) {
  *   that a ray aimed at one panel misses another.
  * @param {import("../portal/portal.js").PortalOptions} [options.portal] The
  *   panel's own options, besides its root and a budget of 0.
+ * @param {object} [options.renderer] A renderer for the panel's context,
+ *   which a `draggable` panel needs for its strips.
  */
 async function mirrored(
   fill,
@@ -246,6 +250,7 @@ async function mirrored(
     scene = new THREE.Group(),
     x = 0,
     portal: options = {},
+    renderer,
   } = {},
 ) {
   const root = document.createElement("div");
@@ -259,16 +264,16 @@ async function mirrored(
     return element;
   });
   document.body.appendChild(root);
-  const portal = createPortal(InteractionContext.set({}, manager), {
-    ...options,
-    root,
-    budget: 0,
-  });
+  const interactive = InteractionContext.set({}, manager);
+  const portal = createPortal(
+    renderer ? RendererContext.set(interactive, /** @type {any} */ (renderer)) : interactive,
+    { ...options, root, budget: 0 },
+  );
   const group = new THREE.Group();
   group.position.x = x;
   scene.add(group);
   portal.addTo(group);
-  await settle(portal);
+  await settle(portal, /** @type {any} */ (renderer));
   return {
     root,
     manager,
@@ -1547,6 +1552,45 @@ describe("a ray's pointer events", () => {
     hand.trigger("selectend");
     hand.remove();
     other.teardown();
+    page.teardown();
+  });
+
+  test("light a draggable panel's strips over its background, and not over a control", async () => {
+    const page = await mirrored(
+      (place) => {
+        place("div", "button", [20, 20, 100, 40]).style.cursor = "pointer";
+        // A list whose row is draggable, as the cork board's cards are.
+        const list = place("div", "list", [200, 20, 150, 120]);
+        list.style.overflow = "hidden";
+        describeScroller(list, { client: 120, scroll: 400 });
+        const row = place("div", "row", [200, 20, 150, 40], list);
+        row.style.cursor = "pointer";
+        row.setAttribute("draggable", "true");
+      },
+      { portal: { draggable: true }, renderer: {} },
+    );
+    // A draggable panel's object is the frame it is carried by, with the
+    // strips and the panel side by side in its face.
+    const bar = /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>} */ (
+      page.panel.getObjectByName("panel-handle-top-bar")
+    );
+    const face = /** @type {THREE.Object3D} */ (bar.parent?.parent);
+    const panel = /** @type {THREE.Object3D} */ (
+      face.children.find((child) => child.name !== "panel-handles")
+    );
+    const shown = () => (bar.visible ? bar.material.opacity : 0);
+    const hand = rayHand(page.manager);
+    hand.aim(panel, 70, 40);
+    assert.equal(shown(), 0, "on the button, no strips");
+    hand.aim(panel, 300, 200);
+    assert.equal(shown(), HANDLE_OPACITY_NEAR, "on the background, faintly");
+    hand.aim(panel, 70, 40);
+    assert.equal(shown(), 0, "and back on the button, none again");
+    hand.aim(panel, 275, 40);
+    assert.equal(shown(), 0, "on the list's draggable row, none");
+    hand.aim(panel, 275, 100);
+    assert.equal(shown(), HANDLE_OPACITY_NEAR, "in the list below its row, faintly");
+    hand.remove();
     page.teardown();
   });
 

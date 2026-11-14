@@ -3,6 +3,7 @@ import { useEffect, withComputation } from "justdom-signal";
 import { carry } from "../carry.js";
 import { interactions } from "../interactions.js";
 import { $ } from "../operators.js";
+import { isControl } from "./input/pointerForwarding.js";
 import { keepProgram } from "./paint/programKeeper.js";
 
 /**
@@ -27,9 +28,12 @@ import { keepProgram } from "./paint/programKeeper.js";
  * the raycast: a panel still loading draws nothing, or a loading frame only
  * once its delay has passed, and strips around nothing would be found by a
  * ray and carry an empty space. Once shown, with no ray on the panel they
- * are invisible, though a ray finds them all the same; with a ray anywhere
- * on it they show faintly, so there is something to find; the one a ray is
- * on, and all of them while the panel is being carried, show in full.
+ * are invisible, though a ray finds them all the same; with a ray on the
+ * panel but on none of its controls (on its background, a list, a strip)
+ * they show faintly, so there is something to find; the one a ray is on,
+ * and all of them while the panel is being carried, show in full. A ray on
+ * a control is there for the control, so a key or a checkbox pressed lights
+ * none of them.
  *
  * The bars draw after every panel (`HANDLE_RENDER_ORDER`). They are
  * translucent, and so is every box a panel draws, so all of them go in the
@@ -192,20 +196,34 @@ export function createPanelHandles(ctx, options = {}) {
   /**
    * What each ray is on, among the panel's things: its controls, its
    * background, the strips. A pointer event bubbles from what the ray met up
-   * to the face, and `originalTarget` is what it met.
+   * to the face: `met` is what it met, its `originalTarget`, and `control`
+   * whether that belongs to a control (`isControl` of its `registeredTarget`).
+   * `control` is read at the enter alone, and the manager sends a new enter
+   * only when the registered object changes, so a list that becomes a
+   * control under a resting ray, or a control that stops being one, keeps
+   * the answer it had until the ray leaves it.
    *
-   * @type {Map<unknown, THREE.Object3D>}
+   * @type {Map<unknown, { met: THREE.Object3D, control: boolean }>}
    */
   const pointing = new Map();
   let carrying = false;
 
   function refresh() {
-    const pointedAt = new Set(pointing.values());
+    /** @type {Set<THREE.Object3D>} */
+    const pointedAt = new Set();
+    // Faint only for a ray on something other than a control: a strip, the
+    // background, a list. A ray on a control is there for the control, so
+    // a tap on a key or a checkbox lights no strips.
+    let near = false;
+    for (const { met, control } of pointing.values()) {
+      pointedAt.add(met);
+      near ||= !control;
+    }
     for (const { hit, bar } of strips) {
       const opacity =
         carrying || pointedAt.has(hit)
           ? HANDLE_OPACITY_ACTIVE
-          : pointing.size > 0
+          : near
             ? HANDLE_OPACITY_NEAR
             : HANDLE_OPACITY_IDLE;
       bar.material.opacity = opacity;
@@ -215,7 +233,10 @@ export function createPanelHandles(ctx, options = {}) {
 
   /** @param {PointerEvent} event */
   const onEnter = (event) => {
-    pointing.set(event.controller, /** @type {THREE.Object3D} */ (event.originalTarget));
+    pointing.set(event.controller, {
+      met: /** @type {THREE.Object3D} */ (event.originalTarget),
+      control: isControl(event.registeredTarget),
+    });
     refresh();
   };
   /**

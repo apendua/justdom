@@ -28,8 +28,8 @@ const classes = {
 /**
  * Mount the widget into a real element, with a layout stood in for the way
  * jsdom will not lay anything out: the window shows `window` px of `content`
- * px, and scrolling moves a `scrollTop` the stub clamps the way a browser
- * would.
+ * px, and scrolling moves a `scrollTop` the stub clamps the way a desktop
+ * browser would.
  *
  * @param {object} options
  * @param {number} options.window
@@ -38,9 +38,12 @@ const classes = {
  *   layout once it is in place. True by default, because a widget that has
  *   never measured anything is not what most of these tests are about; false
  *   leaves the first sample to whatever the test is exercising.
+ * @param {boolean} [options.overscroll] Whether `scrollTop` takes values past
+ *   either end, as a phone's elastic overscroll reports them. False by
+ *   default.
  * @param {Partial<import('./scrollable.js').ScrollableProps>} [options.props]
  */
-function mount({ window: shown, content: total, announce = true, props = {} }) {
+function mount({ window: shown, content: total, announce = true, overscroll = false, props = {} }) {
   const host = document.createElement("div");
   document.body.appendChild(host);
 
@@ -69,7 +72,7 @@ function mount({ window: shown, content: total, announce = true, props = {} }) {
     Object.defineProperty(viewport, "scrollTop", {
       get: () => scrollTop,
       set: (value) => {
-        scrollTop = Math.max(0, Math.min(value, Math.max(total - shown, 0)));
+        scrollTop = overscroll ? value : Math.max(0, Math.min(value, Math.max(total - shown, 0)));
       },
     });
     if (announce) {
@@ -216,6 +219,30 @@ describe("scrollable", () => {
       const before = view.find(".page:first-child");
       assert.ok(before);
       assert.equal(before.style.height, "25%", "the free track above the thumb follows it");
+    } finally {
+      view.subscription.unsubscribe();
+      view.host.remove();
+    }
+  });
+
+  test("an overscroll past either end leaves the thumb at that end", () => {
+    const view = mount({ window: 100, content: 400, overscroll: true });
+    try {
+      const viewport = view.find(".viewport");
+      const thumb = view.find(".thumb");
+      const before = view.find(".page:first-child");
+      const after = view.find(".page:last-child");
+      assert.ok(viewport && thumb && before && after);
+
+      viewport.scrollTop = -40;
+      viewport.dispatchEvent(new Event("scroll"));
+      assert.equal(thumb.style.top, "0%", "a bounce above the top");
+      assert.equal(before.style.height, "0%");
+
+      viewport.scrollTop = 340;
+      viewport.dispatchEvent(new Event("scroll"));
+      assert.equal(thumb.style.top, "75%", "a bounce below the bottom");
+      assert.equal(after.style.height, "0%");
     } finally {
       view.subscription.unsubscribe();
       view.host.remove();

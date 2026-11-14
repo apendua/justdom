@@ -198,6 +198,10 @@ export function createPanelHandles(ctx, options = {}) {
    * background, the strips. A pointer event bubbles from what the ray met up
    * to the face: `met` is what it met, its `originalTarget`, and `control`
    * whether that belongs to a control (`isControl` of its `registeredTarget`).
+   * `control` is read at the enter alone, and the manager sends a new enter
+   * only when the registered object changes, so a list that becomes a
+   * control under a resting ray, or a control that stops being one, keeps
+   * the answer it had until the ray leaves it.
    *
    * @type {Map<unknown, { met: THREE.Object3D, control: boolean }>}
    */
@@ -205,11 +209,16 @@ export function createPanelHandles(ctx, options = {}) {
   let carrying = false;
 
   function refresh() {
-    const pointedAt = new Set([...pointing.values()].map(({ met }) => met));
+    /** @type {Set<THREE.Object3D>} */
+    const pointedAt = new Set();
     // Faint only for a ray on something other than a control: a strip, the
     // background, a list. A ray on a control is there for the control, so
     // a tap on a key or a checkbox lights no strips.
-    const near = [...pointing.values()].some(({ control }) => !control);
+    let near = false;
+    for (const { met, control } of pointing.values()) {
+      pointedAt.add(met);
+      near ||= !control;
+    }
     for (const { hit, bar } of strips) {
       const opacity =
         carrying || pointedAt.has(hit)

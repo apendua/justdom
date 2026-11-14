@@ -20,6 +20,7 @@ import { getObjectDrawOrder } from "../../drawOrder.js";
 import { recordingSource } from "../../test/rumble.js";
 import { PREVIEW_ATTRIBUTE } from "../input/keyboardPreview.js";
 import { withStart } from "../../test/rays.js";
+import { isControl } from "../input/pointerForwarding.js";
 import { getCaretOffset } from "../input/typing.js";
 
 /**
@@ -1267,6 +1268,7 @@ describe("the keyboard's handles", () => {
         type,
         target: object,
         originalTarget: object,
+        registeredTarget: panel.manager.getTarget(/** @type {any} */ (object)),
         controller,
         inputSource: {},
         intersection: { object, point: object.getWorldPosition(new THREE.Vector3()) },
@@ -1370,13 +1372,32 @@ describe("the keyboard's handles", () => {
     }
   });
 
+  test("stay dark with a ray on a key", async () => {
+    const b = await openBoard();
+    /** @type {THREE.Object3D | undefined} */
+    let key;
+    b.board().traverse((object) => {
+      key ??= isControl(object) ? object : undefined;
+    });
+    assert.ok(key, "the board has keys");
+    try {
+      b.dispatch("pointerenter", /** @type {THREE.Object3D} */ (key));
+      for (const side of SIDES) {
+        assert.equal(opacity(b.bar(side)), 0, `${side}, with a ray on a key`);
+      }
+      b.dispatch("pointerleave", /** @type {THREE.Object3D} */ (key));
+    } finally {
+      b.cleanup();
+    }
+  });
+
   test("show faintly with a ray on the board, and fully on the one it is on", async () => {
     const b = await openBoard();
     const onBoard = b.board();
 
     b.dispatch("pointerenter", onBoard);
     for (const side of SIDES) {
-      assert.equal(opacity(b.bar(side)), HANDLE_OPACITY_NEAR, `${side}, with a ray on a key`);
+      assert.equal(opacity(b.bar(side)), HANDLE_OPACITY_NEAR, `${side}, with a ray on the board`);
     }
 
     // Off the key and onto the top strip, as the manager says it.

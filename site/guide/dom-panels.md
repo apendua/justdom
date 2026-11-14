@@ -134,6 +134,6 @@ has the numbers and the options, `portalBudget` on `render()` first among them.
 ## Moving a panel
 
 `dom(ctx, Settings(ctx), [], { draggable: true })` gives a panel four strips along its edges, faint
-while a ray is on the panel, that pick it up with a
+while a ray is on the panel but not on one of its controls, that pick it up with a
 [carry](./pointing-and-grabbing#carrying-things-level) and put it down where the hand leaves it. The
 keyboard has them without asking.

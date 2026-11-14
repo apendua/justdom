@@ -1559,6 +1559,13 @@ describe("a ray's pointer events", () => {
     const page = await mirrored(
       (place) => {
         place("div", "button", [20, 20, 100, 40]).style.cursor = "pointer";
+        // A list whose row is draggable, as the cork board's cards are.
+        const list = place("div", "list", [200, 20, 150, 120]);
+        list.style.overflow = "hidden";
+        describeScroller(list, { client: 120, scroll: 400 });
+        const row = place("div", "row", [200, 20, 150, 40], list);
+        row.style.cursor = "pointer";
+        row.setAttribute("draggable", "true");
       },
       { portal: { draggable: true }, renderer: {} },
     );
@@ -1579,6 +1586,10 @@ describe("a ray's pointer events", () => {
     assert.equal(shown(), HANDLE_OPACITY_NEAR, "on the background, faintly");
     hand.aim(panel, 70, 40);
     assert.equal(shown(), 0, "and back on the button, none again");
+    hand.aim(panel, 275, 40);
+    assert.equal(shown(), 0, "on the list's draggable row, none");
+    hand.aim(panel, 275, 100);
+    assert.equal(shown(), HANDLE_OPACITY_NEAR, "in the list below its row, faintly");
     hand.remove();
     page.teardown();
   });

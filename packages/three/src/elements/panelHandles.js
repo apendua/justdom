@@ -71,10 +71,12 @@ export const HANDLE_OPACITY_ACTIVE = 0.9;
 
 /**
  * How close to an edge of the panel, in its px, a ray has to come before
- * that edge's strip shows: about three strips' width, so the strip shows a
- * little before the ray reaches it.
+ * that edge's strip shows: a little under a strip's width, so the strip
+ * shows just before the ray reaches it, and a key or a button only lights
+ * it when it runs to the very edge. The same on every panel, whatever its
+ * size.
  */
-export const HANDLE_NEAR_DISTANCE = 40;
+export const HANDLE_NEAR_DISTANCE = 12;
 
 /**
  * Where the bars go in the draw: past the slots the panels draw in, each

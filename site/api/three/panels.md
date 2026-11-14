@@ -895,7 +895,7 @@ dom(ctx, MapView(ctx), [], { draggable: { level: false, handleWidth: 20 } });
 | `carried`     | the panel | An ancestor to move instead, so the panel moves together with whatever it hangs from.                                |
 | `onPutDown`   | none      | Called when a carry ends, which is where a scene saves the panel's new place.                                        |
 
-- Four strips along the panel's edges are invisible until a ray comes within 40 px of their edge,
+- Four strips along the panel's edges are invisible until a ray comes within 12 px of their edge,
   faint while it is, and full on the strip the ray is on and on all four while the panel is held.
   While the panel loads they are not there at all, until its loading frame shows, and a keyboard's
   board, which has no loading frame, has none until it loads. They draw after every panel, so a

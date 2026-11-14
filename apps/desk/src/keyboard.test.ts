@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { typeIntoInput } from "justdom-three";
 import { mountKeyboard } from "./keyboard.js";
+import { createPointerForwarder } from "./texture/forwarding.js";
 import { standInForPointerEvent } from "./test/pointerEvent.js";
 
 beforeAll(standInForPointerEvent);
@@ -115,6 +116,45 @@ describe("mountKeyboard", () => {
     dispose = () => {};
     vi.advanceTimersByTime(1000);
     expect(onKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops repeating however a texture panel's ray lets go of the key", () => {
+    // Through the forwarder a ray on a texture panel sends, rather than by
+    // hand: off the key onto the screen, onto the gap between two keys, and
+    // off the panel, the trigger opening each time.
+    vi.useFakeTimers();
+    document.body.innerHTML = `<div class="desk"><div class="screen"></div><div data-keys></div></div>`;
+    const desk = document.querySelector<HTMLElement>(".desk")!;
+    const keys = desk.querySelector<HTMLElement>("[data-keys]")!;
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const box = (element: Element, left: number, top: number, width: number, height: number) => {
+      element.getBoundingClientRect = () => new DOMRect(left, top, width, height);
+    };
+    box(desk, 0, 0, 400, 200);
+    box(desk.querySelector(".screen")!, 0, 0, 400, 100);
+    box(keys, 0, 100, 400, 100);
+    for (const element of keys.querySelectorAll("*")) {
+      box(element, 0, 0, 0, 0);
+    }
+    const q = keys.querySelector('[data-key="q"]')!;
+    box(q.parentElement!, 0, 100, 400, 20);
+    box(q, 30, 100, 20, 20);
+    box(q.querySelector(".cap")!, 32, 102, 16, 16);
+    const at = (clientX: number, clientY: number) => ({ panel: desk, clientX, clientY });
+    for (const away of [at(100, 50), at(55, 110), null]) {
+      onKey.mockClear();
+      const hand = createPointerForwarder({ pointerId: 2 });
+      hand.move(at(40, 110));
+      hand.press();
+      vi.advanceTimersByTime(600);
+      expect(onKey).toHaveBeenCalledTimes(4);
+      hand.move(away);
+      hand.release();
+      onKey.mockClear();
+      vi.advanceTimersByTime(2000);
+      expect(onKey, `ray at ${JSON.stringify(away)}`).not.toHaveBeenCalled();
+    }
   });
 
   it("types a real key and presses its cap", () => {

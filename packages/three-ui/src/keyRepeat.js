@@ -28,9 +28,13 @@ export const KEY_REPEAT_INTERVAL = 50;
  *   Starts repeating a key that has just typed, by the pointer that pressed
  *   it. `type` is what each repeat does, and the board's own to say: the
  *   same thing the press typed.
- * @property {(element: Element, pointerId?: number) => void} release Ends
+ * @property {(pointerId: number) => void} release Ends the repeat if that
+ *   pointer started it, on whichever key: the pointer went up or was
+ *   cancelled. Anything else is left running.
+ * @property {(element: Element, pointerId?: number) => void} leave Ends
  *   the repeat if it is this key's, and, given a pointer, the repeat that
- *   pointer started. Anything else is left running.
+ *   pointer started: the pointer left the key, or, with no pointer, the key
+ *   was unmounted. Anything else is left running.
  * @property {() => void} stop Ends the repeat, whoever holds it.
  */
 
@@ -41,19 +45,22 @@ export const KEY_REPEAT_INTERVAL = 50;
  * every `interval` after that, until the key is let go. Both boards in this
  * repository use it: `keyboard` here, and the desk's own keyboard.
  *
- * The rules, which a board keeps by calling `stop` and `release` where
- * they say:
+ * The rules, which a board keeps by calling `stop`, `release` and `leave`
+ * where they say:
  *
  * - One key repeats at a time, the one pressed last, as on a hardware
  *   keyboard. A press on any key ends the repeat that is running, whether
  *   or not the new key repeats: the board calls `stop` before it types.
  * - A repeat is started by one pointer on one key, and ends with that
- *   pointer's `pointerup`, `pointercancel` or `pointerleave` on that key,
- *   each a `release` with the event's pointer. A ray that glides off the
- *   key while it is held, or a press that becomes a scroll, ends it so.
- *   Another pointer's release on the same key is not this one's and ends
- *   nothing.
- * - A key that is unmounted while it repeats ends its repeat, a `release`
+ *   pointer's `pointerup` or `pointercancel` wherever it arrives, a
+ *   `release`: a pointer that is up holds no key, whatever it went up on,
+ *   so the board listens where every release of the pointer is heard. A
+ *   press that becomes a scroll is cancelled, and ends it so.
+ * - It ends with that pointer's `pointerleave` of that key, a `leave` with
+ *   the event's pointer, so a ray that glides off the key while it is held
+ *   ends it. Another pointer leaving or letting go is not this one's and
+ *   ends nothing.
+ * - A key that is unmounted while it repeats ends its repeat, a `leave`
  *   with no pointer, so a board that goes, or is built again for another
  *   layout, types nothing more. A board that is torn down calls `stop`.
  * - Each repeat types what the press typed, modifiers included, and is the
@@ -94,13 +101,6 @@ export function keyRepeat(options = {}) {
     heldType = () => {};
   };
 
-  /** @type {KeyRepeat["release"]} */
-  const release = (element, pointerId) => {
-    if (element === heldElement && (pointerId === undefined || pointerId === heldPointer)) {
-      stop();
-    }
-  };
-
   return {
     hold(element, pointerId, type) {
       stop();
@@ -109,7 +109,16 @@ export function keyRepeat(options = {}) {
       heldType = type;
       timer = setTimeout(tick, delay);
     },
-    release,
+    release(pointerId) {
+      if (heldElement && pointerId === heldPointer) {
+        stop();
+      }
+    },
+    leave(element, pointerId) {
+      if (element === heldElement && (pointerId === undefined || pointerId === heldPointer)) {
+        stop();
+      }
+    },
     stop,
   };
 }

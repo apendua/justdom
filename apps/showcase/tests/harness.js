@@ -454,17 +454,18 @@ export async function panelIds(page) {
 
 /**
  * Close or open the emulated right controller's trigger, and let the scene
- * catch up.
+ * catch up for `frames` animation frames.
  *
  * @param {Page} page
  * @param {boolean} held
+ * @param {number} [frames]
  * @returns {Promise<void>}
  */
-export async function holdTrigger(page, held) {
+export async function holdTrigger(page, held, frames = 10) {
   await page.evaluate(
     (value) =>
       /** @type {any} */ (window).xrDevice.controllers.right.updateButtonValue("trigger", value),
     held ? 1 : 0,
   );
-  await nextFrames(page, 10);
+  await nextFrames(page, frames);
 }

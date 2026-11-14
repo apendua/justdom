@@ -661,10 +661,15 @@ describe("controls under a hand", { timeout: 240_000 }, () => {
     await showPanel(showcase.page, id);
   };
 
-  /** Aim at an element and pull the trigger on it once. */
+  /**
+   * Aim at an element and pull the trigger on it once. The trigger is held
+   * for two frames, which the scene needs to hear the press and then the
+   * release, and no longer: a keyboard key held past `KEY_REPEAT_DELAY`
+   * types again, and ten frames on a slow runner come near it.
+   */
   const press = async (/** @type {string} */ selector) => {
     await aimAt(showcase.page, selector);
-    await holdTrigger(showcase.page, true);
+    await holdTrigger(showcase.page, true, 2);
     await holdTrigger(showcase.page, false);
   };
 

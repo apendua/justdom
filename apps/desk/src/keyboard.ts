@@ -168,16 +168,18 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
       repeat.hold(cap, event.pointerId, () => type(key));
     }
   };
-  // The release of the pointer holding a key, its cancel, or its leaving
-  // the key. A press goes to the legend inside a cap, and the cap is what
-  // was pressed, so a release anywhere in it is its release. A leave is
-  // the cap's only when the pointer left the cap itself, not the legend
-  // for the rest of the cap, and it is heard in the capture phase, since a
-  // leave does not bubble.
-  const onRelease = (event: PointerEvent) => {
-    const cap = (event.target as Element).closest<HTMLElement>(".key");
-    if (cap && (event.type !== "pointerleave" || event.target === cap)) {
-      repeat.release(cap, event.pointerId);
+  // The pointer holding a key going up or being cancelled, wherever: on
+  // the screen, between two keys, on another panel. So it is heard on the
+  // window, where every release bubbles to.
+  const onRelease = (event: PointerEvent) => repeat.release(event.pointerId);
+  // The pointer leaving a key. A press goes to the legend inside a cap, so
+  // a leave is the cap's only when the pointer left the cap itself, not the
+  // legend for the rest of the cap. It is heard in the capture phase, since
+  // a leave does not bubble.
+  const onLeave = (event: PointerEvent) => {
+    const target = event.target as Element;
+    if (target.classList.contains("key")) {
+      repeat.leave(target, event.pointerId);
     }
   };
   // A press on a key would take focus from the field it is typing into.
@@ -211,16 +213,16 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
   };
 
   keys.addEventListener("pointerdown", onPointerDown);
-  keys.addEventListener("pointerup", onRelease);
-  keys.addEventListener("pointercancel", onRelease);
-  keys.addEventListener("pointerleave", onRelease, true);
+  window.addEventListener("pointerup", onRelease);
+  window.addEventListener("pointercancel", onRelease);
+  keys.addEventListener("pointerleave", onLeave, true);
   keys.addEventListener("mousedown", onMouseDown);
   window.addEventListener("keydown", onKeyDown);
   return () => {
     keys.removeEventListener("pointerdown", onPointerDown);
-    keys.removeEventListener("pointerup", onRelease);
-    keys.removeEventListener("pointercancel", onRelease);
-    keys.removeEventListener("pointerleave", onRelease, true);
+    window.removeEventListener("pointerup", onRelease);
+    window.removeEventListener("pointercancel", onRelease);
+    keys.removeEventListener("pointerleave", onLeave, true);
     keys.removeEventListener("mousedown", onMouseDown);
     repeat.stop();
     window.removeEventListener("keydown", onKeyDown);

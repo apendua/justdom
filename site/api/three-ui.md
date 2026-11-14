@@ -116,9 +116,10 @@ still reports the code it was built with.
   `esc` type once, as does any key whose `KeyboardKey` says `repeat: false`; a modifier changes
   state as it goes down and never repeats. Only the primary button presses a key.
 - `keyRepeat(options)` is the repeat on its own, for a board of your own:
-  `hold(element, pointerId, type)` as a key types, `release(element, pointerId)` on that pointer's
-  `pointerup`, `pointercancel` and `pointerleave`, and `stop()` before the next key types or as the
-  board goes. The desk's keyboard in `apps/desk` is built on it.
+  `hold(element, pointerId, type)` as a key types, `release(pointerId)` on that pointer's
+  `pointerup` and `pointercancel` wherever they arrive, `leave(element, pointerId)` on its
+  `pointerleave` of the key, `leave(element)` as the key is unmounted, and `stop()` before the next
+  key types or as the board goes. The desk's keyboard in `apps/desk` is built on it.
 - Digits and punctuation live behind the `?123` key, as on a phone: pressing it turns every key's
   symbols face, and `ABC` on the same key reads the way back. The view is sticky, unlike shift.
   Shift flips each view's faces and stays one-shot, released by the key it modified. Between the two

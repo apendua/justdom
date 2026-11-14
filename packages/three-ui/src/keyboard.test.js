@@ -591,6 +591,16 @@ describe("a key held down", () => {
     board.cleanup();
   });
 
+  test("stops when its pointer goes up anywhere, not only on the key", (t) => {
+    const board = held(t);
+    down(board.root, "KeyL");
+    elapse(t, 500);
+    up(board.root, "KeyM");
+    elapse(t, 1000);
+    assert.equal(board.typed(), "ll", "a pointer that is up holds no key");
+    board.cleanup();
+  });
+
   test("goes on while another pointer lets go of the same key", (t) => {
     const board = held(t);
     down(board.root, "KeyC");

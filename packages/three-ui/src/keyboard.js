@@ -563,14 +563,18 @@ export function keyboard(props) {
       children(text`${() => labelOf(entry)}`),
     ];
     if (repeater) {
+      // A ray's release goes to what its press went to, or the control
+      // around it once that has gone, which this key's unmounting covers;
+      // the mirror's forwarder sends a leave as the ray glides off.
       /** @param {PointerEvent} event */
-      const release = (event) =>
-        repeater.release(/** @type {Element} */ (event.currentTarget), event.pointerId);
+      const release = (event) => repeater.release(event.pointerId);
       operators.push(
         on("pointerup", release),
         on("pointercancel", release),
-        on("pointerleave", release),
-        (element) => onCleanup(() => repeater.release(element)),
+        on("pointerleave", (event) =>
+          repeater.leave(/** @type {Element} */ (event.currentTarget), event.pointerId),
+        ),
+        (element) => onCleanup(() => repeater.leave(element)),
       );
     }
     if (modifier) {

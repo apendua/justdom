@@ -284,4 +284,63 @@ describe("createPointerForwarder", () => {
     expect($(".a").hasAttribute("data-xr-active")).toBe(false);
     expect(root.querySelector("[data-xr-hover]")).toBeNull();
   });
+
+  it("sends the enters and leaves of the elements the ray crosses, as a browser does", () => {
+    const { root, $ } = panel();
+    // Enters and leaves do not bubble, so they are heard on the way down.
+    const seen: string[] = [];
+    for (const type of ["pointerenter", "pointerleave", "mouseenter", "mouseleave"]) {
+      root.addEventListener(
+        type,
+        (event) => {
+          expect(event.bubbles).toBe(false);
+          seen.push(`${type}:${(event.target as Element).className}`);
+        },
+        true,
+      );
+    }
+    const hand = createPointerForwarder();
+    hand.move({ panel: root, clientX: 10, clientY: 10 });
+    expect(seen).toEqual([
+      "pointerenter:",
+      "mouseenter:",
+      "pointerenter:row",
+      "mouseenter:row",
+      "pointerenter:a",
+      "mouseenter:a",
+      "pointerenter:label",
+      "mouseenter:label",
+    ]);
+    seen.length = 0;
+    hand.move({ panel: root, clientX: 60, clientY: 10 });
+    expect(seen).toEqual([
+      "pointerleave:label",
+      "mouseleave:label",
+      "pointerleave:a",
+      "mouseleave:a",
+      "pointerenter:b",
+      "mouseenter:b",
+    ]);
+    seen.length = 0;
+    hand.move(null);
+    expect(seen).toEqual([
+      "pointerleave:b",
+      "mouseleave:b",
+      "pointerleave:row",
+      "mouseleave:row",
+      "pointerleave:",
+      "mouseleave:",
+    ]);
+  });
+
+  it("cancels a press let go of with the ray off the panel", () => {
+    const { root } = panel();
+    const seen = record(root, ["pointerup", "pointercancel", "click"]);
+    const hand = createPointerForwarder();
+    hand.move({ panel: root, clientX: 10, clientY: 10 });
+    hand.press();
+    hand.move(null);
+    hand.release();
+    expect(seen).toEqual(["pointercancel:label"]);
+  });
 });

@@ -148,7 +148,10 @@ export interface PointerForwarder {
  *
  * - A move sends `pointermove` and `mousemove` to the element under the ray,
  *   and `pointerover`/`pointerout` (with `mouseover`/`mouseout`) when that
- *   element changes. The element and every ancestor up to the panel carry
+ *   element changes, with `pointerleave`/`mouseleave` to each element the
+ *   ray has left and `pointerenter`/`mouseenter` to each it has entered,
+ *   among the element and its ancestors up to the panel, as a browser
+ *   sends them. The element and every ancestor up to the panel carry
  *   `data-xr-hover` meanwhile, as they would match `:hover`, which no
  *   script can set.
  * - A press sends `pointerdown` and `mousedown`, and focuses the nearest
@@ -156,7 +159,10 @@ export interface PointerForwarder {
  *   does for a real press; `data-xr-active` goes on the pressed element and
  *   its ancestors as `:active` would. A release sends `pointerup` and
  *   `mouseup` where the ray is, and a `click` to the nearest element that
- *   holds both the pressed one and that one, as the browser picks it.
+ *   holds both the pressed one and that one, as the browser picks it. A
+ *   release with the ray on nothing the page drew has nowhere to go up, and
+ *   sends `pointercancel` to the pressed element, as `cancel` does, so the
+ *   page never holds a press the hand has let go of.
  * - A press on something `draggable="true"` that moves `DRAG_THRESHOLD`
  *   px becomes a drag: `dragstart` on it, then `dragenter`, `dragover` and
  *   `dragleave` along the elements the ray crosses, on any panel, and on
@@ -204,19 +210,36 @@ export function createPointerForwarder({
       return;
     }
     const init = pointerInit(point, buttons(), -1);
+    const nextChain = next && point ? chainOf(next, point.panel) : [];
+    const crossing = { ...init, bubbles: false, cancelable: false };
     if (hovered) {
       holdFlag(hoveredChain, HOVER_ATTRIBUTE, false);
-      hoveredChain = [];
       fire(hovered, new PointerEvent("pointerout", { ...init, relatedTarget: next }));
       fire(hovered, new MouseEvent("mouseout", { ...init, relatedTarget: next }));
+      // Innermost first, as a browser sends them.
+      for (const left of hoveredChain) {
+        if (!nextChain.includes(left)) {
+          fire(left, new PointerEvent("pointerleave", { ...crossing, relatedTarget: next }));
+          fire(left, new MouseEvent("mouseleave", { ...crossing, relatedTarget: next }));
+        }
+      }
     }
     const previous = hovered;
+    const previousChain = hoveredChain;
     hovered = next;
-    if (next && point) {
-      hoveredChain = chainOf(next, point.panel);
+    hoveredChain = nextChain;
+    if (next) {
       holdFlag(hoveredChain, HOVER_ATTRIBUTE, true);
       fire(next, new PointerEvent("pointerover", { ...init, relatedTarget: previous }));
       fire(next, new MouseEvent("mouseover", { ...init, relatedTarget: previous }));
+      // Outermost first.
+      for (let i = nextChain.length - 1; i >= 0; i -= 1) {
+        const entered = nextChain[i];
+        if (!previousChain.includes(entered)) {
+          fire(entered, new PointerEvent("pointerenter", { ...crossing, relatedTarget: previous }));
+          fire(entered, new MouseEvent("mouseenter", { ...crossing, relatedTarget: previous }));
+        }
+      }
     }
   };
 
@@ -316,6 +339,7 @@ export function createPointerForwarder({
       holdFlag(current.active, ACTIVE_ATTRIBUTE, false);
       const target = at ? elementAt(at.panel, at.clientX, at.clientY) : null;
       if (!target) {
+        fire(current.target, new PointerEvent("pointercancel", pointerInit(at, 0, -1)));
         return;
       }
       const init = pointerInit(at, 0);

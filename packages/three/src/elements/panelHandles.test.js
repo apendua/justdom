@@ -62,14 +62,16 @@ function setup(options) {
    * @param {THREE.Object3D} object
    * @param {number} x
    * @param {number} y
+   * @param {THREE.Object3D} [hand] The hand's controller, the setup's one by
+   *   default.
    */
-  const point = (type, object, x, y) => {
+  const point = (type, object, x, y, hand = controller) => {
     const at = handles.face.localToWorld(new THREE.Vector3(x * UNITS, y * UNITS, 0));
     const event = {
       type,
       target: object,
       originalTarget: object,
-      controller,
+      controller: hand,
       inputSource: {},
       intersection: { object, point: at },
     };
@@ -230,6 +232,19 @@ describe("createPanelHandles", () => {
     for (const side of SIDES) {
       assert.equal(opacity(side), 0, `${side}, back in the middle`);
     }
+    handles.dispose();
+  });
+
+  test("show a strip faintly while any one hand's ray is near its edge", () => {
+    const { handles, panel, point, opacity } = pointable();
+    const other = new THREE.Group();
+    point("pointerenter", panel, 0, 50 - 10);
+    point("pointerenter", panel, 0, 0, other);
+    assert.equal(opacity("top"), HANDLE_OPACITY_NEAR, "one ray near the top, one in the middle");
+    point("pointerleave", panel, 0, 0, other);
+    assert.equal(opacity("top"), HANDLE_OPACITY_NEAR, "the middle one gone, the near one stays");
+    point("pointerleave", panel, 0, 50 - 10);
+    assert.equal(opacity("top"), 0, "both gone");
     handles.dispose();
   });
 

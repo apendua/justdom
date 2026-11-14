@@ -1400,7 +1400,7 @@ describe("the keyboard's handles", () => {
       assert.equal(opacity(b.bar(side)), HANDLE_OPACITY_NEAR, `${side}, with a ray on the board`);
     }
 
-    // Off the key and onto the top strip, as the manager says it.
+    // Off the board and onto the top strip, as the manager says it.
     b.dispatch("pointerleave", onBoard);
     b.dispatch("pointerenter", /** @type {THREE.Object3D} */ (b.strip("top")));
     assert.equal(opacity(b.bar("top")), HANDLE_OPACITY_ACTIVE);

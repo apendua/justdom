@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The scrollbar's thumb stays inside its track while a phone's elastic overscroll takes scrollTop past either end",
+      "type": "patch",
+      "packageName": "justdom-three-ui"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

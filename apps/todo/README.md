@@ -58,7 +58,8 @@ write, which the mirror follows. `[data-xr-focus]` is the scene's `:focus`.
 **The list scrolls on both.** `scrollable` is made of ordinary elements — a viewport that hides its
 overflow, arrows, a track and a thumb — so it works on the page as a list with its own scrollbar,
 and in the scene as a window the portal clips to, rows below the fold neither drawn nor pressable.
-Rows can also be grabbed and pulled with the trigger.
+The viewport is `overflow-y: auto` with the browser's scrollbar hidden, so on the page a finger or a
+wheel scrolls the list too. In a session rows can also be grabbed and pulled with the trigger.
 
 **The rows can be reordered by dragging.** Each row has a handle at its left, `draggable="true"`,
 and the list listens for the browser's drag and drop: `dragstart` on the handle says which todo is

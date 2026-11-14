@@ -81,8 +81,11 @@ export function scrollable(props) {
 
   /**
    * What the window currently shows of the content. Sampled rather than
-   * derived: scroll position is the DOM's own state, and the browser clamps
-   * it, so the element is the authority on where it actually ended up.
+   * derived: scroll position is the DOM's own state, so the element is the
+   * authority on where it actually ended up. That place is not always inside
+   * the content: a phone's elastic overscroll reports a `scrollTop` below 0
+   * at the top and past the end at the bottom while the list bounces, and
+   * `progress` clamps it rather than trusting it.
    */
   const metrics = Signal.of({ top: 0, window: 0, content: 0 });
 
@@ -181,8 +184,14 @@ export function scrollable(props) {
     return total > 0 ? Math.min(shown / total, 1) : 1;
   };
 
-  /** How far down the content the window has got, from 0 to 1. */
-  const progress = () => (overflow() > 0 ? metrics.get().top / overflow() : 0);
+  /**
+   * How far down the content the window has got, from 0 to 1, and no further
+   * either way while an overscroll bounces past an end.
+   */
+  const progress = () => {
+    const range = overflow();
+    return range > 0 ? Math.min(Math.max(metrics.get().top / range, 0), 1) : 0;
+  };
 
   const thumbSize = () => visibleFraction() * 100;
   const thumbTop = () => progress() * (100 - thumbSize());

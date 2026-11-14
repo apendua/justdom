@@ -221,12 +221,24 @@ const scrollStyles = {
   // The window's corners are rounded, and the portal clips to them: the
   // rounded box the shader already draws every element with is the same one
   // it tests against, so a row reaching the top of the list is cut by that
-  // curve, antialiased, rather than by a square edge.
-  viewport: className`
-    flex-grow: 1;
-    min-width: 0;
-    overflow: hidden;
-    border-radius: 16px;
+  // curve, antialiased, rather than by a square edge. It scrolls (`auto`
+  // rather than `hidden`) so that on a page a finger or a wheel moves the
+  // list, as they move any list, rather than the page around it. The bar
+  // beside it is the scrollbar, so the browser's own is hidden. A panel
+  // clips `auto` as it clips `hidden`, and draws no scrollbar of its own.
+  viewport: stylesheet`
+    .${CLASS_NAME} {
+      flex-grow: 1;
+      min-width: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scrollbar-width: none;
+      border-radius: 16px;
+    }
+
+    .${CLASS_NAME}::-webkit-scrollbar {
+      display: none;
+    }
   `,
   bar: className`
     display: flex;

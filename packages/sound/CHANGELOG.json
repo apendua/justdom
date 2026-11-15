@@ -2,6 +2,30 @@
   "name": "@apendua/sound",
   "entries": [
     {
+      "version": "0.2.2",
+      "tag": "@apendua/sound_v0.2.2",
+      "date": "Sun, 15 Nov 2026 10:04:51 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.35.2`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.6`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `^1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.35.2`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.2.1",
       "tag": "@apendua/sound_v0.2.1",
       "date": "Thu, 12 Nov 2026 13:53:02 GMT",

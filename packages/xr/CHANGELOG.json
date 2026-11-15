@@ -2,6 +2,27 @@
   "name": "justdom-xr",
   "entries": [
     {
+      "version": "0.6.2",
+      "tag": "justdom-xr_v0.6.2",
+      "date": "Sun, 15 Nov 2026 10:04:51 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.35.2`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `^1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.35.2`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.6.1",
       "tag": "justdom-xr_v0.6.1",
       "date": "Thu, 12 Nov 2026 13:53:02 GMT",

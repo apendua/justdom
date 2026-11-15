@@ -1,6 +1,19 @@
 # Change Log - justdom-signal
 
-This log was last generated on Mon, 09 Nov 2026 22:53:55 GMT and should not be manually modified.
+This log was last generated on Sun, 15 Nov 2026 10:04:51 GMT and should not be manually modified.
+
+## 1.4.0
+Sun, 15 Nov 2026 10:04:51 GMT
+
+### Minor changes
+
+- An entry of just() is given an Effect only once it reads something that can change. An entry that reads nothing runs once, and a teardown it leaves is kept by the mounting. Taking a mounting down lets every entry go when one teardown throws, and raises the first failure afterwards.
+- Adds mount(entity, effects, onError), the inside of just() for a holder that has the entity already: it mounts the effects and hands back the mounting, with no observable in between.
+
+### Patches
+
+- A reader of one key of a ReactiveMap, or one value of a ReactiveSet, depends on a relay the collection wakes by one lookup, where each key held a filtered subscription to every event of the collection. A write no longer runs a predicate per key being read, and tracking a key costs one node. A reader of the key NaN is now woken by a write to it, where only clear() reached it. One write wakes the readers of the whole collection (size and the iterators) first and the readers of its key after them.
+- on() builds its Computation at the first event and keeps it subscribed for as long as the listener stands, so a listener that is never called costs no Computation and no Effect.
 
 ## 1.3.0
 Mon, 09 Nov 2026 22:53:55 GMT

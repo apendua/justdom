@@ -1,6 +1,17 @@
 # Change Log - justdom-three-ui
 
-This log was last generated on Thu, 12 Nov 2026 13:53:02 GMT and should not be manually modified.
+This log was last generated on Sun, 15 Nov 2026 10:04:51 GMT and should not be manually modified.
+
+## 0.6.0
+Sun, 15 Nov 2026 10:04:51 GMT
+
+### Minor changes
+
+- keyboard types a key at its pointerdown and repeats it while held; adds keyRepeat, the repeat prop and KeyboardKey.repeat
+
+### Patches
+
+- The scrollbar's thumb stays inside its track while a phone's elastic overscroll takes scrollTop past either end
 
 ## 0.5.1
 Thu, 12 Nov 2026 13:53:02 GMT

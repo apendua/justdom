@@ -1,6 +1,14 @@
 # Change Log - justdom-three
 
-This log was last generated on Thu, 12 Nov 2026 13:53:02 GMT and should not be manually modified.
+This log was last generated on Sun, 15 Nov 2026 10:04:51 GMT and should not be manually modified.
+
+## 0.35.2
+Sun, 15 Nov 2026 10:04:51 GMT
+
+### Patches
+
+- A press on a draggable card after a scroll on the same panel clicks again; the scroll used to swallow every later press on something draggable.
+- A press on a list's own area after a drag and drop on the same panel clicks again.
 
 ## 0.35.1
 Thu, 12 Nov 2026 13:53:02 GMT

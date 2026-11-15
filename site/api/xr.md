@@ -80,7 +80,10 @@ eye, as it lands, and presses nothing yet. It is undecided until it does one of 
   up or down. A look presses nothing, and parks the controller at once.
 - **Tap.** Lifting within 10 px pulls the trigger where the ray rests: 4 frames, trigger down, 4
   frames, trigger up, 4 frames, then the controller is parked again. A finger that lands while the
-  last press is still running aims nothing, and its tap, hold or key is dropped.
+  last press is still running its frames waits for the controller, behind any finger already
+  waiting, so keys typed quickly one after another all type: once it is parked, the finger aims as
+  if it had just landed if it is still on the screen and undecided or holding, and runs its tap if
+  it has lifted as one. A look, pinch, drag or long press it became while it waited presses nothing.
 - **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) keeps the ray where the finger landed,
   presses nothing yet, and buzzes the phone for 15 ms (`HOLD_BUZZ_MS`), as a phone does for a long
   press. Safari on iOS has no `navigator.vibrate`, so it does not buzz there. The layer cancels the
@@ -96,9 +99,7 @@ eye, as it lands, and presses nothing yet. It is undecided until it does one of 
   - **Long press.** Lifting within 10 px presses the grip: 4 frames, grip down, 4 frames, grip up, 4
     frames, parked. That is the right button on a panel, a `contextmenu`.
 
-  A hold never turns the head. A hold that starts while a tap is still running is dropped the same
-  way: the finger then turns nothing and its lift presses nothing. A hold the browser cancels
-  presses nothing.
+  A hold never turns the head. A hold the browser cancels presses nothing.
 
 - **Pinch.** A second finger that lands while the first is undecided or looking zooms the view as
   the page's pointer does: spreading the fingers twice as far apart draws the view twice as large

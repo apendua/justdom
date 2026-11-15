@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Adds mount(entity, effects, onError), the inside of just() for a holder that has the entity already: it mounts the effects and hands back the mounting, with no observable in between.",
+      "type": "minor",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

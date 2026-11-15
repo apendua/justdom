@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "on() builds its Computation at the first event and keeps it subscribed for as long as the listener stands, so a listener that is never called costs no Computation and no Effect.",
+      "type": "patch",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

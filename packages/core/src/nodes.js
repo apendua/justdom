@@ -61,9 +61,43 @@
 /**
  * A tree that has not been put anywhere yet.
  *
+ * `replace` swaps whatever occupies a span for the tree's own nodes. `insert`
+ * puts them into `parent` in front of `before`, or at its end when `before`
+ * is `null`. Both report the span the nodes occupy afterwards.
+ *
+ * `insert` is what lets a tree be mounted with no placeholder to replace, and
+ * it is optional: a mountable made outside this package may have `replace`
+ * alone, and whoever mounts it then makes a placeholder for it to replace.
+ *
  * @template {INode<T>} T
  * @typedef {object} MountableOf
  * @property {(segment: SegmentOf<T>) => SegmentOf<T>} replace
+ * @property {(parent: T, before: T | null) => SegmentOf<T>} [insert]
+ */
+
+/**
+ * A source of exactly one node, which a parent can mount without subscribing
+ * to it.
+ *
+ * A child is a `Subscribable` of mountables, and subscribing is how a parent
+ * mounts one in general: the child may arrive late, and may be replaced. An
+ * element does neither. It is one node, there at once and for good, and a
+ * parent that knows so can make the node, mount the element's effects on
+ * it and insert it, with no stream, subscriber and mountable in between.
+ * `$()` and `$$()` answer with a source that offers this beside `subscribe`.
+ *
+ * `createNode` makes the node, or claims it under hydration. `mountNode`
+ * mounts the source's effects on it and hands back the mounting. It throws
+ * when the effects fail on the way in, with what was mounted taken down, and
+ * sends a later failure to `onError`, until the mounting is unsubscribed.
+ * A failure after that is dropped, so a node that has left cannot fail the
+ * parent it left. The parent inserts the node after `mountNode` returns,
+ * so a subtree is built before it is attached.
+ *
+ * @template {INode<T>} T
+ * @typedef {object} NodeSourceOf
+ * @property {() => T} createNode
+ * @property {(node: T, onError: (error: unknown) => void) => { unsubscribe(): void }} mountNode
  */
 
 /**
@@ -72,6 +106,8 @@
  * @template {INode<T>} T
  * @typedef {object} ContainerOf
  * @property {(child: T) => T} appendChild
+ * @property {() => T} end The node that closes the container. What the
+ *   container holds sits in front of it.
  * @property {() => MountableOf<T>} toMountable
  */
 

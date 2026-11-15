@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "An element that was empty when its children mounted no longer keeps the sources that described them, and keeps less for the children it mounted: an object, a function and two arrays of the children's length, in place of two arrays with room for seventeen, four closures and a segment per child. A row of eight elements holds about 3 kB less.",
+      "type": "patch",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

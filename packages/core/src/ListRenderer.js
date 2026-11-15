@@ -1,4 +1,10 @@
-import { removeSegment, toSegment } from "./helpers.js";
+import {
+  insertSegment,
+  releaseLeaving,
+  removeSegment,
+  toSegment,
+  unmountSegment,
+} from "./helpers.js";
 import {
   addDependency,
   batch,
@@ -8,29 +14,257 @@ import {
   makeNonReactive,
   Stream,
   Subject,
+  withComputation,
 } from "justdom-signal";
 
 /**
  * @import { MonoTypeOperator, Subscribable, Source, Unsubscribable } from "justdom-signal";
- * @import { ContainerOf, INode, MountableOf, SegmentOf } from "./nodes.js"
+ * @import { ContainerOf, INode, MountableOf, NodeSourceOf, SegmentOf } from "./nodes.js"
  */
 
 /**
+ * Ends `subscription` and takes `segment`, the nodes it had in the tree,
+ * out of it (see `unmountSegment`). With no segment, the nodes being gone
+ * already, only the subscription ends.
+ *
+ * @template {INode<N>} N
+ * @param {SegmentOf<N> | undefined} segment
+ * @param {Unsubscribable} subscription
+ * @returns {void}
+ */
+function unmount(segment, subscription) {
+  if (segment) {
+    unmountSegment(segment, () => subscription.unsubscribe());
+  } else {
+    subscription.unsubscribe();
+  }
+}
+
+/**
+ * Puts a tree that is not in the document yet into `parent`, in front of
+ * `before` or at the end. A mountable with no `insert` of its own gets a
+ * placeholder there to replace.
+ *
+ * @template {INode<N>} N
+ * @param {MountableOf<N>} mountable
+ * @param {N} parent
+ * @param {N | null} before
+ * @param {() => N} createPlaceholder
+ * @returns {SegmentOf<N>}
+ */
+function place(mountable, parent, before, createPlaceholder) {
+  if (mountable.insert) {
+    return mountable.insert(parent, before);
+  }
+  const placeholder = parent.insertBefore(createPlaceholder(), before);
+  return mountable.replace(toSegment(placeholder));
+}
+
+/**
+ * The children `mountChildren` mounted into one parent.
+ *
+ * A class, and not the closures `mountChildren` used to build per call:
+ * every element with children has one of these, so what it is made of is
+ * paid per element. It holds two arrays, the holder's `fail` and one
+ * function its children fail through. A child that is one node, the usual
+ * one, adds its node and its mounting to the arrays and nothing else.
+ *
+ * @template {INode<N>} N
+ * @implements {Unsubscribable}
+ */
+class ChildrenMounting {
+  /**
+   * What each child has in the parent: its one node, for a child that is a
+   * source of one node, or the segment a subscribed child last put there.
+   * `null` once the child was taken down.
+   *
+   * @type {Array<N | SegmentOf<N> | null | undefined>}
+   */
+  #held;
+
+  /**
+   * The mounting or the subscription of each child that got as far as
+   * having one.
+   *
+   * @type {Array<Unsubscribable | undefined>}
+   */
+  #subscriptions;
+
+  /** @type {(error: unknown) => void} */
+  #fail;
+
+  /**
+   * Whether a child has failed. `mount` stops at the first one that has.
+   *
+   * @type {boolean}
+   */
+  #failed = false;
+
+  /**
+   * Where the failure of any child goes: to the holder, and on record, so
+   * that the children behind it are not mounted. One function for all the
+   * children, since each element with children has one of these.
+   *
+   * A child's failure is not always thrown while the child is mounted. An
+   * effect of an element that is mounted already can run again and fail
+   * while a later sibling is being mounted, and that arrives here too.
+   *
+   * @type {(error: unknown) => void}
+   */
+  #onError = (error) => {
+    this.#failed = true;
+    this.#fail(error);
+  };
+
+  /**
+   * @param {number} count how many children there are
+   * @param {(error: unknown) => void} fail
+   */
+  constructor(count, fail) {
+    // Made at their full length. An array that grows by `push` is given
+    // room for seventeen, and most elements have one child or two.
+    this.#held = new Array(count);
+    this.#subscriptions = new Array(count);
+    this.#fail = fail;
+  }
+
+  /**
+   * @param {N} parent
+   * @param {Array<Subscribable<MountableOf<N>>>} children
+   * @param {() => N} createPlaceholder
+   * @returns {void}
+   */
+  mount(parent, children, createPlaceholder) {
+    const held = this.#held;
+    const subscriptions = this.#subscriptions;
+    const onError = this.#onError;
+    for (let i = 0; i < children.length && !this.#failed; i++) {
+      const source = asNodeSource(children[i]);
+      if (source) {
+        try {
+          const node = source.createNode();
+          // Mounted before it is inserted, so the subtree is built off
+          // the document, as a subscription builds it before it emits.
+          subscriptions[i] = source.mountNode(node, onError);
+          held[i] = parent.insertBefore(node, null);
+        } catch (error) {
+          onError(error);
+        }
+        continue;
+      }
+      let placed = false;
+      subscriptions[i] = children[i].subscribe({
+        next: (newMountable) => {
+          try {
+            if (placed) {
+              this.#replace(i, newMountable);
+            } else {
+              placed = true;
+              held[i] = place(newMountable, parent, null, createPlaceholder);
+            }
+          } catch (error) {
+            onError(error);
+          }
+        },
+        error: onError,
+      });
+      if (!placed) {
+        placed = true;
+        held[i] = toSegment(parent.insertBefore(createPlaceholder(), null));
+      }
+    }
+  }
+
+  /**
+   * A subscribed child emitted again: what it emitted takes the place of
+   * what it had.
+   *
+   * @param {number} i
+   * @param {MountableOf<N>} newMountable
+   * @returns {void}
+   */
+  #replace(i, newMountable) {
+    const old = this.#held[i];
+    // Only a subscribed child gets here, and what it holds is a segment.
+    if (Array.isArray(old)) {
+      // Non-reactive, like the first placement, which runs inside the
+      // caller's own non-reactive subscribe: a replacement is not a read.
+      this.#held[i] = withComputation(null, () => newMountable.replace(old));
+    }
+  }
+
+  /**
+   * Takes the children down, in order.
+   *
+   * @returns {void}
+   */
+  unsubscribe() {
+    const held = this.#held;
+    const subscriptions = this.#subscriptions;
+    /** @type {{ value: unknown } | null} */
+    let failure = null;
+    for (let i = 0; i < subscriptions.length; i++) {
+      const subscription = subscriptions[i];
+      if (!subscription) {
+        // A child that failed before it had one, or one behind it.
+        continue;
+      }
+      const old = held[i];
+      // The child is unsubscribed, then its nodes come out of the
+      // document. A child whose cleanup throws does not strand the
+      // ones after it: they all go, and the first failure is raised
+      // once they have, as with the teardowns of a `Stream`.
+      try {
+        if (old) {
+          held[i] = null;
+          unmount(Array.isArray(old) ? old : toSegment(old), subscription);
+        } else {
+          subscription.unsubscribe();
+        }
+      } catch (error) {
+        failure = failure ?? { value: error };
+      }
+    }
+    if (failure) {
+      throw failure.value;
+    }
+  }
+}
+
+/**
+ * Passes `source` on, and when the subscription ends unmounts the segment
+ * `takeSegment` hands over: the source is unsubscribed, then the segment's
+ * nodes come out of the tree. `takeSegment` gives nothing when the nodes
+ * are already gone, and then only the source is unsubscribed.
+ *
+ * @template {INode<N>} N
  * @template T
- * @param {() => void} fn
+ * @param {() => SegmentOf<N> | undefined} takeSegment
  * @returns {MonoTypeOperator<T>}
  */
-function teardown(fn) {
+function unmounting(takeSegment) {
   return (source) => {
     return new Stream((subscriber) => {
-      // The subscription goes on the teardown list first, so it is undone
-      // before `fn` — which is the order RxJS put them in, and the order the
-      // callers below assume: the child is unsubscribed, then its nodes come
-      // out of the document.
-      subscriber.add(source.subscribe(subscriber));
-      return fn;
+      const subscription = source.subscribe(subscriber);
+      return () => unmount(takeSegment(), subscription);
     });
   };
+}
+
+/**
+ * `child` as a source of one node, when it is one: what `$()` and `$$()`
+ * answer with (see `NodeSourceOf`). Such a child is mounted without being
+ * subscribed to. Anything else gives `null`, and is subscribed to.
+ *
+ * @template {INode<T>} T
+ * @param {Subscribable<MountableOf<T>>} child
+ * @returns {NodeSourceOf<T> | null}
+ */
+function asNodeSource(child) {
+  const candidate = /** @type {Partial<NodeSourceOf<T>>} */ (child);
+  return typeof candidate.mountNode === "function"
+    ? /** @type {NodeSourceOf<T>} */ (candidate)
+    : null;
 }
 
 /**
@@ -108,32 +342,59 @@ export default class ListRenderer {
         },
       );
       children.forEach((child, i) => {
-        // The subscription goes on the teardown list first, so it is undone
-        // before the nodes come out of the document.
-        subscriber.add(
-          child.subscribe({
-            next: (newMountable) => {
-              try {
-                replace(i, newMountable);
-              } catch (error) {
-                subscriber.error(error);
-              }
-            },
-            error: (error) => {
+        const subscription = child.subscribe({
+          next: (newMountable) => {
+            try {
+              replace(i, newMountable);
+            } catch (error) {
               subscriber.error(error);
-            },
-          }),
-        );
+            }
+          },
+          error: (error) => {
+            subscriber.error(error);
+          },
+        });
+        // The child is unsubscribed, then its nodes come out of the document.
         subscriber.add(() => {
           const oldSegment = segments[i];
           if (oldSegment) {
-            removeSegment(oldSegment);
             segments[i] = null;
+            unmountSegment(oldSegment, () => subscription.unsubscribe());
+          } else {
+            subscription.unsubscribe();
           }
         });
       });
       subscriber.next(container.toMountable());
     });
+  }
+
+  /**
+   * Mounts `children` straight into `parent`, which holds nothing yet, and
+   * hands back the mounting, to be unsubscribed when the children should go.
+   *
+   * The children are mounted in order. A child that is a source of one
+   * node, an element, is not subscribed to: its node is made, its effects
+   * are mounted on it, and it is inserted at the end of `parent`. Any other
+   * child is subscribed to. One that emits while it is being subscribed, a
+   * list say, has its nodes inserted at the end of `parent` at once. One
+   * that has not emitted by then gets a placeholder there, which its first
+   * emission replaces. Later emissions replace the span the child
+   * occupies, as in `renderFragment`.
+   *
+   * A failure, a child's or a throw while placing one, goes to `fail`, and
+   * the children after it are not mounted.
+   *
+   * @param {T} parent
+   * @param {Array<Subscribable<MountableOf<T>>>} children
+   * @param {(error: unknown) => void} fail
+   * @returns {Unsubscribable}
+   */
+  mountChildren(parent, children, fail) {
+    /** @type {ChildrenMounting<T>} */
+    const mounting = new ChildrenMounting(children.length, fail);
+    mounting.mount(parent, children, this.#createPlaceholder);
+    return mounting;
   }
 
   /**
@@ -160,6 +421,12 @@ export default class ListRenderer {
       /** @type {Subject<K>} */
       const childIndexesSubject = new Subject();
       /**
+       * Where an item's failure goes: it fails the list.
+       *
+       * @param {unknown} error
+       */
+      const fail = (error) => subscriber.error(error);
+      /**
        * @param {U} item
        * @returns {() => number}
        */
@@ -183,6 +450,19 @@ export default class ListRenderer {
         };
       };
       /**
+       * Forgets an item whose subscription is ending, and hands back the
+       * nodes it still has in the tree, if any.
+       *
+       * @param {K} key
+       * @returns {SegmentOf<T> | undefined}
+       */
+      const takeSegment = (key) => {
+        const segment = childSegments.get(key);
+        childSegments.delete(key);
+        childSubscriptions.delete(key);
+        return segment;
+      };
+      /**
        * Adopts the markup for the initial set of items.
        *
        * There is nothing to diff against on the way in, so none of the moving
@@ -204,14 +484,7 @@ export default class ListRenderer {
           const segment = hydration.claimItem(() => {
             childSubscriptions.set(
               key,
-              teardown(() => {
-                const oldSegment = childSegments.get(key);
-                if (oldSegment) {
-                  removeSegment(oldSegment);
-                  childSegments.delete(key);
-                }
-                childSubscriptions.delete(key);
-              })(render(item, createGetIndex(item))).subscribe({
+              unmounting(() => takeSegment(key))(render(item, createGetIndex(item))).subscribe({
                 next: (newMountable) => {
                   if (!adopted) {
                     // The markup this item adopted is already in place.
@@ -250,10 +523,13 @@ export default class ListRenderer {
           // the walk below, so every item in front of it found a next sibling
           // it did not expect and was re-inserted: removing the n-th item
           // moved the n - 1 items before it.
+          /** @type {Map<K, SegmentOf<T>>} */
+          const departed = new Map();
           for (const [key, childSegment] of childSegments.entries()) {
             if (!newItemsSet.has(key)) {
               removeSegment(childSegment);
               childSegments.delete(key);
+              departed.set(key, childSegment);
             }
           }
           const staying = longestRunInOrder(newItemsArray, getKey, childIndexes);
@@ -270,87 +546,70 @@ export default class ListRenderer {
               nextSegment = childSegments.get(k);
               i += 1;
             }
-            if (!childSegments.has(key)) {
-              // NOTE: Only put placeholder where the new item should be inserted. The actual element
-              //       will be inserted by the subscription.
-              if (!nextSegment) {
-                const newPlaceholder = container.appendChild(this.#createPlaceholder());
-                childSegments.set(key, toSegment(newPlaceholder));
-              } else {
-                const nextNode = nextSegment[0];
-                const { parentNode } = nextNode;
-                if (parentNode) {
-                  const newPlaceholder = parentNode.insertBefore(
-                    this.#createPlaceholder(),
-                    nextNode,
-                  );
-                  childSegments.set(key, toSegment(newPlaceholder));
-                }
-              }
-            }
             if (!childSubscriptions.has(key)) {
-              childSubscriptions.set(
-                key,
-                teardown(() => {
+              // A new item goes in front of its successor, or at the end of
+              // the container. One that emits while it is being subscribed
+              // has its nodes inserted there at once. One that has not
+              // emitted by then gets a placeholder, which its first emission
+              // replaces.
+              const before = nextSegment ? nextSegment[0] : container.end();
+              const { parentNode } = before;
+              if (!parentNode) {
+                throw new Error("Cannot add an item to a list that was removed.");
+              }
+              const rendered = render(item, createGetIndex(item));
+              const source = asNodeSource(rendered);
+              if (source) {
+                // An element is not subscribed to: its node is made, its
+                // effects are mounted on it, and it goes in. A throw on the
+                // way fails the list, like any other throw in here.
+                const node = source.createNode();
+                const mounted = source.mountNode(node, fail);
+                childSegments.set(key, toSegment(parentNode.insertBefore(node, before)));
+                childSubscriptions.set(key, {
+                  unsubscribe: () => unmount(takeSegment(key), mounted),
+                });
+                continue;
+              }
+              let placed = false;
+              const subscription = unmounting(() => takeSegment(key))(rendered).subscribe({
+                next: (newMountable) => {
+                  if (!placed) {
+                    placed = true;
+                    childSegments.set(
+                      key,
+                      place(newMountable, parentNode, before, this.#createPlaceholder),
+                    );
+                    return;
+                  }
                   const oldSegment = childSegments.get(key);
                   if (oldSegment) {
-                    removeSegment(oldSegment);
-                    childSegments.delete(key);
+                    childSegments.set(key, newMountable.replace(oldSegment));
                   }
-                  childSubscriptions.delete(key);
-                })(render(item, createGetIndex(item))).subscribe({
-                  next: (newMountable) => {
-                    const oldSegment = childSegments.get(key);
-                    if (oldSegment) {
-                      childSegments.set(key, newMountable.replace(oldSegment));
-                    }
-                  },
-                  error: (error) => {
-                    subscriber.error(error);
-                  },
-                }),
-              );
+                },
+                error: fail,
+              });
+              if (!placed) {
+                placed = true;
+                childSegments.set(
+                  key,
+                  toSegment(parentNode.insertBefore(this.#createPlaceholder(), before)),
+                );
+              }
+              childSubscriptions.set(key, subscription);
             } else if (!staying.has(key)) {
               // Only an item outside the longest run of items that kept
               // their order moves; the run stays where it is and the others
               // are placed around it. The walk goes from the end, so the
               // successor an item is placed in front of is already final.
+              // With no successor to sit in front of, the item belongs at
+              // the end of the container. Its nodes keep their order, so
+              // an item of several nodes arrives as it was.
               const childSegment = childSegments.get(key);
-              if (childSegment) {
-                if (nextSegment) {
-                  const { parentNode } = nextSegment[0];
-                  if (
-                    parentNode &&
-                    childSegment &&
-                    childSegment[1].nextSibling !== nextSegment[0]
-                  ) {
-                    /** @type {T | null} */
-                    let node = childSegment[1];
-                    while (node) {
-                      /** @type {T | null} */
-                      const previousSibling = node.previousSibling;
-                      parentNode.insertBefore(node, nextSegment[0]);
-                      if (node === childSegment[0]) {
-                        break;
-                      }
-                      node = previousSibling;
-                    }
-                  }
-                } else {
-                  // No successor to sit in front of, so the item belongs at
-                  // the end of the container.
-                  /** @type {T | null} */
-                  let node = childSegment[1];
-                  while (node) {
-                    /** @type {T | null} */
-                    const previousSibling = node.previousSibling;
-                    container.appendChild(node);
-                    if (node === childSegment[0]) {
-                      break;
-                    }
-                    node = previousSibling;
-                  }
-                }
+              const before = nextSegment ? nextSegment[0] : container.end();
+              const { parentNode } = before;
+              if (childSegment && parentNode && childSegment[1].nextSibling !== before) {
+                insertSegment(childSegment, parentNode, before);
               }
             }
           }
@@ -373,7 +632,14 @@ export default class ListRenderer {
           });
           for (const [key, childSubscription] of childSubscriptions.entries()) {
             if (!newItemsSet.has(key)) {
-              childSubscription.unsubscribe();
+              // Its nodes left before the walk, with everything under them,
+              // so nothing inside has to be removed on its own.
+              const segment = departed.get(key);
+              if (segment) {
+                releaseLeaving(segment, () => childSubscription.unsubscribe());
+              } else {
+                childSubscription.unsubscribe();
+              }
               childSubscriptions.delete(key);
             }
           }

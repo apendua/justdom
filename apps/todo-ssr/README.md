@@ -54,9 +54,9 @@ place in a browser; on the server those reads simply happen once, during the mou
   `Could not parse CSS stylesheet` for syntax it does not support — including native nesting
   (`&:hover`), which the browser-only apps in this repo use freely. The markup is unaffected, but
   the log noise is not worth it.
-- **Every rendered child is bracketed by an empty comment node** (`<!---->`). Those are the
-  placeholders `ListRenderer` uses to swap a subtree later; they are harmless in the response, and a
-  browser-side hydration story would actually need them.
+- **A list is bracketed by a pair of empty comment nodes** (`<!---->`). They mark where the list
+  starts and ends, so that items can be added to a list that is empty or sits between other
+  children, and hydration claims them. The children of an element have no comments around them.
 
 ## Hydration
 

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "children() and the lists mount a child made by $() or $$() without subscribing to it: they make the element, mount its effects on it and insert it. What $() and $$() answer with offers createNode() and mountNode() beside subscribe, typed as NodeSource. The element, its effects and where a failure goes are unchanged.",
+      "type": "minor",
+      "packageName": "justdom-core"
+    }
+  ],
+  "packageName": "justdom-core",
+  "email": "noreply@anthropic.com"
+}

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "An entry of just() is given an Effect only once it reads something that can change. An entry that reads nothing runs once, and a teardown it leaves is kept by the mounting. Taking a mounting down lets every entry go when one teardown throws, and raises the first failure afterwards.",
+      "type": "minor",
+      "packageName": "justdom-signal"
+    }
+  ],
+  "packageName": "justdom-signal",
+  "email": "noreply@anthropic.com"
+}

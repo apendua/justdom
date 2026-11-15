@@ -156,6 +156,28 @@ export function withComputation(newComputation, fn) {
 }
 
 /**
+ * `withComputation` for a function of two arguments: `fn(first, second)`
+ * runs with `newComputation` evaluating. For a caller that would otherwise
+ * build a closure per call only to carry the two.
+ *
+ * @template A, B, T
+ * @param {ComputationLike | null} newComputation
+ * @param {(first: A, second: B) => T} fn
+ * @param {A} first
+ * @param {B} second
+ * @returns {T}
+ */
+export function callWithComputation(newComputation, fn, first, second) {
+  const oldComputation = activeComputation;
+  activeComputation = newComputation;
+  try {
+    return fn(first, second);
+  } finally {
+    activeComputation = oldComputation;
+  }
+}
+
+/**
  * Where a warm sets aside the teardowns of the values it replaces, or `null`
  * outside one.
  *

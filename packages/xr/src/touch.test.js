@@ -634,6 +634,8 @@ describe("installTouch", () => {
       mock.timers.tick(HOLD_MS);
       assert.deepEqual(buzzes, [], "not while the tap still has the controller");
       frames(3 * STEP_FRAMES);
+      assert.deepEqual(buzzes, [], "its clock starts once it has the controller");
+      mock.timers.tick(HOLD_MS);
       assert.deepEqual(buzzes, [HOLD_BUZZ_MS]);
       delete (/** @type {any} */ (navigator).vibrate);
     });
@@ -721,7 +723,7 @@ describe("installTouch", () => {
       assert.ok(rightParked());
     });
 
-    it("presses nothing for a drag it became while it waited for a tap", () => {
+    it("is not one while it waits for a tap, however long, and its move is a look", () => {
       finger("pointerdown", 200, 400);
       finger("pointerup", 200, 400);
       frames(1);
@@ -730,8 +732,7 @@ describe("installTouch", () => {
       finger("pointermove", 200 + 3 * SLOP_PX, 0);
       finger("pointerup", 200 + 3 * SLOP_PX, 0);
       frames(4 * STEP_FRAMES);
-      near(headAhead().x, 0);
-      near(headAhead().y, 0);
+      assert.ok(Math.abs(headAhead().x) > 0.01, "the move turned the head");
       assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
       assert.ok(rightParked());
     });
@@ -741,8 +742,8 @@ describe("installTouch", () => {
       finger("pointerup", 200, 400);
       frames(1);
       finger("pointerdown", 200, 0);
-      mock.timers.tick(HOLD_MS);
       frames(3 * STEP_FRAMES);
+      mock.timers.tick(HOLD_MS);
       near(Math.asin(rightRay().y), fovy / 2);
       finger("pointermove", 200 + 3 * SLOP_PX, 0);
       frames(STEP_FRAMES);
@@ -853,6 +854,16 @@ describe("installTouch", () => {
       assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "trigger 1"]);
       finger("pointerup", 200, 400);
       assert.deepEqual(headset.controllers.right.buttons.slice(-1), ["trigger 0"]);
+    });
+
+    it("goes down after waiting for the last key however long its wait", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(1);
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      frames(6 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "trigger 1"]);
     });
 
     it("is not a key when the ray is on none", () => {

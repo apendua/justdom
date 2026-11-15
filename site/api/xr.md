@@ -82,8 +82,10 @@ eye, as it lands, and presses nothing yet. It is undecided until it does one of 
   frames, trigger up, 4 frames, then the controller is parked again. A finger that lands while the
   last press is still running its frames waits for the controller, behind any finger already
   waiting, so keys typed quickly one after another all type: once it is parked, the finger aims as
-  if it had just landed if it is still on the screen and undecided or holding, and runs its tap if
-  it has lifted as one. A look, pinch, drag or long press it became while it waited presses nothing.
+  if it had just landed if it is still on the screen and undecided, and runs its tap if it has
+  lifted as one. A look or pinch it became while it waited presses nothing. Its 400 ms toward a hold
+  count from when it has the controller, not from the touch, so a finger that waits is never a hold
+  by then and a key under it still goes down.
 - **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) keeps the ray where the finger landed,
   presses nothing yet, and buzzes the phone for 15 ms (`HOLD_BUZZ_MS`), as a phone does for a long
   press. Safari on iOS has no `navigator.vibrate`, so it does not buzz there. The layer cancels the

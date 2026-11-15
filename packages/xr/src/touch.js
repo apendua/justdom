@@ -272,7 +272,8 @@ const afterStep = (then) => {
 /**
  * The finger on the scene, if one is. It is `undecided` from the touch
  * until it is more than `SLOP_PX` from where it landed (a `look`), stayed
- * within that for `HOLD_MS` (a `hold`) or lifted (a tap), or until a second
+ * within that for `HOLD_MS` from when it took the controller (a `hold`)
+ * or lifted (a tap), or until a second
  * finger lands while it is undecided or a look (a `pinch`). A hold becomes
  * a `drag` once it is more than `SLOP_PX` from where it landed, and its
  * lift before that is a long press. A finger that jitters in place stays
@@ -357,11 +358,14 @@ const afterStep = (then) => {
  *   and comes up a step after that.
  * - A finger that lands while the last press is still finishing its steps,
  *   its own finger lifted, waits for it, so keys typed quickly one after
- *   another all type. Once the controller parks, the waiting finger takes
- *   it as if it had just landed when it is still undecided or a hold, and
- *   runs its tap's steps when it has lifted as one; a look, a pinch, a drag
- *   or a long press it became meanwhile presses nothing. Fingers that land
- *   while others wait queue behind them in the order they landed.
+ *   another all type. A waiting finger stays undecided however long it
+ *   waits, since its `HOLD_MS` clock starts only when it has the
+ *   controller, as a landing finger's does. Once the controller parks, the
+ *   waiting finger takes it as if it had just landed when it is still on
+ *   the screen and undecided, and runs its tap's steps when it has lifted
+ *   as one; a look or a pinch it became meanwhile presses nothing. Fingers
+ *   that land while others wait queue behind them in the order they
+ *   landed.
  * - The session ending hides the layer, lets go of whatever the controller
  *   holds and parks it at once, forgets the fingers, and zooms back out to
  *   the headset's own field of view.
@@ -603,19 +607,24 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
 
   /**
    * Aim for a finger that has landed, or that has waited for the
-   * controller, and a step later press the key its ray is on, if it is
-   * still undecided.
+   * controller, start its `HOLD_MS` clock, and a step later press the key
+   * its ray is on, if it is still undecided.
    *
    * @param {Finger} landed
    */
   const claim = (landed) => {
     const run = hold(landed.landed.x, landed.landed.y);
     landed.press = run;
+    landed.timer = setTimeout(() => {
+      if (finger === landed && landed.kind === "undecided") {
+        landed.kind = "hold";
+        if (run) {
+          navigator.vibrate?.(HOLD_BUZZ_MS);
+        }
+      }
+    }, HOLD_MS);
     if (!run) {
       return;
-    }
-    if (landed.kind === "hold") {
-      navigator.vibrate?.(HOLD_BUZZ_MS);
     }
     step(run, () => {
       if (finger === landed && landed.kind === "undecided" && isRayOnKey()) {
@@ -628,9 +637,9 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
 
   /**
    * The controller is free: the first finger waiting for it takes it, a
-   * tap to run its steps, or a finger still on the screen undecided or a
-   * hold to aim. One that became anything else meanwhile is dropped, and
-   * the next one takes it instead.
+   * tap to run its steps, or a finger still on the screen and undecided to
+   * aim. One that became anything else meanwhile is dropped, and the next
+   * one takes it instead.
    */
   const resume = () => {
     for (let next = waiting.shift(); next; next = waiting.shift()) {
@@ -643,7 +652,7 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
         }
         return;
       }
-      if (finger === on && (on.kind === "undecided" || on.kind === "hold")) {
+      if (finger === on && on.kind === "undecided") {
         claim(on);
         return;
       }
@@ -696,14 +705,6 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       kind: "undecided",
       press: null,
     });
-    landed.timer = setTimeout(() => {
-      if (finger === landed && landed.kind === "undecided") {
-        landed.kind = "hold";
-        if (landed.press) {
-          navigator.vibrate?.(HOLD_BUZZ_MS);
-        }
-      }
-    }, HOLD_MS);
     finger = landed;
     if (press?.lifted || waiting.length) {
       // The last press is only finishing its steps: this finger takes the

@@ -1,3 +1,5 @@
+import { keyRepeat } from "justdom-three-ui";
+
 /**
  * A key as the rows below write it: the `KeyboardEvent.key` it stands for,
  * its legend, and the classes that size and colour it. A bare string is a
@@ -70,6 +72,13 @@ const ROWS: KeySpec[][] = [
  */
 const OWNED_KEYS = new Set([" ", "Backspace", "Tab", "Enter"]);
 
+/**
+ * Keys that type once however long they are held: the modifiers, which the
+ * monitor takes as a key of their own, and Enter, which runs the line typed.
+ * Every other key repeats while it is held, as on a real keyboard.
+ */
+const ONCE_KEYS = new Set(["Shift", "Control", "Alt", "CapsLock", "Enter"]);
+
 /** How long a key stays down after it is pressed, in ms. */
 const PRESS_MS = 110;
 
@@ -85,8 +94,13 @@ export interface KeyboardOptions {
 /**
  * Fill `[data-keys]` with keycaps, and type with them.
  *
- * A key is pressed by a click, which is what a ray's trigger is in a
- * session, or by the same key on a real keyboard. Either way it goes down
+ * A key is pressed by a pointer going down on it, which is what a ray's
+ * trigger closing is in a session, or by the same key on a real keyboard.
+ * A pointer types the key as it goes down rather than at the click after
+ * the release, and types it again while it is held, after the delay and at
+ * the interval `keyRepeat` from justdom-three-ui gives it, until it lets go
+ * or leaves the key; `ONCE_KEYS` type once. A real key's repeat is the
+ * system's, and arrives as more `keydown`s. Either way a key goes down
  * for a moment (`data-down`, a `transform` in the stylesheet) and types into
  * the text field that has focus, if one does, and into `onKey` otherwise.
  * Only the page has focus to give: in a session a field is typed into with
@@ -128,18 +142,44 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     }
   };
 
-  const onClick = (event: MouseEvent) => {
-    const cap = (event.target as Element).closest<HTMLElement>(".key");
-    const key = cap?.dataset.key;
-    if (!key) {
-      return;
-    }
+  const type = (key: string) => {
     pressDown(key);
     const field = focusedField();
     if (field) {
       typeInto(field, key);
     } else {
       onKey(key);
+    }
+  };
+
+  const repeat = keyRepeat();
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const cap = (event.target as Element).closest<HTMLElement>(".key");
+    const key = cap?.dataset.key;
+    if (!cap || !key) {
+      return;
+    }
+    repeat.stop();
+    type(key);
+    if (!ONCE_KEYS.has(key)) {
+      repeat.hold(cap, event.pointerId, () => type(key));
+    }
+  };
+  // The pointer holding a key going up or being cancelled, wherever: on
+  // the screen, between two keys, on another panel. So it is heard on the
+  // window, where every release bubbles to.
+  const onRelease = (event: PointerEvent) => repeat.release(event.pointerId);
+  // The pointer leaving a key. A press goes to the legend inside a cap, so
+  // a leave is the cap's only when the pointer left the cap itself, not the
+  // legend for the rest of the cap. It is heard in the capture phase, since
+  // a leave does not bubble.
+  const onLeave = (event: PointerEvent) => {
+    const target = event.target as Element;
+    if (target.classList.contains("key")) {
+      repeat.leave(target, event.pointerId);
     }
   };
   // A press on a key would take focus from the field it is typing into.
@@ -172,12 +212,19 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
     onKey(event.key);
   };
 
-  keys.addEventListener("click", onClick);
+  keys.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("pointerup", onRelease);
+  window.addEventListener("pointercancel", onRelease);
+  keys.addEventListener("pointerleave", onLeave, true);
   keys.addEventListener("mousedown", onMouseDown);
   window.addEventListener("keydown", onKeyDown);
   return () => {
-    keys.removeEventListener("click", onClick);
+    keys.removeEventListener("pointerdown", onPointerDown);
+    window.removeEventListener("pointerup", onRelease);
+    window.removeEventListener("pointercancel", onRelease);
+    keys.removeEventListener("pointerleave", onLeave, true);
     keys.removeEventListener("mousedown", onMouseDown);
+    repeat.stop();
     window.removeEventListener("keydown", onKeyDown);
     timers.forEach((timer) => clearTimeout(timer));
     keys.replaceChildren();

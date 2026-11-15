@@ -75,9 +75,9 @@ click, not once when the menu opens.
 ## Keyboard
 
 The system keyboard cannot reach a panel either: it is not even the browser's, it is the
-compositor's. `keyboard(props)` is a clickable one with a phone's layout, which is the right one for
-a board you point at: four rows, no function row, no arrows, no chording modifiers, every key either
-typing or changing what the board types next.
+compositor's. `keyboard(props)` is one you press with a pointer, with a phone's layout, which is the
+right one for a board you point at: four rows, no function row, no arrows, no chording modifiers,
+every key either typing or changing what the board types next.
 
 ```js
 import { keyboard } from "justdom-three-ui";
@@ -101,6 +101,7 @@ keyboard({
 | `layout`        | The one layout the board always shows, as an array of rows of `KeyboardKey`. `MOBILE_LAYOUT` by default, or whichever of `MOBILE_LAYOUT` and `numericLayout` the field asks for when `field` is given. |
 | `field`         | A getter of the field being typed into, read reactively. The `field` on the target `justdom-three` hands a board's factory is exactly this. Ignored when `layout` is given.                            |
 | `numericLayout` | What a numeric field gets. `NUMERIC_LAYOUT` by default.                                                                                                                                                |
+| `repeat`        | How a held key repeats: `{ delay, interval }` in ms, `KEY_REPEAT_DELAY` (500) and `KEY_REPEAT_INTERVAL` (50) by default. `false` turns repeat off.                                                     |
 
 A `KeyPress` is shaped like the `KeyboardEvent` it stands in for: `key`, `code`, `shiftKey`,
 `ctrlKey`, `altKey`, `metaKey`, plus `capsLock` and `fnKey`. `code` is the physical key, `"KeyA"`,
@@ -108,6 +109,17 @@ A `KeyPress` is shaped like the `KeyboardEvent` it stands in for: `key`, `code`,
 lights a key up reaches for; it names the position, not the face, so a key showing its symbols face
 still reports the code it was built with.
 
+- A key types as it goes down, at its `pointerdown`, which is the trigger closing on it in a
+  headset, and not at the click after the release, as a real key types under the finger. Held, it
+  types the same press again after `delay` and every `interval` after that, until the pointer lets
+  go, is cancelled or leaves the key. One key repeats at a time, the one pressed last. `enter` and
+  `esc` type once, as does any key whose `KeyboardKey` says `repeat: false`; a modifier changes
+  state as it goes down and never repeats. Only the primary button presses a key.
+- `keyRepeat(options)` is the repeat on its own, for a board of your own:
+  `hold(element, pointerId, type)` as a key types, `release(pointerId)` on that pointer's
+  `pointerup` and `pointercancel` wherever they arrive, `leave(element, pointerId)` on its
+  `pointerleave` of the key, `leave(element)` as the key is unmounted, and `stop()` before the next
+  key types or as the board goes. The desk's keyboard in `apps/desk` is built on it.
 - Digits and punctuation live behind the `?123` key, as on a phone: pressing it turns every key's
   symbols face, and `ABC` on the same key reads the way back. The view is sticky, unlike shift.
   Shift flips each view's faces and stays one-shot, released by the key it modified. Between the two

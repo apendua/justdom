@@ -115,8 +115,8 @@ the machine it is plugged into. A button that fails says why on the control pane
 
 ## What you can do
 
-- Type on your own keyboard, or click the keys. The monitor takes commands at its prompt; `HELP`
-  lists them.
+- Type on your own keyboard, or press the keys. A key types as it goes down and repeats while it is
+  held, except Enter and the modifiers. The monitor takes commands at its prompt; `HELP` lists them.
 - Drag a floppy, cassette or cartridge onto the drive, deck or slot under the screen to load what is
   on it.
 - Change the screen's colour from the phosphor control: the PHOSPHOR or AMBER button under the
@@ -171,16 +171,18 @@ How it draws (`src/texture/Scene.ts`):
 How input reaches the DOM (`src/texture/forwarding.ts`): a ray on a panel lands at a UV, which is a
 point of the desk in client px. The page is asked which element is there by a walk over the zone's
 boxes (`elementAt`), not by `elementFromPoint`, which answers only for points inside the window.
-Each hand then sends that element the events a mouse would: `pointerover`/`pointerout` and
-`pointermove` as the ray moves, `pointerdown`/`mousedown` and `pointerup`/`mouseup` and `click` for
-the trigger, and for a `draggable` element moved 4 px with the trigger held, `dragstart`,
-`dragenter`, `dragover`, `dragleave`, `drop` and `dragend` across any panel. So the desk's handlers
-run unchanged, and the floppy dragged from its panel onto the monitor's loads. A press focuses the
-nearest focusable element, as a real one does, unless `mousedown` was cancelled. `:hover` and
-`:active` cannot be set by a script, so the elements under the ray carry `data-xr-hover` and the
-pressed ones `data-xr-active`, as the mirror marks them. The looks write `:hover` and `:active`
-alone, which a portal rewrites to answer the flags while a panel watches the page's styles. No panel
-watches in texture mode, so the session turns the rewrite on with `followUserActions()` from
+Each hand then sends that element the events a mouse would: `pointerover`/`pointerout`, the
+`pointerenter`/`pointerleave` of each element the ray enters or leaves, and `pointermove` as the ray
+moves, `pointerdown`/`mousedown` and `pointerup`/`mouseup` and `click` for the trigger (a
+`pointercancel` to the pressed element when the trigger opens with the ray off the panel), and for a
+`draggable` element moved 4 px with the trigger held, `dragstart`, `dragenter`, `dragover`,
+`dragleave`, `drop` and `dragend` across any panel. So the desk's handlers run unchanged, and the
+floppy dragged from its panel onto the monitor's loads. A press focuses the nearest focusable
+element, as a real one does, unless `mousedown` was cancelled. `:hover` and `:active` cannot be set
+by a script, so the elements under the ray carry `data-xr-hover` and the pressed ones
+`data-xr-active`, as the mirror marks them. The looks write `:hover` and `:active` alone, which a
+portal rewrites to answer the flags while a panel watches the page's styles. No panel watches in
+texture mode, so the session turns the rewrite on with `followUserActions()` from
 `justdom-three/page`.
 
 What it does not do that the mirror does:

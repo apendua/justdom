@@ -1,6 +1,29 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { typeIntoInput } from "justdom-three";
 import { mountKeyboard } from "./keyboard.js";
+import { createPointerForwarder } from "./texture/forwarding.js";
+import { standInForPointerEvent } from "./test/pointerEvent.js";
+
+beforeAll(standInForPointerEvent);
+
+/** A pointer going down on an element, as a ray's trigger closing on it sends it. */
+function down(element: Element, init: PointerEventInit = {}) {
+  element.dispatchEvent(
+    new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 0, ...init }),
+  );
+}
+
+/** The pointer's release, cancel or leave on an element. */
+function up(element: Element, type = "pointerup", pointerId = 2) {
+  element.dispatchEvent(new PointerEvent(type, { bubbles: type !== "pointerleave", pointerId }));
+}
+
+/** A key pressed and let go, and the click that follows. */
+function tap(element: HTMLElement) {
+  down(element);
+  up(element);
+  element.click();
+}
 
 function board() {
   document.body.innerHTML = `<div data-keys></div><input id="field" />`;
@@ -24,18 +47,114 @@ describe("mountKeyboard", () => {
     expect(keys.querySelector('[data-key="q"]')!.textContent).toBe("Q");
   });
 
-  it("types a clicked key, and holds it down for a moment", () => {
+  it("types a pressed key, and holds it down for a moment", () => {
     vi.useFakeTimers();
     const keys = board();
     const onKey = vi.fn();
     dispose = mountKeyboard(keys, { onKey });
     const q = keys.querySelector<HTMLElement>('[data-key="q"] .cap')!;
-    q.click();
-    expect(onKey).toHaveBeenCalledWith("q");
+    tap(q);
+    expect(onKey.mock.calls).toEqual([["q"]]);
     const cap = q.parentElement!;
     expect(cap.hasAttribute("data-down")).toBe(true);
     vi.advanceTimersByTime(200);
     expect(cap.hasAttribute("data-down")).toBe(false);
+  });
+
+  it("types a key as the pointer goes down, and again while it is held", () => {
+    vi.useFakeTimers();
+    const keys = board();
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const cap = keys.querySelector<HTMLElement>('[data-key="Backspace"]')!;
+    down(cap.querySelector(".cap")!);
+    expect(onKey.mock.calls).toEqual([["Backspace"]]);
+    vi.advanceTimersByTime(499);
+    expect(onKey).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(101);
+    expect(onKey).toHaveBeenCalledTimes(4);
+    expect(cap.hasAttribute("data-down"), "down while it repeats").toBe(true);
+    up(cap.querySelector(".cap")!);
+    vi.advanceTimersByTime(1000);
+    expect(onKey).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops repeating when the pointer leaves the key, not its legend", () => {
+    vi.useFakeTimers();
+    const keys = board();
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const cap = keys.querySelector<HTMLElement>('[data-key="x"]')!;
+    down(cap.querySelector(".cap")!);
+    up(cap.querySelector(".cap")!, "pointerleave");
+    vi.advanceTimersByTime(500);
+    expect(onKey).toHaveBeenCalledTimes(2);
+    up(cap, "pointerleave");
+    vi.advanceTimersByTime(1000);
+    expect(onKey).toHaveBeenCalledTimes(2);
+  });
+
+  it("types Enter and the modifiers once, however long they are held", () => {
+    vi.useFakeTimers();
+    const keys = board();
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    for (const key of ["Enter", "Shift", "CapsLock"]) {
+      down(keys.querySelector(`[data-key="${key}"]`)!);
+      vi.advanceTimersByTime(1000);
+    }
+    expect(onKey.mock.calls).toEqual([["Enter"], ["Shift"], ["CapsLock"]]);
+  });
+
+  it("stops repeating when it is disposed of", () => {
+    vi.useFakeTimers();
+    const keys = board();
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    down(keys.querySelector('[data-key="z"]')!);
+    dispose();
+    dispose = () => {};
+    vi.advanceTimersByTime(1000);
+    expect(onKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops repeating however a texture panel's ray lets go of the key", () => {
+    // Through the forwarder a ray on a texture panel sends, rather than by
+    // hand: off the key onto the screen, onto the gap between two keys, and
+    // off the panel, the trigger opening each time.
+    vi.useFakeTimers();
+    document.body.innerHTML = `<div class="desk"><div class="screen"></div><div data-keys></div></div>`;
+    const desk = document.querySelector<HTMLElement>(".desk")!;
+    const keys = desk.querySelector<HTMLElement>("[data-keys]")!;
+    const onKey = vi.fn();
+    dispose = mountKeyboard(keys, { onKey });
+    const box = (element: Element, left: number, top: number, width: number, height: number) => {
+      element.getBoundingClientRect = () => new DOMRect(left, top, width, height);
+    };
+    box(desk, 0, 0, 400, 200);
+    box(desk.querySelector(".screen")!, 0, 0, 400, 100);
+    box(keys, 0, 100, 400, 100);
+    for (const element of keys.querySelectorAll("*")) {
+      box(element, 0, 0, 0, 0);
+    }
+    const q = keys.querySelector('[data-key="q"]')!;
+    box(q.parentElement!, 0, 100, 400, 20);
+    box(q, 30, 100, 20, 20);
+    box(q.querySelector(".cap")!, 32, 102, 16, 16);
+    const at = (clientX: number, clientY: number) => ({ panel: desk, clientX, clientY });
+    for (const away of [at(100, 50), at(55, 110), null]) {
+      onKey.mockClear();
+      const hand = createPointerForwarder({ pointerId: 2 });
+      hand.move(at(40, 110));
+      hand.press();
+      vi.advanceTimersByTime(600);
+      expect(onKey).toHaveBeenCalledTimes(4);
+      hand.move(away);
+      hand.release();
+      onKey.mockClear();
+      vi.advanceTimersByTime(2000);
+      expect(onKey, `ray at ${JSON.stringify(away)}`).not.toHaveBeenCalled();
+    }
   });
 
   it("types a real key and presses its cap", () => {
@@ -69,10 +188,10 @@ describe("mountKeyboard", () => {
     field.focus();
     const inputs = vi.fn();
     field.addEventListener("input", inputs);
-    keys.querySelector<HTMLElement>('[data-key="a"]')!.click();
-    keys.querySelector<HTMLElement>('[data-key=" "]')!.click();
-    keys.querySelector<HTMLElement>('[data-key="b"]')!.click();
-    keys.querySelector<HTMLElement>('[data-key="Backspace"]')!.click();
+    tap(keys.querySelector<HTMLElement>('[data-key="a"]')!);
+    tap(keys.querySelector<HTMLElement>('[data-key=" "]')!);
+    tap(keys.querySelector<HTMLElement>('[data-key="b"]')!);
+    tap(keys.querySelector<HTMLElement>('[data-key="Backspace"]')!);
     expect(field.value).toBe("a ");
     expect(inputs).toHaveBeenCalledTimes(4);
     // A real key in a field is the browser's to type, and the cap goes down
@@ -92,7 +211,7 @@ describe("mountKeyboard", () => {
     const box = document.querySelector<HTMLInputElement>("#box")!;
     box.focus();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
-    keys.querySelector<HTMLElement>('[data-key="e"]')!.click();
+    tap(keys.querySelector<HTMLElement>('[data-key="e"]')!);
     expect(onKey.mock.calls).toEqual([["h"], ["e"]]);
     expect(box.value).toBe("on");
   });

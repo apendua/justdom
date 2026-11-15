@@ -3,7 +3,14 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
-import { followMouse, MIN_REACH, mouse, renderPointer, WHEEL_METRES_PER_PIXEL } from "./mouse.js";
+import {
+  followMouse,
+  KEY_PROBE_FRAMES,
+  MIN_REACH,
+  mouse,
+  renderPointer,
+  WHEEL_METRES_PER_PIXEL,
+} from "./mouse.js";
 import { mountScene } from "./render.js";
 import { CameraContext, RendererContext, runFrame } from "./scene.js";
 import { addToParent } from "./operators.js";
@@ -387,6 +394,97 @@ const PER_PIXEL = THREE.MathUtils.degToRad(50) / 100;
 function heading(camera) {
   return new THREE.Euler().setFromQuaternion(camera.quaternion, "YXZ");
 }
+
+describe("a finger on a key", () => {
+  /** @type {HTMLElement} */
+  let canvas;
+  /** @type {HTMLElement} */
+  let view;
+  /** @type {ReturnType<typeof pointedAt>} */
+  let at;
+  /** Whether `pointsAtKey` says the ray is on a key. */
+  let onKey = true;
+  /** @type {FrameRequestCallback[]} */
+  let frameQueue = [];
+  const { requestAnimationFrame: raf, cancelAnimationFrame: caf } = globalThis;
+
+  /** @param {number} count */
+  const frames = (count) => {
+    for (let i = 0; i < count; i += 1) {
+      const due = frameQueue;
+      frameQueue = [];
+      for (const callback of due) {
+        callback(0);
+      }
+    }
+  };
+
+  beforeEach(() => {
+    mock.timers.enable({ apis: ["setTimeout"] });
+    frameQueue = [];
+    onKey = true;
+    globalThis.requestAnimationFrame = (callback) => frameQueue.push(callback);
+    globalThis.cancelAnimationFrame = (id) => {
+      frameQueue[id - 1] = () => {};
+    };
+    canvas = pageCanvas();
+    // The test's document captures only the mouse's pointer.
+    canvas.setPointerCapture = () => {};
+    view = document.createElement("div");
+    view.append(canvas);
+    at = pointedAt(canvas, view, { pointsAtKey: () => onKey });
+  });
+
+  afterEach(() => {
+    at.stop();
+    mock.timers.reset();
+    globalThis.requestAnimationFrame = raf;
+    globalThis.cancelAnimationFrame = caf;
+  });
+
+  test("presses the trigger once the ray has had the frames to reach the key", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    frames(KEY_PROBE_FRAMES - 1);
+    assert.deepEqual(at.events, []);
+    frames(1);
+    assert.deepEqual(at.events, ["selectstart"]);
+  });
+
+  test("holds it past the hold, which is no grip on a key, until the finger lifts", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    frames(KEY_PROBE_FRAMES);
+    mock.timers.tick(2 * HOLD_MS);
+    assert.deepEqual(at.events, ["selectstart"]);
+    canvas.dispatchEvent(finger("pointerup"));
+    assert.deepEqual(at.events, ["selectstart", "select"]);
+  });
+
+  test("is a tap when it lifts before the frames are up", () => {
+    canvas.dispatchEvent(finger("pointerdown"));
+    canvas.dispatchEvent(finger("pointerup"));
+    frames(KEY_PROBE_FRAMES);
+    assert.deepEqual(at.events, ["selectstart", "select"]);
+  });
+
+  test("leaves a finger that is on no key to the tap, the drag and the hold", () => {
+    onKey = false;
+    canvas.dispatchEvent(finger("pointerdown"));
+    frames(KEY_PROBE_FRAMES);
+    assert.deepEqual(at.events, []);
+    mock.timers.tick(HOLD_MS);
+    assert.deepEqual(at.events, ["squeezestart"]);
+    canvas.dispatchEvent(finger("pointerup"));
+  });
+
+  test("leaves a finger that has started a zoom", () => {
+    canvas.dispatchEvent(finger("pointerdown", 40, 50, 1));
+    canvas.dispatchEvent(finger("pointerdown", 60, 50, 2));
+    frames(KEY_PROBE_FRAMES);
+    assert.deepEqual(at.events, []);
+    canvas.dispatchEvent(finger("pointerup", 60, 50, 2));
+    canvas.dispatchEvent(finger("pointerup", 40, 50, 1));
+  });
+});
 
 describe("a finger, with touch: false", () => {
   /** @type {HTMLElement} */

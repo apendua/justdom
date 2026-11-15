@@ -1,5 +1,6 @@
 import { $, attr, children, on, renderText, set, style, text } from "justdom-core";
 import { Derived, flatMap, observable, onCleanup, Signal } from "justdom-signal";
+import { KEY_ATTRIBUTE } from "justdom-three/page";
 import { keyRepeat } from "./keyRepeat.js";
 
 /**
@@ -386,7 +387,10 @@ export function isNumericField(field) {
  * the release would type a beat behind the hand. Held down, it types again
  * after `repeat.delay` and every `repeat.interval` after that, until it is
  * let go or the ray leaves it; see `keyRepeat` for the whole of the rule.
- * Only the primary button presses a key, as only it clicks one.
+ * Only the primary button presses a key, as only it clicks one. Every key
+ * carries `KEY_ATTRIBUTE`, so a finger on a phone presses it as it lands
+ * and holds it until it lifts, and it types and repeats there as it does
+ * under a hand.
  *
  * Shift, ctrl, alt, meta and fn are one-shot: engaged by a press, reported on
  * the next key that types, and released. Nobody chords on a board they have to
@@ -558,6 +562,9 @@ export function keyboard(props) {
       flex,
       attr("role", () => "button"),
       attr("data-code", () => entry.code),
+      // A finger on a touch screen presses it as it lands, as it would a
+      // phone's key, rather than waiting to see if it is a tap.
+      attr(KEY_ATTRIBUTE, () => ""),
       attr("aria-label", () => nameOf(entry)),
       on("pointerdown", (event) => pressDown(entry, event)),
       children(text`${() => labelOf(entry)}`),

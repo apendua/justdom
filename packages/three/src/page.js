@@ -13,7 +13,9 @@ export {
   ACTIVE_ATTRIBUTE,
   FOCUS_ATTRIBUTE,
   HOVER_ATTRIBUTE,
+  KEY_ATTRIBUTE,
   getPortalRoot,
+  isRayOnKey,
 } from "./elements/portal/portalRoot.js";
 export { followUserActions } from "./elements/css/documentStyles.js";
 export { scrollElementBy } from "./elements/renderingUpdates.js";

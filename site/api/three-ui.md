@@ -114,7 +114,9 @@ still reports the code it was built with.
   types the same press again after `delay` and every `interval` after that, until the pointer lets
   go, is cancelled or leaves the key. One key repeats at a time, the one pressed last. `enter` and
   `esc` type once, as does any key whose `KeyboardKey` says `repeat: false`; a modifier changes
-  state as it goes down and never repeats. Only the primary button presses a key.
+  state as it goes down and never repeats. Only the primary button presses a key. Every key carries
+  `KEY_ATTRIBUTE` from `justdom-three`, so a finger on a phone, in pointer mode or under `?touch`,
+  presses a key as it lands and holds it until it lifts, rather than tapping it on the lift.
 - `keyRepeat(options)` is the repeat on its own, for a board of your own:
   `hold(element, pointerId, type)` as a key types, `release(pointerId)` on that pointer's
   `pointerup` and `pointercancel` wherever they arrive, `leave(element, pointerId)` on its

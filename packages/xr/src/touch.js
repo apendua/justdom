@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "justdom-three/limits";
+import { isRayOnKey } from "justdom-three/page";
 
 // The page's pointer and the touch layer go by the same limits: how far up
 // or down a drag tips the view, how far a finger may wander and still tap,
@@ -296,7 +297,9 @@ const afterStep = (then) => {
  * `?touch`: a drag turns the head, a tap points the right controller
  * through the tapped spot and pulls its trigger, a finger held still for
  * `HOLD_MS` and then moved drags with the trigger from where it landed,
- * and one held and lifted without moving is a press of the grip. Two
+ * and one held and lifted without moving is a press of the grip. A finger
+ * that lands on a key (`KEY_ATTRIBUTE` in `justdom-three`) holds the
+ * trigger on it from a step after it lands until it lifts. Two
  * fingers pinch the view in and out. The app's
  * `buttons` go along the bottom, **Tilt**, in the top right corner, turns
  * the head with the phone as well (`Look`), and **Exit**, in the top left,
@@ -317,11 +320,18 @@ const afterStep = (then) => {
  *   pinch during a drag cannot move the dragged thing, as the page's
  *   pointer does, since the thing hangs off the controller and only moving
  *   the controller into the view would move it.
- * - A hold aims the right controller through the point the finger landed
- *   on, from just behind the eye, and presses nothing yet. The ray rests
- *   there, whatever the finger does within `SLOP_PX`, so a small target
- *   under it stays under it; a tilt keeps the ray on that point of the
- *   screen.
+ * - A finger that lands aims the right controller through the point it
+ *   landed on, from just behind the eye, and presses nothing yet. The ray
+ *   rests there while the finger is undecided and while it is a hold,
+ *   whatever the finger does within `SLOP_PX`, so a small target under it
+ *   stays under it; a tilt keeps the ray on that point of the screen. The
+ *   finger becoming a look or a pinch lets go of the aim, and the
+ *   controller parks at once.
+ * - A step after it lands, a finger still undecided whose ray is on a key
+ *   (`isRayOnKey`) is a drag at once: the trigger goes down a step later
+ *   where the ray rests, as a phone's keyboard takes a finger, and comes up
+ *   as the finger lifts. It is never a look, a hold or a long press, so a
+ *   key held still stays held. A finger lifted before then is a tap.
  * - A hold whose finger then gets more than `SLOP_PX` from where it
  *   landed is a drag: a step later the trigger goes down where the ray
  *   rests, and from the step after, the ray follows the finger until it
@@ -343,8 +353,10 @@ const afterStep = (then) => {
  *   pixel, follow the field of view, so they work the same at any zoom.
  * - A look never presses anything, a hold and a drag never turn the head,
  *   and a pinch does neither.
- * - A tap or a hold that starts while the controller is still busy with
- *   the last press is dropped, not queued.
+ * - A tap's trigger goes down a step after the lift, where the ray rests,
+ *   and comes up a step after that.
+ * - A finger that lands while the controller is still busy with the last
+ *   press aims nothing, and its tap, hold and key are dropped, not queued.
  * - The session ending hides the layer, lets go of whatever the controller
  *   holds and parks it at once, forgets the fingers, and zooms back out to
  *   the headset's own field of view.
@@ -480,30 +492,8 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     });
 
   /**
-   * @param {number} x
-   * @param {number} y
-   */
-  const tap = (x, y) => {
-    const controller = headset.controllers.right;
-    if (press || !controller) {
-      return;
-    }
-    /** @type {Press} */
-    const run = { button: "trigger", held: false, lifted: true };
-    press = run;
-    aimThrough(x, y);
-    step(run, () => {
-      controller.updateButtonValue("trigger", 1);
-      step(run, () => {
-        controller.updateButtonValue("trigger", 0);
-        done(run);
-      });
-    });
-  };
-
-  /**
-   * Aim the right controller through (`x`, `y`) for a hold, with no button
-   * chosen yet, unless it is busy.
+   * Aim the right controller through (`x`, `y`) for a finger that has
+   * landed, with no button chosen yet, unless it is busy.
    *
    * @param {number} x
    * @param {number} y
@@ -573,6 +563,21 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     }
   };
 
+  /**
+   * The finger is a look or a pinch, which press nothing: the aim it took
+   * as it landed is let go of, and the controller parks at once, free for
+   * the next finger, since nothing went down that the app must see come up.
+   *
+   * @param {Finger} on
+   */
+  const unaim = (on) => {
+    if (on.press && on.press === press) {
+      press = null;
+      park();
+    }
+    on.press = null;
+  };
+
   /** @param {Press} run */
   const release = (run) => {
     if (press === run && run.button) {
@@ -611,6 +616,7 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     if (finger) {
       if (!pinch && (finger.kind === "undecided" || finger.kind === "look")) {
         clearTimeout(finger.timer);
+        unaim(finger);
         finger.kind = "pinch";
         const { clientX: x, clientY: y } = event;
         pinch = { id: event.pointerId, x, y, spread: Math.hypot(x - finger.x, y - finger.y) };
@@ -626,15 +632,25 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
       kind: "undecided",
       press: null,
     });
+    landed.press = hold(landed.landed.x, landed.landed.y);
     landed.timer = setTimeout(() => {
       if (finger === landed && landed.kind === "undecided") {
         landed.kind = "hold";
-        landed.press = hold(landed.landed.x, landed.landed.y);
         if (landed.press) {
           navigator.vibrate?.(HOLD_BUZZ_MS);
         }
       }
     }, HOLD_MS);
+    if (landed.press) {
+      const run = landed.press;
+      step(run, () => {
+        if (finger === landed && landed.kind === "undecided" && isRayOnKey()) {
+          clearTimeout(landed.timer);
+          landed.kind = "drag";
+          pressDown(run, "trigger");
+        }
+      });
+    }
     finger = landed;
     layer.setPointerCapture(event.pointerId);
   });
@@ -662,6 +678,7 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     if (finger.kind === "undecided" && away) {
       finger.kind = "look";
       clearTimeout(finger.timer);
+      unaim(finger);
     } else if (finger.kind === "hold" && away) {
       finger.kind = "drag";
       if (finger.press === press && finger.press) {
@@ -693,7 +710,11 @@ export function installTouch(headset, { buttons = [], pitch } = {}) {
     }
     clearTimeout(finger.timer);
     if (finger.kind === "undecided" && event.type === "pointerup") {
-      tap(event.clientX, event.clientY);
+      // A tap: the trigger, down and up where the ray rests.
+      if (finger.press && finger.press === press) {
+        finger.press.lifted = true;
+        pressDown(finger.press, "trigger");
+      }
     } else if (finger.press && finger.press === press) {
       if (finger.kind === "hold" && event.type === "pointerup") {
         // A long press: the grip, down and up.

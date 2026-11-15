@@ -1,3 +1,4 @@
+import { KEY_ATTRIBUTE } from "justdom-three/page";
 import { keyRepeat } from "justdom-three-ui";
 
 /**
@@ -118,6 +119,8 @@ export function mountKeyboard(keys: HTMLElement, { onKey }: KeyboardOptions) {
       const cap = document.createElement("div");
       cap.className = `key ${classes}`.trim();
       cap.dataset.key = key;
+      // A finger on a touch screen presses it as it lands (`?touch`).
+      cap.setAttribute(KEY_ATTRIBUTE, "");
       const label = document.createElement("span");
       label.className = "cap";
       label.textContent = legend;

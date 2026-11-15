@@ -1,10 +1,13 @@
 /**
  * The attribute a portal marks its container element with. It lives here,
- * in a module that imports nothing, so that everything that needs to know
+ * in a module that imports nothing but `flags.js`, which imports nothing,
+ * so that everything that needs to know
  * where a portal's tree ends, the mirror's ancestor walks and
  * `getPortalRoot` on a page that has no scene, can share it, and so that
  * the page's side of it does not bring three.js along (see `page.js`).
  */
+import { HOVER_ATTRIBUTE } from "../../flags.js";
+
 export const PORTAL_ATTRIBUTE = "data-xr-portal";
 
 /*
@@ -14,11 +17,11 @@ export const PORTAL_ATTRIBUTE = "data-xr-portal";
  * `mirror/mutationRules.js`) and every writer take the names from here.
  */
 
-/**
- * Set on every control a hand's pointer is over, for a stylesheet to answer
- * as it would `:hover`. See `pointerForwarding.js`.
- */
-export const HOVER_ATTRIBUTE = "data-xr-hover";
+// The hover flag, and the key a finger presses as it lands, live in
+// `flags.js` under the scene, since the mouse in `mouse.js` asks whether a
+// finger's ray is on a key, and the scene's layer imports nothing of a
+// panel's. They are here as well, with the other flags.
+export { HOVER_ATTRIBUTE, KEY_ATTRIBUTE, isRayOnKey } from "../../flags.js";
 
 /**
  * Set on every control a hand is pressing, as `:active`.

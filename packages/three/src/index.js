@@ -44,7 +44,9 @@ export {
   ACTIVE_ATTRIBUTE,
   FOCUS_ATTRIBUTE,
   HOVER_ATTRIBUTE,
+  KEY_ATTRIBUTE,
   getPortalRoot,
+  isRayOnKey,
 } from "./elements/portal/portalRoot.js";
 export { isTextInput, typeIntoInput } from "./elements/input/typing.js";
 export { PREVIEW_ATTRIBUTE } from "./elements/input/keyboardPreview.js";

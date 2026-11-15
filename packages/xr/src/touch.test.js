@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { setupJsdom } from "@apendua/jsdom-env";
 import * as THREE from "three";
+import { HOVER_ATTRIBUTE, KEY_ATTRIBUTE } from "justdom-three/page";
 import {
   HOLD_BUZZ_MS,
   HOLD_MS,
@@ -614,16 +615,27 @@ describe("installTouch", () => {
       delete (/** @type {any} */ (navigator).vibrate);
     });
 
-    it("waits for the finger to stay still, then aims and presses nothing", () => {
+    it("aims where it lands, and presses nothing while it stays still", () => {
       finger("pointerdown", 200, 400);
+      assert.ok(!rightParked());
+      near(rightRay().y, 0);
       mock.timers.tick(HOLD_MS - 1);
       frames(STEP_FRAMES);
-      assert.ok(rightParked());
       mock.timers.tick(1);
-      assert.ok(!rightParked());
       near(rightRay().y, 0);
       frames(4 * STEP_FRAMES);
       assert.deepEqual(headset.controllers.right.buttons, []);
+      assert.ok(!rightParked());
+    });
+
+    it("parks the aim it took as it landed once the finger looks", () => {
+      finger("pointerdown", 200, 400);
+      assert.ok(!rightParked());
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
+      assert.ok(rightParked());
+      // Free at once for the next finger.
+      finger("pointerup", 200 + 2 * SLOP_PX, 400);
+      finger("pointerdown", 200, 400);
       assert.ok(!rightParked());
     });
 
@@ -705,6 +717,76 @@ describe("installTouch", () => {
       finger("pointerup", 200, 400);
       frames(3 * STEP_FRAMES);
       assert.equal(headset.controllers.right.buttons.length, 2);
+    });
+  });
+
+  describe("a finger on a key", () => {
+    /** @type {HTMLElement} */
+    let key;
+
+    beforeEach(async () => {
+      install({ pitch: 0 });
+      await startSession();
+      // What a panel's forwarder writes on a key once the ray is on it.
+      key = document.createElement("div");
+      key.setAttribute(KEY_ATTRIBUTE, "");
+      key.setAttribute(HOVER_ATTRIBUTE, "");
+      document.body.append(key);
+    });
+
+    afterEach(() => {
+      key.remove();
+    });
+
+    it("holds the trigger from a step after it lands until it lifts, and is never a grip", () => {
+      /** @type {unknown[]} */
+      const buzzes = [];
+      Object.defineProperty(navigator, "vibrate", {
+        configurable: true,
+        value: (/** @type {number} */ ms) => buzzes.push(ms),
+      });
+      finger("pointerdown", 200, 400);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+      mock.timers.tick(2 * HOLD_MS);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"], "held, not a grip");
+      assert.deepEqual(buzzes, [], "and no long press's buzz");
+      finger("pointerup", 200, 400);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+      frames(STEP_FRAMES);
+      assert.ok(rightParked());
+      delete (/** @type {any} */ (navigator).vibrate);
+    });
+
+    it("is a tap when it lifts before the step", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+    });
+
+    it("drags the ray with the finger and never turns the head", () => {
+      finger("pointerdown", 200, 400);
+      frames(3 * STEP_FRAMES);
+      const ahead = headAhead();
+      finger("pointermove", 200, 400 - 4 * SLOP_PX);
+      near(headAhead().y, ahead.y);
+      assert.ok(rightRay().y > 0.01, "the ray follows the finger up");
+      finger("pointerup", 200, 400 - 4 * SLOP_PX);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+    });
+
+    it("is not a key when the ray is on none", () => {
+      key.removeAttribute(HOVER_ATTRIBUTE);
+      finger("pointerdown", 200, 400);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      finger("pointerup", 200, 400);
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"], "a tap");
     });
   });
 

@@ -47,7 +47,8 @@ export default defineConfig({
         // `?emulator` and `touch` only behind `?touch`; a headset fetches
         // them when it first asks. `touch` imports three.js too, which
         // splits three's core into a chunk the two share, and the limits
-        // it shares with `justdom-three`'s pointer into another.
+        // it shares with `justdom-three`'s pointer into another, and the
+        // hover and key flags it shares with the panels into a third.
         globIgnores: [
           "**/xr-*.js",
           "**/three.module-*.js",
@@ -55,6 +56,7 @@ export default defineConfig({
           "**/emulator-*.js",
           "**/touch-*.js",
           "**/limits-*.js",
+          "**/flags-*.js",
         ],
       },
     }),

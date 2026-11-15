@@ -139,9 +139,11 @@ the key does. An app whose every control is a panel or a thing in the scene pass
 
 The touch layer imports three.js, which splits three's core into a chunk of its own,
 `three.core-<hash>.js`, shared with the scene's chunk, and `justdom-three/limits`, which lands in a
-small `limits-<hash>.js` chunk the same way. A service worker that precaches the app should leave
-all three out with the emulator's: `minesweeper` and `todo` add `"**/touch-*.js"`,
-`"**/three.core-*.js"` and `"**/limits-*.js"` to their `globIgnores`.
+small `limits-<hash>.js` chunk the same way. It also reads `isRayOnKey` from `justdom-three/page`,
+whose flags can land in a `flags-<hash>.js` chunk shared with the scene's. A service worker that
+precaches the app should leave these out with the emulator's: `minesweeper` and `todo` add
+`"**/touch-*.js"`, `"**/three.core-*.js"` and `"**/limits-*.js"` to their `globIgnores`, and
+`minesweeper`, whose build splits the flags off, adds `"**/flags-*.js"` too.
 
 ## `justdom-xr/offer`
 

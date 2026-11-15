@@ -2,6 +2,40 @@
   "name": "justdom-core",
   "entries": [
     {
+      "version": "0.8.0",
+      "tag": "justdom-core_v0.8.0",
+      "date": "Sun, 15 Nov 2026 10:04:51 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "children() mounts its children straight into an empty element, with no DocumentFragment and no comments around them; a Mountable may offer insert(parent, before) beside replace. Server markup changes: HTML rendered by 0.7 is rebuilt by this client, with a mismatch warning, rather than adopted, so render and hydrate with the same version."
+          },
+          {
+            "comment": "children() and the lists mount a child made by $() or $$() without subscribing to it: they make the element, mount its effects on it and insert it. What $() and $$() answer with offers createNode() and mountNode() beside subscribe, typed as NodeSource. The element, its effects and where a failure goes are unchanged."
+          }
+        ],
+        "patch": [
+          {
+            "comment": "An element that was empty when its children mounted no longer keeps the sources that described them, and keeps less for the children it mounted: an object, a function and two arrays of the children's length, in place of two arrays with room for seventeen, four closures and a segment per child. A row of eight elements holds about 3 kB less."
+          },
+          {
+            "comment": "Unmounting a subtree removes its root and nothing below it. A list item or a child that leaves used to take one removeChild per node, from the leaves up. The nodes under a removed root now stay attached to each other, so a node of your own that was mounted in a subtree keeps its children and its parent after the subtree is unmounted."
+          },
+          {
+            "comment": "A list item of several nodes, such as a nested list, leaves without throwing \"Invalid segment\" and keeps the order of its nodes when it moves. A list whose item fails after it was mounted is taken down without throwing, and so is an element with two children() on it."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `^1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.6`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.7.0",
       "tag": "justdom-core_v0.7.0",
       "date": "Wed, 11 Nov 2026 23:41:15 GMT",

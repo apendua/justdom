@@ -2,6 +2,46 @@
   "name": "justdom-three-ui",
   "entries": [
     {
+      "version": "0.6.0",
+      "tag": "justdom-three-ui_v0.6.0",
+      "date": "Sun, 15 Nov 2026 10:04:51 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "The scrollbar's thumb stays inside its track while a phone's elastic overscroll takes scrollTop past either end"
+          }
+        ],
+        "minor": [
+          {
+            "comment": "keyboard types a key at its pointerdown and repeats it while held; adds keyRepeat, the repeat prop and KeyboardKey.repeat"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.8.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.35.2`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.6`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-core\" to `^0.8.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `^1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.35.2`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.5.1",
       "tag": "justdom-three-ui_v0.5.1",
       "date": "Thu, 12 Nov 2026 13:53:02 GMT",

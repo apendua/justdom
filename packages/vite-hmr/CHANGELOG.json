@@ -2,6 +2,18 @@
   "name": "justdom-vite-hmr",
   "entries": [
     {
+      "version": "0.5.6",
+      "tag": "justdom-vite-hmr_v0.5.6",
+      "date": "Sun, 15 Nov 2026 10:04:51 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `^1.4.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.5.5",
       "tag": "justdom-vite-hmr_v0.5.5",
       "date": "Tue, 10 Nov 2026 21:23:39 GMT",

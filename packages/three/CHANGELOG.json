@@ -2,6 +2,43 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.35.2",
+      "tag": "justdom-three_v0.35.2",
+      "date": "Sun, 15 Nov 2026 10:04:51 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "A press on a draggable card after a scroll on the same panel clicks again; the scroll used to swallow every later press on something draggable."
+          },
+          {
+            "comment": "A press on a list's own area after a drag and drop on the same panel clicks again."
+          }
+        ],
+        "none": [
+          {
+            "comment": "The cast and scan test no longer depends on the machine's fonts."
+          },
+          {
+            "comment": "The count gate's ceilings for mount and +1 row come down with justdom-signal's mountings."
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-core\" to `0.8.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `1.4.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-vite-hmr\" to `0.5.6`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-signal\" to `^1.4.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.35.1",
       "tag": "justdom-three_v0.35.1",
       "date": "Thu, 12 Nov 2026 13:53:02 GMT",

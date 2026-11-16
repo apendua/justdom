@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { typeIntoInput } from "justdom-three";
+import { KEY_ATTRIBUTE } from "justdom-three/page";
 import { mountKeyboard } from "./keyboard.js";
 import { createPointerForwarder } from "./texture/forwarding.js";
 import { standInForPointerEvent } from "./test/pointerEvent.js";
@@ -59,6 +60,14 @@ describe("mountKeyboard", () => {
     expect(cap.hasAttribute("data-down")).toBe(true);
     vi.advanceTimersByTime(200);
     expect(cap.hasAttribute("data-down")).toBe(false);
+  });
+
+  it("marks every cap as a key a finger presses as it lands", () => {
+    const keys = board();
+    dispose = mountKeyboard(keys, { onKey: vi.fn() });
+    const caps = keys.querySelectorAll(".key");
+    expect(caps.length).toBeGreaterThan(0);
+    expect(keys.querySelectorAll(`[${KEY_ATTRIBUTE}]`).length).toBe(caps.length);
   });
 
   it("types a key as the pointer goes down, and again while it is held", () => {

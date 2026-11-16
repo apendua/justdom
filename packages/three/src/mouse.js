@@ -4,6 +4,7 @@ import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
 import { getCamera, getXRSession, onLateFrame, RendererContext } from "./scene.js";
 import { HOLD_MS, MIN_FOVY, PITCH_LIMIT, SLOP_PX } from "./limits.js";
+import { isRayOnKey } from "./flags.js";
 
 /**
  * @import { XREventMap } from './core.js';
@@ -66,10 +67,21 @@ export const MIN_REACH = 0.2;
  * `followMouse`'s own options: the drag on nothing (`PointerOptions`), and
  * how to tell nothing from something.
  *
- * @typedef {PointerOptions & { pointsAtNothing?: () => boolean }} FollowOptions
+ * @typedef {PointerOptions & { pointsAtNothing?: () => boolean, pointsAtKey?: () => boolean }} FollowOptions
  *   `pointsAtNothing` is asked as a press of the trigger begins, with the
  *   group already aimed where it begins: true makes the drag the camera's.
+ *   `pointsAtKey` is asked `KEY_PROBE_FRAMES` frames after a finger lands,
+ *   with the group aimed where it landed since: true presses the trigger
+ *   there and then (see `KEY_ATTRIBUTE`). Left out, nothing is a key.
  */
+
+/**
+ * Frames after a finger lands before `pointsAtKey` is asked: one for the
+ * manager to cast the ray where the finger landed, which it does in the
+ * late phase of a frame, and one more so that the cast has run whichever
+ * order the frame's callbacks run in.
+ */
+export const KEY_PROBE_FRAMES = 2;
 
 /**
  * Keep `pointer` on the mouse, or on a finger: aimed from `camera` through
@@ -98,7 +110,12 @@ export const MIN_REACH = 0.2;
  * - staying within `SLOP_PX` for `HOLD_MS` makes it the grip, pressed where
  *   it landed and then dragged with the finger;
  * - lifting within `SLOP_PX` before `HOLD_MS` is a tap, the trigger pressed
- *   and let go.
+ *   and let go;
+ * - landing on a key (`pointsAtKey`, asked `KEY_PROBE_FRAMES` frames after
+ *   it lands, if it is still undecided by then) makes it the trigger at
+ *   once, pressed where it landed and dragged with the finger, as a phone's
+ *   keyboard takes a finger: the key goes down as the finger lands and
+ *   comes up as it lifts, and a key held still is held, not a grip.
  *
  * The finger's lift ends the press it made. The browser cancelling it (a
  * system gesture, a palm) ends it too, as a hand that went rather than let
@@ -307,6 +324,7 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
    *   now: { x: number, y: number },
    *   button: "select" | "squeeze" | null,
    *   hold: ReturnType<typeof setTimeout>,
+   *   probe: number,
    *   onNothing: boolean,
    *   zoomed: boolean,
    * } | null}
@@ -405,6 +423,9 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
   const lift = () => {
     if (finger) {
       clearTimeout(finger.hold);
+      if (finger.probe) {
+        cancelAnimationFrame(finger.probe);
+      }
       finger = null;
     }
     turning = null;
@@ -467,6 +488,9 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
           pinch.spread = spread();
           if (zoom) {
             clearTimeout(finger.hold);
+            if (finger.probe) {
+              cancelAnimationFrame(finger.probe);
+            }
             finger.zoomed = true;
             turning = null;
             pointer.visible = false;
@@ -479,17 +503,35 @@ export function followMouse(pointer, camera, canvas, view = window, options = {}
       }
       canvas.setPointerCapture(event.pointerId);
       aim(event);
-      finger = {
+      const landed = {
         id: event.pointerId,
         x: event.clientX,
         y: event.clientY,
         landing: event,
         now: { x: event.clientX, y: event.clientY },
-        button: null,
+        button: /** @type {"select" | "squeeze" | null} */ (null),
         hold: setTimeout(() => press("squeeze", event), HOLD_MS),
+        probe: 0,
         onNothing: false,
         zoomed: false,
       };
+      finger = landed;
+      if (options.pointsAtKey) {
+        const { pointsAtKey } = options;
+        let frames = KEY_PROBE_FRAMES;
+        const probe = () => {
+          if (finger !== landed) {
+            return;
+          }
+          if (--frames > 0) {
+            landed.probe = requestAnimationFrame(probe);
+          } else if (landed.button === null && !landed.zoomed && pointsAtKey()) {
+            // Pressed where it landed, which is where the group still points.
+            press("select", landed.landing);
+          }
+        };
+        landed.probe = requestAnimationFrame(probe);
+      }
       return;
     }
     const button = buttonOf(event);
@@ -760,6 +802,7 @@ export function mouse(ctx, options = {}) {
         .subscribe();
       const stop = followMouse(pointer, camera, renderer.domElement, window, {
         ...options,
+        pointsAtKey: () => isRayOnKey(renderer.domElement.ownerDocument),
         pointsAtNothing: () =>
           !manager.getIntersection(
             /** @type {THREE.XRTargetRaySpace} */ (/** @type {unknown} */ (pointer)),

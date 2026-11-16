@@ -66,15 +66,27 @@ then, so the page's own buttons, the one that starts the session among them, are
 always are. It learns of the session by wrapping the emulated `navigator.xr.requestSession`, so call
 it after `install` and before the page asks for a session. `offerHeadset` does both for `?touch`.
 
-A finger on the scene is undecided until it does one of four things:
+A finger on the scene aims the right controller through the pixel it landed on, from just behind the
+eye, as it lands, and presses nothing yet. It is undecided until it does one of five things:
+
+- **Key.** If, 4 frames after it lands, the ray is on a key (an element marked with `KEY_ATTRIBUTE`
+  from `justdom-three`, as every key of `justdom-three-ui`'s `keyboard` is), the finger presses the
+  trigger 4 frames later where it landed and holds it until it lifts, as a phone's keyboard takes a
+  finger. The key goes down under the finger and repeats while it is held. It is never a look or a
+  long press: a move drags the ray with the finger, and a key held still stays held.
 
 - **Look.** Moving more than 10 CSS px from where it landed turns the head: the scene follows the
   finger, by the angle the screen shows over that many pixels, and the head never tips past 1.4 rad
-  up or down. A look presses nothing.
-- **Tap.** Lifting within 10 px aims the right controller through the tapped pixel, from just behind
-  the eye, and pulls its trigger: aim, 4 frames, trigger down, 4 frames, trigger up, 4 frames, then
-  the controller is parked again. A tap that lands while the last one is still running is dropped.
-- **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) aims the right controller the same way,
+  up or down. A look presses nothing, and parks the controller at once.
+- **Tap.** Lifting within 10 px pulls the trigger where the ray rests: 4 frames, trigger down, 4
+  frames, trigger up, 4 frames, then the controller is parked again. A finger that lands while the
+  last press is still running its frames waits for the controller, behind any finger already
+  waiting, so keys typed quickly one after another all type: once it is parked, the finger aims as
+  if it had just landed if it is still on the screen and undecided, and runs its tap if it has
+  lifted as one. A look or pinch it became while it waited presses nothing. Its 400 ms toward a hold
+  count from when it has the controller, not from the touch, so a finger that waits is never a hold
+  by then and a key under it still goes down.
+- **Hold.** Staying within 10 px for 400 ms (`HOLD_MS`) keeps the ray where the finger landed,
   presses nothing yet, and buzzes the phone for 15 ms (`HOLD_BUZZ_MS`), as a phone does for a long
   press. Safari on iOS has no `navigator.vibrate`, so it does not buzz there. The layer cancels the
   browser's own long press, so a hold selects none of the page and opens no menu. What the finger
@@ -89,9 +101,7 @@ A finger on the scene is undecided until it does one of four things:
   - **Long press.** Lifting within 10 px presses the grip: 4 frames, grip down, 4 frames, grip up, 4
     frames, parked. That is the right button on a panel, a `contextmenu`.
 
-  A hold never turns the head. A hold that starts while a tap is still running is dropped the same
-  way: the finger then turns nothing and its lift presses nothing. A hold the browser cancels
-  presses nothing.
+  A hold never turns the head. A hold the browser cancels presses nothing.
 
 - **Pinch.** A second finger that lands while the first is undecided or looking zooms the view as
   the page's pointer does: spreading the fingers twice as far apart draws the view twice as large
@@ -129,9 +139,11 @@ the key does. An app whose every control is a panel or a thing in the scene pass
 
 The touch layer imports three.js, which splits three's core into a chunk of its own,
 `three.core-<hash>.js`, shared with the scene's chunk, and `justdom-three/limits`, which lands in a
-small `limits-<hash>.js` chunk the same way. A service worker that precaches the app should leave
-all three out with the emulator's: `minesweeper` and `todo` add `"**/touch-*.js"`,
-`"**/three.core-*.js"` and `"**/limits-*.js"` to their `globIgnores`.
+small `limits-<hash>.js` chunk the same way. It also reads `isRayOnKey` from `justdom-three/page`,
+whose flags can land in a `flags-<hash>.js` chunk shared with the scene's. A service worker that
+precaches the app should leave these out with the emulator's: `minesweeper` and `todo` add
+`"**/touch-*.js"`, `"**/three.core-*.js"` and `"**/limits-*.js"` to their `globIgnores`, and
+`minesweeper`, whose build splits the flags off, adds `"**/flags-*.js"` too.
 
 ## `justdom-xr/offer`
 

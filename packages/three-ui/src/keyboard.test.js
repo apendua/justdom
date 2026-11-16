@@ -5,6 +5,7 @@ import { just, Signal } from "justdom-signal";
 import * as THREE from "three";
 import { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keyboard.js";
 import { createPortal, InteractionContext, InteractionManager } from "justdom-three";
+import { KEY_ATTRIBUTE } from "justdom-three/page";
 
 // jsdom-env exposes the common DOM globals, but not MutationObserver, which
 // the portal uses to mirror the tree.
@@ -534,6 +535,18 @@ describe("a key held down", () => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     return typing(layout, props);
   };
+
+  test("marks every key, and nothing between them, as a key a finger presses as it lands", (t) => {
+    const board = held(t);
+    const marked = [...board.root.querySelectorAll(`[${KEY_ATTRIBUTE}]`)];
+    assert.deepEqual(
+      marked.map((key) => key.getAttribute("data-code")),
+      MOBILE_LAYOUT.flat()
+        .filter((entry) => !entry.spacer)
+        .map((entry) => entry.code),
+    );
+    board.cleanup();
+  });
 
   test("types as it goes down, before it is let go", (t) => {
     const board = held(t);

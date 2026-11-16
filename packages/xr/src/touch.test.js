@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { setupJsdom } from "@apendua/jsdom-env";
 import * as THREE from "three";
+import { HOVER_ATTRIBUTE, KEY_ATTRIBUTE } from "justdom-three/page";
 import {
   HOLD_BUZZ_MS,
   HOLD_MS,
@@ -499,7 +500,7 @@ describe("installTouch", () => {
       assert.ok(rightParked());
     });
 
-    it("is dropped while the last one is still running", () => {
+    it("waits for the last one still running, then runs through its own pixel", () => {
       finger("pointerdown", 200, 400);
       finger("pointerup", 200, 400);
       frames(1);
@@ -509,6 +510,27 @@ describe("installTouch", () => {
       near(rightRay().y, 0);
       frames(3 * STEP_FRAMES);
       assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+      near(Math.asin(rightRay().y), fovy / 2);
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, [
+        "trigger 1",
+        "trigger 0",
+        "trigger 1",
+        "trigger 0",
+      ]);
+      assert.ok(rightParked());
+    });
+
+    it("waits no longer than the session", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(1);
+      finger("pointerdown", 200, 0);
+      finger("pointerup", 200, 0);
+      session?.dispatchEvent(new Event("end"));
+      frames(6 * STEP_FRAMES);
+      assert.ok(!headset.controllers.right.buttons.includes("trigger 1"), "nothing went down");
+      assert.ok(rightParked());
     });
 
     it("is not a tap once the finger has moved past the slop", () => {
@@ -598,7 +620,7 @@ describe("installTouch", () => {
       delete (/** @type {any} */ (navigator).vibrate);
     });
 
-    it("does not buzz for a hold dropped while the controller is busy", () => {
+    it("buzzes for a hold that waited for the controller once it has it", () => {
       /** @type {unknown[]} */
       const buzzes = [];
       Object.defineProperty(navigator, "vibrate", {
@@ -610,20 +632,35 @@ describe("installTouch", () => {
       frames(1);
       finger("pointerdown", 200, 400);
       mock.timers.tick(HOLD_MS);
-      assert.deepEqual(buzzes, []);
+      assert.deepEqual(buzzes, [], "not while the tap still has the controller");
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(buzzes, [], "its clock starts once it has the controller");
+      mock.timers.tick(HOLD_MS);
+      assert.deepEqual(buzzes, [HOLD_BUZZ_MS]);
       delete (/** @type {any} */ (navigator).vibrate);
     });
 
-    it("waits for the finger to stay still, then aims and presses nothing", () => {
+    it("aims where it lands, and presses nothing while it stays still", () => {
       finger("pointerdown", 200, 400);
+      assert.ok(!rightParked());
+      near(rightRay().y, 0);
       mock.timers.tick(HOLD_MS - 1);
       frames(STEP_FRAMES);
-      assert.ok(rightParked());
       mock.timers.tick(1);
-      assert.ok(!rightParked());
       near(rightRay().y, 0);
       frames(4 * STEP_FRAMES);
       assert.deepEqual(headset.controllers.right.buttons, []);
+      assert.ok(!rightParked());
+    });
+
+    it("parks the aim it took as it landed once the finger looks", () => {
+      finger("pointerdown", 200, 400);
+      assert.ok(!rightParked());
+      finger("pointermove", 200 + 2 * SLOP_PX, 400);
+      assert.ok(rightParked());
+      // Free at once for the next finger.
+      finger("pointerup", 200 + 2 * SLOP_PX, 400);
+      finger("pointerdown", 200, 400);
       assert.ok(!rightParked());
     });
 
@@ -642,6 +679,15 @@ describe("installTouch", () => {
       finger("pointerup", 200, 400);
       frames(2 * STEP_FRAMES);
       assert.deepEqual(headset.controllers.right.buttons, ["squeeze 1", "squeeze 0"]);
+    });
+
+    it("keeps the ray on the landing point through a tilt before it is a hold", () => {
+      finger("pointerdown", 200, 0);
+      tilt(0, 60);
+      tilt(30, 40);
+      assert.ok(Math.abs(headAhead().x) > 0.1, "the tilt turned the head");
+      near(Math.asin(rayFromHead().y), fovy / 2);
+      near(rayFromHead().x, 0);
     });
 
     it("keeps the ray on the landing point through a tilt", () => {
@@ -677,7 +723,7 @@ describe("installTouch", () => {
       assert.ok(rightParked());
     });
 
-    it("is dropped while a tap is still running, and the finger does nothing after", () => {
+    it("is not one while it waits for a tap, however long, and its move is a look", () => {
       finger("pointerdown", 200, 400);
       finger("pointerup", 200, 400);
       frames(1);
@@ -686,10 +732,23 @@ describe("installTouch", () => {
       finger("pointermove", 200 + 3 * SLOP_PX, 0);
       finger("pointerup", 200 + 3 * SLOP_PX, 0);
       frames(4 * STEP_FRAMES);
-      near(headAhead().x, 0);
-      near(headAhead().y, 0);
+      assert.ok(Math.abs(headAhead().x) > 0.01, "the move turned the head");
       assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
       assert.ok(rightParked());
+    });
+
+    it("that waited for a tap drags from where it landed once it has the controller", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(1);
+      finger("pointerdown", 200, 0);
+      frames(3 * STEP_FRAMES);
+      mock.timers.tick(HOLD_MS);
+      near(Math.asin(rightRay().y), fovy / 2);
+      finger("pointermove", 200 + 3 * SLOP_PX, 0);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "trigger 1"]);
+      near(headAhead().x, 0);
     });
 
     it("lets go when the session ends, and parks at once", () => {
@@ -705,6 +764,116 @@ describe("installTouch", () => {
       finger("pointerup", 200, 400);
       frames(3 * STEP_FRAMES);
       assert.equal(headset.controllers.right.buttons.length, 2);
+    });
+  });
+
+  describe("a finger on a key", () => {
+    /** @type {HTMLElement} */
+    let key;
+
+    beforeEach(async () => {
+      install({ pitch: 0 });
+      await startSession();
+      // What a panel's forwarder writes on a key once the ray is on it.
+      key = document.createElement("div");
+      key.setAttribute(KEY_ATTRIBUTE, "");
+      key.setAttribute(HOVER_ATTRIBUTE, "");
+      document.body.append(key);
+    });
+
+    afterEach(() => {
+      key.remove();
+    });
+
+    it("holds the trigger from a step after it lands until it lifts, and is never a grip", () => {
+      /** @type {unknown[]} */
+      const buzzes = [];
+      Object.defineProperty(navigator, "vibrate", {
+        configurable: true,
+        value: (/** @type {number} */ ms) => buzzes.push(ms),
+      });
+      finger("pointerdown", 200, 400);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      frames(STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"]);
+      mock.timers.tick(2 * HOLD_MS);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1"], "held, not a grip");
+      assert.deepEqual(buzzes, [], "and no long press's buzz");
+      finger("pointerup", 200, 400);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+      frames(STEP_FRAMES);
+      assert.ok(rightParked());
+      delete (/** @type {any} */ (navigator).vibrate);
+    });
+
+    it("is a tap when it lifts before the step", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+    });
+
+    it("drags the ray with the finger and never turns the head", () => {
+      finger("pointerdown", 200, 400);
+      frames(3 * STEP_FRAMES);
+      const ahead = headAhead();
+      finger("pointermove", 200, 400 - 4 * SLOP_PX);
+      near(headAhead().y, ahead.y);
+      assert.ok(rightRay().y > 0.01, "the ray follows the finger up");
+      finger("pointerup", 200, 400 - 4 * SLOP_PX);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"]);
+    });
+
+    it("types every key of a quick run, each a tap lifted before the last has parked", () => {
+      for (let i = 0; i < 3; i++) {
+        finger("pointerdown", 200, 400);
+        frames(1);
+        finger("pointerup", 200, 400);
+        frames(STEP_FRAMES);
+      }
+      frames(12 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, [
+        "trigger 1",
+        "trigger 0",
+        "trigger 1",
+        "trigger 0",
+        "trigger 1",
+        "trigger 0",
+      ]);
+      assert.ok(rightParked());
+    });
+
+    it("holds the next key it lands on while the last is only parking", () => {
+      finger("pointerdown", 200, 400);
+      frames(2 * STEP_FRAMES);
+      finger("pointerup", 200, 400);
+      finger("pointerdown", 200, 400);
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "trigger 1"]);
+      finger("pointerup", 200, 400);
+      assert.deepEqual(headset.controllers.right.buttons.slice(-1), ["trigger 0"]);
+    });
+
+    it("goes down after waiting for the last key however long its wait", () => {
+      finger("pointerdown", 200, 400);
+      finger("pointerup", 200, 400);
+      frames(1);
+      finger("pointerdown", 200, 400);
+      mock.timers.tick(HOLD_MS);
+      frames(6 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0", "trigger 1"]);
+    });
+
+    it("is not a key when the ray is on none", () => {
+      key.removeAttribute(HOVER_ATTRIBUTE);
+      finger("pointerdown", 200, 400);
+      frames(4 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, []);
+      finger("pointerup", 200, 400);
+      frames(3 * STEP_FRAMES);
+      assert.deepEqual(headset.controllers.right.buttons, ["trigger 1", "trigger 0"], "a tap");
     });
   });
 

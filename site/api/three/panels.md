@@ -202,6 +202,8 @@ panel draws it with. A scene is then searched for the element the way it is sear
 object:
 
 ```js
+import * as THREE from "three";
+
 const button = scene.getObjectByName("save");
 const where = button.getWorldPosition(new THREE.Vector3());
 ```
@@ -220,7 +222,9 @@ box, and its local units are the page's px, with y running down the page. So the
 element is half its layout size from that corner:
 
 ```js
-const element = document.querySelector('[data-xr-name="save"]');
+import * as THREE from "three";
+
+const element = /** @type {HTMLElement} */ (document.querySelector('[data-xr-name="save"]'));
 button.updateWorldMatrix(true, false);
 const middle = button.localToWorld(
   new THREE.Vector3(element.offsetWidth / 2, element.offsetHeight / 2, 0),

@@ -1,6 +1,14 @@
 # Change Log - justdom-three
 
-This log was last generated on Sun, 15 Nov 2026 10:04:51 GMT and should not be manually modified.
+This log was last generated on Wed, 18 Nov 2026 18:47:41 GMT and should not be manually modified.
+
+## 0.36.0
+Wed, 18 Nov 2026 18:47:41 GMT
+
+### Minor changes
+
+- a finger on a touch screen presses a key (KEY_ATTRIBUTE) as it lands and holds it until it lifts, in pointer mode and under ?touch; keyboard keys carry the attribute
+- An element's data-xr-name names every object a panel draws it with, so getObjectByName finds it in the scene
 
 ## 0.35.2
 Sun, 15 Nov 2026 10:04:51 GMT

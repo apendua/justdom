@@ -1,6 +1,11 @@
 # Change Log - @apendua/sound
 
-This log was last generated on Sun, 15 Nov 2026 10:04:51 GMT and should not be manually modified.
+This log was last generated on Wed, 18 Nov 2026 18:47:41 GMT and should not be manually modified.
+
+## 0.2.3
+Wed, 18 Nov 2026 18:47:41 GMT
+
+_Version update only_
 
 ## 0.2.2
 Sun, 15 Nov 2026 10:04:51 GMT

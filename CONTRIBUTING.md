@@ -12,7 +12,8 @@ and how to use it is in the [README](README.md) and on [justdom.dev](https://jus
 - [`apps/`](apps) holds the demos, one folder each.
 - [`site/`](site) is justdom.dev (see [The site](#the-site) below).
 - [`bench/`](bench) holds the bundle-size benchmark behind
-  [justdom.dev/bundle-size](https://justdom.dev/bundle-size).
+  [justdom.dev/bundle-size](https://justdom.dev/bundle-size), and justdom's entry for
+  [js-framework-benchmark](bench/js-framework-benchmark) with the results of running it.
 - [`docs/`](docs) holds the migration plan mentioned below.
 
 All of this grew inside [apendua.dev](https://apendua.dev), the author's personal monorepo, as

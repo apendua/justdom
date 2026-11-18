@@ -1,0 +1,1 @@
+{"framework":"lit-v3.2.0-keyed","keyed":true,"benchmark":"25_run-clear-memory","type":"memory","values":{"DEFAULT":{"min":0.8844327926635742,"max":0.8844327926635742,"median":0.8844327926635742,"mean":0.8844327926635742,"stddev":null,"values":[0.8844327926635742]}}}

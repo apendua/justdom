@@ -1,0 +1,1 @@
+{"framework":"lit-v3.2.0-keyed","keyed":true,"benchmark":"21_ready-memory","type":"memory","values":{"DEFAULT":{"min":0.7199115753173828,"max":0.7199115753173828,"median":0.7199115753173828,"mean":0.7199115753173828,"stddev":null,"values":[0.7199115753173828]}}}

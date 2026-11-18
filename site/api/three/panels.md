@@ -212,10 +212,25 @@ field, a list item's marker, the boxes and text of its `::before` and `::after`,
 plugin a shape's meshes and the copy a `<use>` draws. A part mounted later, such as a quad that
 mounts once a hover gives the box a colour, takes the name too.
 
-The element's object is the one `getObjectByName` returns, since the parts hang under it. Its origin
-is the top left corner of the element's border box, as for every box in a panel; use
-`new THREE.Box3().setFromObject(button)` for its bounds and middle. A ray that hits the element
-finds the name on the mesh it hit.
+The element's object is the one `getObjectByName` returns, since the parts hang under it. A ray that
+hits the element finds the name on the mesh it hit.
+
+The object has no geometry of its own. Its origin is the top left corner of the element's border
+box, and its local units are the page's px, with y running down the page. So the middle of an HTML
+element is half its layout size from that corner:
+
+```js
+const element = document.querySelector('[data-xr-name="save"]');
+button.updateWorldMatrix(true, false);
+const middle = button.localToWorld(
+  new THREE.Vector3(element.offsetWidth / 2, element.offsetHeight / 2, 0),
+);
+```
+
+The renderer brings world matrices up to date as it draws a frame. `updateWorldMatrix` brings them
+up to date for code that reads them before then. `new THREE.Box3().setFromObject(button)` does not
+give the element's bounds. It covers every mesh under the object, the children's included, so it
+follows a child that overflows the element and is empty for a box that draws nothing.
 
 What stays unnamed:
 

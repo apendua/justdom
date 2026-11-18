@@ -145,7 +145,9 @@ function onChildRemoved({ target, child }) {
 /**
  * Name a node's object and its parts `name`, or, given null, give them
  * back the names they had. Called by the portal as it builds an element's
- * object, and again whenever the attribute changes.
+ * object, again whenever the attribute changes, and when the element comes
+ * back into the panel with the object it left with, since the observer
+ * reports no change made while it was out (`renameReturned`).
  *
  * @param {Object3D} root The node's object.
  * @param {string | null} name The element's `data-xr-name`.

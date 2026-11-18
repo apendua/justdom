@@ -158,6 +158,99 @@ describe("data-xr-name", () => {
     panel.cleanup();
   });
 
+  test("reads the name again for an element put back with the object it left with", async () => {
+    const panel = await namedPanel('data-xr-name="one"');
+    const root = /** @type {HTMLElement} */ (panel.button.parentElement);
+    const object = panel.objectOf(panel.button);
+    const quad = panel.quadOf(object);
+    assert.ok(quad);
+
+    // Renamed while out of the container, where the observer reports no
+    // attribute, and put back in the same flush, so the object is reused.
+    panel.button.remove();
+    panel.button.setAttribute("data-xr-name", "two");
+    root.appendChild(panel.button);
+    await pump();
+    assert.equal(panel.objectOf(panel.button), object, "the same object is reused");
+    assert.deepEqual([object.name, quad.name], ["two", "two"]);
+
+    panel.button.remove();
+    panel.button.removeAttribute("data-xr-name");
+    root.appendChild(panel.button);
+    await pump();
+    assert.deepEqual([object.name, quad.name], ["", ""]);
+    panel.cleanup();
+  });
+
+  test("reads the name again for an element under a wrapper put back", async () => {
+    const panel = await namedPanel();
+    const root = /** @type {HTMLElement} */ (panel.button.parentElement);
+    const object = panel.objectOf(panel.icon);
+
+    // The icon is named while its wrapper, the button, is out.
+    panel.button.remove();
+    panel.icon.setAttribute("data-xr-name", "icon");
+    root.appendChild(panel.button);
+    await pump();
+    assert.equal(panel.objectOf(panel.icon), object);
+    assert.equal(object.name, "icon");
+    assert.equal(panel.quadOf(object)?.name, "icon");
+    panel.cleanup();
+  });
+
+  test("names every part of a control and an overlay, and none of a child's", async () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      `<input type="checkbox" checked data-xr-name="tick">` +
+      `<input type="text" data-xr-name="field">` +
+      `<div style="position: fixed; z-index: 1; background-color: rgb(0, 0, 255)" data-xr-name="menu">` +
+      `<div style="cursor: pointer"></div></div>`;
+    document.body.appendChild(root);
+    const ctx = InteractionContext.set({}, new InteractionManager());
+    const portal = createPortal(ctx, { root });
+    const parent = new THREE.Group();
+    portal.addTo(parent);
+    await settle(portal);
+
+    for (const name of ["tick", "field", "menu"]) {
+      const element = /** @type {Element} */ (root.querySelector(`[data-xr-name="${name}"]`));
+      /** @type {THREE.Object3D | undefined} */
+      let object;
+      parent.traverse((candidate) => {
+        if (objectNodes.get(candidate) === element) {
+          object = candidate;
+        }
+      });
+      assert.ok(object);
+      const content = getContentGroup(object);
+      /** @type {THREE.Object3D[]} */
+      const parts = [];
+      /** @param {THREE.Object3D} part */
+      const walk = (part) => {
+        parts.push(part);
+        for (const child of part.children) {
+          if (child === content || objectNodes.has(child)) {
+            child.traverse((other) => {
+              assert.notEqual(other.name, name, `${name}: a child's object is its own`);
+            });
+          } else {
+            walk(child);
+          }
+        }
+      };
+      walk(object);
+      assert.ok(
+        parts.filter((part) => part instanceof THREE.Mesh).length >= 2,
+        `${name} draws more than its quad`,
+      );
+      for (const part of parts) {
+        assert.equal(part.name, name, `${name}: every part carries the name`);
+      }
+    }
+    portal.disconnect();
+    root.remove();
+  });
+
   test("leaves a child element mounted later under a named element alone", async () => {
     const panel = await namedPanel('data-xr-name="ok"');
     const child = document.createElement("div");

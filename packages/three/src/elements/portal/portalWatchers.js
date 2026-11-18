@@ -132,6 +132,7 @@ export function mutationCallback(state, mutationList) {
       }
       state.sawContent = true;
       mutation.addedNodes.forEach((node) => {
+        renameReturned(state, node);
         // A node the portal has never seen goes to the queue and gets
         // built when the pump reaches it — that is the slicing. One it
         // has seen — a reinsertion, a move — already paid its cost and
@@ -191,6 +192,29 @@ function renamed(state, node) {
   const object = state.nodeToObject.get(node);
   if (object && node !== state.containerElement) {
     nameNodeObjects(object, /** @type {Element} */ (node).getAttribute(NAME_ATTRIBUTE));
+  }
+}
+
+/**
+ * Read `data-xr-name` again for every element under an added node that
+ * kept its object while it was out of the panel. The observer reports no
+ * attribute written to an element out of the container, and an element
+ * put back before its object is taken down gets the same object back,
+ * built under the name it left with. The same holds under a wrapper the
+ * panel has never seen, whose children the pump adopts as they are.
+ * Elements with no object yet read the attribute when they are built.
+ *
+ * @param {PortalState} state
+ * @param {Node} node
+ * @returns {void}
+ */
+function renameReturned(state, node) {
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return;
+  }
+  renamed(state, node);
+  for (const child of /** @type {Element} */ (node).children) {
+    renameReturned(state, child);
   }
 }
 

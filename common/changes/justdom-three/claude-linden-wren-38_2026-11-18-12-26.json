@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "An element's data-xr-name names every object a panel draws it with, so getObjectByName finds it in the scene",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

@@ -195,6 +195,58 @@ Not followed:
   capture methods wrapped above take its `pointerId`.
 - The wheel is the thumbstick alone, and `deltaX` is always 0.
 
+### Finding an element in the scene
+
+An element with a `data-xr-name` attribute gives that name, as `Object3D.name`, to every object the
+panel draws it with. A scene is then searched for the element the way it is searched for any named
+object:
+
+```js
+import * as THREE from "three";
+
+const button = scene.getObjectByName("save");
+const where = button.getWorldPosition(new THREE.Vector3());
+```
+
+The objects that take the name are the element's own object and the parts under it that draw the
+element: its quad, the blocker of an overlay, the tick of a checkbox, the value and caret of a text
+field, a list item's marker, the boxes and text of its `::before` and `::after`, and with the SVG
+plugin a shape's meshes and the copy a `<use>` draws. A part mounted later, such as a quad that
+mounts once a hover gives the box a colour, takes the name too.
+
+The element's object is the one `getObjectByName` returns, since the parts hang under it. A ray that
+hits the element finds the name on the mesh it hit.
+
+The object has no geometry of its own. Its origin is the top left corner of the element's border
+box, and its local units are the page's px, with y running down the page. So the middle of an HTML
+element is half its layout size from that corner:
+
+```js
+import * as THREE from "three";
+
+const element = /** @type {HTMLElement} */ (document.querySelector('[data-xr-name="save"]'));
+button.updateWorldMatrix(true, false);
+const middle = button.localToWorld(
+  new THREE.Vector3(element.offsetWidth / 2, element.offsetHeight / 2, 0),
+);
+```
+
+The renderer brings world matrices up to date as it draws a frame. `updateWorldMatrix` brings them
+up to date for code that reads them before then. `new THREE.Box3().setFromObject(button)` does not
+give the element's bounds. It covers every mesh under the object, the children's included, so it
+follows a child that overflows the element and is empty for a box that draws nothing.
+
+What stays unnamed:
+
+- The element's children, its text included, and the content group that holds them. Each child
+  answers to its own `data-xr-name`.
+- The panel's own container. A `data-xr-name` on a mirrored root names nothing. Name the object you
+  add the panel to instead.
+
+Changing the attribute renames the objects, and removing it gives each its old name back. A
+`::before`'s quad is named `::before` again, for example. Two elements with one name are two
+matches, and `getObjectByName` returns the first in the scene's order, as it does for any objects.
+
 ### Mirroring DOM the page already has
 
 A mountable is for a panel that exists only in the scene. An app that delivers a flat interface

@@ -18,6 +18,7 @@ import { ELEMENT_FLAGS } from "./portalRoot.js";
 import { markMoved } from "../place.js";
 import { finishTeardownOf, scheduleTeardown } from "./portalTeardown.js";
 import { isSvgElement, isSvgRoot, projectWithPlugins } from "../plugins.js";
+import { NAME_ATTRIBUTE, nameNodeObjects } from "./xrNames.js";
 
 /**
  * @import {PortalState} from './portalState.js';
@@ -309,6 +310,9 @@ function createObjectForNode(state, node) {
   state.objectToCleanup.set(object, () => {
     subscription.unsubscribe();
   });
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    nameNodeObjects(object, /** @type {Element} */ (node).getAttribute(NAME_ATTRIBUTE));
+  }
   return object;
 }
 

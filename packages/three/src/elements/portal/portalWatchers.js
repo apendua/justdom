@@ -11,6 +11,7 @@ import { isBookkeepingMutation, LOADING_ATTRIBUTE } from "../mirror/mutationRule
 import { placeAndScale } from "../place.js";
 import { markLoaded } from "./portalLoading.js";
 import { attach, detach, getOrCreateObjectForNode, projectChanges } from "./portalNodes.js";
+import { NAME_ATTRIBUTE, nameNodeObjects } from "./xrNames.js";
 
 /**
  * The panel's units per px: a centimetre a px, which is what `placeContainer`
@@ -123,6 +124,9 @@ export function mutationCallback(state, mutationList) {
   projectChanges(state, () => {
     state.mirror.ingest(mutationList);
     for (const mutation of mutationList) {
+      if (mutation.type === "attributes" && mutation.attributeName === NAME_ATTRIBUTE) {
+        renamed(state, mutation.target);
+      }
       if (mutation.type !== "childList") {
         continue;
       }
@@ -171,6 +175,23 @@ export function mutationCallback(state, mutationList) {
     state.outlines?.commit();
   }
   return true;
+}
+
+/**
+ * Name an element's objects after its `data-xr-name` as it stands now
+ * (`xrNames.js`). One built later reads it as it is built, and the
+ * container is the page's element rather than one of the panel's: its
+ * object is the portal's, with the portal's own chrome under it.
+ *
+ * @param {PortalState} state
+ * @param {Node} node
+ * @returns {void}
+ */
+function renamed(state, node) {
+  const object = state.nodeToObject.get(node);
+  if (object && node !== state.containerElement) {
+    nameNodeObjects(object, /** @type {Element} */ (node).getAttribute(NAME_ATTRIBUTE));
+  }
 }
 
 /**

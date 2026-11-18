@@ -478,6 +478,32 @@ describe("an element's ::before and ::after in a panel", () => {
     panel.cleanup();
   });
 
+  test("a ::before carries its element's data-xr-name, and its own name without one", async () => {
+    pseudoRule(".chip", "before", '"★"', "background-color: rgb(255, 0, 0)");
+    const panel = generatedPanel(
+      `<div class="chip" data-xr-name="chip" style="position: relative" data-rect="0,0,200,40" data-before="4,2,20,16"></div>`,
+    );
+    await settle(panel.portal);
+    assert.deepEqual(panel.quads(), [], "the quad is named for the element instead");
+    const [run] = panel.runs();
+    assert.ok(run);
+    const group = run.parent;
+    assert.ok(group);
+    const quad = group.children.find(
+      (child) => child instanceof THREE.Mesh && child.geometry === rectGeometry,
+    );
+    assert.ok(quad);
+    assert.deepEqual([group.name, quad.name, run.name], ["chip", "chip", "chip"]);
+
+    const chip = /** @type {HTMLElement} */ (panel.root.querySelector(".chip"));
+    chip.removeAttribute("data-xr-name");
+    await pump();
+    assert.deepEqual(panel.quads(), [quad]);
+    assert.deepEqual([group.name, run.name], ["", ""]);
+
+    panel.cleanup();
+  });
+
   test("a box pays for pseudo-elements only once some rule of the page styles one", async () => {
     // Every reactive evaluation while a panel mounts, as `mirror.bench.js`
     // counts them.

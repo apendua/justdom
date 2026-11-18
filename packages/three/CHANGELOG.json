@@ -2,6 +2,21 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.36.0",
+      "tag": "justdom-three_v0.36.0",
+      "date": "Wed, 18 Nov 2026 18:47:41 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "a finger on a touch screen presses a key (KEY_ATTRIBUTE) as it lands and holds it until it lifts, in pointer mode and under ?touch; keyboard keys carry the attribute"
+          },
+          {
+            "comment": "An element's data-xr-name names every object a panel draws it with, so getObjectByName finds it in the scene"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.35.2",
       "tag": "justdom-three_v0.35.2",
       "date": "Sun, 15 Nov 2026 10:04:51 GMT",

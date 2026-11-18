@@ -2,6 +2,21 @@
   "name": "@apendua/sound",
   "entries": [
     {
+      "version": "0.2.3",
+      "tag": "@apendua/sound_v0.2.3",
+      "date": "Wed, 18 Nov 2026 18:47:41 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.36.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.36.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.2.2",
       "tag": "@apendua/sound_v0.2.2",
       "date": "Sun, 15 Nov 2026 10:04:51 GMT",

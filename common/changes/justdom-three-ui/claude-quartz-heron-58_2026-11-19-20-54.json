@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The diagnostics panel draws as an overlay panel, so a nearer panel no longer draws over it, and it no longer walks its subtree every frame",
+      "type": "patch",
+      "packageName": "justdom-three-ui"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

@@ -450,8 +450,12 @@ export class LayerOrder {
       // clears for all (`createDepthClear`).
       this.#depthClear.renderOrder = clearOrder(this.#scene?.overlayStart ?? OVERLAY_SLOT);
     }
-    for (const [mesh, order] of this.#held) {
-      mesh.renderOrder = this.#offset * PIECE_BAND + order;
+    // Only an overlay's loading frame is held, so a panel with nothing
+    // held starts no iterator.
+    if (this.#held.size > 0) {
+      for (const [mesh, order] of this.#held) {
+        mesh.renderOrder = this.#offset * PIECE_BAND + order;
+      }
     }
   }
 

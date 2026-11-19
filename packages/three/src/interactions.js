@@ -9,7 +9,7 @@ import {
   Stream,
   withComputation,
 } from "justdom-signal";
-import { getObjectDrawOrder, isInOverlay, isLaterInTree } from "./drawOrder.js";
+import { getObjectDrawOrder, hasOverlays, isInOverlay, isLaterInTree } from "./drawOrder.js";
 import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
@@ -748,10 +748,13 @@ export const LEVEL = 1e-6;
  */
 function onTop(sorted) {
   let first = 0;
-  for (let i = 0; i < sorted.length; i++) {
-    if (isInOverlay(sorted[i].object)) {
-      first = i;
-      break;
+  // A scene with no overlay up asks nothing of its hits.
+  if (hasOverlays()) {
+    for (let i = 0; i < sorted.length; i++) {
+      if (isInOverlay(sorted[i].object)) {
+        first = i;
+        break;
+      }
     }
   }
   let hit = sorted[first];

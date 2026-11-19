@@ -46,6 +46,16 @@ export function addOverlay(object) {
 }
 
 /**
+ * Whether any overlay panel is up: what lets a scene with none skip every
+ * question about them.
+ *
+ * @returns {boolean}
+ */
+export function hasOverlays() {
+  return overlays.size > 0;
+}
+
+/**
  * Whether `object` is drawn by an overlay panel, or hangs in one. A walk up
  * the parents, skipped while no overlay is up.
  *

@@ -230,6 +230,10 @@ const App = effectsOnly((ctx) => {
 itself to the camera, which is already in the scene. Call it from any effect, the way `useFrame` is
 called, and the surrounding computation owns the meter and the panel both.
 
+The panel is an [overlay](/api/three/panels#overlay-panels): it draws after the rest of the scene
+and every ordinary panel, so nothing in the room hides it, and it lets rays through to what is
+behind it.
+
 `createDiagnostics(options?)` returns the controls; `{ visible: false }` starts the panel hidden.
 
 | Control    | What it is                                                                                                                               |

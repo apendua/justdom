@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { component, effects } from "justdom-signal";
 import { $, children, set, style, text } from "justdom-core";
-import { dom, useFrame } from "justdom-three";
+import { dom } from "justdom-three";
 import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
 import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
 
@@ -34,66 +34,6 @@ const PLACEMENT = new THREE.Vector3(-0.24, 0.17, -0.95);
  * this angle would show the player more of the panel's edge than of its face.
  */
 const FACING = new THREE.Euler(0.17, 0.25, 0);
-
-/**
- * Where the panel is drawn in the frame's order: after everything a scene is
- * likely to have asked for, and far enough clear of it that the panel's own
- * ordering — which `justdom-three` writes as small numbers, one per layer of
- * nesting — survives being shifted up by this.
- */
-const HUD_RENDER_ORDER = 100000;
-
-/**
- * Draw the panel over the scene rather than in it.
- *
- * A metre out is where the *panel* is; it is not where the game is. Something
- * closer than that in the same direction — a card at arm's length, a board
- * carried up to the face — is in front of it and hides it, which is the honest
- * answer for a thing in the room and the wrong one for an instrument. So the
- * subtree stops testing itself against the depth buffer and is ordered after
- * everything else: whatever the scene is doing, the reading is legible.
- *
- * Only depth *testing* goes. The order the panel draws itself in — background,
- * then border, then glyphs — is `renderOrder` rather than depth, and shifting
- * the whole subtree by a constant leaves it exactly as it was. And only on
- * what draws colour: a material that writes none, such as the depth quad of
- * a panel justdom-three draws in paint order, shows nothing to keep legible, so
- * the walk leaves it as its owner made it. The panel the readout sits in
- * owns those, and a host is free to share one across panels, as justdom-three
- * shares its blockers', where turning the test off would reach every other
- * panel.
- *
- * This runs every frame, and the shift is written as "raise anything that is
- * not already raised" rather than as an addition, for two reasons. Meshes keep
- * arriving as the portal mirrors the DOM into the scene; and the portal owns
- * `renderOrder` — it writes each element's own back whenever that element's
- * nesting is worked out again, which puts the panel's glyphs behind the scene
- * a frame later and is exactly what this looked like when it was done once.
- * Idempotent, it survives that. It is a walk of some forty objects and a
- * comparison each, in a tool whose whole business is not showing up in its own
- * reading.
- *
- * @param {THREE.Object3D} root
- * @returns {() => void}
- */
-export function drawOnTop(root) {
-  return () => {
-    root.traverse((object) => {
-      if (object.renderOrder < HUD_RENDER_ORDER) {
-        object.renderOrder += HUD_RENDER_ORDER;
-      }
-      const mesh = /** @type {THREE.Mesh} */ (object);
-      if (!mesh.material) {
-        return;
-      }
-      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
-        if (material.depthTest && material.colorWrite) {
-          material.depthTest = false;
-        }
-      }
-    });
-  };
-}
 
 /** How much of the last minute one bar stands for, in seconds. */
 const WINDOW_SECONDS = Math.round((SAMPLE_MS * SAMPLE_COUNT) / 1000);
@@ -168,6 +108,13 @@ function chartBar(controls, index) {
  * stopped rays here would be a pane of glass the player's own pointer kept
  * landing on, a foot in front of the game.
  *
+ * And it is an overlay. A metre out is where the panel is, not where the game
+ * is: a card at arm's length or a board carried up to the face is nearer in
+ * the same direction and would hide it, which is the honest answer for a thing
+ * in the room and the wrong one for an instrument. As an overlay it draws after
+ * every ordinary panel and the rest of the scene, over a cleared depth buffer,
+ * so the reading stays legible whatever the scene is doing.
+ *
  * @type {(ctx: WeakKey, controls: DiagnosticsControls) => import("justdom-signal").Source<Component>}
  */
 export const Panel = component(
@@ -220,11 +167,8 @@ export const Panel = component(
           obj.rotation.copy(FACING);
           obj.scale.setScalar(UI_SCALE);
         }),
-        effects((obj) => {
-          useFrame(ctx, drawOnTop(obj));
-        }),
       ],
-      { opaqueToRays: false },
+      { opaqueToRays: false, overlay: true },
     );
   },
 );

@@ -196,21 +196,49 @@ const clearMaterial = new THREE.MeshBasicMaterial({
 });
 
 /**
- * @param {THREE.WebGLRenderer} renderer
+ * The render each renderer last cleared depth in, and for which camera: an
+ * eye, without multiview. Written in place, so a frame makes nothing.
+ *
+ * @type {WeakMap<THREE.WebGLRenderer, { frame: number, camera: THREE.Camera | null }>}
  */
-function clearDepth(renderer) {
+const lastClears = new WeakMap();
+
+/**
+ * Clear the depth buffer, once for each render and camera: every overlay
+ * has a clear, at one order before the first overlay's slot, and only the
+ * first of them drawn clears. The rest would wipe the depth quads of the
+ * overlays drawn before them, and an overlay would no longer be hidden by
+ * a nearer one, as panels are.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Scene} scene
+ * @param {THREE.Camera} camera
+ */
+function clearDepth(renderer, scene, camera) {
+  const frame = renderer.info.render.frame;
+  let last = lastClears.get(renderer);
+  if (!last) {
+    last = { frame: -1, camera: null };
+    lastClears.set(renderer, last);
+  }
+  if (last.frame === frame && last.camera === camera) {
+    return;
+  }
+  last.frame = frame;
+  last.camera = camera;
   renderer.clearDepth();
 }
 
 /**
  * A mesh that draws nothing and clears the depth buffer where it falls in
- * the draw order: what an overlay panel starts its slot with, so that what
- * was drawn before it, the scene and the ordinary panels, hides none of it
- * (`LayerOrder`). In a session with no multiview three draws the eyes one
- * after the other, and the clear takes both eyes' depth; the eye drawn
- * first has drawn everything by then, so only its depth goes, which no
- * later draw reads. Shared, as a blocker's is: nothing in it is a panel's.
- * Never culled, since it has no bounds to cull by, and no ray target.
+ * the draw order, once for each render and camera (`clearDepth`): what the
+ * overlay panels start with, so that what was drawn before them, the scene
+ * and the ordinary panels, hides none of them (`LayerOrder`). In a session
+ * with no multiview three draws the eyes one after the other, and the clear
+ * takes both eyes' depth; the eye drawn first has drawn everything by then,
+ * so only its depth goes, which no later draw reads. Shared, as a
+ * blocker's is: nothing in it is a panel's. Never culled, since it has no
+ * bounds to cull by, and no ray target.
  *
  * @returns {THREE.Mesh}
  */

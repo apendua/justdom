@@ -489,15 +489,16 @@ ordinary panel, wherever they stand:
 dom(ctx, hud, [effects((hud) => hud.position.copy(position))], { overlay: true });
 ```
 
-- **Drawn last.** The overlays draw after every ordinary panel, far to near among themselves, so a
-  nearer overlay is drawn over a farther one. Each clears the depth buffer as it starts, so nothing
-  drawn before it hides any of it. Only an object the scene gives a `renderOrder` of
-  `OVERLAY_PANEL_ORDER` (5e7, exported) or more draws after the overlays. The cursor and a drag's
-  ghost still draw over them.
+- **Drawn last.** The overlays draw after every ordinary panel and its strips. The depth buffer is
+  cleared once before the first of them, so nothing drawn before hides any of them, and among
+  themselves they hide one another as panels do. A loading frame an overlay shows while it mounts
+  draws with it. Only an object the scene gives a `renderOrder` of `OVERLAY_PANEL_ORDER` (2e8,
+  exported) or more draws after the overlays. The cursor and a drag's ghost still draw over them.
 - **Hit first.** A ray that meets an overlay is on the overlay, whatever it met nearer, and of two
   overlays it is on the nearer. With `opaqueToRays: false` only the overlay's controls take the ray
   this way; a ray between them goes on to the scene.
-- **Its keyboard too.** The board a field in an overlay opens is an overlay as well.
+- **Its strips and keyboard too.** A draggable overlay's strips, and the board a field in an overlay
+  opens, are overlays as well.
 
 Ordinary panels are unchanged. `overlay` is not one of the scene's
 [panel defaults](#panel-defaults): each panel says for itself.

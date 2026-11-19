@@ -52,10 +52,12 @@ import { createDepthClear } from "../blocker.js";
  *   middles. The panel's depth quad draws last in its slot.
  * - Overlay panels (`PortalOptions.overlay`) are sorted the same way among
  *   themselves, in the slots from `OVERLAY_SLOT` on, after every ordinary
- *   panel. Each starts its slot by clearing the depth buffer
+ *   panel. The depth buffer is cleared once, before the first of them
  *   (`createDepthClear`), so the scene and the ordinary panels drawn before
- *   it hide none of it, and the overlays drawn after it are drawn over it
- *   as panels are.
+ *   hide none of them, and their depth quads settle where the sort is wrong
+ *   between two overlays, as between two panels. What an overlay draws
+ *   outside its layers, its loading frame, is held in its slot
+ *   (`holdInSlot`), after the clear.
  *
  * Nothing is made a frame once the pools hold what the panel needs. The
  * tree's polygons and the walk's order come back at each build and grow
@@ -127,6 +129,7 @@ export function getLayerOrder(root) {
  * @property {number} time
  * @property {Set<LayerOrder>} panels
  * @property {LayerOrder[]} sorted
+ * @property {number} overlayStart The first overlay's slot, as last sorted.
  */
 
 /** @type {WeakMap<object, Scene>} */
@@ -203,6 +206,11 @@ export class LayerOrder {
    * @type {THREE.Mesh | null}
    */
   #depthClear = null;
+  /**
+   * The meshes held in the slot (`holdInSlot`), each with its order in it.
+   * @type {Map<THREE.Mesh, number>}
+   */
+  #held = new Map();
   /** What takes the overlay's mark off its container. @type {(() => void) | null} */
   #removeOverlay = null;
   /** Whether the panel is an overlay (`PortalOptions.overlay`). */
@@ -348,6 +356,8 @@ export class LayerOrder {
     orders.set(root, this);
     if (overlay) {
       this.overlay = true;
+      // In the overlays' slots before the first sort too.
+      this.#offset = OVERLAY_SLOT * PANEL_PIECES;
       this.#depthClear = createDepthClear();
       container.add(this.#depthClear);
       this.#removeOverlay = addOverlay(container);
@@ -393,7 +403,7 @@ export class LayerOrder {
     viewpoint.setFromMatrixPosition(viewer.matrixWorld);
     let scene = scenes.get(renderer);
     if (!scene) {
-      scene = { time: Number.NaN, panels: new Set(), sorted: [] };
+      scene = { time: Number.NaN, panels: new Set(), sorted: [], overlayStart: OVERLAY_SLOT };
       scenes.set(renderer, scene);
     }
     if (this.#scene !== scene) {
@@ -432,10 +442,31 @@ export class LayerOrder {
       this.#depthQuad.renderOrder = (this.#offset + PANEL_PIECES - 1) * PIECE_BAND;
     }
     if (this.#depthClear) {
-      // Before the slot's first band, and after the last of the slot
-      // before, whose depth quad is a band short of this one.
-      this.#depthClear.renderOrder = this.#offset * PIECE_BAND - 0.5;
+      // Before the first overlay's slot, after the last ordinary panel's
+      // and its strips. Every overlay's clear is here, and the first drawn
+      // clears for all (`createDepthClear`).
+      const start = this.#scene?.overlayStart ?? OVERLAY_SLOT;
+      this.#depthClear.renderOrder = start * PANEL_PIECES * PIECE_BAND - 0.5;
     }
+    for (const [mesh, order] of this.#held) {
+      mesh.renderOrder = this.#offset * PIECE_BAND + order;
+    }
+  }
+
+  /**
+   * Hold the meshes under `object`, which the panel draws outside its
+   * layers, at their orders counted from the start of the panel's slot
+   * rather than from 0: an overlay's loading frame, which would otherwise
+   * draw before the depth clear and be hidden by the scene.
+   *
+   * @param {THREE.Object3D} object
+   */
+  holdInSlot(object) {
+    object.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        this.#held.set(child, child.renderOrder);
+      }
+    });
   }
 
   /**
@@ -511,6 +542,7 @@ export class LayerOrder {
     orders.delete(this.#root);
     this.#scene?.panels.delete(this);
     this.#scene = null;
+    this.#held.clear();
     this.#depthClear?.removeFromParent();
     this.#depthClear = null;
     this.#removeOverlay?.();
@@ -994,7 +1026,9 @@ function inPanel(object, container, out) {
 
 /**
  * Sort a renderer's panels far to near from `from`, a slot each: the
- * ordinary panels from slot 0, the overlays after them from `OVERLAY_SLOT`.
+ * ordinary panels from slot 0, the overlays after them from `OVERLAY_SLOT`,
+ * or from the slot after the last ordinary panel's when there are more
+ * ordinary panels than fit below it.
  *
  * @param {Scene} scene
  * @param {THREE.Vector3} from
@@ -1007,10 +1041,14 @@ function sortPanels(scene, from) {
     sorted.push(panel);
   }
   sorted.sort(fartherFirst);
-  let overlays = 0;
+  let ordinary = 0;
+  while (ordinary < sorted.length && !sorted[ordinary].overlay) {
+    ordinary += 1;
+  }
+  const start = Math.max(OVERLAY_SLOT, ordinary);
+  scene.overlayStart = start;
   for (let slot = 0; slot < sorted.length; slot += 1) {
-    const panel = sorted[slot];
-    panel.setSlot(panel.overlay ? OVERLAY_SLOT + overlays++ : slot);
+    sorted[slot].setSlot(slot < ordinary ? slot : start + slot - ordinary);
   }
 }
 

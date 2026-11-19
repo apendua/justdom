@@ -143,10 +143,11 @@ export const OBSERVER_OPTIONS = {
  * @property {boolean} [overlay] Whether the panel draws over everything in
  *   the scene that is not an overlay, for a game's HUD or menu: no object
  *   and no ordinary panel hides it, wherever they stand, and a ray that
- *   meets it is on it, whatever the ray met nearer. Overlays draw over one
- *   another far to near, as panels do. The keyboard of a field in an
- *   overlay is an overlay too. Only a scene object given a `renderOrder` of
- *   `OVERLAY_PANEL_ORDER` (5e7) or more draws over one. Off by default. Not
+ *   meets it is on it, whatever the ray met nearer. Among themselves
+ *   overlays hide one another as panels do. A draggable overlay's strips
+ *   and the keyboard of a field in an overlay are overlays too. Only a
+ *   scene object given a `renderOrder` of `OVERLAY_PANEL_ORDER` (2e8) or
+ *   more draws over one. Off by default. Not
  *   among the scene's `PanelOptions`, since each panel says for itself.
  * @property {number | (() => number)} [budget] Milliseconds of each frame the
  *   portal may spend mounting and settling content, **when it paces
@@ -638,7 +639,7 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   state.handles =
     draggable && hasRenderer
-      ? createPanelHandles(baseCtx, draggable === true ? {} : draggable)
+      ? createPanelHandles(baseCtx, draggable === true ? {} : draggable, overlay)
       : null;
 
   /**
@@ -670,6 +671,11 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   state.loadingFrameObject =
     loadingFrame && state.hasFrames ? createLoadingFrame(loadingFrame) : null;
+  // An overlay's frame draws in the overlay's slot, after the depth clear,
+  // or the scene would hide a HUD still mounting behind a crate.
+  if (overlay && state.loadingFrameObject) {
+    state.layerOrder.holdInSlot(state.loadingFrameObject.object);
+  }
   state.stopLoadingFrame = () => {};
   /**
    * Put the frame in the scene and start its clock, if the mount has been

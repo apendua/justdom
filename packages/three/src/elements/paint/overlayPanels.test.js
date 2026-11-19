@@ -5,7 +5,7 @@ import { OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
 import { pagePanel } from "../../test/pagePanel.js";
 import { settle } from "../../test/portalHarness.js";
 import { stubGlRenderer } from "../../test/stubGl.js";
-import { getLayerOrder, OVERLAY_SLOT } from "./layerOrder.js";
+import { getLayerOrder } from "./layerOrder.js";
 
 // No frame source, so a portal mounts synchronously.
 globalThis.requestAnimationFrame = /** @type {never} */ (undefined);
@@ -111,10 +111,14 @@ describe("overlay panels", () => {
     restoreContext();
   });
 
-  test("draw far to near among themselves, from the first overlay slot", async () => {
+  test("draw far to near among themselves after one depth clear, which their depth quads then fill", async () => {
+    // A clear before each overlay wiped the depth quads of those drawn
+    // before it, so an overlay sorted later drew whole over a nearer part
+    // of an earlier one, where the ray was on the earlier. Goes red with a
+    // clear for each overlay.
+    const { renderer, restoreContext } = stubGlRenderer();
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera();
-    const renderer = { xr: { isPresenting: false } };
     const near = await panelAt(scene, 1, true);
     const far = await panelAt(scene, 2, true);
     for (const time of [1, 2]) {
@@ -124,14 +128,36 @@ describe("overlay panels", () => {
     }
     for (const each of [near, far]) {
       await settle(each.portal);
+      each.order.cut();
     }
-    const lowest = (/** @type {THREE.Object3D} */ panel) =>
-      Math.min(...colourMeshes(panel).map((mesh) => mesh.renderOrder));
-    assert.ok(lowest(far.panel) >= OVERLAY_PANEL_ORDER);
-    assert.ok(lowest(near.panel) > lowest(far.panel), "the nearer drawn over the farther");
-    assert.equal(OVERLAY_SLOT, 48, "the first slot at 5e7 or past it");
+
+    /** @type {string[]} */
+    const drawn = [];
+    for (const [each, name] of /** @type {const} */ ([
+      [near, "near"],
+      [far, "far"],
+    ])) {
+      for (const mesh of colourMeshes(each.panel)) {
+        mesh.onBeforeRender = () => {
+          if (drawn.at(-1) !== name) {
+            drawn.push(name);
+          }
+        };
+      }
+    }
+    const clearDepth = renderer.clearDepth.bind(renderer);
+    renderer.clearDepth = () => {
+      drawn.push("clear");
+      clearDepth();
+    };
+    renderer.render(scene, camera);
+    assert.deepEqual(drawn, ["clear", "far", "near"]);
+    drawn.length = 0;
+    renderer.render(scene, camera);
+    assert.deepEqual(drawn, ["clear", "far", "near"], "and again in the next render");
 
     near.portal.disconnect();
     far.portal.disconnect();
+    restoreContext();
   });
 });

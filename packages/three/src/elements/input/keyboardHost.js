@@ -284,13 +284,17 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
     // the scene's context, which the room is in; the board's own is the
     // panel's.
     const handles = room.frames
-      ? createPanelHandles(sceneCtx ?? binding.ctx, {
-          carried: anchor,
-          onPutDown: () => {
-            anchor.updateWorldMatrix(true, false);
-            putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
+      ? createPanelHandles(
+          sceneCtx ?? binding.ctx,
+          {
+            carried: anchor,
+            onPutDown: () => {
+              anchor.updateWorldMatrix(true, false);
+              putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
+            },
           },
-        })
+          binding.overlay,
+        )
       : null;
     if (handles) {
       drop.add(handles.frame);

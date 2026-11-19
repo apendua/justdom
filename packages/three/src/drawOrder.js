@@ -13,32 +13,35 @@ export const OVERLAY_RENDER_ORDER = 1e9;
 
 /**
  * Where overlay panels (`PortalOptions.overlay`) start drawing: past every
- * ordinary panel's slot and past any order a scene gives its own objects
- * short of this, and short of `HANDLE_RENDER_ORDER` (1e8) and the cursor.
- * Each overlay clears the depth buffer as its slot starts (`layerOrder.js`),
- * so nothing drawn before it can hide it.
+ * ordinary panel's slot and an ordinary panel's strips at
+ * `HANDLE_RENDER_ORDER` (1e8), past any order a scene gives its own objects
+ * short of this, and short of an overlay's strips at
+ * `OVERLAY_HANDLE_RENDER_ORDER` (3e8) and the cursor. The depth buffer is
+ * cleared once before the first overlay (`layerOrder.js`), so nothing drawn
+ * before the overlays hides them, and they hide one another as panels do.
  */
-export const OVERLAY_PANEL_ORDER = 5e7;
+export const OVERLAY_PANEL_ORDER = 2e8;
 
 /**
- * The container objects of the overlay panels that are up.
+ * The objects the overlay panels that are up hang in: each one's container,
+ * and a draggable one's frame, which holds its strips.
  *
  * @type {Set<import('three').Object3D>}
  */
 const overlays = new Set();
 
 /**
- * Say that the panel under `container` is drawn over everything that is not
- * an overlay, so that a ray on it is on it whatever else the ray meets
- * nearer (`isInOverlay`). Returns what takes the mark off.
+ * Say that what hangs in `object` is drawn over everything that is not an
+ * overlay, so that a ray on it is on it whatever else the ray meets nearer
+ * (`isInOverlay`). Returns what takes the mark off.
  *
- * @param {import('three').Object3D} container
+ * @param {import('three').Object3D} object
  * @returns {() => void}
  */
-export function addOverlay(container) {
-  overlays.add(container);
+export function addOverlay(object) {
+  overlays.add(object);
   return () => {
-    overlays.delete(container);
+    overlays.delete(object);
   };
 }
 

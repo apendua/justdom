@@ -359,6 +359,9 @@ export class LayerOrder {
       // In the overlays' slots before the first sort too.
       this.#offset = OVERLAY_SLOT * PANEL_PIECES;
       this.#depthClear = createDepthClear();
+      // Placed now, not at the first walk: a clear left at 0 until then
+      // would clear before everything transparent.
+      this.#depthClear.renderOrder = clearOrder(OVERLAY_SLOT);
       container.add(this.#depthClear);
       this.#removeOverlay = addOverlay(container);
     }
@@ -445,8 +448,7 @@ export class LayerOrder {
       // Before the first overlay's slot, after the last ordinary panel's
       // and its strips. Every overlay's clear is here, and the first drawn
       // clears for all (`createDepthClear`).
-      const start = this.#scene?.overlayStart ?? OVERLAY_SLOT;
-      this.#depthClear.renderOrder = start * PANEL_PIECES * PIECE_BAND - 0.5;
+      this.#depthClear.renderOrder = clearOrder(this.#scene?.overlayStart ?? OVERLAY_SLOT);
     }
     for (const [mesh, order] of this.#held) {
       mesh.renderOrder = this.#offset * PIECE_BAND + order;
@@ -1050,6 +1052,17 @@ function sortPanels(scene, from) {
   for (let slot = 0; slot < sorted.length; slot += 1) {
     sorted[slot].setSlot(slot < ordinary ? slot : start + slot - ordinary);
   }
+}
+
+/**
+ * Where the overlays' depth clear draws: half an order before the first
+ * overlay's slot.
+ *
+ * @param {number} start The first overlay's slot.
+ * @returns {number}
+ */
+function clearOrder(start) {
+  return start * PANEL_PIECES * PIECE_BAND - 0.5;
 }
 
 /**

@@ -160,4 +160,21 @@ describe("overlay panels", () => {
     far.portal.disconnect();
     restoreContext();
   });
+
+  test("clear before the overlays from the start, not only after a walk", async () => {
+    // A portal no walk ever runs for, with no renderer in its context,
+    // drawn by the app's own loop. Goes red with the clear left at 0.
+    const scene = new THREE.Scene();
+    const hud = await panelAt(scene, 1, true);
+    /** @type {THREE.Mesh | undefined} */
+    let clear;
+    hud.panel.traverse((object) => {
+      if (object instanceof THREE.Mesh && object.geometry.drawRange.count === 0) {
+        clear = object;
+      }
+    });
+    assert.ok(clear, "the overlay's clear");
+    assert.ok(clear.renderOrder > OVERLAY_PANEL_ORDER - 1, `the clear at ${clear.renderOrder}`);
+    hud.portal.disconnect();
+  });
 });

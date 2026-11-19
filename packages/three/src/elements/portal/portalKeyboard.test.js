@@ -16,7 +16,7 @@ import { HANDLE_OPACITY_ACTIVE, HANDLE_OPACITY_NEAR } from "../panelHandles.js";
 import { stubCanvas } from "../../test/stubCanvas.js";
 import { rectGeometry } from "../paint/sdfRect.js";
 import { CARET_BLINK_MS, CARET_ORDER_BIAS } from "../controls/textInput.js";
-import { getObjectDrawOrder } from "../../drawOrder.js";
+import { getObjectDrawOrder, isInOverlay } from "../../drawOrder.js";
 import { recordingSource } from "../../test/rumble.js";
 import { PREVIEW_ATTRIBUTE } from "../input/keyboardPreview.js";
 import { withStart } from "../../test/rays.js";
@@ -749,6 +749,27 @@ describe("the keyboard from the panel options", () => {
     assert.equal(panels(), 1, "no board, and nothing thrown");
     assert.equal(panel.input.hasAttribute("data-xr-focus"), false);
     panel.cleanup();
+  });
+
+  test("the board of a field in an overlay panel is an overlay too", async () => {
+    // A HUD's field whose board the scene could hide, or whose keys a
+    // crate between them and the hand could take the ray from. Goes red
+    // with the board built as an ordinary panel.
+    for (const overlay of [true, false]) {
+      const panel = keyboardPanel((create) => ({
+        options: { overlay, keyboard: { gap: 20, create } },
+      }));
+      try {
+        await settle();
+        panel.press(panel.fieldObject());
+        await settle();
+        const key = panel.keyObject();
+        assert.ok(key, "a key to point at");
+        assert.equal(isInOverlay(key), overlay);
+      } finally {
+        panel.cleanup();
+      }
+    }
   });
 
   test("the board's keys feel the way the panel's own haptics say, hover included", async () => {

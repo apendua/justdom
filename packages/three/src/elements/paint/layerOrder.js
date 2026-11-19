@@ -12,6 +12,8 @@ import {
 import { LayerTree } from "./layerTree.js";
 import { getBorderBoxSize } from "../mirror/geometryReads.js";
 import { isGenerated } from "../pseudoElements.js";
+import { addOverlay, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
+import { createDepthClear } from "../blocker.js";
 
 /**
  * @import {Polygon} from './layerTree.js';
@@ -48,6 +50,12 @@ import { isGenerated } from "../pseudoElements.js";
  * - Panels are drawn whole, far to near, each in a slot of `PANEL_PIECES`
  *   pieces, sorted once a frame by the distance from the viewpoint to their
  *   middles. The panel's depth quad draws last in its slot.
+ * - Overlay panels (`PortalOptions.overlay`) are sorted the same way among
+ *   themselves, in the slots from `OVERLAY_SLOT` on, after every ordinary
+ *   panel. Each starts its slot by clearing the depth buffer
+ *   (`createDepthClear`), so the scene and the ordinary panels drawn before
+ *   it hide none of it, and the overlays drawn after it are drawn over it
+ *   as panels are.
  *
  * Nothing is made a frame once the pools hold what the panel needs. The
  * tree's polygons and the walk's order come back at each build and grow
@@ -68,6 +76,12 @@ import { isGenerated } from "../pseudoElements.js";
  * the cut is found by band (`#meshesOf`).
  */
 export const PANEL_PIECES = 256;
+
+/**
+ * The first overlay panel's slot: the first that starts at
+ * `OVERLAY_PANEL_ORDER` or later.
+ */
+export const OVERLAY_SLOT = Math.ceil(OVERLAY_PANEL_ORDER / (PANEL_PIECES * PIECE_BAND));
 
 /** The place the pieces past a slot share, the last before the quad's. */
 const OVERFLOW = PANEL_PIECES - 2;
@@ -182,6 +196,17 @@ export class LayerOrder {
   #batch;
   /** @type {THREE.Mesh | null} */
   #depthQuad;
+  /**
+   * An overlay's depth clear, first in its slot; null for an ordinary
+   * panel.
+   *
+   * @type {THREE.Mesh | null}
+   */
+  #depthClear = null;
+  /** What takes the overlay's mark off its container. @type {(() => void) | null} */
+  #removeOverlay = null;
+  /** Whether the panel is an overlay (`PortalOptions.overlay`). */
+  overlay = false;
 
   /** @type {Set<PaintNode>} */
   #layers = new Set();
@@ -306,8 +331,10 @@ export class LayerOrder {
    * @param {import('./paintBatch.js').PaintBatch} options.batch The batch
    *   that makes this order (`paintBatch.js`).
    * @param {THREE.Mesh | null} options.depthQuad
+   * @param {boolean} [options.overlay] Whether the panel draws over
+   *   everything else (`PortalOptions.overlay`).
    */
-  constructor({ container, root, objectOf, batch, depthQuad }) {
+  constructor({ container, root, objectOf, batch, depthQuad, overlay = false }) {
     this.#container = container;
     this.#root = root;
     // A lifted pseudo-element is no node the portal holds an object for;
@@ -319,6 +346,12 @@ export class LayerOrder {
     this.#depthQuad = depthQuad;
     this.#layers.add(root);
     orders.set(root, this);
+    if (overlay) {
+      this.overlay = true;
+      this.#depthClear = createDepthClear();
+      container.add(this.#depthClear);
+      this.#removeOverlay = addOverlay(container);
+    }
   }
 
   /**
@@ -398,6 +431,11 @@ export class LayerOrder {
     if (this.#depthQuad) {
       this.#depthQuad.renderOrder = (this.#offset + PANEL_PIECES - 1) * PIECE_BAND;
     }
+    if (this.#depthClear) {
+      // Before the slot's first band, and after the last of the slot
+      // before, whose depth quad is a band short of this one.
+      this.#depthClear.renderOrder = this.#offset * PIECE_BAND - 0.5;
+    }
   }
 
   /**
@@ -473,6 +511,10 @@ export class LayerOrder {
     orders.delete(this.#root);
     this.#scene?.panels.delete(this);
     this.#scene = null;
+    this.#depthClear?.removeFromParent();
+    this.#depthClear = null;
+    this.#removeOverlay?.();
+    this.#removeOverlay = null;
   }
 
   /**
@@ -951,7 +993,8 @@ function inPanel(object, container, out) {
 }
 
 /**
- * Sort a renderer's panels far to near from `from`, a slot each.
+ * Sort a renderer's panels far to near from `from`, a slot each: the
+ * ordinary panels from slot 0, the overlays after them from `OVERLAY_SLOT`.
  *
  * @param {Scene} scene
  * @param {THREE.Vector3} from
@@ -964,18 +1007,22 @@ function sortPanels(scene, from) {
     sorted.push(panel);
   }
   sorted.sort(fartherFirst);
+  let overlays = 0;
   for (let slot = 0; slot < sorted.length; slot += 1) {
-    sorted[slot].setSlot(slot);
+    const panel = sorted[slot];
+    panel.setSlot(panel.overlay ? OVERLAY_SLOT + overlays++ : slot);
   }
 }
 
 /**
+ * The ordinary panels before the overlays, and each far to near.
+ *
  * @param {LayerOrder} a
  * @param {LayerOrder} b
  * @returns {number}
  */
 function fartherFirst(a, b) {
-  return b.distance - a.distance;
+  return Number(a.overlay) - Number(b.overlay) || b.distance - a.distance;
 }
 
 /**

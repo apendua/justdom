@@ -140,6 +140,14 @@ export const OBSERVER_OPTIONS = {
  *   only looks at — a head-locked overlay in particular, which sits between
  *   the eye and everything else and would otherwise be in the way of every
  *   ray that crossed it.
+ * @property {boolean} [overlay] Whether the panel draws over everything in
+ *   the scene that is not an overlay, for a game's HUD or menu: no object
+ *   and no ordinary panel hides it, wherever they stand, and a ray that
+ *   meets it is on it, whatever the ray met nearer. Overlays draw over one
+ *   another far to near, as panels do. The keyboard of a field in an
+ *   overlay is an overlay too. Only a scene object given a `renderOrder` of
+ *   `OVERLAY_PANEL_ORDER` (5e7) or more draws over one. Off by default. Not
+ *   among the scene's `PanelOptions`, since each panel says for itself.
  * @property {number | (() => number)} [budget] Milliseconds of each frame the
  *   portal may spend mounting and settling content, **when it paces
  *   itself** — a portal built outside a rendering context, with no shared
@@ -305,6 +313,7 @@ function buildPortal(ctx, ownOptions = {}) {
     haptics = {},
     thumbstickWheel = false,
     draggable = false,
+    overlay = false,
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -541,6 +550,7 @@ function buildPortal(ctx, ownOptions = {}) {
     objectOf: (node) => state.nodeToObject.get(node),
     batch: state.paintBatch,
     depthQuad: state.depthQuad,
+    overlay,
   });
   state.ctx = LayerOrderContext.set(state.ctx, state.layerOrder);
   if (state.blocker) {
@@ -849,6 +859,7 @@ function buildPortal(ctx, ownOptions = {}) {
             haptics: haptics === false ? false : { hover: true, ...haptics },
           }),
           options: keyboard,
+          overlay,
           containerObject: state.containerObject,
           // A draggable panel's frame, where the board moves with the panel
           // and a ray on its keys is not a ray on the panel.

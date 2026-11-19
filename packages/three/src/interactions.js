@@ -9,7 +9,7 @@ import {
   Stream,
   withComputation,
 } from "justdom-signal";
-import { getObjectDrawOrder, isLaterInTree } from "./drawOrder.js";
+import { getObjectDrawOrder, isInOverlay, isLaterInTree } from "./drawOrder.js";
 import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
@@ -733,23 +733,34 @@ export const LEVEL = 1e-6;
 
 /**
  * The hit drawn on top, among those sorted by distance: the nearest, unless
- * hits level with it are drawn over it. A panel puts its content level, and of
- * level hits the later draw order (`getObjectDrawOrder`) is drawn over the
- * earlier, since nothing in a panel writes depth but its depth quad. Of level
- * hits drawn at one order, the one painted later in tree order, a
- * `::before` and an `::after` in their places (`isLaterInTree`), as on a
- * page; hits no panel draws keep the order the cast found them in.
+ * hits level with it are drawn over it. An overlay panel is drawn over
+ * everything else (`PortalOptions.overlay`), so the nearest hit on one
+ * counts as the nearest, however much the ray met before it. A panel puts
+ * its content level, and of level hits the later draw order
+ * (`getObjectDrawOrder`) is drawn over the earlier, since nothing in a
+ * panel writes depth but its depth quad. Of level hits drawn at one order,
+ * the one painted later in tree order, a `::before` and an `::after` in
+ * their places (`isLaterInTree`), as on a page; hits no panel draws keep
+ * the order the cast found them in.
  *
  * @param {THREE.Intersection<THREE.Object3D<XREventMap>>[]} sorted
  * @returns {THREE.Intersection<THREE.Object3D<XREventMap>> | undefined}
  */
 function onTop(sorted) {
-  let hit = sorted[0];
+  let first = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    if (isInOverlay(sorted[i].object)) {
+      first = i;
+      break;
+    }
+  }
+  let hit = sorted[first];
   if (!hit) {
     return undefined;
   }
+  const distance = hit.distance;
   let order = getObjectDrawOrder(hit.object);
-  for (let i = 1; i < sorted.length && sorted[i].distance - sorted[0].distance <= LEVEL; i++) {
+  for (let i = first + 1; i < sorted.length && sorted[i].distance - distance <= LEVEL; i++) {
     const next = sorted[i];
     const nextOrder = getObjectDrawOrder(next.object);
     if (

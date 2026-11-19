@@ -12,6 +12,60 @@
 export const OVERLAY_RENDER_ORDER = 1e9;
 
 /**
+ * Where overlay panels (`PortalOptions.overlay`) start drawing: past every
+ * ordinary panel's slot and past any order a scene gives its own objects
+ * short of this, and short of `HANDLE_RENDER_ORDER` (1e8) and the cursor.
+ * Each overlay clears the depth buffer as its slot starts (`layerOrder.js`),
+ * so nothing drawn before it can hide it.
+ */
+export const OVERLAY_PANEL_ORDER = 5e7;
+
+/**
+ * The container objects of the overlay panels that are up.
+ *
+ * @type {Set<import('three').Object3D>}
+ */
+const overlays = new Set();
+
+/**
+ * Say that the panel under `container` is drawn over everything that is not
+ * an overlay, so that a ray on it is on it whatever else the ray meets
+ * nearer (`isInOverlay`). Returns what takes the mark off.
+ *
+ * @param {import('three').Object3D} container
+ * @returns {() => void}
+ */
+export function addOverlay(container) {
+  overlays.add(container);
+  return () => {
+    overlays.delete(container);
+  };
+}
+
+/**
+ * Whether `object` is drawn by an overlay panel, or hangs in one. A walk up
+ * the parents, skipped while no overlay is up.
+ *
+ * @param {import('three').Object3D} object
+ * @returns {boolean}
+ */
+export function isInOverlay(object) {
+  if (overlays.size === 0) {
+    return false;
+  }
+  for (
+    let node = /** @type {import('three').Object3D | null} */ (object);
+    node;
+    node = node.parent
+  ) {
+    if (overlays.has(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * How far past its own `renderOrder` each mesh of a panel draws, for the hit
  * test (`getObjectDrawOrder`).
  *

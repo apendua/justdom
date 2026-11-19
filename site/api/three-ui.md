@@ -230,10 +230,6 @@ const App = effectsOnly((ctx) => {
 itself to the camera, which is already in the scene. Call it from any effect, the way `useFrame` is
 called, and the surrounding computation owns the meter and the panel both.
 
-The panel is an [overlay](/api/three/panels#overlay-panels): it draws after the rest of the scene
-and every ordinary panel, so nothing in the room hides it, and it lets rays through to what is
-behind it.
-
 `createDiagnostics(options?)` returns the controls; `{ visible: false }` starts the panel hidden.
 
 | Control    | What it is                                                                                                                               |
@@ -259,8 +255,9 @@ panel is faint, so the room can be read through it, and dark enough that the rea
   option this widget is the reason for.
 - **It draws over the scene rather than in it.** Anything nearer in the same direction would hide
   it, which is the honest answer for a thing in the room and the wrong one for an instrument, so the
-  subtree stops testing itself against the depth buffer and is ordered after everything else. Only
-  on what draws colour: the depth quad a panel drawn in paint order carries is left as it was made.
+  panel is an [overlay](/api/three/panels#overlay-panels): it draws after the rest of the scene and
+  every ordinary panel, over a cleared depth buffer. Only another overlay nearer than it, such as a
+  game's own HUD, can hide it, as overlays hide one another the way panels do.
 - **It measures whether or not it is being drawn.** Counting frames is a `+= 1` in a callback the
   renderer was making anyway; drawing the panel is what costs something, and that is what the switch
   turns off.

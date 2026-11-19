@@ -62,6 +62,9 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  *   of its own, and none of the app's defaults — except the panel's
  *   `haptics`, which the board's keys follow, since the same hand presses
  *   both, with the hover on unless the panel turned it off by name.
+ * @property {boolean} overlay Whether the panel is an overlay
+ *   (`PortalOptions.overlay`), which makes the board one too: a board the
+ *   scene could hide would leave a field in a HUD with nothing to type on.
  * @property {THREE.Object3D} containerObject The panel's perimeter.
  * @property {() => THREE.Object3D | null} hangFrom Where a board below the
  *   panel hangs, so it is placed and scaled with the panel: what the panel
@@ -281,13 +284,17 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
     // the scene's context, which the room is in; the board's own is the
     // panel's.
     const handles = room.frames
-      ? createPanelHandles(sceneCtx ?? binding.ctx, {
-          carried: anchor,
-          onPutDown: () => {
-            anchor.updateWorldMatrix(true, false);
-            putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
+      ? createPanelHandles(
+          sceneCtx ?? binding.ctx,
+          {
+            carried: anchor,
+            onPutDown: () => {
+              anchor.updateWorldMatrix(true, false);
+              putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
+            },
           },
-        })
+          binding.overlay,
+        )
       : null;
     if (handles) {
       drop.add(handles.frame);
@@ -352,6 +359,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       preview ? InputFocusContext.set(binding.ctx, preview.focus) : binding.ctx,
       {
         opaqueToRays: true,
+        overlay: binding.overlay,
         // A board that has been asked for is wanted now; a frame standing in
         // for it would be one more thing to look at.
         loadingFrame: false,

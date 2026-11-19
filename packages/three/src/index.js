@@ -38,6 +38,7 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal } from "./elements/portal/portal.js";
+export { OVERLAY_PANEL_ORDER } from "./drawOrder.js";
 export { enableThemingMode, followUserActions } from "./elements/css/documentStyles.js";
 export { enableOutlinesMode, outlinesReport } from "./elements/dev/outlines.js";
 export {

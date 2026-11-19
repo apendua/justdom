@@ -20,7 +20,13 @@ import { getComputedStyleCached } from "../mirror/styleReads.js";
 import { getPortalRoot } from "./portalRoot.js";
 import { isBlocker } from "../blocker.js";
 import { withPanelOptions } from "../panelOptions.js";
-import { DEFAULT_HANDLE_WIDTH } from "../panelHandles.js";
+import {
+  DEFAULT_HANDLE_WIDTH,
+  HANDLE_RENDER_ORDER,
+  OVERLAY_HANDLE_RENDER_ORDER,
+} from "../panelHandles.js";
+import { isInOverlay, objectNodes, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
+import { getLayerOrder } from "../paint/layerOrder.js";
 import { RendererContext } from "../../scene.js";
 import { recordingSource } from "../../test/rumble.js";
 import { clientRect } from "../../test/clientRect.js";
@@ -705,6 +711,28 @@ describe("a draggable panel", () => {
     assert.equal(targets.has(top), false);
   });
 
+  test("an overlay's strips take the ray first and draw after the overlays; a panel's do neither", () => {
+    // The strips hang beside the container, not in it, so a mark on the
+    // container alone leaves them to lose the ray to a crate in front of
+    // the HUD. And an ordinary panel's bars drawn after the depth clear
+    // would show through whatever stands in front of the panel. Goes red
+    // with only the container marked, or with one order for every bar.
+    for (const overlay of [true, false]) {
+      const { portal, parent } = setup({ draggable: true, overlay });
+      const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
+      const bar = /** @type {THREE.Mesh} */ (parent.getObjectByName("panel-handle-top-bar"));
+      assert.equal(isInOverlay(top), overlay, "the strip's ray");
+      assert.equal(
+        bar.renderOrder,
+        overlay ? OVERLAY_HANDLE_RENDER_ORDER : HANDLE_RENDER_ORDER,
+        "the bar's order",
+      );
+      portal.disconnect();
+      assert.equal(isInOverlay(top), false, "the mark goes with the panel");
+    }
+    assert.ok(HANDLE_RENDER_ORDER < OVERLAY_PANEL_ORDER, "a panel's bars before the clear");
+  });
+
   test("lays the strips out with the panel while it mounts", async () => {
     // A panel with nothing in it, which grows to 100 by 200 px as it
     // mounts: the loading frame's ticks place it at the new size long
@@ -805,6 +833,63 @@ describe("a draggable panel", () => {
       assert.equal(portal.isLoading(), true);
       assert.ok(loadingFrame(), "the frame is up");
       assert.equal(group.visible, true, "and the strips with it");
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      clock.restore();
+    }
+  });
+
+  test("an overlay's loading frame draws in the overlay's slot, after the depth clear", async () => {
+    // At its own orders of 0 and 1 the frame draws before the clear, and a
+    // HUD still mounting behind a crate shows nothing. Goes red with the
+    // frame left at those orders.
+    const clock = fakeClock();
+    try {
+      const { ctx } = countingManager();
+      const renderer = /** @type {any} */ ({});
+      const portal = createPortal(RendererContext.set(ctx, renderer), {
+        overlay: true,
+        budget: 0,
+        loadingFrame: { delay: 250, minimumTime: 1000 },
+      });
+      const parent = new THREE.Group();
+      portal.addTo(parent);
+      /** @type {import("justdom-core").Mountable | undefined} */
+      let mountable;
+      const subscription = $("div", [children($("div"), $("div"), $("div"))]).subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await nextMacrotask();
+      // The panel's walk runs every frame from the start, and places its
+      // root layer before the frame is up.
+      const container = parent.children[0];
+      const root = /** @type {Element} */ (objectNodes.get(container));
+      const order = /** @type {import("../paint/layerOrder.js").LayerOrder} */ (
+        getLayerOrder(root)
+      );
+      order.walk(new THREE.Vector3(0, 0, 5));
+      clock.set(300);
+      flushFrame(renderer);
+      await nextMacrotask();
+      const frame = /** @type {THREE.Object3D} */ (parent.getObjectByName("loading-frame"));
+      assert.ok(frame, "the frame is up");
+      order.walk(new THREE.Vector3(0, 0, 5));
+      /** @type {number[]} */
+      const orders = [];
+      frame.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          orders.push(object.renderOrder);
+        }
+      });
+      assert.ok(orders.length > 1, "the frame and its dots");
+      for (const each of orders) {
+        assert.ok(each >= OVERLAY_PANEL_ORDER, `a mesh of the frame at ${each}`);
+      }
 
       subscription.unsubscribe();
       portal.disconnect();

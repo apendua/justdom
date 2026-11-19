@@ -11,7 +11,7 @@ import {
   setWorldMatrix,
 } from "./interactions.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
-import { objectNodes, registerDrawOrder } from "./drawOrder.js";
+import { addOverlay, objectNodes, registerDrawOrder } from "./drawOrder.js";
 import { BOX_BUCKET_BIAS } from "./elements/paint/boxBatch.js";
 
 /**
@@ -985,6 +985,47 @@ describe("getIntersection", () => {
     manager.add(first);
     manager.add(second);
     assert.equal(manager.getIntersection(fakeController())?.object, first);
+  });
+
+  test("a hit on an overlay panel wins over anything nearer", () => {
+    // A HUD a metre and a half out, with a crate between it and the hand:
+    // the overlay is drawn over the crate, so the ray is on the overlay.
+    // Goes red with the nearest hit taken.
+    const manager = new InteractionManager();
+    const crate = targetMesh(1);
+    const container = new THREE.Object3D();
+    const hud = targetMesh(1.5);
+    container.add(hud);
+    const removeOverlay = addOverlay(container);
+    manager.add(crate);
+    manager.add(hud);
+    try {
+      assert.equal(manager.getIntersection(fakeController())?.object, hud);
+    } finally {
+      removeOverlay();
+    }
+    // With the mark off, the crate is on top again.
+    assert.equal(manager.getIntersection(fakeController())?.object, crate);
+  });
+
+  test("of two overlay panels, the nearer wins, as it is drawn over the farther", () => {
+    const manager = new InteractionManager();
+    const crate = targetMesh(1);
+    const near = new THREE.Object3D();
+    const far = new THREE.Object3D();
+    const nearHud = targetMesh(2);
+    const farHud = targetMesh(3);
+    near.add(nearHud);
+    far.add(farHud);
+    const removes = [addOverlay(near), addOverlay(far)];
+    manager.add(crate);
+    manager.add(farHud);
+    manager.add(nearHud);
+    try {
+      assert.equal(manager.getIntersection(fakeController())?.object, nearHud);
+    } finally {
+      for (const remove of removes) remove();
+    }
   });
 
   test("a hidden subtree is not a ray target, exactly as it is not drawn", () => {

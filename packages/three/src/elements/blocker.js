@@ -176,3 +176,76 @@ export function coverBox(blocker, width, height, z) {
     1,
   );
 }
+
+/**
+ * The draw a depth clear stands in for: none. A position to keep three's
+ * bounds happy and a draw range of nothing, so three calls the mesh's
+ * `onBeforeRender` in its place in the order and then draws no triangle.
+ */
+const nothing = new THREE.BufferGeometry();
+nothing.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0], 3));
+nothing.setDrawRange(0, 0);
+
+const clearMaterial = new THREE.MeshBasicMaterial({
+  colorWrite: false,
+  depthWrite: false,
+  depthTest: false,
+  // In the transparent list with every panel, so that `renderOrder` places
+  // the clear between the draws it comes after and those it comes before.
+  transparent: true,
+});
+
+/**
+ * The render each renderer last cleared depth in, and for which camera: an
+ * eye, without multiview. Written in place, so a frame makes nothing.
+ *
+ * @type {WeakMap<THREE.WebGLRenderer, { frame: number, camera: THREE.Camera | null }>}
+ */
+const lastClears = new WeakMap();
+
+/**
+ * Clear the depth buffer, once for each render and camera: every overlay
+ * has a clear, at one order before the first overlay's slot, and only the
+ * first of them drawn clears. The rest would wipe the depth quads of the
+ * overlays drawn before them, and an overlay would no longer be hidden by
+ * a nearer one, as panels are.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Scene} scene
+ * @param {THREE.Camera} camera
+ */
+function clearDepth(renderer, scene, camera) {
+  const frame = renderer.info.render.frame;
+  let last = lastClears.get(renderer);
+  if (!last) {
+    last = { frame: -1, camera: null };
+    lastClears.set(renderer, last);
+  }
+  if (last.frame === frame && last.camera === camera) {
+    return;
+  }
+  last.frame = frame;
+  last.camera = camera;
+  renderer.clearDepth();
+}
+
+/**
+ * A mesh that draws nothing and clears the depth buffer where it falls in
+ * the draw order, once for each render and camera (`clearDepth`): what the
+ * overlay panels start with, so that what was drawn before them, the scene
+ * and the ordinary panels, hides none of them (`LayerOrder`). In a session
+ * with no multiview three draws the eyes one after the other, and the clear
+ * takes both eyes' depth; the eye drawn first has drawn everything by then,
+ * so only its depth goes, which no later draw reads. Shared, as a
+ * blocker's is: nothing in it is a panel's. Never culled, since it has no
+ * bounds to cull by, and no ray target.
+ *
+ * @returns {THREE.Mesh}
+ */
+export function createDepthClear() {
+  const mesh = new THREE.Mesh(nothing, clearMaterial);
+  mesh.frustumCulled = false;
+  mesh.raycast = () => {};
+  mesh.onBeforeRender = clearDepth;
+  return mesh;
+}

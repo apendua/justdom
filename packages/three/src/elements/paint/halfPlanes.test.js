@@ -41,7 +41,7 @@ describe("half-plane uniforms", () => {
     // The plane x = 10 in the panel's frame, the panel 100 px to the right.
     const planes = [new THREE.Plane(new THREE.Vector3(1, 0, 0), -10)];
     const panelToWorld = new THREE.Matrix4().makeTranslation(100, 0, 0);
-    writeHalfPlanes(uniforms, planes, [-1], panelToWorld);
+    writeHalfPlanes(uniforms, planes, [-1], panelToWorld, [], []);
     assert.equal(uniforms.uHalfPlaneCount.value, 1);
     assert.deepEqual(uniforms.uHalfPlanes.value[0].toArray(), [1, 0, 0, -110]);
     assert.equal(uniforms.uHalfPlaneSides.value[0], -1);
@@ -51,6 +51,20 @@ describe("half-plane uniforms", () => {
     assert.equal(uniforms.uHalfPlaneCount.value, 0);
   });
 
+  test("follow the panel's planes with the world's, which they take as they are", () => {
+    // A piece of a panel crossed by another: its own cut, then the other
+    // panel's plane, z = -5 in the world, already in world space.
+    const uniforms = createHalfPlaneUniforms();
+    const planes = [new THREE.Plane(new THREE.Vector3(1, 0, 0), -10)];
+    const panelToWorld = new THREE.Matrix4().makeTranslation(100, 0, 0);
+    const world = [new THREE.Plane(new THREE.Vector3(0, 0, 1), 5)];
+    writeHalfPlanes(uniforms, planes, [1], panelToWorld, world, [-1]);
+    assert.equal(uniforms.uHalfPlaneCount.value, 2);
+    assert.deepEqual(uniforms.uHalfPlanes.value[0].toArray(), [1, 0, 0, -110]);
+    assert.deepEqual(uniforms.uHalfPlanes.value[1].toArray(), [0, 0, 1, 5]);
+    assert.deepEqual(uniforms.uHalfPlaneSides.value.slice(0, 2), [1, -1]);
+  });
+
   test("hold a piece's first half-planes when it has more than fit", () => {
     const uniforms = createHalfPlaneUniforms();
     const count = MAX_HALF_PLANES + 3;
@@ -58,7 +72,7 @@ describe("half-plane uniforms", () => {
       { length: count },
       (_, i) => new THREE.Plane(new THREE.Vector3(0, 1, 0), -i),
     );
-    writeHalfPlanes(uniforms, planes, new Array(count).fill(1), new THREE.Matrix4());
+    writeHalfPlanes(uniforms, planes, new Array(count).fill(1), new THREE.Matrix4(), [], []);
     assert.equal(uniforms.uHalfPlaneCount.value, MAX_HALF_PLANES);
     assert.equal(uniforms.uHalfPlanes.value[MAX_HALF_PLANES - 1].w, -(MAX_HALF_PLANES - 1));
   });

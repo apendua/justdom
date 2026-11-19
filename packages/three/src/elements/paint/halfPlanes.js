@@ -131,27 +131,42 @@ export function halfPlanesOf(material) {
 const plane = new THREE.Plane();
 
 /**
- * Write a piece's half-planes, given in the panel's frame, into a
- * material's uniforms, in world space through `panelToWorld`.
+ * Write a piece's half-planes into a material's uniforms, in world space:
+ * the ones given in the panel's frame through `panelToWorld`, then the ones
+ * already in world space, which cut the piece of a panel crossed by
+ * another out of the panel (`sortPanels` in `layerOrder.js`). Past
+ * `MAX_HALF_PLANES`, the rest are left out.
  *
  * @param {HalfPlaneUniforms} uniforms
  * @param {readonly THREE.Plane[]} planes
  * @param {readonly number[]} sides
  * @param {THREE.Matrix4} panelToWorld
+ * @param {readonly THREE.Plane[]} worldPlanes
+ * @param {readonly number[]} worldSides
  */
-export function writeHalfPlanes(uniforms, planes, sides, panelToWorld) {
-  const count = Math.min(planes.length, MAX_HALF_PLANES);
-  for (let i = 0; i < count; i += 1) {
+export function writeHalfPlanes(uniforms, planes, sides, panelToWorld, worldPlanes, worldSides) {
+  let count = 0;
+  for (let i = 0; i < planes.length && count < MAX_HALF_PLANES; i += 1) {
     plane.copy(planes[i]).applyMatrix4(panelToWorld);
-    uniforms.uHalfPlanes.value[i].set(
-      plane.normal.x,
-      plane.normal.y,
-      plane.normal.z,
-      plane.constant,
-    );
-    uniforms.uHalfPlaneSides.value[i] = sides[i];
+    writeOne(uniforms, count, plane, sides[i]);
+    count += 1;
+  }
+  for (let i = 0; i < worldPlanes.length && count < MAX_HALF_PLANES; i += 1) {
+    writeOne(uniforms, count, worldPlanes[i], worldSides[i]);
+    count += 1;
   }
   uniforms.uHalfPlaneCount.value = count;
+}
+
+/**
+ * @param {HalfPlaneUniforms} uniforms
+ * @param {number} i
+ * @param {THREE.Plane} world
+ * @param {number} side
+ */
+function writeOne(uniforms, i, world, side) {
+  uniforms.uHalfPlanes.value[i].set(world.normal.x, world.normal.y, world.normal.z, world.constant);
+  uniforms.uHalfPlaneSides.value[i] = side;
 }
 
 /**

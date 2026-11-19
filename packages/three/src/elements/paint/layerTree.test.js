@@ -148,6 +148,27 @@ describe("LayerTree", () => {
     assert.deepEqual(walked(tree, IN_FRONT), [door, root, door]);
   });
 
+  test("takes the distance two planes share a node within, and their order there, as it is made", () => {
+    // As the renderer's tree of panels is made: a hair apart in its units
+    // is apart, and two in one plane draw by the tie, not paint order.
+    const [first, second] = siblings("", "");
+    /** @param {import("./layerTree.js").Polygon} polygon */
+    const rank = (polygon) => (polygon.layer === second ? 0 : 1);
+    const tree = new LayerTree({ coplanar: 1e-6, tie: (a, b) => rank(a) - rank(b) });
+    tree.begin();
+    tree.add(first, 0, placed(0), 100, 100);
+    tree.add(second, 0, placed(0), 100, 100);
+    tree.build();
+    assert.equal(tree.nodes, 1);
+    assert.deepEqual(walked(tree, IN_FRONT), [second, first]);
+
+    tree.begin();
+    tree.add(first, 0, placed(0), 100, 100);
+    tree.add(second, 0, placed(0.001), 100, 100);
+    tree.build();
+    assert.equal(tree.nodes, 2, "within `COPLANAR` px, but not within its own distance");
+  });
+
   test("splits by the shallowest layer first", () => {
     const [root] = siblings("");
     const door = document.createElement("div");

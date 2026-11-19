@@ -2929,4 +2929,79 @@ describe("a panel drawn in paint order", () => {
     near.teardown();
     far.teardown();
   });
+
+  test("cuts a panel that crosses another's plane, and draws its pieces either side of the other", async () => {
+    // Two translucent panels crossing at their middles, as a letter carried
+    // through a plant. Goes red with the panels drawn whole, far to near by
+    // their middles: one panel's draws all come before the other's or all
+    // after, and the one drawn first has its depth quad hide every part of
+    // the other behind its plane, through its own clear background.
+    const pages = await Promise.all(
+      ["rgba(60, 160, 90, 0.5)", "rgba(250, 250, 240, 0.5)"].map((background) =>
+        page([{ id: "card", style: CARD, at: [20, 20, 360, 60] }], {
+          rootStyle: `background: ${background}`,
+        }),
+      ),
+    );
+    const [flat, swung] = pages;
+    flat.scene.position.set(0, 0, -3000);
+    swung.scene.position.set(0, 0, -3000);
+    swung.scene.rotation.y = Math.PI / 3;
+    flat.scene.updateMatrixWorld(true);
+    swung.scene.updateMatrixWorld(true);
+    // Turned about its corner: move it so that the two middles meet.
+    const middle = (/** @type {{ panel: THREE.Object3D }} */ g) =>
+      g.panel.localToWorld(new THREE.Vector3(200, 150, 0));
+    swung.scene.position.add(middle(flat).sub(middle(swung)));
+    swung.scene.updateMatrixWorld(true);
+
+    const renderer = /** @type {THREE.WebGLRenderer} */ (
+      /** @type {unknown} */ ({ xr: { isPresenting: false } })
+    );
+    const camera = new THREE.PerspectiveCamera();
+    camera.updateMatrixWorld();
+    for (const time of [1, 2]) {
+      for (const g of pages) {
+        const order = /** @type {import("./paint/layerOrder.js").LayerOrder} */ (
+          getLayerOrder(g.root)
+        );
+        order.frame(time, renderer, camera);
+        await g.settle();
+        order.cut();
+      }
+    }
+
+    const cut = pages.filter((g) => proxiesOf(g.panel).length > 0);
+    assert.equal(cut.length, 1, "one panel is cut by the other's plane");
+    const [crossing] = cut;
+    const other = crossing === flat ? swung : flat;
+    assert.equal(proxiesOf(other.panel).length, 0, "and the other is drawn whole");
+
+    // Every draw of the crossing panel, its root's box and its card's, is
+    // cut, and drawn once a side: one before the other panel's first draw,
+    // and one after the other panel's depth quad.
+    const orders = drawn(crossing.panel)
+      .filter((mesh) => {
+        const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
+        return uniforms && uniforms.uHalfPlaneCount.value > 0;
+      })
+      .map((mesh) => mesh.renderOrder);
+    const otherBase = getLayerBase(other.root) ?? Number.NaN;
+    const otherQuad = depthQuadOf(other.panel).renderOrder;
+    assert.ok(
+      orders.some((order) => order < otherBase),
+      `a piece before ${otherBase}: ${orders}`,
+    );
+    assert.ok(
+      orders.some((order) => order > otherQuad),
+      `a piece after ${otherQuad}: ${orders}`,
+    );
+    // Its own quad last, after both its pieces.
+    assert.ok(
+      depthQuadOf(crossing.panel).renderOrder > Math.max(...orders),
+      "its depth quad after all of it",
+    );
+    flat.teardown();
+    swung.teardown();
+  });
 });

@@ -9,15 +9,17 @@ import { isGenerated } from "../pseudoElements.js";
 /*
  * The tree a panel drawn in paint order orders its layers with: a binary
  * space partition over their planes, in the panel's frame, as Chromium's
- * compositor orders a `preserve-3d` context (`cc/trees/bsp_tree.cc`), by
- * these rules:
+ * compositor orders a `preserve-3d` context (`cc/trees/bsp_tree.cc`). The
+ * renderer's panels are ordered among themselves by one too, over their
+ * roots' planes in world space (`sortPanels` in `layerOrder.js`), which
+ * gives it its own tie and its own distance for coplanar. By these rules:
  *
  * - Splitters are chosen parent first: of the polygons left, the ones nested
  *   in the fewest layers, then of those the one that splits the fewest
  *   others, and of equal ones the first added, which is tree order.
  * - Two layers are coplanar when every corner of one is within `COPLANAR`
  *   px of the other's plane. They share a node and draw in paint order
- *   (`comparePaintOrder`).
+ *   (`comparePaintOrder`), or the tie the tree was made with.
  * - A polygon that crosses a splitter's plane is cut in two along it, and
  *   each piece carries the plane and the side it keeps, a half-plane its
  *   draw tests. The two pieces of one cut keep `>= 0` and `< 0` of one
@@ -230,6 +232,10 @@ const CORNERS = /** @type {const} */ ([
  * A panel's tree, rebuilt in place.
  */
 export class LayerTree {
+  /** How far apart two planes may be and still share a node. */
+  #coplanar;
+  /** The order of the polygons that share a node. */
+  #tie;
   /** @type {Polygon[]} */
   #pool = [];
   #used = 0;
@@ -249,6 +255,18 @@ export class LayerTree {
   pieces = [];
   /** How many nodes the tree has. */
   nodes = 0;
+
+  /**
+   * @param {object} [options]
+   * @param {number} [options.coplanar] How far apart, in the tree's units,
+   *   two planes may be and still share a node: `COPLANAR` px by default.
+   * @param {(a: Polygon, b: Polygon) => number} [options.tie] The order of
+   *   the polygons in one node: paint order by default.
+   */
+  constructor({ coplanar = COPLANAR, tie = byPaintOrder } = {}) {
+    this.#coplanar = coplanar;
+    this.#tie = tie;
+  }
 
   /** Start a build: every polygon and node goes back to its pool. */
   begin() {
@@ -369,7 +387,7 @@ export class LayerTree {
         back.push(behind);
       }
     }
-    node.pieces.sort(byPaintOrder);
+    node.pieces.sort(this.#tie);
     node.front = this.#build(front);
     node.back = this.#build(back);
     return node;
@@ -400,8 +418,8 @@ export class LayerTree {
     for (let i = 0; i < polygon.count; i += 1) {
       const d = plane.distanceToPoint(polygon.points[i]);
       this.#distances[i] = d;
-      ahead ||= d > COPLANAR;
-      behind ||= d < -COPLANAR;
+      ahead ||= d > this.#coplanar;
+      behind ||= d < -this.#coplanar;
     }
     if (ahead && behind) {
       return 2;
@@ -431,19 +449,20 @@ export class LayerTree {
     const front = this.#piece(polygon, plane, 1, splitter);
     const back = this.#piece(polygon, plane, -1, splitter);
     const distances = this.#distances;
+    const coplanar = this.#coplanar;
     const n = polygon.count;
     for (let i = 0; i < n; i += 1) {
       const a = polygon.points[i];
       const b = polygon.points[(i + 1) % n];
       const da = distances[i];
       const db = distances[(i + 1) % n];
-      if (da >= -COPLANAR) {
+      if (da >= -coplanar) {
         front.point(front.count++).copy(a);
       }
-      if (da <= COPLANAR) {
+      if (da <= coplanar) {
         back.point(back.count++).copy(a);
       }
-      if ((da > COPLANAR && db < -COPLANAR) || (da < -COPLANAR && db > COPLANAR)) {
+      if ((da > coplanar && db < -coplanar) || (da < -coplanar && db > coplanar)) {
         const t = da / (da - db);
         front.point(front.count++).copy(a).lerp(b, t);
         back.point(back.count++).copy(a).lerp(b, t);

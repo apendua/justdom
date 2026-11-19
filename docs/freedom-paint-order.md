@@ -150,20 +150,47 @@ and keep what they know of them, and hand them to the paint batch, which draws t
 ## The depth quad
 
 The root has one depth quad (`createDepthQuad` in `blocker.js`) stretched over its border box, in
-the root's plane. It writes depth and no colour, and is drawn last in the panel's slot, so the panel
-hides what is drawn after it, other panels included. It is drawn last and not first so that a piece
-behind the root's plane under a translucent root is not cut by the root's own depth. Each panel's
-quad has a material of its own, which the panel disposes, so code that changes a material it finds
-under one panel does not reach another's.
+the root's plane. It writes depth and no colour, and is drawn last in the panel's last slot (below),
+so the panel hides what is drawn after it, other panels included. It is drawn last and not first so
+that a piece behind the root's plane under a translucent root is not cut by the root's own depth.
+Each panel's quad has a material of its own, which the panel disposes, so code that changes a
+material it finds under one panel does not reach another's.
 
 Every other material on the panel tests depth and writes none.
 
 ## Panels and their slots
 
-Each frame, the first panel to walk sorts its renderer's panels by the distance from the viewpoint
-to their middles, and gives each a slot, far to near. A slot is `PANEL_PIECES` (256) places of a
-`PIECE_BAND` each, 2^20 orders, and the last place is the depth quad's. A farther panel then draws
-whole before a nearer one, and a translucent root blends over what is behind it.
+Each frame, the first panel to walk orders its renderer's panels by a tree of their own
+(`sortPanels` in `layerOrder.js`): one `LayerTree` over the ordinary panels' roots, in world space,
+built anew every frame and walked back to front from the same viewpoint as the panels' own walks. A
+slot is `PANEL_PIECES` (256) places of a `PIECE_BAND` each, 2^20 orders, and the last place is the
+depth quad's. Each piece of a panel the walk visits takes the next slot, from 0, and the panel draws
+its whole walk once in each of its slots. These are the rules:
+
+- **A panel no other panel crosses** is one piece and one slot. Panels that do not cross draw whole,
+  back to front, and a translucent root blends over what is behind it.
+- **A panel that crosses another's plane** is cut along it, as a layer is cut inside a panel. Its
+  pieces take a slot each, and the other panel's slot falls between them. In every one of its slots
+  every layer of the panel is cut, by its own half-planes first and then by its slot's, which are
+  written in world space as they are (`writeHalfPlanes`). The first slot is drawn by the layers'
+  meshes and the rest by proxies, as a layer's further pieces are. The root's meshes are the ones in
+  its own band, since the depth quad, the blocker and the loading frame hang under the root's object
+  too. A layer drawn whole inside the panel is drawn whole in each slot, cut only by the slot's
+  half-planes.
+- **The depth quad** draws last in the panel's last slot, uncut. Everything the tree puts after a
+  piece of the panel is in front of that piece, so only what comes after the whole panel can be
+  behind it, and that is what the quad hides.
+- **Coplanar panels**, within `PANELS_COPLANAR` (10 µm) of each other's plane, share a node and draw
+  far to near by the distance from the viewpoint to their middles, then in the order they joined the
+  renderer.
+- **A panel with no plane to give**, of no size, takes a slot after the tree's, far to near by the
+  same distance.
+- **Overlays** are not in the tree. They take a slot each, far to near by the same distance, from
+  `OVERLAY_SLOT` or from the slot after the last ordinary one when the ordinary panels take more.
+
+A panel that moves, appears or goes changes the next frame's tree, and nothing is kept between
+frames but the pools: the tree's polygons, the cut's pieces and the proxies, which a panel crossed
+again takes back.
 
 The pieces past a slot's last place but one share that place, and a layer with a piece there is
 drawn whole, not cut.

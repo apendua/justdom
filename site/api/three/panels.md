@@ -486,6 +486,9 @@ hand's ray to one. `overlay: true` makes a panel draw over every object of the s
 ordinary panel, wherever they stand:
 
 ```js
+import { effects } from "justdom-signal";
+import { dom } from "justdom-three";
+
 dom(ctx, hud, [effects((hud) => hud.position.copy(position))], { overlay: true });
 ```
 

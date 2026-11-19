@@ -9,12 +9,6 @@ import { sampleRenderingUpdates } from "justdom-three";
  * @import {Mountable} from "justdom-core";
  */
 
-// jsdom-env exposes the common DOM globals, but not MutationObserver, which
-// the widget uses to notice content coming and going.
-if (typeof globalThis.MutationObserver === "undefined") {
-  globalThis.MutationObserver = window.MutationObserver;
-}
-
 const classes = {
   root: just("root"),
   viewport: just("viewport"),

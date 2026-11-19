@@ -7,39 +7,6 @@ import { isNumericField, keyboard, MOBILE_LAYOUT, NUMERIC_LAYOUT } from "./keybo
 import { createPortal, InteractionContext, InteractionManager } from "justdom-three";
 import { KEY_ATTRIBUTE } from "justdom-three/page";
 
-// jsdom-env exposes the common DOM globals, but not MutationObserver, which
-// the portal uses to mirror the tree.
-if (typeof globalThis.MutationObserver === "undefined") {
-  globalThis.MutationObserver = window.MutationObserver;
-}
-
-// `getComputedStyle` is a window method rather than a global under jsdom-env;
-// the text mirror reaches for the bare name, as it may on a page.
-if (typeof globalThis.getComputedStyle === "undefined") {
-  globalThis.getComputedStyle = window.getComputedStyle.bind(window);
-}
-
-// jsdom lays nothing out, so a Range measures nothing either. The portal's own
-// fixtures are text-free and never reach this; a board that says "enter" on a
-// key does. Zeroes are the honest answer here — nothing about this test is
-// about where the glyphs landed.
-if (typeof window.Range.prototype.getBoundingClientRect !== "function") {
-  window.Range.prototype.getBoundingClientRect = () => new window.DOMRect();
-  window.Range.prototype.getClientRects = () => /** @type {any} */ ([]);
-}
-
-// jsdom has no FontFaceSet; VisualProperties consults it for x-height.
-if (!document.fonts) {
-  Object.defineProperty(document, "fonts", {
-    value: {
-      status: "loaded",
-      ready: Promise.resolve(),
-      addEventListener() {},
-      removeEventListener() {},
-    },
-  });
-}
-
 /**
  * @returns {Promise<void>}
  */

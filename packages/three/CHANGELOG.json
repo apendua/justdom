@@ -2,6 +2,18 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.37.0",
+      "tag": "justdom-three_v0.37.0",
+      "date": "Thu, 19 Nov 2026 21:16:06 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "A panel can be an overlay: `overlay: true` draws it over every scene object and ordinary panel and gives it the ray first, for a game's HUD or menu."
+          }
+        ]
+      }
+    },
+    {
       "version": "0.36.0",
       "tag": "justdom-three_v0.36.0",
       "date": "Wed, 18 Nov 2026 18:47:41 GMT",

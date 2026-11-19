@@ -1,6 +1,13 @@
 # Change Log - justdom-three
 
-This log was last generated on Wed, 18 Nov 2026 18:47:41 GMT and should not be manually modified.
+This log was last generated on Thu, 19 Nov 2026 21:16:06 GMT and should not be manually modified.
+
+## 0.37.0
+Thu, 19 Nov 2026 21:16:06 GMT
+
+### Minor changes
+
+- A panel can be an overlay: `overlay: true` draws it over every scene object and ordinary panel and gives it the ray first, for a game's HUD or menu.
 
 ## 0.36.0
 Wed, 18 Nov 2026 18:47:41 GMT

@@ -2,6 +2,26 @@
   "name": "justdom-three-ui",
   "entries": [
     {
+      "version": "0.7.1",
+      "tag": "justdom-three-ui_v0.7.1",
+      "date": "Thu, 19 Nov 2026 21:16:06 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "The diagnostics panel draws as an overlay panel, so a nearer panel no longer draws over it, and it no longer walks its subtree every frame"
+          }
+        ],
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.37.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.37.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.7.0",
       "tag": "justdom-three-ui_v0.7.0",
       "date": "Wed, 18 Nov 2026 18:47:41 GMT",

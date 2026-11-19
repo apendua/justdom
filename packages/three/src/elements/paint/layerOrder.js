@@ -12,7 +12,7 @@ import {
 import { LayerTree } from "./layerTree.js";
 import { getBorderBoxSize } from "../mirror/geometryReads.js";
 import { isGenerated } from "../pseudoElements.js";
-import { addOverlay, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
+import { addOverlay, hasOverlays, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
 import { createDepthClear } from "../blocker.js";
 
 /**
@@ -1046,7 +1046,15 @@ function sortPanels(scene, from) {
     panel.distance = panel.distanceTo(from);
     sorted.push(panel);
   }
-  sorted.sort(fartherFirst);
+  if (!hasOverlays()) {
+    // No overlay up: every panel is ordinary, a slot each from 0.
+    sorted.sort(fartherFirst);
+    for (let slot = 0; slot < sorted.length; slot += 1) {
+      sorted[slot].setSlot(slot);
+    }
+    return;
+  }
+  sorted.sort(ordinaryFirst);
   let ordinary = 0;
   while (ordinary < sorted.length && !sorted[ordinary].overlay) {
     ordinary += 1;
@@ -1070,14 +1078,25 @@ function clearOrder(start) {
 }
 
 /**
- * The ordinary panels before the overlays, and each far to near.
+ * Far to near.
  *
  * @param {LayerOrder} a
  * @param {LayerOrder} b
  * @returns {number}
  */
 function fartherFirst(a, b) {
-  return Number(a.overlay) - Number(b.overlay) || b.distance - a.distance;
+  return b.distance - a.distance;
+}
+
+/**
+ * The ordinary panels before the overlays, and each far to near.
+ *
+ * @param {LayerOrder} a
+ * @param {LayerOrder} b
+ * @returns {number}
+ */
+function ordinaryFirst(a, b) {
+  return Number(a.overlay) - Number(b.overlay) || fartherFirst(a, b);
 }
 
 /**

@@ -28,7 +28,9 @@ import { isGenerated } from "../pseudoElements.js";
  *   polygon only where it meets the splitter: when the line it crosses the
  *   splitter's plane along misses the splitter's polygon, the polygon goes
  *   whole to the side its middle is on, and does not count as a split when
- *   the splitter is chosen. Two panels apart are then ordered by where
+ *   the splitter is chosen. Unless it meets another polygon of the set not
+ *   wholly on that side (`#meetsAcross`): then it is cut, so that the part
+ *   of it across the plane is ordered against that one. Two panels apart are then ordered by where
  *   their middles are, and only panels that pass through each other are
  *   cut. Inside a panel every crossing is cut, as Chromium cuts it.
  * - The walk visits the pieces from back to front for a viewpoint: at each
@@ -439,9 +441,17 @@ export class LayerTree {
         front.push(polygon);
       } else if (side === -1) {
         back.push(polygon);
-      } else if (this.#onlyWhereMet && !this.#meets(polygon, splitter)) {
+      } else if (
+        this.#onlyWhereMet &&
+        !this.#meets(polygon, splitter) &&
+        !this.#meetsAcross(polygon, splitter, set)
+      ) {
         (middleSide(polygon, splitter.plane) >= 0 ? front : back).push(polygon);
       } else {
+        if (this.#onlyWhereMet) {
+          // `#meetsAcross` left other polygons' distances.
+          this.#side(polygon, splitter.plane);
+        }
         const [ahead, behind] = this.#split(polygon, splitter.plane, id);
         front.push(ahead);
         back.push(behind);
@@ -499,6 +509,35 @@ export class LayerTree {
       this.#side(polygon, splitter.plane) === 2 &&
       (!this.#onlyWhereMet || this.#meets(polygon, splitter))
     );
+  }
+
+  /**
+   * Whether a polygon that crosses the splitter's plane clear of the
+   * splitter meets another polygon of the set that is not wholly on the
+   * side the polygon's middle is on: one in the splitter's plane, across
+   * it, or on its far side. Sent whole to its middle's side, it would be
+   * ordered against that one in the wrong subtree, or not at all.
+   *
+   * @param {Polygon} polygon
+   * @param {Polygon} splitter
+   * @param {Polygon[]} set
+   * @returns {boolean}
+   */
+  #meetsAcross(polygon, splitter, set) {
+    const ahead = middleSide(polygon, splitter.plane) >= 0;
+    for (const other of set) {
+      if (other === polygon || other === splitter) {
+        continue;
+      }
+      const side = this.#side(other, splitter.plane);
+      if (side === (ahead ? 1 : -1)) {
+        continue;
+      }
+      if (this.#side(polygon, other.plane) === 2 && this.#meets(polygon, other)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

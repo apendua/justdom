@@ -174,10 +174,13 @@ each of its slots. These are the rules:
 - **A panel that is not shown**, hidden by its own `visible` or an ancestor's or out of the scene,
   gives the tree no plane. It takes a slot after the tree's, as a panel of no size does.
 - **A panel that passes through another** is cut along the other's plane, as a layer is cut inside a
-  panel. The tree is made `onlyWhereMet`: a panel that crosses the other's plane only outside the
-  other's rectangle is not cut, but goes whole to the side its middle is on. So only panels whose
-  rectangles meet are cut, and two panels that straddle each other's planes apart, like a tilted
-  keyboard between two flat panels, are ordered by their middles.
+  panel. The tree is made `onlyWhereMet`: a panel that crosses a splitter's plane only outside the
+  splitter's rectangle is not cut, but goes whole to the side its middle is on, unless it passes
+  through another panel of the set that is not wholly on that side, in the plane, across it or
+  beyond it (`#meetsAcross`). Then it is cut, so that the part of it across the plane is ordered
+  against that panel. So only panels whose rectangles meet are cut, and two panels that straddle
+  each other's planes apart, like a tilted keyboard between two flat panels, are ordered by their
+  middles.
 - **A cut panel's pieces** take a slot each, and the other panel's slot falls between them. In every
   one of its slots every layer of the panel is cut, by its own half-planes first and then by its
   slot's, which are written in world space as they are (`writeHalfPlanes`). The first slot is drawn
@@ -191,8 +194,8 @@ each of its slots. These are the rules:
   piece of the panel is in front of that piece, so only what comes after the whole panel can be
   behind it, and that is what the quad hides.
 - **Coplanar panels**, within `PANELS_COPLANAR` (10 µm) of each other's plane, share a node and draw
-  far to near by the distance from the viewpoint to their middles as it was at the last build, then
-  in the order they joined the renderer.
+  in the order they joined the renderer. The tree is kept between builds, so a tie that followed the
+  viewer would follow where the viewer stood at the last build instead.
 - **Overlays** are not in the tree. They take a slot each, far to near by the distance to their
   middles, from `OVERLAY_SLOT` or from the slot after the last ordinary one when the ordinary panels
   take more.

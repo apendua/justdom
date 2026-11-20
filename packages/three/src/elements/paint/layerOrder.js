@@ -56,9 +56,8 @@ import { createDepthClear } from "../blocker.js";
  *   The tree cuts a panel only where it passes through another's
  *   rectangle (`onlyWhereMet`), so a panel nothing passes through is one
  *   piece and one slot, drawn whole, back to front. Coplanar panels draw
- *   far to near by the distance from the viewpoint to their middles at
- *   the last build, and a panel not in the tree, hidden or of no size,
- *   after the rest, far to near.
+ *   in the order they joined the renderer's, and a panel not in the tree,
+ *   hidden or of no size, after the rest, far to near.
  * - A panel the tree cuts is cut as a layer is: every layer of it is cut,
  *   in each slot, by the panel piece's half-planes after its own
  *   (`#findCut`), the first slot's piece drawn by the layers' meshes and
@@ -209,15 +208,15 @@ export function getLayerOrder(root) {
 const PANELS_COPLANAR = 1e-5;
 
 /**
- * Of two coplanar panels, the farther first, by the distance to their
- * middles, as `sortPanels` last measured it.
+ * Of two coplanar panels, the one that joined the renderer's first, which
+ * the tree keeps between builds whatever the viewer has done since.
  *
  * @param {Polygon} a
  * @param {Polygon} b
  * @returns {number}
  */
-function fartherPiece(a, b) {
-  return fartherFirst(panelOf(a), panelOf(b)) || a.index - b.index;
+function joinedFirst(a, b) {
+  return a.index - b.index;
 }
 
 /**
@@ -238,7 +237,7 @@ function createScene() {
     panels: new Set(),
     sorted: [],
     overlayStart: OVERLAY_SLOT,
-    tree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: fartherPiece, onlyWhereMet: true }),
+    tree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: joinedFirst, onlyWhereMet: true }),
     changed: true,
     slots: 0,
     visit: (piece) => {

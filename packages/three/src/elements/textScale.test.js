@@ -536,6 +536,31 @@ describe("prepared steps", () => {
     assert.equal(p.scale.read(), Math.SQRT2);
   });
 
+  test("each step down has a count of its own", () => {
+    let time = 0;
+    const p = panel({ metresPerPixel: 0.001, distance: at(3.5), now: () => time });
+    p.scale.measure();
+    assert.equal(p.scale.read(), 4);
+    p.moveTo(at(1.5));
+    p.scale.measure();
+    time = RELEASE_MS;
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2);
+
+    // 0.9 is under the margin of 2 on the very next frame, and has not
+    // stayed there.
+    p.moveTo(at(0.9));
+    time += 16;
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2);
+    time += RELEASE_MS - 1;
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2);
+    time += 1;
+    p.scale.measure();
+    assert.equal(p.scale.read(), 1);
+  });
+
   test("a step below that the measurement takes back is let go at once", () => {
     let time = 0;
     const never = () => false;

@@ -372,11 +372,10 @@ export function createTextScale(
 
   /**
    * Show `wanted`: the runs draw at it from the next commit. The `rising`
-   * count starts again against the new step (rule 5), for a step shown on
-   * the way to the one the measurement wants. The other two need no ending
-   * here. The measurement that shows a step is not under it, which ends
-   * `low` below, and `falling` is read only while a step above is prepared
-   * and ends where one is set.
+   * and `low` counts start again against the new step (rule 5): a step
+   * shown on the way up or down is not the last, and the next has a wait
+   * of its own. `falling` needs no ending here. It is read only while a
+   * step above is prepared, and it ends where one is set.
    *
    * @param {number} wanted
    * @returns {void}
@@ -386,6 +385,7 @@ export function createTextScale(
     published.set(wanted);
     prepared = null;
     risingSince = null;
+    lowSince = null;
   };
 
   return {

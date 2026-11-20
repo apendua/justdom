@@ -202,11 +202,13 @@ longest upload. A frame there is 11 to 14 ms, so either drops a frame or two alo
 head among the panels felt no better with 6.2 than without it.
 
 Counting canvases and texture uploads by size on the emulator, at the headset's pixel density, found
-one run behind both. The monitor's screen is one text node of some thirty lines, 842 by 690 px. It
-is typed out by `reveal.text` and has a `text-shadow`, so it is not batched, and at step 4 it was
-one canvas of 1684 by 1380, 9.3 MB, with its mipmaps drawn on the CPU and one `texImage2D` for the
-lot. The largest upload of a batched array on the same walk was 1.1 MB. Section 6.3 cuts such a node
-into bands, and the largest canvas and the largest upload of the walk are then 0.92 MB.
+one run behind both. The monitor's screen is one text node of about fifteen lines, 421 by 345 px. It
+is typed out by `reveal.text` and has a `text-shadow`, so it is not batched, and at step 4, where a
+px is four texels across, it was one canvas of 1684 by 1380, 9.3 MB, with its mipmaps drawn on the
+CPU and one `texImage2D` for the lot. The same node was 842 by 690 at step 2 and 1191 by 976
+between. The largest upload of a batched array on the same walk was 1.1 MB. Section 6.3 cuts such a
+node into bands, and the largest canvas and the largest upload of the walk are then 1684 by 136,
+0.92 MB: a band of one line, with the room above it and the bleed below.
 
 ## 4. Goals
 
@@ -485,13 +487,21 @@ is prepared and uploaded by the pump as one piece. It sits under the node's orig
 its clip and its reveal cut are the node's, read from the band's own origin, so a clip or a cut
 drawn across the node falls where it did.
 
-Two things follow that were not the aim. A node one of whose lines changes draws that line's band
-and not the node, so the monitor's screen scrolling or a long field being edited costs a line and
-not a megabyte or nine. And a text node costs four more evaluations to mount (the cut, the list of
-runs and each run's band), 1.7% on the list of a hundred rows that `mirrorCounts.test.js` holds.
+Two things follow that were not the aim. A node one of whose lines changes in place draws that
+line's band and not the node, so a long field being edited costs a line and not a megabyte or nine.
+Text that moves every line to another index, as a log does when a line is added at the top, still
+draws every band. And a text node costs four more evaluations to mount (the cut, the list of runs
+and each run's band), 1.7% on the list of a hundred rows that `mirrorCounts.test.js` holds.
 
-What it costs: a banded node that is not batched, which is one with a shadow or a reveal, is a draw
-call a band where it was one, some thirty for the monitor's screen.
+What it costs:
+
+- A banded node that is not batched, which is one with a shadow or a reveal, is a draw call a band
+  where it was one: about fifteen for the monitor's screen when it is full. On the emulator the desk
+  at rest went from 60 draw calls to 82, and from 151 textures to 175, as the review of the change
+  counted them.
+- Texels. Each band's raster has its own room above and its own bleed below, where the one raster
+  had them once. For a node with a shadow that is the blur twice over a band: the monitor's bands
+  are 34 px tall for lines of 22, so its bands hold half as many texels again as the one raster did.
 
 ## 7. Open questions
 

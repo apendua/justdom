@@ -29,9 +29,6 @@ import { attachRevealNode, detachRevealNode, getRevealCut } from "../reveal.js";
  * @import {TextBand} from './textBands.js';
  */
 
-/** What a band's run is drawn from before its band is first read. */
-const NO_BAND = /** @type {TextBand} */ ({ top: 0, lines: [], bounds: { width: 0, height: 0 } });
-
 /**
  * A text node, drawn as one run, or as a run for each band of its lines when
  * they cover more than a band may (`cutIntoBands`). The object returned is
@@ -128,20 +125,9 @@ export function text(ctx, textNode) {
 
   /**
    * One number per band, which is what the runs are keyed by: a band whose
-   * lines change keeps its run, and the run draws them again. The array is
-   * the same one for as long as the count is, so a change of lines alone
-   * mounts and unmounts nothing.
-   *
-   * @type {number[]}
+   * lines change keeps its run, and the run draws them again.
    */
-  let indices = [];
-  const bandIndices = () => {
-    const { length } = bands.get();
-    if (indices.length !== length) {
-      indices = Array.from({ length }, (_, index) => index);
-    }
-    return indices;
-  };
+  const bandIndices = () => Array.from(bands.get(), (_, index) => index);
 
   /**
    * The run that draws the band at `index`.
@@ -149,14 +135,7 @@ export function text(ctx, textNode) {
    * @param {number} index
    */
   const bandRun = (index) => {
-    // The band, and the one it was while the node has fewer bands than this:
-    // the run is taken down by the same change, and may read once more
-    // before it is.
-    let last = NO_BAND;
-    const band = new Derived(() => {
-      last = bands.get()[index] ?? last;
-      return last;
-    });
+    const band = new Derived(() => bands.get()[index]);
     const clipUniform = unboundedClipUniform();
     // The node's cut, read from the band's own origin as its clip is. It
     // starts at "nothing drawn" rather than "all of it". The effect below

@@ -9,7 +9,7 @@
  * this, so that no one raster and no one upload is larger than a band's.
  *
  * At the top step of the ladder a px is sixteen texels, which makes a band
- * about a megabyte. The screen of a terminal 842 px across and 690 px tall
+ * about a megabyte. The screen of a terminal 421 px across and 345 px tall
  * was one raster of 9.3 MB there, and on a Quest it took 22 ms to draw and
  * 16 ms to upload, each longer than a frame. A guess until a headset says
  * what a megabyte costs.

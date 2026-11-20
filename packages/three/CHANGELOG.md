@@ -1,6 +1,14 @@
 # Change Log - justdom-three
 
-This log was last generated on Thu, 19 Nov 2026 21:16:06 GMT and should not be manually modified.
+This log was last generated on Fri, 20 Nov 2026 20:16:14 GMT and should not be manually modified.
+
+## 0.38.0
+Fri, 20 Nov 2026 20:16:14 GMT
+
+### Minor changes
+
+- HTML-in-Canvas helpers follow the API Chrome 157 ships with no flag: drawInCanvas and createElementTexture replace requestPaint, and canDrawHtmlInCanvas looks for texElementSubImage2D
+- Panels that cross each other's planes are cut along them and drawn piece by piece, so a translucent panel no longer hides the half of another panel behind it
 
 ## 0.37.0
 Thu, 19 Nov 2026 21:16:06 GMT

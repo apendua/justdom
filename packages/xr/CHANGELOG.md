@@ -1,6 +1,11 @@
 # Change Log - justdom-xr
 
-This log was last generated on Thu, 19 Nov 2026 21:16:06 GMT and should not be manually modified.
+This log was last generated on Fri, 20 Nov 2026 20:16:14 GMT and should not be manually modified.
+
+## 0.7.2
+Fri, 20 Nov 2026 20:16:14 GMT
+
+_Version update only_
 
 ## 0.7.1
 Thu, 19 Nov 2026 21:16:06 GMT

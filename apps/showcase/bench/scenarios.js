@@ -64,6 +64,30 @@
  */
 
 /**
+ * Whether an element is the list's scroller: its content is taller than it,
+ * and it clips that content on a scroll container a write to `scrollTop`
+ * moves. Read from `overflow-y` alone, since an app may scroll one axis and
+ * not the other: the todo list became `overflow-x: hidden; overflow-y: auto`
+ * so that a finger or a wheel scrolls it on the page, and a test for
+ * `overflow` as a whole being `hidden` then found nothing to scroll. Both
+ * spellings have to match, because `--against` drives older revisions too.
+ * `clip` is left out: it clips without being a scroll container, so a write
+ * to `scrollTop` would do nothing.
+ *
+ * Evaluated inside the page through `toString()`, so it may not close over
+ * anything.
+ *
+ * @param {{ scrollHeight: number, clientHeight: number }} el
+ * @param {{ overflowY: string }} style The element's computed style.
+ */
+export function isScroller(el, style) {
+  return (
+    el.scrollHeight > el.clientHeight &&
+    (style.overflowY === "hidden" || style.overflowY === "auto" || style.overflowY === "scroll")
+  );
+}
+
+/**
  * The page-side furniture every scenario shares: finding the scroller, the
  * list, and a button worth hovering. Kept as source text because it is
  * evaluated inside the page.
@@ -79,10 +103,9 @@ const PRELUDE = `
   const byText = (text) =>
     [...document.querySelectorAll("button")].find((el) => el.textContent === text) ??
     [...document.querySelectorAll("div")].find((el) => el.textContent === text);
+  const isScroller = ${isScroller.toString()};
   const scroller = () =>
-    [...document.querySelectorAll("div")].find(
-      (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflow === "hidden",
-    );
+    [...document.querySelectorAll("div")].find((el) => isScroller(el, getComputedStyle(el)));
   // The app's frame rate readout, switched off. Its number moves with the
   // frame rate, and every move costs a measured rect, a rasterized glyph and
   // a texture, as many times as the rate happened to change during a run —

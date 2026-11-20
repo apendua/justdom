@@ -222,23 +222,26 @@ function pixelsPerUnitAtUnitDistance(renderer, camera) {
 }
 
 /**
- * The step under `step` on the ladder, or null at the bottom of it.
+ * The step under `step` that a panel shows, or null for a panel at its
+ * floor: the ladder step under it, or the floor where that is higher.
  *
  * Found on the ladder rather than by dividing, so that it is the very number
  * `stepFor` hands out for that step and a run's raster kept under it is found
  * again. A step a panel's cap put off the ladder, 3 say, has the ladder step
- * under it, 2.83, as its own. The tolerance is for the steps between the
- * octaves, whose logarithm comes back a hair over the integer it is.
+ * under it, 2.83, as its own, and a floor off the ladder, 1.5 say, is the
+ * step under 2. The tolerance is for the steps between the octaves, whose
+ * logarithm comes back a hair over the integer it is.
  *
  * @param {number} step
+ * @param {number} [min] The panel's floor.
  * @returns {number | null}
  */
-export function stepBelow(step) {
-  const exponent = Math.ceil(Math.log2(step) * STEPS_PER_DOUBLING - 1e-9);
-  if (exponent <= 0) {
+export function stepBelow(step, min = 1) {
+  if (step <= min) {
     return null;
   }
-  return 2 ** ((exponent - 1) / STEPS_PER_DOUBLING);
+  const exponent = Math.ceil(Math.log2(step) * STEPS_PER_DOUBLING - 1e-9);
+  return Math.max(min, 2 ** ((exponent - 1) / STEPS_PER_DOUBLING));
 }
 
 /**
@@ -265,10 +268,11 @@ export function stepAbove(step, max) {
  * @param {number} shown
  * @param {number} held
  * @param {number | null} [prepared]
+ * @param {number} [min] The panel's floor.
  * @returns {boolean}
  */
-export function holdsStep(shown, held, prepared = null) {
-  return held === shown || held === stepBelow(shown) || held === prepared;
+export function holdsStep(shown, held, prepared = null, min = 1) {
+  return held === shown || held === stepBelow(shown, min) || held === prepared;
 }
 
 /**
@@ -338,7 +342,7 @@ export function createTextScale(
    * (rule 14).
    */
   let viewed = false;
-  /** Whether the last measurement was taken in a session. */
+  /** Whether the last frame was a session's. */
   let presenting = false;
   /**
    * When the measurement passed the shown step, or null while it is at or
@@ -367,8 +371,12 @@ export function createTextScale(
   const centre = new THREE.Vector3();
 
   /**
-   * Show `wanted`: the runs draw at it from the next commit. Every count
-   * starts again against the new step (rule 5).
+   * Show `wanted`: the runs draw at it from the next commit. The `rising`
+   * count starts again against the new step (rule 5), for a step shown on
+   * the way to the one the measurement wants. The other two need no ending
+   * here. The measurement that shows a step is not under it, which ends
+   * `low` below, and `falling` is read only while a step above is prepared
+   * and ends where one is set.
    *
    * @param {number} wanted
    * @returns {void}
@@ -378,8 +386,6 @@ export function createTextScale(
     published.set(wanted);
     prepared = null;
     risingSince = null;
-    lowSince = null;
-    fallingSince = null;
   };
 
   return {
@@ -399,7 +405,7 @@ export function createTextScale(
      * @param {number} held
      * @returns {boolean}
      */
-    holds: (held) => holdsStep(step, held, prepared),
+    holds: (held) => holdsStep(step, held, prepared, min),
 
     /**
      * The step being prepared, or null. Untracked, like `holds`: it is read
@@ -438,6 +444,15 @@ export function createTextScale(
         // One step to show, and it is shown.
         return;
       }
+      if (presenting !== renderer.xr.isPresenting) {
+        // Rule 14: the frame a session starts or ends on is not measured.
+        // This runs before the frame is drawn, and three gives the
+        // session's camera its pose as it draws, so the viewer on hand is
+        // the last view's: the origin, on a session's first frame.
+        presenting = renderer.xr.isPresenting;
+        viewed = false;
+        return;
+      }
       const pixelsPerUnit = pixelsPerUnitAtUnitDistance(renderer, camera);
       if (!pixelsPerUnit) {
         return;
@@ -467,10 +482,6 @@ export function createTextScale(
       const time = now();
 
       // Rule 14: a view's first measurement is shown at once.
-      if (presenting !== renderer.xr.isPresenting) {
-        presenting = renderer.xr.isPresenting;
-        viewed = false;
-      }
       if (!viewed) {
         viewed = true;
         if (wanted !== step) {
@@ -483,6 +494,9 @@ export function createTextScale(
         risingSince ??= time;
         if (ready(wanted) || time - risingSince >= SHARPEN_WAIT_MS) {
           show(wanted);
+        } else if (prepared !== null && prepared > step && prepared < wanted && ready(prepared)) {
+          // A step on the way that is ready, which the measurement skipped.
+          show(prepared);
         }
       } else {
         risingSince = null;

@@ -179,19 +179,29 @@ describe("createTextScale", () => {
     assert.equal(scale.read(), 1);
 
     // The session's eye paints twice the pixels, and the panel has shown
-    // nothing in it yet.
+    // nothing in it yet. Its camera has no pose until three draws the
+    // session's first frame, which is after the panel measures: it sits at
+    // the origin, a quarter of the way to the panel from where the head is.
     const eye = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
     eye.updateProjectionMatrix();
-    eye.updateMatrixWorld();
     Object.assign(eye, { viewport: new THREE.Vector4(0, 0, 2000, 2000) });
     const xrCamera = new THREE.ArrayCamera([eye]);
-    xrCamera.updateMatrixWorld();
+    placeAndScale(container, 0, 0, -0.25, 0.001, 0.001, 0.001);
     Object.assign(stub.xr, { isPresenting: true, getCamera: () => xrCamera });
+    scale.measure(never);
+    assert.equal(scale.read(), 1, "not measured from where the last view left the camera");
+
+    // Drawn once: the head is a metre from the panel, as it was.
+    xrCamera.position.z = 0.75;
+    xrCamera.updateMatrixWorld();
     scale.measure(never);
     assert.equal(scale.read(), 2);
 
-    // And the page's again when the session ends.
+    // And the page's again when the session ends, a frame after it does.
     Object.assign(stub.xr, { isPresenting: false });
+    placeAndScale(container, 0, 0, -1, 0.001, 0.001, 0.001);
+    scale.measure(never);
+    assert.equal(scale.read(), 2);
     scale.measure(never);
     assert.equal(scale.read(), 1);
   });
@@ -271,6 +281,19 @@ describe("held steps", () => {
   test("a step a panel's cap put off the ladder has the ladder step under it below it", () => {
     assert.equal(stepBelow(3), 2 ** 1.5);
     assert.equal(stepBelow(1), null);
+  });
+
+  test("the step below is the floor where the ladder step under it is lower", () => {
+    assert.equal(stepBelow(2, 1.5), 1.5);
+    assert.equal(stepBelow(2 ** 1.5, 1.5), 2);
+    assert.equal(stepBelow(1.5, 1.5), null);
+    // A panel that stepped up from a floor off the ladder holds the floor,
+    // and not the ladder step under it, which it never shows.
+    const p = panel({ metresPerPixel: 0.001, distance: 1 / 1.6, minScale: 1.5 });
+    p.scale.measure();
+    assert.equal(p.scale.read(), 2);
+    assert.equal(p.scale.holds(1.5), true);
+    assert.equal(p.scale.holds(Math.SQRT2), false);
   });
 });
 
@@ -435,6 +458,53 @@ describe("prepared steps", () => {
     p.scale.measure(never);
     assert.equal(p.scale.read(), 1);
     assert.equal(p.scale.prepared(), 2 ** 1.5);
+  });
+
+  test("a ready step on the way is shown when the measurement skips past it", () => {
+    let time = 0;
+    /** @type {number | null} */
+    let readied = Math.SQRT2;
+    const ready = (/** @type {number} */ step) => step === readied;
+    const p = panel({ metresPerPixel: 0.001, distance: at(0.9), now: () => time });
+    p.scale.measure(ready);
+    assert.equal(p.scale.prepared(), Math.SQRT2);
+
+    // 1.5 belongs to 2, which nothing has drawn. 1.41 is drawn and sent up.
+    p.moveTo(at(1.5));
+    p.scale.measure(ready);
+    assert.equal(p.scale.read(), Math.SQRT2);
+    assert.equal(p.scale.prepared(), 2);
+
+    // And the wait for 2 starts again, from the next measurement.
+    readied = null;
+    time = 1;
+    p.scale.measure(ready);
+    time = SHARPEN_WAIT_MS;
+    p.scale.measure(ready);
+    assert.equal(p.scale.read(), Math.SQRT2);
+    time = SHARPEN_WAIT_MS + 1;
+    p.scale.measure(ready);
+    assert.equal(p.scale.read(), 2);
+  });
+
+  test("passing the shown step ends the count that lets a step above go", () => {
+    let time = 0;
+    const never = () => false;
+    const p = panel({ metresPerPixel: 0.001, distance: at(0.9), now: () => time });
+    p.scale.measure(never);
+    p.moveTo(at(0.7));
+    p.scale.measure(never);
+    time = RELEASE_MS - 1;
+    // Over the step, which is wanted and never ready, and back under the
+    // share.
+    p.moveTo(at(1.1));
+    p.scale.measure(never);
+    p.moveTo(at(0.7));
+    p.scale.measure(never);
+    time = RELEASE_MS;
+    p.scale.measure(never);
+    assert.equal(p.scale.read(), 1);
+    assert.equal(p.scale.prepared(), Math.SQRT2, "one millisecond under, since it came back");
   });
 
   test("a step below is prepared once the count is up, and shown once it is ready", () => {

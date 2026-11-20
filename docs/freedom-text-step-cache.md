@@ -227,15 +227,18 @@ The rules:
    step swaps textures and rebinds buckets. Showing one that is not ready reads the runs the pump
    did not reach under the panel's budget, and a prepared run whose class the pump has not built yet
    makes the rebuild build that class, as a shown write would, so those uploads land on the commit
-   frame. Showing a step clears `P` and all three counts, and rules 1 and 4 are applied against the
+   frame. A measurement that skips a step can leave a ready `P` between `S` and the step it belongs
+   to: the panel shows that `P` first, which costs a swap, and the count starts again for the step
+   beyond. Showing a step clears `P` and all three counts, and rules 1 and 4 are applied against the
    new `S` in the same measurement. A panel with no prepare pump, one with no renderer or no frames,
    shows a step the moment the measurement wants it.
-6. **Evict.** After a step change, `H` keeps `S`, the step below `S`, and `P`. Any other step leaves
-   `H`. Each run frees its rasters at steps outside `H` when it next shows a new texture, at that
-   commit, and a class's array is freed once no run has a layer in it. So a step the panel publishes
-   and takes back before a run's commit leaves that run showing what it showed, and the raster drawn
-   for the step in between stays, one per run, until the run next changes texture. A per-panel byte
-   cap (5.5) evicts further, furthest from `S` first, but never `S`.
+6. **Evict.** After a step change, `H` keeps `S`, the step below `S`, and `P`. The step below `S` is
+   the ladder step under it, or the panel's floor where that is higher. Any other step leaves `H`.
+   Each run frees its rasters at steps outside `H` when it next shows a new texture, at that commit,
+   and a class's array is freed once no run has a layer in it. So a step the panel publishes and
+   takes back before a run's commit leaves that run showing what it showed, and the raster drawn for
+   the step in between stays, one per run, until the run next changes texture. A per-panel byte cap
+   (5.5) evicts further, furthest from `S` first, but never `S`.
 7. **A run's content changes** (its lines, style, bounds or mask: everything the raster depends on
    except the step). Every raster the run holds is stale. It drops all of them, and its layers in
    held classes go back to their free lists. The shown step re-reads it through the channel as
@@ -267,7 +270,11 @@ The rules:
 14. **A view's first measurement is shown at once.** A view is the page's or a session's. A panel
     has shown nothing in a view it has not been measured in, and the measurement jumps when a
     session starts or ends, so the step the first measurement belongs to is shown without waiting
-    for the pump. A panel starts at its floor, which is 1 unless `minTextScale` raises it.
+    for the pump. The first measurement is the one on the frame after the view began. The frame a
+    session starts or ends on is not measured: the panel measures before the frame is drawn, three
+    gives the session's camera its pose while drawing it, and so the viewer on that frame is still
+    the last view's, the origin for a first session. A panel starts at its floor, which is 1 unless
+    `minTextScale` raises it.
 15. **A panel whose floor is its cap** (`minTextScale` equal to `maxTextScale`) shows that step from
     the start, is never measured, and prepares nothing.
 
@@ -405,7 +412,7 @@ several panels (3.7). Three things about the rules caused it, and 5.1 now says w
   commit frame. A step is now shown when the pump says it is ready, and coarsening goes through the
   pump as well (rules 5 and 13). `SHARPEN_WAIT_MS` bounds how long a panel stays soft.
 - **Every step on the way was drawn.** A measurement that skips a step now prepares the step it
-  reached (rule 1), which answers the third open question below.
+  reached (rule 1), and shows a ready step on the way first (rule 5).
 
 Two cases show a step without the pump: a view's first measurement (rule 14), since waiting there
 would draw a mounting panel at its floor and then again, and a panel nothing prepares for. And a

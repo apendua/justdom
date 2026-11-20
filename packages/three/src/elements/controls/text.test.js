@@ -671,6 +671,9 @@ describe("prepared text steps", () => {
     assert.equal(preparer.ready(2), false);
     /** @type {(() => void) | null} */ (tick)?.();
     assert.equal(preparer.ready(2), true);
+    // Another step is not ready because the last one was.
+    preparer.retarget(2 ** 1.5);
+    assert.equal(preparer.ready(2 ** 1.5), false);
     preparer.dispose();
   });
 });

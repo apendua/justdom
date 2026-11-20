@@ -47,24 +47,27 @@ import { createDepthClear } from "../blocker.js";
  *   (`halfPlanes.js`). They hang under the mesh they copy, take no rays,
  *   and are kept in step with it each frame the layer stays cut. The planes
  *   are written in world space, so they follow the panel when it moves.
- * - The renderer's panels are ordered among themselves once a frame by a
- *   tree of their own (`sortPanels`): one `LayerTree` over the panels'
- *   roots, in world space, walked from the viewpoint. Each piece of a panel
- *   the walk visits takes the next slot of `PANEL_PIECES` places, and the
- *   panel draws its whole walk once in each of its slots. A panel no other
- *   panel crosses is one piece and one slot, so panels that do not cross
- *   are drawn whole, back to front. Coplanar panels draw far to near by
- *   the distance from the viewpoint to their middles, and a panel with no
- *   plane to give, of no size, after the rest, the same way.
- * - A panel the tree cuts, one that crosses another panel's plane, is cut
- *   as a layer is: every layer of it is cut, in each slot, by the panel
- *   piece's half-planes after its own (`#findCut`), the first slot's piece
- *   drawn by the layers' meshes and the rest by proxies. Only the root's
- *   meshes in its own band are its own, since the depth quad, the blocker
- *   and the loading frame hang under the root's object too. The panel's
- *   depth quad draws last in its last slot, uncut: what it hides is drawn
- *   after the whole panel, in front of every piece of it the tree put
- *   before.
+ * - The renderer's panels are ordered among themselves by a tree of their
+ *   own (`sortPanels`): one `LayerTree` over the shown panels' roots, in
+ *   world space, built when a panel joins, leaves, moves, changes size or
+ *   is shown or hidden, and walked from the viewpoint every frame. Each
+ *   piece of a panel the walk visits takes the next slot of `PANEL_PIECES`
+ *   places, and the panel draws its whole walk once in each of its slots.
+ *   The tree cuts a panel only where it passes through another's
+ *   rectangle (`onlyWhereMet`), so a panel nothing passes through is one
+ *   piece and one slot, drawn whole, back to front. Coplanar panels draw
+ *   far to near by the distance from the viewpoint to their middles at
+ *   the last build, and a panel not in the tree, hidden or of no size,
+ *   after the rest, far to near.
+ * - A panel the tree cuts is cut as a layer is: every layer of it is cut,
+ *   in each slot, by the panel piece's half-planes after its own
+ *   (`#findCut`), the first slot's piece drawn by the layers' meshes and
+ *   the rest by proxies. Only the root's meshes in its own band and not
+ *   the batch's are its own, since the depth quad, the blocker, the
+ *   loading frame and the other layers' draws hang under the root's object
+ *   too. The panel's depth quad draws last in its last slot, uncut: what
+ *   it hides is drawn after the whole panel, in front of every piece of it
+ *   the tree put before.
  * - Overlay panels (`PortalOptions.overlay`) are not in the tree. They are
  *   sorted far to near among themselves by the distance to their middles,
  *   a slot each, in the slots from `OVERLAY_SLOT` on, after every ordinary
@@ -193,6 +196,8 @@ export function getLayerOrder(root) {
  * @property {LayerOrder[]} sorted
  * @property {number} overlayStart The first overlay's slot, as last sorted.
  * @property {LayerTree} tree The ordinary panels' tree (`sortPanels`).
+ * @property {boolean} changed Whether a panel joined or left since the
+ *   tree was last built.
  * @property {number} slots How many slots its walk has given so far.
  * @property {(piece: Polygon) => void} visit Give a piece the next slot.
  */
@@ -233,7 +238,8 @@ function createScene() {
     panels: new Set(),
     sorted: [],
     overlayStart: OVERLAY_SLOT,
-    tree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: fartherPiece }),
+    tree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: fartherPiece, onlyWhereMet: true }),
+    changed: true,
     slots: 0,
     visit: (piece) => {
       panelOf(piece).addSlot(scene.slots, piece);
@@ -405,6 +411,15 @@ export class LayerOrder {
   #scene = null;
   /** Its distance from the viewpoint, as the panels were last sorted. */
   distance = 0;
+  /** Whether the renderer's tree, as last built, holds the panel's root. */
+  inTree = false;
+  /**
+   * Where the panel's root stood, its size, and whether it was shown, when
+   * `movedInScene` last read them.
+   *
+   * @type {Placed & { shown: boolean }}
+   */
+  #inScene = { matrix: new THREE.Matrix4(), width: Number.NaN, height: 0, shown: false };
   /** Scratch for the layers cut before this walk. @type {Set<PaintNode>} */
   #wasCut = new Set();
   /** The bases of the layers in `#cut`. @type {Set<number>} */
@@ -560,9 +575,10 @@ export class LayerOrder {
       scenes.set(renderer, scene);
     }
     if (this.#scene !== scene) {
-      this.#scene?.panels.delete(this);
+      this.#leaveScene();
       this.#scene = scene;
       scene.panels.add(this);
+      scene.changed = true;
     }
     if (scene.time !== time) {
       scene.time = time;
@@ -695,15 +711,56 @@ export class LayerOrder {
   }
 
   /**
-   * Add the panel's root to the renderer's tree, in world space.
+   * Read where the panel's root stands in the world, its size, and whether
+   * it is shown, for the renderer's tree. Says whether any of them changed
+   * since the last read, which builds the tree again (`sortPanels`).
    *
-   * @param {LayerTree} tree
-   * @returns {boolean} Whether it has a plane to give.
+   * @returns {boolean}
    */
-  addTo(tree) {
+  movedInScene() {
     const { width, height } = getBorderBoxSize(/** @type {HTMLElement} */ (this.#root));
     this.#container.updateWorldMatrix(true, false);
-    return tree.add(this.#root, 0, this.#container.matrixWorld, width, height);
+    const shown = isShown(this.#container);
+    const placed = this.#inScene;
+    if (
+      placed.shown === shown &&
+      placed.width === width &&
+      placed.height === height &&
+      placed.matrix.equals(this.#container.matrixWorld)
+    ) {
+      return false;
+    }
+    placed.shown = shown;
+    placed.width = width;
+    placed.height = height;
+    // Not placed: a record of where the panel was, not an object.
+    placed.matrix.copy(this.#container.matrixWorld);
+    return true;
+  }
+
+  /**
+   * Add the panel's root to the renderer's tree, where `movedInScene` last
+   * read it, if it is shown.
+   *
+   * @param {LayerTree} tree
+   */
+  addTo(tree) {
+    const placed = this.#inScene;
+    this.inTree =
+      placed.shown && tree.add(this.#root, 0, placed.matrix, placed.width, placed.height);
+  }
+
+  /** Take the panel out of the renderer's panels, if it is among them. */
+  #leaveScene() {
+    const scene = this.#scene;
+    if (!scene?.panels.delete(this)) {
+      return;
+    }
+    scene.changed = true;
+    if (scene.panels.size === 0) {
+      // Nothing builds the tree again, and its polygons hold the roots.
+      scene.tree.release();
+    }
   }
 
   /**
@@ -732,7 +789,7 @@ export class LayerOrder {
     }
     this.#spares.clear();
     orders.delete(this.#root);
-    this.#scene?.panels.delete(this);
+    this.#leaveScene();
     this.#scene = null;
     this.#held.clear();
     this.#depthClear?.removeFromParent();
@@ -1319,30 +1376,46 @@ function inPanel(object, container, out) {
 
 /**
  * Order a renderer's panels from `from`: the ordinary panels by the walk of
- * their tree, a slot a piece from slot 0, and those with no plane after
- * them far to near; the overlays far to near after them, a slot each, from
+ * their tree, a slot a piece from slot 0, and those not in it after them
+ * far to near; the overlays far to near after them, a slot each, from
  * `OVERLAY_SLOT`, or from the slot after the last ordinary panel's when
- * there are more than fit below it.
+ * there are more than fit below it. The tree is built again when a panel
+ * joins or leaves, or an ordinary one moves, changes size, or is shown or
+ * hidden, and walked every frame.
  *
  * @param {Scene} scene
  * @param {THREE.Vector3} from
  */
 function sortPanels(scene, from) {
-  const sorted = scene.sorted;
-  sorted.length = 0;
-  const tree = scene.tree;
-  tree.begin();
+  let build = scene.changed;
+  scene.changed = false;
   for (const panel of scene.panels) {
     panel.distance = panel.distanceTo(from);
     panel.clearSlots();
-    if (panel.overlay || !panel.addTo(tree)) {
+    if (!panel.overlay && panel.movedInScene()) {
+      build = true;
+    }
+  }
+  const tree = scene.tree;
+  if (build) {
+    tree.begin();
+    for (const panel of scene.panels) {
+      if (!panel.overlay) {
+        panel.addTo(tree);
+      }
+    }
+    tree.build();
+  }
+  scene.slots = 0;
+  tree.walk(from, scene.visit);
+  // What is left: the ordinary panels not in the tree, then the overlays.
+  const sorted = scene.sorted;
+  sorted.length = 0;
+  for (const panel of scene.panels) {
+    if (panel.overlay || !panel.inTree) {
       sorted.push(panel);
     }
   }
-  tree.build();
-  scene.slots = 0;
-  tree.walk(from, scene.visit);
-  // What is left: the ordinary panels with no plane, then the overlays.
   sorted.sort(ordinaryFirst);
   let ordinary = 0;
   while (ordinary < sorted.length && !sorted[ordinary].overlay) {
@@ -1355,6 +1428,24 @@ function sortPanels(scene, from) {
   for (let i = ordinary; i < sorted.length; i += 1) {
     sorted[i].setSlot(start + i - ordinary);
   }
+}
+
+/**
+ * Whether an object is drawn: shown, as every object above it is, up to a
+ * scene.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {boolean}
+ */
+function isShown(object) {
+  let each = object;
+  while (each.parent) {
+    if (!each.visible) {
+      return false;
+    }
+    each = each.parent;
+  }
+  return each.visible && /** @type {THREE.Scene} */ (each).isScene === true;
 }
 
 /**

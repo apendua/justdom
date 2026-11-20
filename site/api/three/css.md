@@ -291,7 +291,8 @@ Followed:
   the paint order is one draw call, across layers, broken only where something draws itself (a
   picture, an `<svg>` shape, a caret, a run with its colours baked in), at a layer cut in pieces,
   and at a sixteenth size of run.
-- Panels draw whole, far to near.
+- Panels draw back to front among themselves, and a panel that passes through another is cut along
+  the other's plane, so each piece draws on its own side.
 - Nothing writes depth but one quad over the root, drawn after everything else in the panel, so the
   panel still hides what is drawn after it.
 - A ray that meets two things at one distance lands on the one drawn later. Between layers, distance

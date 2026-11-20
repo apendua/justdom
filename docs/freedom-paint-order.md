@@ -162,42 +162,50 @@ Every other material on the panel tests depth and writes none.
 
 Each frame, the first panel to walk orders its renderer's panels by a tree of their own
 (`sortPanels` in `layerOrder.js`): one `LayerTree` over the ordinary panels' roots, in world space,
-built anew every frame and walked back to front from the same viewpoint as the panels' own walks. A
-slot is `PANEL_PIECES` (256) places of a `PIECE_BAND` each, 2^20 orders, and the last place is the
-depth quad's. Each piece of a panel the walk visits takes the next slot, from 0, and the panel draws
-its whole walk once in each of its slots. These are the rules:
+walked back to front from the same viewpoint as the panels' own walks. A slot is `PANEL_PIECES`
+(256) places of a `PIECE_BAND` each, 2^20 orders, and the last place is the depth quad's. Each piece
+of a panel the walk visits takes the next slot, from 0, and the panel draws its whole walk once in
+each of its slots. These are the rules:
 
-- **A panel no other panel crosses** is one piece and one slot. Panels that do not cross draw whole,
-  back to front, and a translucent root blends over what is behind it.
-- **A panel that crosses another's plane** is cut along it, as a layer is cut inside a panel. Its
-  pieces take a slot each, and the other panel's slot falls between them. In every one of its slots
-  every layer of the panel is cut, by its own half-planes first and then by its slot's, which are
-  written in world space as they are (`writeHalfPlanes`). The first slot is drawn by the layers'
-  meshes and the rest by proxies, as a layer's further pieces are. The root's meshes are the ones in
-  its own band, since the depth quad, the blocker and the loading frame hang under the root's object
-  too. A layer drawn whole inside the panel is drawn whole in each slot, cut only by the slot's
-  half-planes.
+- **The tree is built** when a panel joins or leaves the renderer's, or an ordinary panel moves in
+  the world, changes size, or is shown or hidden (`movedInScene`), and walked every frame. The
+  viewer moving builds nothing. The tree, its polygons and their half-planes are kept between
+  builds, and the walk hands the slots out again each frame.
+- **A panel that is not shown**, hidden by its own `visible` or an ancestor's or out of the scene,
+  gives the tree no plane. It takes a slot after the tree's, as a panel of no size does.
+- **A panel that passes through another** is cut along the other's plane, as a layer is cut inside a
+  panel. The tree is made `onlyWhereMet`: a panel that crosses the other's plane only outside the
+  other's rectangle is not cut, but goes whole to the side its middle is on. So only panels whose
+  rectangles meet are cut, and two panels that straddle each other's planes apart, like a tilted
+  keyboard between two flat panels, are ordered by their middles.
+- **A cut panel's pieces** take a slot each, and the other panel's slot falls between them. In every
+  one of its slots every layer of the panel is cut, by its own half-planes first and then by its
+  slot's, which are written in world space as they are (`writeHalfPlanes`). The first slot is drawn
+  by the layers' meshes and the rest by proxies, as a layer's further pieces are. The root's meshes
+  are the ones in its own band that are not the batch's draws, since the depth quad, the blocker,
+  the loading frame and the other layers' draws hang under the root's object too. A layer drawn
+  whole inside the panel is drawn whole in each slot, cut only by the slot's half-planes.
+- **A panel no other panel passes through** is one piece and one slot, drawn whole, and a
+  translucent root blends over what is behind it.
 - **The depth quad** draws last in the panel's last slot, uncut. Everything the tree puts after a
   piece of the panel is in front of that piece, so only what comes after the whole panel can be
   behind it, and that is what the quad hides.
 - **Coplanar panels**, within `PANELS_COPLANAR` (10 µm) of each other's plane, share a node and draw
-  far to near by the distance from the viewpoint to their middles, then in the order they joined the
-  renderer.
-- **A panel with no plane to give**, of no size, takes a slot after the tree's, far to near by the
-  same distance.
-- **Overlays** are not in the tree. They take a slot each, far to near by the same distance, from
-  `OVERLAY_SLOT` or from the slot after the last ordinary one when the ordinary panels take more.
+  far to near by the distance from the viewpoint to their middles as it was at the last build, then
+  in the order they joined the renderer.
+- **Overlays** are not in the tree. They take a slot each, far to near by the distance to their
+  middles, from `OVERLAY_SLOT` or from the slot after the last ordinary one when the ordinary panels
+  take more.
 
-A panel that moves, appears or goes changes the next frame's tree, and nothing is kept between
-frames but the pools: the tree's polygons, the cut's pieces and the proxies, which a panel crossed
-again takes back.
+When the renderer's last panel leaves, the tree lets go of the roots its pooled polygons hold
+(`LayerTree.release`).
 
 The pieces past a slot's last place but one share that place, and a layer with a piece there is
 drawn whole, not cut.
 
-About 95 slots fit under the strips at `HANDLE_RENDER_ORDER` (10^8). A scene with more panels draws
-its nearest panels' slots past the strips. The cursor and the drag ghost at `OVERLAY_RENDER_ORDER`
-stay above every slot.
+About 95 slots fit under the strips at `HANDLE_RENDER_ORDER` (10^8). A slot is a piece of a panel,
+so a panel cut in two takes two. A scene with more pieces draws its nearest pieces' slots past the
+strips. The cursor and the drag ghost at `OVERLAY_RENDER_ORDER` stay above every slot.
 
 ## The hit test
 

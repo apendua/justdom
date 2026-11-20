@@ -169,6 +169,20 @@ describe("LayerTree", () => {
     assert.equal(tree.nodes, 2, "within `COPLANAR` px, but not within its own distance");
   });
 
+  test("lets go of the layers its pools hold when released", () => {
+    // The renderer's tree of panels outlives its panels. Goes red with a
+    // pooled polygon still holding a gone panel's root.
+    const [root] = siblings("");
+    const tree = new LayerTree();
+    tree.begin();
+    tree.add(root, 0, placed(0), 100, 100);
+    tree.build();
+    const [polygon] = tree.pieces;
+    tree.release();
+    assert.equal(tree.root, null);
+    assert.equal(polygon.layer, null);
+  });
+
   test("splits by the shallowest layer first", () => {
     const [root] = siblings("");
     const door = document.createElement("div");

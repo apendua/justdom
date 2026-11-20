@@ -682,16 +682,6 @@ export class LayerOrder {
       .distanceTo(from);
   }
 
-  /**
-   * Put the panel in one slot among the panels, whole.
-   *
-   * @param {number} slot
-   */
-  setSlot(slot) {
-    this.clearSlots();
-    this.addSlot(slot, null);
-  }
-
   /** Take the panel out of its slots, for `sortPanels` to give it new ones. */
   clearSlots() {
     this.#slots.length = 0;

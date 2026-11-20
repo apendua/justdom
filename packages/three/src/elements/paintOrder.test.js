@@ -51,6 +51,18 @@ const POINTER = "cursor: pointer";
 const CARD = `position: absolute; background: rgb(255, 255, 255); ${POINTER}`;
 
 /**
+ * Put a panel in one slot among the panels, whole, as `sortPanels` puts
+ * one no tree holds.
+ *
+ * @param {import("./paint/layerOrder.js").LayerOrder} order
+ * @param {number} slot
+ */
+function inSlot(order, slot) {
+  order.clearSlots();
+  order.addSlot(slot, null);
+}
+
+/**
  * Build the page under a 400 by 300 root, mirror it into a panel drawn in
  * paint order, and let a hand press it.
  *
@@ -993,7 +1005,7 @@ describe("a panel drawn in paint order", () => {
     /** @type {Map<THREE.Mesh, number>} */
     let after = new Map();
     batch(() => {
-      order.setSlot(1);
+      inSlot(order, 1);
       order.walk(from);
       after = colourMeshes(g.panel);
     });
@@ -1028,7 +1040,7 @@ describe("a panel drawn in paint order", () => {
     ]);
     const order = await g.walk();
     // A slot past the first, where no layer's fallback band can land.
-    order.setSlot(1);
+    inSlot(order, 1);
     await g.walk();
     const card = g.get("card");
     card.style.transform = matrix3d(["translateZ", 8]);
@@ -1082,14 +1094,14 @@ describe("a panel drawn in paint order", () => {
       },
     ]);
     const order = await g.walk();
-    order.setSlot(1);
+    inSlot(order, 1);
     await g.walk();
     const card = g.get("card");
     const parent = /** @type {Element} */ (card.parentElement);
     card.remove();
     await g.settle();
     await g.walk();
-    order.setSlot(2);
+    inSlot(order, 2);
     await g.walk();
     parent.append(card);
     await g.settle();
@@ -1139,7 +1151,7 @@ describe("a panel drawn in paint order", () => {
     };
     try {
       batch(() => {
-        order.setSlot(1);
+        inSlot(order, 1);
         order.walk(from);
         assert.ok(asked > 0, "the batch asked to lay its draws again");
       });
@@ -1163,7 +1175,7 @@ describe("a panel drawn in paint order", () => {
     // panel's own.
     const g = await page([{ id: "card", style: CARD, at: [20, 20, 100, 100] }]);
     const order = await g.walk();
-    order.setSlot(1);
+    inSlot(order, 1);
     await g.walk();
     // The card's look changes, which runs the effect that orders its box.
     g.get("card").style.background = "rgb(0, 0, 255)";

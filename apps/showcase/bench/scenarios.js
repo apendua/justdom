@@ -65,12 +65,12 @@
 
 /**
  * Whether an element is the list's scroller: its content is taller than it,
- * and it clips that content on a scroll container a write to `scrollTop`
- * moves. Read from `overflow-y` alone, since an app may scroll one axis and
- * not the other: the todo list became `overflow-x: hidden; overflow-y: auto`
- * so that a finger or a wheel scrolls it on the page, and a test for
- * `overflow` as a whole being `hidden` then found nothing to scroll. Both
- * spellings have to match, because `--against` drives older revisions too.
+ * and it is a scroll container, so a write to `scrollTop` moves its content.
+ * Read from `overflow-y` alone, since an app may scroll one axis and not the
+ * other: the todo list became `overflow-x: hidden; overflow-y: auto` so that
+ * a finger or a wheel scrolls it on the page, and a test for `overflow` as a
+ * whole being `hidden` then found nothing to scroll. Both spellings have to
+ * match, because `--against` drives older revisions too.
  * `clip` is left out: it clips without being a scroll container, so a write
  * to `scrollTop` would do nothing.
  *

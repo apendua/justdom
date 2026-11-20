@@ -2,9 +2,10 @@ import * as THREE from "three";
 import {
   $,
   RendererContext,
+  createElementTexture,
+  drawInCanvas,
   htmlTextureMaterial,
   paintedElement,
-  requestPaint,
 } from "justdom-three";
 import { children as domChildren, type Mountable } from "justdom-core";
 import { effects, onCleanup, useEffects, type EntityEffect, type Source } from "justdom-signal";
@@ -12,18 +13,15 @@ import { effects, onCleanup, useEffects, type EntityEffect, type Source } from "
 /**
  * A panel the browser draws, for `?panels=texture`: the reference the
  * mirror is compared against. The same panel markup the mirror would read
- * is mounted in an element of its own inside the renderer's canvas, which
- * `layoutsubtree` lets the browser lay out and paint there and nowhere on
- * the page, and three's `HTMLTexture` uploads that paint (HTML-in-Canvas).
+ * is mounted in an element of its own, a drawable child of the renderer's
+ * canvas that the browser lays out and paints there and nowhere on the page,
+ * and each paint of it is uploaded to a texture (HTML-in-Canvas).
  * The plane is the card's size at the portal's scale, with its origin in the
  * card's middle, so it stands exactly where the mirror's object would.
  *
  * The browser draws everything CSS can, so what it shows is what the page
  * means; where the mirror differs from it, the mirror is wrong. Input is not
  * forwarded: the reference is for looking at.
- *
- * One `HTMLTexture` listens to the canvas's `paint` at a time, so the deck
- * shows one reference panel at a time.
  */
 export function referencePanel(
   ctx: WeakKey,
@@ -52,7 +50,8 @@ export function referencePanel(
   mesh.visible = false;
   return $(mesh, [
     effects((m) => {
-      const canvas = RendererContext.get(ctx).domElement;
+      const renderer = RendererContext.get(ctx);
+      const canvas = renderer.domElement;
       const host = document.createElement("div");
       host.style.width = `${width}px`;
       host.style.height = `${height}px`;
@@ -60,36 +59,29 @@ export function referencePanel(
       // root.
       host.setAttribute("data-reference", "");
       useEffects(host, [domChildren(content)]);
-      canvas.setAttribute("layoutsubtree", "");
-      canvas.append(host);
-      requestPaint(canvas);
+      const undraw = drawInCanvas(canvas, host);
 
-      // The texture is made on the first paint, and not before: made
-      // earlier, three uploads on every frame and throws until the paint
-      // has come. Made from an element the canvas already holds, it marks
-      // itself for upload on every paint after.
-      let texture: THREE.HTMLTexture | null = null;
+      // Uploaded at each paint that painted the panel, and shown from the
+      // first: before that there is no picture, and an upload throws.
+      const { texture, upload, dispose } = createElementTexture(renderer, host);
+      m.material.map = texture;
       const onPaint = (event: Event) => {
-        // A paint that did not paint the panel leaves nothing to upload yet.
-        if (texture || !paintedElement(event, host)) {
+        if (!paintedElement(event, host)) {
           return;
         }
-        texture = new THREE.HTMLTexture(host);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        m.material.map = texture;
-        m.material.needsUpdate = true;
-        m.visible = true;
-        onPainted();
+        upload();
+        if (!m.visible) {
+          m.visible = true;
+          onPainted();
+        }
       };
       canvas.addEventListener("paint", onPaint);
 
       onCleanup(() => {
         canvas.removeEventListener("paint", onPaint);
-        texture?.dispose();
+        dispose();
         host.remove();
-        if (!canvas.firstElementChild) {
-          canvas.removeAttribute("layoutsubtree");
-        }
+        undraw();
         m.geometry.dispose();
         m.material.dispose();
       });

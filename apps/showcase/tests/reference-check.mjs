@@ -22,10 +22,9 @@
  * colour moves whole blocks; antialiasing moves few.
  *
  * It is a tool for finding regressions, not a test: nothing here passes or
- * fails, and it is not run on pull requests, since the browser it needs has
- * HTML-in-Canvas behind a flag (`--enable-blink-features=CanvasDrawElement`)
- * that a later Chromium may rename. `PLAYWRIGHT_CHROMIUM_EXECUTABLE` names
- * the Chromium, as for the visual suite.
+ * fails, and it is not run on pull requests. It needs Chromium 157 or later,
+ * which ships HTML-in-Canvas with no flag, and the visual suite's Chromium is
+ * older: `PLAYWRIGHT_CHROMIUM_EXECUTABLE` names one, as for the visual suite.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -66,7 +65,6 @@ async function photograph(panels, ids) {
   const showcase = await openShowcase({
     freeze: true,
     query: panels === "texture" ? "panels=texture" : undefined,
-    args: ["--enable-blink-features=CanvasDrawElement"],
     deviceScaleFactor: SCALE,
   });
   try {

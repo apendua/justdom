@@ -70,7 +70,7 @@ const textureNotice = () => {
   notice.className = "deck-notice";
   notice.textContent =
     "This browser cannot draw HTML in a canvas, so the panels are mirrored. " +
-    "Turn on chrome://flags/#canvas-draw-element in Chromium for the reference.";
+    "The reference needs Chrome 157 or later.";
   return notice;
 };
 

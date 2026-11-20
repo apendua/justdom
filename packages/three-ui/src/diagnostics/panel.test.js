@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { InteractionContext, InteractionManager, OVERLAY_PANEL_ORDER } from "justdom-three";
 import { createDiagnostics } from "./diagnostics.js";
-import { Panel } from "./panel.js";
+import { Panel, textWorkLine } from "./panel.js";
 
 describe("the diagnostics panel", () => {
   test("is an overlay, so the scene cannot hide it", () => {
@@ -31,5 +31,12 @@ describe("the diagnostics panel", () => {
       unmount?.();
       subscription.unsubscribe();
     }
+  });
+
+  test("says what the worst frame spent on text, to a tenth of a millisecond", () => {
+    const controls = createDiagnostics();
+    assert.equal(textWorkLine(controls), "draw -- · upload -- ms");
+    controls.textWork.set({ drawMs: 3.14, uploadMs: 0.86 });
+    assert.equal(textWorkLine(controls), "draw 3.1 · upload 0.9 ms");
   });
 });

@@ -676,4 +676,62 @@ describe("prepared text steps", () => {
     assert.equal(preparer.ready(2 ** 1.5), false);
     preparer.dispose();
   });
+
+  test("the pump adds what it draws and what it uploads to the scene's account", () => {
+    // A clock that only the work moves: a run that draws for 3 ms and is
+    // staged, one that draws for 2 ms and hands back a texture that takes
+    // 1 ms to send up, and 4 ms of building the staged arrays.
+    let time = 0;
+    /** @type {(() => void) | null} */
+    let tick = null;
+    const scheduler = createPortalScheduler({
+      budget: Infinity,
+      now: () => time,
+      requestFrames: (callback) => {
+        tick = callback;
+        return () => {
+          tick = null;
+        };
+      },
+    });
+    const baked = new THREE.Texture();
+    const work = { drawMs: 0, uploadMs: 0, runs: 0 };
+    const preparer = createTextPreparer({
+      scheduler,
+      batch: /** @type {TextBatch} */ (
+        /** @type {unknown} */ ({
+          commitStaged: () => {
+            time += 4;
+            return false;
+          },
+        })
+      ),
+      holds: () => false,
+      upload: () => {
+        time += 1;
+      },
+      work,
+      now: () => time,
+    });
+    preparer.register({
+      prepare: () => {
+        time += 3;
+        return null;
+      },
+      release: () => {},
+    });
+    preparer.register({
+      prepare: () => {
+        time += 2;
+        return baked;
+      },
+      release: () => {},
+    });
+    preparer.retarget(2);
+    /** @type {(() => void) | null} */ (tick)?.();
+
+    assert.deepEqual(work, { drawMs: 5, uploadMs: 5, runs: 2 });
+    assert.equal(preparer.ready(2), true);
+    preparer.dispose();
+  });
 });

@@ -62,6 +62,7 @@ export {
   PortalSchedulerContext,
 } from "./elements/portal/portalScheduler.js";
 export { createFrameShareBudget } from "./frameShare.js";
+export { textWork } from "./elements/textWork.js";
 export {
   isRenderingSuspended,
   sampleRenderingUpdates,
@@ -115,6 +116,10 @@ export {
 
 /**
  * @typedef {import('./elements/panelOptions.js').PanelOptions} PanelOptions
+ */
+
+/**
+ * @typedef {import('./elements/textWork.js').TextWork} TextWork
  */
 
 /**

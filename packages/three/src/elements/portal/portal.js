@@ -20,6 +20,7 @@ import { TextBatchContext } from "../paint/textBatch.js";
 import { PaintBatch } from "../paint/paintBatch.js";
 import { TextScaleContext, createTextScale } from "../textScale.js";
 import { createTextPreparer, TextPrepareContext } from "../textPrepare.js";
+import { textWork } from "../textWork.js";
 import { keepSubtreeMatrices, markMoved } from "../place.js";
 import { createPanelScrollDrags, ScrollDragsContext } from "../input/scroll.js";
 import { createFrameRequester } from "./frameRequester.js";
@@ -840,6 +841,7 @@ function buildPortal(ctx, ownOptions = {}) {
       batch: state.textBatch,
       holds: state.textScale.holds,
       upload: uploadTexture,
+      work: textWork(state.ctx),
     });
     state.ctx = TextPrepareContext.set(state.ctx, state.textPreparer);
   }

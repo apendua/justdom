@@ -16,9 +16,15 @@ import { resetMeasuringRangeForTests } from "../mirror/textLayout.js";
 import { getPortalRoot } from "./portalRoot.js";
 import { syntheticEvent } from "../../test/events.js";
 
+/**
+ * @import {TextWork} from '../textWork.js';
+ */
+
 import { enableOutlinesMode, outlinesReport } from "../dev/outlines.js";
 import { CameraContext, lateListeners, RendererContext } from "../../scene.js";
 import { placeAndScale } from "../place.js";
+import { createSceneHost } from "../../sceneServices.js";
+import { textWork } from "../textWork.js";
 import { stubCanvas } from "../../test/stubCanvas.js";
 import { installRange } from "../../test/textRange.js";
 import {
@@ -688,9 +694,15 @@ describe("a panel's text step, measured every frame", () => {
       const camera = new THREE.PerspectiveCamera((2 * Math.atan(0.5) * 180) / Math.PI, 1, 0.1, 100);
       camera.updateProjectionMatrix();
       camera.updateMatrixWorld();
-      const ctx = CameraContext.set(
-        RendererContext.set(InteractionContext.set({}, new InteractionManager()), renderer),
-        camera,
+      // Under a scene's host, as a panel `render()` mounts is, so the
+      // pump has the scene's account to add to.
+      const [ctx, driver] = createSceneHost(
+        CameraContext.set(
+          RendererContext.set(InteractionContext.set({}, new InteractionManager()), renderer),
+          camera,
+        ),
+        renderer,
+        {},
       );
       const portal = createPortal(ctx);
       const parent = new THREE.Group();
@@ -746,10 +758,13 @@ describe("a panel's text step, measured every frame", () => {
       }
       assert.ok(uploadedWhenShown >= 0, "the run is shown at the larger step");
       assert.ok(uploadedWhenShown > 0, "and its array went up before it was shown");
+      // Goes red with the panel's pump made without the scene's account.
+      assert.ok(/** @type {TextWork} */ (textWork(ctx)).runs > 0, "and the scene counted the run");
 
       subscription.unsubscribe();
       portal.disconnect();
       await drain();
+      driver.dispose();
     } finally {
       restoreRange();
       canvas.restore();

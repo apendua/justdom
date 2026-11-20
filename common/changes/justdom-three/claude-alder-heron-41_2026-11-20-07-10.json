@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three",
+      "comment": "`textWork(ctx)` gives the totals of what the scene's panels have spent drawing text ahead of a step and uploading it (`drawMs`, `uploadMs`, `runs`), for a readout that wants what a frame cost.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

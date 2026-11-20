@@ -8,7 +8,7 @@ import { TextBatch, TextBatchContext } from "../paint/textBatch.js";
 import { holdsStep, stepBelow, TextScaleContext } from "../textScale.js";
 import { createTextPreparer, TextPrepareContext } from "../textPrepare.js";
 import { createPortalScheduler } from "../portal/portalScheduler.js";
-import { installRange } from "../../test/textRange.js";
+import { installLines, installRange } from "../../test/textRange.js";
 import { paintBatch } from "../../test/textRuns.js";
 
 /**
@@ -743,5 +743,172 @@ describe("prepared text steps", () => {
     assert.deepEqual(work, { longestDrawMs: 3, longestUploadMs: 6 });
     assert.equal(preparer.ready(2), true);
     preparer.dispose();
+  });
+});
+
+/**
+ * A `pre` of `lines`, projected, and the runs it is drawn by.
+ *
+ * @param {string[]} lines
+ * @param {string} [textShadow]
+ */
+function linesOfText(lines, textShadow = "") {
+  const restore = installLines();
+  const element = document.createElement("pre");
+  element.style.whiteSpace = "pre";
+  element.style.textShadow = textShadow;
+  element.append(lines.join("\n"));
+  document.body.appendChild(element);
+  const mirror = createMirror();
+  mirror.adopt(element);
+  const node = /** @type {Text} */ (element.firstChild);
+  mirror.adopt(node);
+  /** @type {THREE.Object3D | undefined} */
+  let object;
+  const subscription = text({}, node).subscribe({
+    next: (value) => {
+      object = value;
+    },
+  });
+  assert.ok(object);
+  const parent = object;
+  /** The runs, top to bottom. */
+  const runs = () =>
+    /** @type {THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[]} */ (
+      parent.children.filter((child) => child instanceof THREE.Mesh)
+    ).sort((a, b) => a.position.y - b.position.y);
+  return {
+    runs,
+    /** The texture each run draws, top to bottom. */
+    textures: () => runs().map((run) => run.material.alphaMap ?? run.material.map),
+    /** @param {string[]} next */
+    retype(next) {
+      node.data = next.join("\n");
+      mirror.characterDataChanged(node);
+    },
+    done: () => {
+      subscription.unsubscribe();
+      restore();
+      element.remove();
+    },
+  };
+}
+
+/**
+ * The clip a run is drawn with, in the run's own frame: what `applyClip`
+ * hands the shader, read by compiling a stand-in for one.
+ *
+ * @param {THREE.Mesh} run
+ * @returns {number[]}
+ */
+function clipOf(run) {
+  const shader = /** @type {any} */ ({
+    uniforms: {},
+    vertexShader: "void main() {\n#include <begin_vertex>\n}",
+    fragmentShader: "void main() {\n}",
+  });
+  /** @type {THREE.Material} */ (run.material).onBeforeCompile(shader, /** @type {any} */ (null));
+  return shader.uniforms.clipBox.value.toArray();
+}
+
+describe("a text node in bands", () => {
+  const FOUR = ["aaaaaaaaaa", "bbbbbbbbbb", "cccccccccc", "dddddddddd"];
+
+  test("lines that cover more than a band are a run each, placed under the node", () => {
+    // Goes red with the node drawn as one run: one mesh, 80 px tall.
+    const pre = linesOfText(FOUR);
+    try {
+      assert.deepEqual(
+        pre.runs().map((run) => run.position.y),
+        [0, 20, 40, 60],
+      );
+      for (const texture of pre.textures()) {
+        const { width, height } = /** @type {HTMLCanvasElement} */ (
+          /** @type {THREE.Texture} */ (texture).image
+        );
+        assert.ok(height < width / 20, `a band of one line, ${width} by ${height}`);
+      }
+      assert.equal(new Set(pre.textures()).size, 4, "each its own raster");
+    } finally {
+      pre.done();
+    }
+  });
+
+  test("a short label is one run at the node's origin, as it was", () => {
+    const pre = linesOfText(["label"]);
+    try {
+      assert.deepEqual(
+        pre.runs().map((run) => run.position.y),
+        [0],
+      );
+    } finally {
+      pre.done();
+    }
+  });
+
+  test("retyping one line draws that line's band again and no other", () => {
+    const pre = linesOfText(FOUR);
+    try {
+      const before = pre.textures();
+      const meshes = pre.runs();
+
+      pre.retype(["aaaaaaaaaa", "bbbbbbbbbb", "CCCCCCCCCC", "dddddddddd"]);
+
+      const after = pre.textures();
+      assert.deepEqual(pre.runs(), meshes, "the runs are the ones that were");
+      assert.equal(after[0], before[0]);
+      assert.equal(after[1], before[1]);
+      assert.notEqual(after[2], before[2], "the retyped line");
+      assert.equal(after[3], before[3]);
+    } finally {
+      pre.done();
+    }
+  });
+
+  test("a node that loses lines loses their runs, and gets them back with the lines", () => {
+    const pre = linesOfText(FOUR);
+    try {
+      const [first, second] = pre.runs();
+
+      pre.retype(FOUR.slice(0, 2));
+      assert.deepEqual(pre.runs(), [first, second], "the first two runs stay");
+
+      pre.retype(FOUR);
+      assert.equal(pre.runs().length, 4);
+      assert.deepEqual(pre.runs().slice(0, 2), [first, second]);
+    } finally {
+      pre.done();
+    }
+  });
+
+  test("a band of a shadowed node starts above its line by the shadow's reach", () => {
+    // A blur of 5 px and an offset of 2 px upward reach 7 px above a line.
+    const pre = linesOfText(FOUR, "0px -2px 5px red");
+    try {
+      assert.deepEqual(
+        pre.runs().map((run) => run.position.y),
+        [-7, 13, 33, 53],
+      );
+    } finally {
+      pre.done();
+    }
+  });
+
+  test("each band is trimmed by the node's clip, read from the band's own origin", () => {
+    const pre = linesOfText(FOUR);
+    try {
+      const clips = pre.runs().map(clipOf);
+      assert.equal(clips.length, 4);
+      // Nothing clips the node here, so every band's clip is the same
+      // unbounded box, moved up by where the band sits.
+      for (const [index, clip] of clips.entries()) {
+        assert.equal(clip[0], clips[0][0]);
+        assert.equal(clip[2], clips[0][2]);
+        assert.equal(clip[1], clips[0][1] - index * 20);
+        assert.equal(clip[3], clips[0][3] - index * 20);
+      }
+    } finally {
+      pre.done();
+    }
   });
 });

@@ -195,6 +195,19 @@ out:
   whose content changed, a view's first measurement and a step shown after `SHARPEN_WAIT_MS`, is not
   in it.
 
+### 3.9 What the readings were on a Quest, and the run behind them
+
+On a Quest, on the desk, the panel of 3.8 read 21.8 ms for the longest draw and 16.2 ms for the
+longest upload. A frame there is 11 to 14 ms, so either drops a frame or two alone, and moving the
+head among the panels felt no better with 6.2 than without it.
+
+Counting canvases and texture uploads by size on the emulator, at the headset's pixel density, found
+one run behind both. The monitor's screen is one text node of some thirty lines, 842 by 690 px. It
+is typed out by `reveal.text` and has a `text-shadow`, so it is not batched, and at step 4 it was
+one canvas of 1684 by 1380, 9.3 MB, with its mipmaps drawn on the CPU and one `texImage2D` for the
+lot. The largest upload of a batched array on the same walk was 1.1 MB. Section 6.3 cuts such a node
+into bands, and the largest canvas and the largest upload of the walk are then 0.92 MB.
+
 ## 4. Goals
 
 - A step that the panel showed recently is shown again without rasterizing or uploading anything.
@@ -449,14 +462,45 @@ once and never measured (rule 15).
 The profiling script is in the repository now, as `packages/three/bench/textSteps.browser.mjs`. It
 counts through the page's own canvas and WebGL calls and wraps nothing in the package.
 
+### 6.3 A large text node is drawn in bands
+
+The pump cannot stop inside a run, so a run is as long as a frame may stall (3.8), and one run was
+9.3 MB (3.9). A text node whose lines cover more than `BAND_AREA`, 16 384 square px, is now drawn as
+several runs, each a band of whole lines within that, which is about a megabyte at step 4. The rules
+are with `cutIntoBands` in `controls/textBands.js`:
+
+- Lines that cover no more than `BAND_AREA` are one band, and the node is drawn as it was.
+- Otherwise a band takes lines from the top until the next would take it past `BAND_AREA`. It has at
+  least one line, and a line is never cut, so one very wide line is still one raster.
+- Every band is as wide as the node, so bands of as many lines come out one size and share an array
+  in the batch.
+- A band of a node in more than one starts above its first line by as far as a text shadow reaches
+  up, its blur and its upward offset, so a glow is not cut at each line. A node in one band is cut
+  at its top as before.
+- The cut follows the layout and keeps nothing between measurements but the bands it returned. A
+  band whose top, bounds and lines are what they were is the same object, and its run draws nothing.
+
+A band is a run like any other: it has its own rasters by step (5.2), its own layer or texture, and
+is prepared and uploaded by the pump as one piece. It sits under the node's origin at its `top`, and
+its clip and its reveal cut are the node's, read from the band's own origin, so a clip or a cut
+drawn across the node falls where it did.
+
+Two things follow that were not the aim. A node one of whose lines changes draws that line's band
+and not the node, so the monitor's screen scrolling or a long field being edited costs a line and
+not a megabyte or nine. And a text node costs four more evaluations to mount (the cut, the list of
+runs and each run's band), 1.7% on the list of a hundred rows that `mirrorCounts.test.js` holds.
+
+What it costs: a banded node that is not batched, which is one with a shadow or a reveal, is a draw
+call a band where it was one, some thirty for the monitor's screen.
+
 ## 7. Open questions
 
 - Is 3.5x the shown step's memory acceptable on a panel capped at step 4? A long list at step 4 is
   what `maxTextScale` exists for, and its cap would apply to the holding too.
 - `PREPARE_SHARE`, `RELEASE_MS`, `SHARPEN_WAIT_MS` and `UPLOAD_BYTES_PER_FRAME` are guesses. The
   headset trace should set them.
-- Is one run's drawing, or one upload, long enough on a headset to drop a frame? The readings of 3.8
-  say which on the page's thread, and so whether drawing in a worker or cutting large runs into
-  bands is worth building.
+- `BAND_AREA` is a guess from two readings on one run (3.9). The panel of 3.8 says what a band costs
+  on a headset. If a megabyte is still too long, the next step is a smaller band or drawing in a
+  worker, which takes the drawing off the frame and leaves the upload.
 - The forced sweeps in 3.5 drop frames on the desk with or without step changes. They need their own
   investigation.

@@ -14,6 +14,7 @@ import { tracksCharacterEdges } from "./mirror/textLayout.js";
 import { resetMeasuringRangeForTests } from "./mirror/textLayout.js";
 import { text } from "./controls/text.js";
 import { UNBOUNDED } from "./clip.js";
+import { installLines } from "../test/textRange.js";
 
 /**
  * @import * as THREE from 'three';
@@ -660,5 +661,73 @@ describe("what the offsets cost", () => {
       `a tick cost ${one} reads with one node and ${several} with four: the ` +
         `offsets are being recomputed per tick rather than per layout`,
     );
+  });
+});
+
+describe("a revealed node in bands", () => {
+  test("each band is cut where the node is, read from the band's own origin", () => {
+    // Three lines of ten characters, each more than a band may cover, so
+    // each is a run. Goes red with a revealed node kept in one run, and
+    // with the node's cut handed to a band as it is.
+    const restore = installLines();
+    const cursor = Signal.of(0);
+    const reveal = makeReveal(() => cursor.get());
+    const parent = document.createElement("pre");
+    parent.style.whiteSpace = "pre";
+    document.body.appendChild(parent);
+    const mirror = createMirror();
+    mirror.adopt(parent);
+
+    try {
+      const { node, stop } = mountRun(reveal, parent, "aaaaaaaaaa\nbbbbbbbbbb\ncccccccccc");
+      mirror.adopt(node);
+      /** @type {THREE.Object3D | undefined} */
+      let object;
+      const subscription = text({}, node).subscribe({
+        next: (value) => {
+          object = value;
+        },
+      });
+      assert.ok(object);
+      const runs = /** @type {THREE.Mesh[]} */ (object.children).sort(
+        (a, b) => a.position.y - b.position.y,
+      );
+      assert.deepEqual(
+        runs.map((run) => run.position.y),
+        [0, 20, 40],
+      );
+      const cuts = runs.map((run) => {
+        const shader = {
+          uniforms: /** @type {Record<string, { value: THREE.Vector4 }>} */ ({}),
+          vertexShader: "void main() {\n#include <begin_vertex>\n}",
+          fragmentShader: "void main() {\n#include <alphatest_fragment>\n}",
+        };
+        /** @type {THREE.Material} */ (run.material).onBeforeCompile(
+          /** @type {never} */ (shader),
+          /** @type {never} */ (null),
+        );
+        return shader.uniforms.revealCut;
+      });
+
+      // Part of the way along the second line: the first line is whole, the
+      // second is cut, and the third is not drawn.
+      cursor.set(14);
+      const [x, wholeBottom, cutBottom] = cuts[0].value.toArray();
+      assert.equal(wholeBottom, 20, "the first line's bottom, from the node's origin");
+      assert.equal(cutBottom, 40);
+      for (const [index, cut] of cuts.entries()) {
+        assert.deepEqual(
+          cut.value.toArray().slice(0, 3),
+          [x, wholeBottom - index * 20, cutBottom - index * 20],
+          `band ${index}`,
+        );
+      }
+
+      subscription.unsubscribe();
+      stop();
+    } finally {
+      parent.remove();
+      restore();
+    }
   });
 });

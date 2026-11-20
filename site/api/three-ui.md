@@ -252,14 +252,14 @@ rate, and a minute of history as thirty two-second bars, coloured as fractions o
 rate, since 72 fps is perfect on one headset and a quarter of the frames dropped on another. The
 panel is faint, so the room can be read through it, and dark enough that the reading is legible.
 
-Under the chart is a line such as `draw 3.1 · upload 0.9 ms`. A panel draws its text again, sharper,
-before the viewer is near enough to need it, a run at a time in what the frame has left
-([text sharpness](/api/three/panels#how-sharp-the-text-comes-out)). That work stops between runs
-when the frame's time is up and cannot stop inside one. The two numbers are the longest a single run
-took to draw in the last minute, and the longest a single upload took to return, as `textWork(ctx)`
-from `justdom-three` keeps them. A run that takes several milliseconds is one that can drop a frame.
-Text drawn in the update that shows it, such as a label whose content changed, is not counted, and
-neither is what the GPU does with an upload after the call returns.
+Under the chart are two lines such as `draw 3.1 ms` and `upload 0.9 ms`. A panel draws its text
+again, sharper, before the viewer is near enough to need it, a run at a time in what the frame has
+left ([text sharpness](/api/three/panels#how-sharp-the-text-comes-out)). That work stops between
+runs when the frame's time is up and cannot stop inside one. The two numbers are the longest a
+single run took to draw in the last minute, and the longest a single upload took to return, as
+`textWork(ctx)` from `justdom-three` keeps them. A run that takes several milliseconds is one that
+can drop a frame. Text drawn in the update that shows it, such as a label whose content changed, is
+not counted, and neither is what the GPU does with an upload after the call returns.
 
 - **It lets rays through.** It is projected through a portal with `{ opaqueToRays: false }`, the
   option this widget is the reason for.

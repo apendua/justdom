@@ -124,13 +124,14 @@ export const caption = stylesheet`
 `;
 
 /**
- * The text readings, under the chart. No letter spacing, unlike the caption:
- * the line has two numbers and their names to fit in the card's width.
+ * A text reading, under the chart: a line each for drawing and uploading,
+ * large enough to read in a headset, where the caption's size is not.
  */
 export const work = stylesheet`
   .${CLASS_NAME} {
     margin-top: 2px;
-    font-size: 15px;
-    color: rgba(255, 255, 255, 0.78);
+    font-size: 24px;
+    line-height: 1.15;
+    color: rgba(255, 255, 255, 0.82);
   }
 `;

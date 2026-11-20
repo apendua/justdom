@@ -196,11 +196,14 @@ each of its slots. These are the rules:
 - **Coplanar panels**, within `PANELS_COPLANAR` (10 µm) of each other's plane, share a node and draw
   in the order they joined the renderer. The tree is kept between builds, so a tie that followed the
   viewer would follow where the viewer stood at the last build instead.
-- **Overlays** are not in the tree. They take a slot each, far to near by the distance to their
-  middles, from `OVERLAY_SLOT` or from the slot after the last ordinary one when the ordinary panels
-  take more.
+- **Overlays** are in a tree of their own, built and walked the same way, whose pieces take the
+  slots from `OVERLAY_SLOT`, or from the slot after the last ordinary one when the ordinary panels
+  take more. An overlay outside it, hidden or of no size, comes after the rest, far to near. Their
+  middles alone do not order them: a frame rate readout hung off to the side of the eye, in front of
+  a menu card straight ahead, has the farther middle. Drawn first, its depth quad hid the card
+  behind it, and the sky showed through its translucent background.
 
-When the renderer's last panel leaves, the tree lets go of the roots its pooled polygons hold
+When the renderer's last panel leaves, both trees let go of the roots their pooled polygons hold
 (`LayerTree.release`).
 
 The pieces past a slot's last place but one share that place, and a layer with a piece there is

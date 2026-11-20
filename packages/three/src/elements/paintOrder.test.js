@@ -58,12 +58,16 @@ const CARD = `position: absolute; background: rgb(255, 255, 255); ${POINTER}`;
  * @param {object} [options]
  * @param {string} [options.rootStyle]
  * @param {boolean} [options.opaqueToRays] The panel option of that name.
+ * @param {boolean} [options.overlay] The panel option of that name.
  * @param {InteractionManager} [options.manager] Another page's, for a test
  *   with two panels in one hand's reach.
  */
-async function page(children, { rootStyle = "", opaqueToRays = true, manager: shared } = {}) {
+async function page(
+  children,
+  { rootStyle = "", opaqueToRays = true, overlay = false, manager: shared } = {},
+) {
   const { root, manager, portal, scene, panel, get } = await pagePanel(children, {
-    portal: { opaqueToRays },
+    portal: { opaqueToRays, overlay },
     rootStyle,
     manager: shared,
   });
@@ -2937,13 +2941,15 @@ describe("panels that cross", () => {
    * vertical line through its middle and moved `shift` world units up,
    * both in one scene, middles together for no shift: a letter carried
    * through a plant. Each holds a card, and the swung one, if `raised`, a
-   * card swung out of its plane, a layer cut inside its panel.
+   * card swung out of its plane, a layer cut inside its panel. Both are
+   * overlays (`PortalOptions.overlay`) if `overlay`.
    *
-   * @param {{ shift?: number, raised?: boolean }} [options]
+   * @param {{ shift?: number, raised?: boolean, overlay?: boolean }} [options]
    */
-  async function crossing({ shift = 0, raised = false } = {}) {
+  async function crossing({ shift = 0, raised = false, overlay = false } = {}) {
     const flat = await page([{ id: "card", style: CARD, at: [20, 20, 360, 60] }], {
       rootStyle: "background: rgba(60, 160, 90, 0.5)",
+      overlay,
     });
     const swung = await page(
       [
@@ -2958,7 +2964,7 @@ describe("panels that cross", () => {
             ]
           : []),
       ],
-      { rootStyle: "background: rgba(250, 250, 240, 0.5)" },
+      { rootStyle: "background: rgba(250, 250, 240, 0.5)", overlay },
     );
     const world = new THREE.Scene();
     world.add(flat.scene, swung.scene);
@@ -3017,46 +3023,48 @@ describe("panels that cross", () => {
     });
   }
 
-  test("cuts a panel that crosses another's plane, and draws its pieces either side of the other", async () => {
-    // Goes red with the panels drawn whole, far to near by their middles:
-    // one panel's draws all come before the other's or all after, and the
-    // one drawn first has its depth quad hide every part of the other
-    // behind its plane, through its own clear background.
-    const g = await crossing();
-    await g.frame();
-    await g.frame();
-    const { flat, swung } = g;
+  for (const overlay of [false, true]) {
+    test(`cuts a${overlay ? "n overlay" : " panel"} that crosses another's plane, and draws its pieces either side of the other`, async () => {
+      // Goes red with the panels drawn whole, far to near by their middles:
+      // one panel's draws all come before the other's or all after, and the
+      // one drawn first has its depth quad hide every part of the other
+      // behind its plane, through its own clear background.
+      const g = await crossing({ overlay });
+      await g.frame();
+      await g.frame();
+      const { flat, swung } = g;
 
-    const cut = [flat, swung].filter((page) => proxiesOf(page.panel).length > 0);
-    assert.equal(cut.length, 1, "one panel is cut by the other's plane");
-    const [crossed] = cut;
-    const other = crossed === flat ? swung : flat;
-    assert.equal(proxiesOf(other.panel).length, 0, "and the other is drawn whole");
+      const cut = [flat, swung].filter((page) => proxiesOf(page.panel).length > 0);
+      assert.equal(cut.length, 1, "one panel is cut by the other's plane");
+      const [crossed] = cut;
+      const other = crossed === flat ? swung : flat;
+      assert.equal(proxiesOf(other.panel).length, 0, "and the other is drawn whole");
 
-    // Every draw of the crossed panel is drawn once a side: one before the
-    // other panel's first draw, and one after the other panel's depth quad.
-    const orders = drawn(crossed.panel)
-      .filter((mesh) => {
-        const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
-        return uniforms && uniforms.uHalfPlaneCount.value > 0;
-      })
-      .map((mesh) => mesh.renderOrder);
-    const otherBase = getLayerBase(other.root) ?? Number.NaN;
-    const otherQuad = depthQuadOf(other.panel).renderOrder;
-    assert.ok(
-      orders.some((order) => order < otherBase),
-      `a piece before ${otherBase}: ${orders}`,
-    );
-    assert.ok(
-      orders.some((order) => order > otherQuad),
-      `a piece after ${otherQuad}: ${orders}`,
-    );
-    assert.ok(
-      depthQuadOf(crossed.panel).renderOrder > Math.max(...orders),
-      "its depth quad after all of it",
-    );
-    g.teardown();
-  });
+      // Every draw of the crossed panel is drawn once a side: one before the
+      // other panel's first draw, and one after the other panel's depth quad.
+      const orders = drawn(crossed.panel)
+        .filter((mesh) => {
+          const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
+          return uniforms && uniforms.uHalfPlaneCount.value > 0;
+        })
+        .map((mesh) => mesh.renderOrder);
+      const otherBase = getLayerBase(other.root) ?? Number.NaN;
+      const otherQuad = depthQuadOf(other.panel).renderOrder;
+      assert.ok(
+        orders.some((order) => order < otherBase),
+        `a piece before ${otherBase}: ${orders}`,
+      );
+      assert.ok(
+        orders.some((order) => order > otherQuad),
+        `a piece after ${otherQuad}: ${orders}`,
+      );
+      assert.ok(
+        depthQuadOf(crossed.panel).renderOrder > Math.max(...orders),
+        "its depth quad after all of it",
+      );
+      g.teardown();
+    });
+  }
 
   test("cuts each layer of a crossed panel by its own half-planes and the panel's, the root's by the panel's alone", async () => {
     // The swung panel's raised card is cut inside its panel too. Goes red

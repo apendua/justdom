@@ -680,8 +680,9 @@ describe("prepared text steps", () => {
   test("the pump keeps the longest draw and the longest upload in the scene's account", () => {
     // A clock that only the work moves: a run that draws for 3 ms and is
     // staged, one that draws for 2 ms and hands back a texture that takes
-    // 6 ms to send up, and 4 ms of building the staged arrays. The longest
-    // of each kind is neither the last nor the sum.
+    // 6 ms to send up, one that draws for 1 ms and hands back one that
+    // takes 1 ms, and 4 ms of building the staged arrays. The longest of
+    // each kind is neither the last of its kind nor the sum.
     let time = 0;
     /** @type {(() => void) | null} */
     let tick = null;
@@ -695,7 +696,8 @@ describe("prepared text steps", () => {
         };
       },
     });
-    const baked = new THREE.Texture();
+    const large = new THREE.Texture();
+    const small = new THREE.Texture();
     const work = { longestDrawMs: 0, longestUploadMs: 0 };
     const preparer = createTextPreparer({
       scheduler,
@@ -708,8 +710,8 @@ describe("prepared text steps", () => {
         })
       ),
       holds: () => false,
-      upload: () => {
-        time += 6;
+      upload: (texture) => {
+        time += texture === large ? 6 : 1;
       },
       work,
       now: () => time,
@@ -724,7 +726,14 @@ describe("prepared text steps", () => {
     preparer.register({
       prepare: () => {
         time += 2;
-        return baked;
+        return large;
+      },
+      release: () => {},
+    });
+    preparer.register({
+      prepare: () => {
+        time += 1;
+        return small;
       },
       release: () => {},
     });

@@ -135,7 +135,8 @@ function recordingRenderer() {
     deleteTexture: record("deleteTexture"),
     texImage2D: record("texImage2D"),
     texParameteri: () => {},
-    pixelStorei: record("pixelStorei"),
+    // three caches the pixel store, so a write that skips its state is wrong.
+    pixelStorei: record("gl.pixelStorei"),
     texElementSubImage2D: record("texElementSubImage2D"),
   };
   const renderer = {
@@ -144,6 +145,7 @@ function recordingRenderer() {
       bindTexture: (/** @type {unknown} */ _type, /** @type {unknown} */ texture) =>
         bound.push(texture),
       unbindTexture: () => bound.push(null),
+      pixelStorei: record("pixelStorei"),
     },
   };
   return { renderer: /** @type {never} */ (renderer), calls, bound };
@@ -206,7 +208,7 @@ test("an element texture holds the element at the page's pixel ratio", () => {
   assert.deepEqual(draw?.at(-1), { width: 152, height: 60 });
 });
 
-test("an element texture's rows follow its flipY, whatever three left set", () => {
+test("an element texture's rows follow its flipY, set through three's state", () => {
   const { renderer, calls } = recordingRenderer();
   const element = document.createElement("div");
   const { texture, upload } = createElementTexture(renderer, element);
@@ -218,6 +220,11 @@ test("an element texture's rows follow its flipY, whatever three left set", () =
   assert.deepEqual(
     flips().map(([, , value]) => value),
     [true, false],
+  );
+  assert.deepEqual(
+    calls.filter(([name]) => name === "gl.pixelStorei"),
+    [],
+    "through three's state, which remembers what it set",
   );
 });
 

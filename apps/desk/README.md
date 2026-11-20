@@ -161,11 +161,12 @@ How it draws (`src/texture/Scene.ts`, with `drawInCanvas` and `createElementText
   the tabletop between the zones are hidden, so the texture is the zones on a transparent ground.
 - The canvas fires `paint` when the browser has painted the desk again, and the event lists the desk
   among the elements whose picture changed. On each such paint the desk is drawn into its texture
-  with `texElementSubImage2D`, at its size in CSS px. That call only writes into storage that
-  exists, so the storage is allocated first, and again whenever the desk's size changes. three r185
-  to r187's `HTMLTexture` still uploads with `texElementImage2D`, which Chrome 157 no longer has, so
-  the texture is an `ExternalTexture` around a WebGL texture of the desk's own. The panels are
-  hidden until the first paint, since there is no picture before it.
+  with `texElementSubImage2D`, at its size in device px, its CSS px at the page's pixel ratio. That
+  call only writes into storage that exists, so the storage is allocated first, and again whenever
+  the desk's size changes. three r185 to r187's `HTMLTexture` still uploads with
+  `texElementImage2D`, which Chrome 157 no longer has, so the texture is an `ExternalTexture` around
+  a WebGL texture of the desk's own. The panels are hidden until the first paint, since there is no
+  picture before it.
 - The whole desk is one texture. Each zone the look places is a flat plane, posed as the mirror
   poses it, whose UVs are the zone's rect in the desk, measured again on every paint.
 - When the session ends the desk goes back into `.stage`, loses `drawable`, and the canvas loses

@@ -83,8 +83,9 @@ export function drawInCanvas(canvas, element) {
  * around a WebGL texture of its own: `upload` allocates it at the element's
  * size in device px, its CSS px at the page's pixel ratio, whenever that size
  * changes, since `texElementSubImage2D` only writes into storage that exists,
- * and draws the whole element into it at that size. Rows run from the element's bottom, as three's own uploads do, unless
- * the texture's `flipY` is set to `false`.
+ * and draws the whole element into it at that size. Rows run from the
+ * element's bottom, as three's own uploads do, unless the texture's `flipY`
+ * is set to `false`.
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {HTMLElement} element
@@ -114,9 +115,10 @@ export function createElementTexture(renderer, element) {
         width = w;
         height = h;
       }
-      // three sets these for each texture it uploads, and leaves them so.
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, texture.flipY);
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      // Through three's state too: it skips a write of the value it last
+      // set, so a write behind its back would reach its next upload.
+      renderer.state.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, texture.flipY);
+      renderer.state.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       // Without a size the browser draws the element at its size in the
       // canvas's own pixels, which under a session is the headset's
       // framebuffer and need not fit the storage.
@@ -132,12 +134,10 @@ export function createElementTexture(renderer, element) {
 
 /**
  * An unlit, see-through material for a `createElementTexture` texture.
- * `texElementSubImage2D` writes only RGBA8, which the GPU does not decode from
- * sRGB as it does an SRGB8_ALPHA8 one, so a plain material shows every colour the page drew
- * lighter than it was. The map's shader decodes it inline when
- * `DECODE_VIDEO_TEXTURE` is defined, as it does for a video. The map is set
- * once the browser has painted the element, since a texture made before that
- * has nothing to upload.
+ * `texElementSubImage2D` writes only RGBA8, which the GPU does not decode
+ * from sRGB as it does an SRGB8_ALPHA8 one, so a plain material shows every
+ * colour the page drew lighter than it was. The map's shader decodes it
+ * inline when `DECODE_VIDEO_TEXTURE` is defined, as it does for a video.
  *
  * @returns {THREE.MeshBasicMaterial}
  */

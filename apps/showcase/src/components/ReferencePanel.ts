@@ -22,7 +22,6 @@ import { effects, onCleanup, useEffects, type EntityEffect, type Source } from "
  * The browser draws everything CSS can, so what it shows is what the page
  * means; where the mirror differs from it, the mirror is wrong. Input is not
  * forwarded: the reference is for looking at.
- *
  */
 export function referencePanel(
   ctx: WeakKey,

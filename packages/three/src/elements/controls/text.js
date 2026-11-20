@@ -135,7 +135,12 @@ export function text(ctx, textNode) {
    * @param {number} index
    */
   const bandRun = (index) => {
-    const band = new Derived(() => bands.get()[index]);
+    // The band the run last had, which it keeps for a read after its band
+    // is gone. A node that loses lines takes this run away, but in the same
+    // change the node's clip or its cut can move, and the run's effects
+    // read those too and may run before the list of runs does.
+    let held = banded[index];
+    const band = new Derived(() => (held = bands.get()[index] ?? held));
     const clipUniform = unboundedClipUniform();
     // The node's cut, read from the band's own origin as its clip is. It
     // starts at "nothing drawn" rather than "all of it". The effect below

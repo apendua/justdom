@@ -881,6 +881,51 @@ describe("a text node in bands", () => {
     }
   });
 
+  test("a clipped node that moves up and loses lines in one change keeps its first run", async () => {
+    // The node starts a line down, under an empty first line, inside a
+    // parent that clips it, so each run's clip follows the node's top. One
+    // retyping then moves the node up and takes two of its three lines.
+    // The clip's change reaches the two runs on their way out before the
+    // list of runs takes them away, and they read a band that is gone:
+    // goes red, with "Cannot destructure property 'top'", when a run keeps
+    // no band for that read.
+    const restore = installLines();
+    const element = document.createElement("pre");
+    element.style.whiteSpace = "pre";
+    element.style.overflow = "hidden";
+    element.append(["", ...FOUR.slice(0, 3)].join("\n"));
+    document.body.appendChild(element);
+    const mirror = createMirror();
+    mirror.adopt(element);
+    const node = /** @type {Text} */ (element.firstChild);
+    mirror.adopt(node);
+    /** @type {THREE.Object3D | undefined} */
+    let object;
+    const subscription = text({}, node).subscribe({
+      next: (value) => {
+        object = value;
+      },
+    });
+    try {
+      assert.ok(object);
+      assert.equal(object.position.y, 20);
+      assert.equal(object.children.length, 3);
+      const [first] = object.children;
+
+      node.data = FOUR[0];
+      mirror.characterDataChanged(node);
+      // An effect that throws is reported a task later.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.equal(object.position.y, 0);
+      assert.deepEqual(object.children, [first]);
+    } finally {
+      subscription.unsubscribe();
+      restore();
+      element.remove();
+    }
+  });
+
   test("a band of a shadowed node starts above its line by the shadow's reach", () => {
     // A blur of 5 px and an offset of 2 px upward reach 7 px above a line.
     const pre = linesOfText(FOUR, "0px -2px 5px red");

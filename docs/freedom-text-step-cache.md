@@ -481,6 +481,9 @@ are with `cutIntoBands` in `controls/textBands.js`:
   at its top as before.
 - The cut follows the layout and keeps nothing between measurements but the bands it returned. A
   band whose top, bounds and lines are what they were is the same object, and its run draws nothing.
+- A run keeps the band it last had for any read after its band is gone. A node that loses lines
+  loses their runs, but the node's clip or cut can move in the same change, and a run's effects read
+  those and may run before the list of runs takes the run away.
 
 A band is a run like any other: it has its own rasters by step (5.2), its own layer or texture, and
 is prepared and uploaded by the pump as one piece. It sits under the node's origin at its `top`, and

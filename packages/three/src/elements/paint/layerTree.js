@@ -30,9 +30,10 @@ import { isGenerated } from "../pseudoElements.js";
  *   whole to the side its middle is on, and does not count as a split when
  *   the splitter is chosen. Unless it meets another polygon of the set not
  *   wholly on that side (`#meetsAcross`): then it is cut, so that the part
- *   of it across the plane is ordered against that one. Two panels apart are then ordered by where
- *   their middles are, and only panels that pass through each other are
- *   cut. Inside a panel every crossing is cut, as Chromium cuts it.
+ *   of it across the plane is ordered against that one. Two panels apart
+ *   are then ordered by where their middles are, and only panels that pass
+ *   through each other are cut. Inside a panel every crossing is cut, as
+ *   Chromium cuts it.
  * - The walk visits the pieces from back to front for a viewpoint: at each
  *   node the side the viewpoint is not on, then the node's own pieces, then
  *   the side it is on.

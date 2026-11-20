@@ -1027,11 +1027,11 @@ Drawing a panel's text again at a new step is work, and a panel does it without 
 While a step above is prepared, a panel keeps up to three and a half times what the shown step
 costs: the step below at half and the step above at twice.
 
-`textWork(ctx)` says what that drawing ahead has cost the scene `ctx` is under: `drawMs`, `uploadMs`
-and `runs`, totals since the scene began, and null outside a scene. A reader keeps the last totals
-it saw and takes the difference, once a frame for what the frame spent. The
-[diagnostics panel](/api/three-ui#diagnostics) of `justdom-three-ui` shows the worst frame of the
-last minute that way.
+`textWork(ctx)` has the longest piece of that work for the scene `ctx` is under, and is null outside
+a scene: `longestDrawMs`, the longest one run took to draw, and `longestUploadMs`, the longest one
+upload took to return. Each is a maximum since it was last set to zero, and the reader sets it back,
+so the account has one reader. The [diagnostics panel](/api/three-ui#diagnostics) of
+`justdom-three-ui` is that reader when a scene has one, and shows the longest of the last minute.
 
 ### A panel that never draws its text again
 

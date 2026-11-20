@@ -2,7 +2,7 @@
   "changes": [
     {
       "packageName": "justdom-three-ui",
-      "comment": "The diagnostics panel shows the most one frame of the last minute spent drawing text ahead and the most one spent uploading it, and the controls carry the reading as `textWork`. `createWorkMeter` is the arithmetic behind it.",
+      "comment": "The diagnostics panel shows the longest a single run took to draw ahead of a text step in the last minute and the longest a single upload took, and the controls carry the reading as `textWork`. `createWorkMeter` is the arithmetic behind it.",
       "type": "minor"
     }
   ],

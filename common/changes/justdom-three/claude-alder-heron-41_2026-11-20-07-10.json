@@ -2,7 +2,7 @@
   "changes": [
     {
       "packageName": "justdom-three",
-      "comment": "`textWork(ctx)` gives the totals of what the scene's panels have spent drawing text ahead of a step and uploading it (`drawMs`, `uploadMs`, `runs`), for a readout that wants what a frame cost.",
+      "comment": "`textWork(ctx)` has the longest a single run took to draw ahead of a text step and the longest a single upload took (`longestDrawMs`, `longestUploadMs`), for the one reader that clears them.",
       "type": "minor"
     }
   ],

@@ -75,8 +75,8 @@ export const TextPrepareContext = createProperty(
  * }} options `holds` is the panel's `TextScale.holds`, asked about the step
  *   a retarget moves away from. `upload` is `renderer.initTexture`, which
  *   sends the arrays up before the step that draws from them is shown.
- *   `work` is the scene's account of what its pumps spend (`textWork`),
- *   which this one adds its drawing and uploading to.
+ *   `work` is the scene's account of the longest piece of its pumps' work
+ *   (`textWork`), which this one raises.
  * @returns {TextPreparer}
  */
 export function createTextPreparer({
@@ -124,16 +124,15 @@ export function createTextPreparer({
         queue.delete(run);
         const unstaged = run.prepare(target);
         const drawn = now();
-        if (work) {
-          work.drawMs += drawn - time;
-          work.runs += 1;
+        if (work && drawn - time > work.longestDrawMs) {
+          work.longestDrawMs = drawn - time;
         }
         time = drawn;
         if (unstaged) {
           upload(unstaged);
           time = now();
-          if (work) {
-            work.uploadMs += time - drawn;
+          if (work && time - drawn > work.longestUploadMs) {
+            work.longestUploadMs = time - drawn;
           }
         }
       }
@@ -142,7 +141,10 @@ export function createTextPreparer({
       }
       complete = !batch.commitStaged(UPLOAD_BYTES_PER_FRAME, upload);
       if (work) {
-        work.uploadMs += now() - time;
+        const staged = now() - time;
+        if (staged > work.longestUploadMs) {
+          work.longestUploadMs = staged;
+        }
       }
       return complete;
     },

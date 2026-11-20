@@ -29,9 +29,9 @@ import { Panel } from "./panel.js";
  * @property {Signal<number>} ceiling What full height on the chart means, in
  *   frames per second: the display's own rate, as far as it can be told from
  *   what it has managed so far.
- * @property {Signal<WorkReading | null>} textWork The most one frame of the
- *   last minute spent drawing text ahead of the step a panel is about to
- *   show, and the most one spent uploading it (`textWork` in
+ * @property {Signal<WorkReading | null>} textWork The longest one run took
+ *   to draw ahead of the step its panel is about to show, in the last
+ *   minute, and the longest one upload took (`textWork` in
  *   `justdom-three`). Null until two seconds have been measured.
  * @property {() => void} toggle Shows the panel, or hides it.
  */
@@ -120,7 +120,7 @@ export function useDiagnostics(ctx, controls) {
   useFrame(ctx, (time) => {
     meter.frame(time);
     if (work) {
-      workMeter.frame(time, work.drawMs, work.uploadMs);
+      workMeter.frame(time, work);
     }
   });
 

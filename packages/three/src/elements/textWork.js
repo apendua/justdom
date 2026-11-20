@@ -1,29 +1,38 @@
 import { sceneService } from "../sceneServices.js";
 
 /**
- * What the prepare pumps of a scene's panels have spent, added up since the
- * scene began. The totals only grow, so a reader keeps the last value it saw
- * and takes the difference: once a frame for what that frame cost.
+ * The longest the prepare pumps of a scene's panels went without looking at
+ * the frame's deadline, which is the longest one piece of their work took.
+ * A pump stops between pieces when the frame's time is up and cannot stop
+ * inside one, so a piece is what a frame can lose to preparing a step
+ * (`createTextPreparer`). How much a pump did in a frame is not here: that
+ * is about what the frame had left, whatever the pieces cost.
  *
- * The two times are the two halves of preparing a step
- * (`createTextPreparer`). Drawing is all a worker could take off the frame.
- * Uploading has to stay on the thread that owns the GL context.
+ * The two are the two kinds of piece. Drawing is all a worker could take
+ * off the frame. Uploading has to stay on the thread that owns the GL
+ * context.
+ *
+ * Each is a maximum since it was last set to zero, and the pumps only raise
+ * it. Whoever reads the account sets it back, so it has one reader: with
+ * two, each would miss what the other cleared.
  *
  * @typedef {object} TextWork
- * @property {number} drawMs Milliseconds spent in the runs' `prepare`: the
- *   text drawn on a 2D canvas and copied into its layer.
- * @property {number} uploadMs Milliseconds spent building the staged arrays
- *   and sending textures to the GPU.
- * @property {number} runs How many runs the pumps were through.
+ * @property {number} longestDrawMs Milliseconds the longest `prepare` of
+ *   one run took: its text drawn on a 2D canvas and copied into its layer.
+ * @property {number} longestUploadMs Milliseconds the longest upload took:
+ *   one texture a run handed back, or one frame's share of the staged
+ *   arrays, built and sent up. It is the time the calls took to return on
+ *   this thread. What the GPU process then does with the pixels, the copy
+ *   and the mipmaps, is not in it and can land in a later frame, so a small
+ *   reading does not say that uploads are cheap.
  */
 
 /** @returns {TextWork} */
-const createTextWork = () => ({ drawMs: 0, uploadMs: 0, runs: 0 });
+const createTextWork = () => ({ longestDrawMs: 0, longestUploadMs: 0 });
 
 /**
- * The totals for the scene `ctx` is under, and null outside a scene, where
- * a panel's pump keeps no account. The pumps add to the object returned;
- * anything else only reads it.
+ * The account of the scene `ctx` is under, and null outside a scene, where
+ * a panel's pump keeps none.
  *
  * @param {WeakKey} ctx
  * @returns {TextWork | null}

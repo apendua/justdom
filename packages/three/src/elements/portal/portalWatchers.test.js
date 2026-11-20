@@ -759,7 +759,10 @@ describe("a panel's text step, measured every frame", () => {
       assert.ok(uploadedWhenShown >= 0, "the run is shown at the larger step");
       assert.ok(uploadedWhenShown > 0, "and its array went up before it was shown");
       // Goes red with the panel's pump made without the scene's account.
-      assert.ok(/** @type {TextWork} */ (textWork(ctx)).runs > 0, "and the scene counted the run");
+      assert.ok(
+        /** @type {TextWork} */ (textWork(ctx)).longestDrawMs > 0,
+        "and the scene has how long the run took to draw",
+      );
 
       subscription.unsubscribe();
       portal.disconnect();

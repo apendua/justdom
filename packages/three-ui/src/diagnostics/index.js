@@ -26,6 +26,10 @@ export {
  */
 
 /**
+ * @typedef {import('./workMeter.js').WorkAccount} WorkAccount
+ */
+
+/**
  * @typedef {import('./workMeter.js').WorkMeter} WorkMeter
  */
 

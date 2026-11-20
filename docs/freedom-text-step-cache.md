@@ -168,20 +168,32 @@ drawn one at a time by the prepare pump and their arrays go up 512 kB a frame, i
 crossing's reading frames and its commit. Frame times on this machine do not show that, since a
 frame with nothing to do takes up to 50 ms here now and then; the headset trace of 3.6 would.
 
-### 3.8 What the pump costs a frame, read on the headset
+### 3.8 The pump's longest piece of work, read on the headset
 
-After 6.2 the text of a step is drawn by the prepare pump, and what a frame can still lose to it is
-one piece of the pump's work: a run's `prepare`, which draws the run on a 2D canvas and copies it
-into its layer, or one upload. Neither can be cut short once begun. The pump adds what it spends on
-each to an account the scene keeps, `textWork(ctx)`: `drawMs`, `uploadMs` and `runs`, totals that
-only grow. The diagnostics panel of `justdom-three-ui` reads the account every frame and shows the
-most one frame of the last minute spent on each, under its chart.
+After 6.2 the text of a step is drawn by the prepare pump. The pump stops between pieces of work
+when the frame's time is up, and it cannot stop inside one. A piece is a run's `prepare`, which
+draws the run on a 2D canvas and copies it into its layer, or an upload: one texture a run handed
+back, or a frame's share of the staged arrays. So what a frame can lose to preparing a step is one
+piece, and how much the pump did in a frame says nothing about it, since that is about what the
+frame had left whatever the pieces cost.
+
+The pump keeps the longest piece of each kind in an account the scene has, `textWork(ctx)`:
+`longestDrawMs` and `longestUploadMs`, each a maximum since its reader last set it to zero. The
+diagnostics panel of `justdom-three-ui` is that reader. It takes the two every two seconds and shows
+the largest of the last minute under its chart.
 
 The split is the one the next change depends on. A worker with an `OffscreenCanvas` could take the
 drawing off the frame and not the uploading, which stays with the thread that owns the GL context.
-Cutting a large run into bands would bound both without moving either. The account covers the pump's
-work only. A run drawn in the update that shows it, which is a run whose content changed, a view's
-first measurement and a step shown after `SHARPEN_WAIT_MS`, is not in it.
+Cutting a large run into bands would bound both without moving either. Two things the readings leave
+out:
+
+- `longestUploadMs` is the time the upload calls took to return on the page's thread. What the GPU
+  process does with the pixels afterwards, the copy and the mipmaps, is not in it and can land in a
+  later frame. A small reading does not say that uploads are cheap, and the trace of 3.6 is still
+  what would.
+- The account covers the pump's work only. A run drawn in the update that shows it, which is a run
+  whose content changed, a view's first measurement and a step shown after `SHARPEN_WAIT_MS`, is not
+  in it.
 
 ## 4. Goals
 
@@ -444,6 +456,7 @@ counts through the page's own canvas and WebGL calls and wraps nothing in the pa
 - `PREPARE_SHARE`, `RELEASE_MS`, `SHARPEN_WAIT_MS` and `UPLOAD_BYTES_PER_FRAME` are guesses. The
   headset trace should set them.
 - Is one run's drawing, or one upload, long enough on a headset to drop a frame? The readings of 3.8
-  say which, and so whether drawing in a worker or cutting large runs into bands is worth building.
+  say which on the page's thread, and so whether drawing in a worker or cutting large runs into
+  bands is worth building.
 - The forced sweeps in 3.5 drop frames on the desk with or without step changes. They need their own
   investigation.

@@ -33,7 +33,7 @@ describe("the diagnostics panel", () => {
     }
   });
 
-  test("says what the worst frame spent on text, to a tenth of a millisecond", () => {
+  test("says how long the longest pieces took, to a tenth of a millisecond", () => {
     const controls = createDiagnostics();
     assert.equal(textWorkLine(controls), "draw -- · upload -- ms");
     controls.textWork.set({ drawMs: 3.14, uploadMs: 0.86 });

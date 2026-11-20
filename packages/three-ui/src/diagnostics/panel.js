@@ -110,8 +110,8 @@ function chartBar(controls, index) {
 }
 
 /**
- * The line of text readings: what the worst frame of the last minute spent
- * drawing text ahead, and what the worst one spent uploading it.
+ * The line of text readings: how long the slowest run of the last minute
+ * took to draw ahead of its step, and how long the slowest upload took.
  *
  * @param {DiagnosticsControls} controls
  * @returns {string}
@@ -184,7 +184,7 @@ export const Panel = component(
               text`${() => `${WINDOW_SECONDS} s · full height ${controls.ceiling.get()} fps`}`,
             ),
           ]),
-          $("div", [set("className", caption), children(text`text ahead, worst frame`)]),
+          $("div", [set("className", caption), children(text`text ahead, longest piece`)]),
           $("div", [set("className", work), children(text`${() => textWorkLine(controls)}`)]),
         ),
       ]),

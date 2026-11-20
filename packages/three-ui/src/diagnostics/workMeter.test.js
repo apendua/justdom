@@ -3,35 +3,39 @@ import assert from "node:assert/strict";
 import { createWorkMeter } from "./workMeter.js";
 
 describe("createWorkMeter", () => {
-  test("reads the worst frame of each total, not their averages", () => {
+  test("reads the account's longest pieces at the end of a window, and clears them", () => {
     /** @type {import('./workMeter.js').WorkReading[]} */
     const readings = [];
     const meter = createWorkMeter({ onSample: (reading) => readings.push(reading), sampleMs: 30 });
+    const account = { longestDrawMs: 0, longestUploadMs: 0 };
 
-    // Totals as they stand at each frame: one frame drew for 3 ms, another
-    // uploaded for 2 ms, and the rest did a little of each.
-    meter.frame(0, 10, 5);
-    meter.frame(10, 10.5, 5.1);
-    meter.frame(20, 13.5, 5.2);
-    meter.frame(30, 14, 7.2);
+    meter.frame(0, account);
+    // The pump raises the account between frames, as it finds longer pieces.
+    account.longestDrawMs = 3;
+    meter.frame(10, account);
+    account.longestUploadMs = 2;
+    meter.frame(20, account);
+    assert.deepEqual(readings, [], "nothing before the window is over");
+    assert.deepEqual(account, { longestDrawMs: 3, longestUploadMs: 2 }, "and nothing cleared");
+    meter.frame(30, account);
 
-    assert.equal(readings.length, 1);
-    assert.ok(Math.abs(readings[0].drawMs - 3) < 1e-9, `drew ${readings[0].drawMs}`);
-    assert.ok(Math.abs(readings[0].uploadMs - 2) < 1e-9, `uploaded ${readings[0].uploadMs}`);
+    assert.deepEqual(readings, [{ drawMs: 3, uploadMs: 2 }]);
+    assert.deepEqual(account, { longestDrawMs: 0, longestUploadMs: 0 });
   });
 
-  test("leaves out what was spent before its first frame", () => {
+  test("leaves out what the account held before its first frame", () => {
     /** @type {import('./workMeter.js').WorkReading[]} */
     const readings = [];
     const meter = createWorkMeter({ onSample: (reading) => readings.push(reading), sampleMs: 10 });
+    const account = { longestDrawMs: 400, longestUploadMs: 90 };
 
-    meter.frame(0, 400, 90);
-    meter.frame(10, 400, 90);
+    meter.frame(0, account);
+    meter.frame(10, account);
 
     assert.deepEqual(readings, [{ drawMs: 0, uploadMs: 0 }]);
   });
 
-  test("keeps a bad frame for as many windows as it was given, and then lets it go", () => {
+  test("keeps a long piece for as many windows as it was given, and then lets it go", () => {
     /** @type {import('./workMeter.js').WorkReading[]} */
     const readings = [];
     const meter = createWorkMeter({
@@ -39,12 +43,14 @@ describe("createWorkMeter", () => {
       sampleMs: 10,
       sampleCount: 2,
     });
+    const account = { longestDrawMs: 0, longestUploadMs: 0 };
 
-    meter.frame(0, 0, 0);
-    // 4 ms of drawing in the first window, and nothing after it.
-    meter.frame(10, 4, 0);
-    meter.frame(20, 4, 0);
-    meter.frame(30, 4, 0);
+    meter.frame(0, account);
+    // A run that took 4 ms to draw in the first window, and nothing after.
+    account.longestDrawMs = 4;
+    meter.frame(10, account);
+    meter.frame(20, account);
+    meter.frame(30, account);
 
     assert.deepEqual(
       readings.map(({ drawMs }) => drawMs),

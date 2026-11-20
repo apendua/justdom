@@ -79,9 +79,12 @@ const PRELUDE = `
   const byText = (text) =>
     [...document.querySelectorAll("button")].find((el) => el.textContent === text) ??
     [...document.querySelectorAll("div")].find((el) => el.textContent === text);
+  // The list is whatever div has more than it shows and does not let it
+  // spill. By \`overflow-y\` alone: the todo app's list scrolls down and is
+  // cut across, which reads "hidden auto" as \`overflow\`.
   const scroller = () =>
     [...document.querySelectorAll("div")].find(
-      (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflow === "hidden",
+      (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== "visible",
     );
   // The app's frame rate readout, switched off. Its number moves with the
   // frame rate, and every move costs a measured rect, a rasterized glyph and

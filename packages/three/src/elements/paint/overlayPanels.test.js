@@ -161,6 +161,75 @@ describe("overlay panels", () => {
     restoreContext();
   });
 
+  test("draw the one in front last, where that is not the one with the nearer middle", async () => {
+    // A frame rate readout hung off to the upper left of the eye, over a
+    // menu card twice as wide, straight ahead and a little farther. Both
+    // planes face the eye, the readout's in front, but its middle is the
+    // farther of the two since it is off to the side. Goes red with the
+    // overlays sorted far to near by their middles: the readout draws
+    // first, and its depth quad then hides the card behind it, through
+    // its own see-through background.
+    const { renderer, restoreContext } = stubGlRenderer();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    const middle = (/** @type {{ panel: THREE.Object3D }} */ g) =>
+      g.panel.localToWorld(new THREE.Vector3(200, 150, 0));
+    /** Scale a panel and move it so that its middle is at `to`. */
+    const place = (
+      /** @type {{ panel: THREE.Object3D, scene: THREE.Object3D }} */ g,
+      /** @type {number} */ scale,
+      /** @type {THREE.Vector3} */ to,
+    ) => {
+      g.scene.scale.setScalar(scale);
+      scene.updateMatrixWorld(true);
+      g.scene.position.add(to.clone().sub(middle(g)));
+      scene.updateMatrixWorld(true);
+    };
+    // The card 800 by 600 across its middle, which the readout's middle
+    // is in front of as the eye sees it.
+    const card = await panelAt(scene, 1000, true);
+    place(card, 2, new THREE.Vector3(0, 0, -1000));
+    const readout = await panelAt(scene, 950, true);
+    place(readout, 0.25, new THREE.Vector3(-300, 200, -950));
+    const from = new THREE.Vector3();
+    const middleOf = (/** @type {{ panel: THREE.Object3D }} */ g) => middle(g).distanceTo(from);
+    assert.ok(
+      middleOf(readout) > middleOf(card),
+      `the readout's middle farther: ${middleOf(readout)}, ${middleOf(card)}`,
+    );
+
+    for (const time of [1, 2]) {
+      for (const each of [card, readout]) {
+        each.order.frame(time, /** @type {any} */ (renderer), camera);
+      }
+    }
+    for (const each of [card, readout]) {
+      await settle(each.portal);
+      each.order.cut();
+    }
+
+    /** @type {string[]} */
+    const drawn = [];
+    for (const [each, name] of /** @type {const} */ ([
+      [card, "card"],
+      [readout, "readout"],
+    ])) {
+      for (const mesh of colourMeshes(each.panel)) {
+        mesh.onBeforeRender = () => {
+          if (drawn.at(-1) !== name) {
+            drawn.push(name);
+          }
+        };
+      }
+    }
+    renderer.render(scene, camera);
+    assert.deepEqual(drawn, ["card", "readout"]);
+
+    card.portal.disconnect();
+    readout.portal.disconnect();
+    restoreContext();
+  });
+
   test("clear before the overlays from the start, not only after a walk", async () => {
     // A portal no walk ever runs for, with no renderer in its context,
     // drawn by the app's own loop. Goes red with the clear left at 0.

@@ -67,14 +67,16 @@ import { createDepthClear } from "../blocker.js";
  *   too. The panel's depth quad draws last in its last slot, uncut: what
  *   it hides is drawn after the whole panel, in front of every piece of it
  *   the tree put before.
- * - Overlay panels (`PortalOptions.overlay`) are not in the tree. They are
- *   sorted far to near among themselves by the distance to their middles,
- *   a slot each, in the slots from `OVERLAY_SLOT` on, after every ordinary
- *   panel. The depth buffer is cleared once, before the first of them
- *   (`createDepthClear`), so the scene and the ordinary panels drawn before
- *   hide none of them, and their depth quads settle where the sort is wrong
- *   between two overlays, as between two panels. What an overlay draws
- *   outside its layers, its loading frame, is held in its slot
+ * - Overlay panels (`PortalOptions.overlay`) are ordered among themselves
+ *   by a tree of their own, built and walked as the ordinary panels' is,
+ *   in the slots from `OVERLAY_SLOT` on, after every ordinary panel, and
+ *   those not in it after them, far to near. Their middles alone do not
+ *   order them: a readout hung off to the side of the eye, in front of a
+ *   menu card straight ahead, has the farther middle, and drawn first, its
+ *   depth quad hid the card behind it. The depth buffer is cleared once,
+ *   before the first of them (`createDepthClear`), so the scene and the
+ *   ordinary panels drawn before hide none of them. What an overlay draws
+ *   outside its layers, its loading frame, is held in its first slot
  *   (`holdInSlot`), after the clear.
  *
  * Nothing is made a frame once the pools hold what the panel needs. The
@@ -195,8 +197,9 @@ export function getLayerOrder(root) {
  * @property {LayerOrder[]} sorted
  * @property {number} overlayStart The first overlay's slot, as last sorted.
  * @property {LayerTree} tree The ordinary panels' tree (`sortPanels`).
+ * @property {LayerTree} overlayTree The overlays' tree.
  * @property {boolean} changed Whether a panel joined or left since the
- *   tree was last built.
+ *   trees were last built.
  * @property {number} slots How many slots its walk has given so far.
  * @property {(piece: Polygon) => void} visit Give a piece the next slot.
  */
@@ -238,6 +241,7 @@ function createScene() {
     sorted: [],
     overlayStart: OVERLAY_SLOT,
     tree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: joinedFirst, onlyWhereMet: true }),
+    overlayTree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: joinedFirst, onlyWhereMet: true }),
     changed: true,
     slots: 0,
     visit: (piece) => {
@@ -678,16 +682,6 @@ export class LayerOrder {
       .distanceTo(from);
   }
 
-  /**
-   * Put the panel in one slot among the panels, whole.
-   *
-   * @param {number} slot
-   */
-  setSlot(slot) {
-    this.clearSlots();
-    this.addSlot(slot, null);
-  }
-
   /** Take the panel out of its slots, for `sortPanels` to give it new ones. */
   clearSlots() {
     this.#slots.length = 0;
@@ -757,8 +751,9 @@ export class LayerOrder {
     }
     scene.changed = true;
     if (scene.panels.size === 0) {
-      // Nothing builds the tree again, and its polygons hold the roots.
+      // Nothing builds the trees again, and their polygons hold the roots.
       scene.tree.release();
+      scene.overlayTree.release();
     }
   }
 
@@ -1376,57 +1371,79 @@ function inPanel(object, container, out) {
 /**
  * Order a renderer's panels from `from`: the ordinary panels by the walk of
  * their tree, a slot a piece from slot 0, and those not in it after them
- * far to near; the overlays far to near after them, a slot each, from
+ * far to near; then the overlays the same way by the walk of theirs, from
  * `OVERLAY_SLOT`, or from the slot after the last ordinary panel's when
- * there are more than fit below it. The tree is built again when a panel
- * joins or leaves, or an ordinary one moves, changes size, or is shown or
- * hidden, and walked every frame.
+ * there are more than fit below it. A tree is built again when a panel
+ * joins or leaves, or one of its panels moves, changes size, or is shown
+ * or hidden, and walked every frame.
  *
  * @param {Scene} scene
  * @param {THREE.Vector3} from
  */
 function sortPanels(scene, from) {
   let build = scene.changed;
+  let buildOverlays = scene.changed;
   scene.changed = false;
   for (const panel of scene.panels) {
     panel.distance = panel.distanceTo(from);
     panel.clearSlots();
-    if (!panel.overlay && panel.movedInScene()) {
-      build = true;
-    }
-  }
-  const tree = scene.tree;
-  if (build) {
-    tree.begin();
-    for (const panel of scene.panels) {
-      if (!panel.overlay) {
-        panel.addTo(tree);
+    if (panel.movedInScene()) {
+      if (panel.overlay) {
+        buildOverlays = true;
+      } else {
+        build = true;
       }
     }
-    tree.build();
   }
-  scene.slots = 0;
-  tree.walk(from, scene.visit);
-  // What is left: the ordinary panels not in the tree, then the overlays.
+  if (build) {
+    buildTree(scene, scene.tree, false);
+  }
+  if (buildOverlays) {
+    buildTree(scene, scene.overlayTree, true);
+  }
+  // What no tree holds: the ordinary panels, then the overlays.
   const sorted = scene.sorted;
   sorted.length = 0;
   for (const panel of scene.panels) {
-    if (panel.overlay || !panel.inTree) {
+    if (!panel.inTree) {
       sorted.push(panel);
     }
   }
   sorted.sort(ordinaryFirst);
-  let ordinary = 0;
-  while (ordinary < sorted.length && !sorted[ordinary].overlay) {
-    sorted[ordinary].addSlot(scene.slots, null);
+  scene.slots = 0;
+  scene.tree.walk(from, scene.visit);
+  let next = 0;
+  while (next < sorted.length && !sorted[next].overlay) {
+    sorted[next].addSlot(scene.slots, null);
     scene.slots += 1;
-    ordinary += 1;
+    next += 1;
   }
   const start = Math.max(OVERLAY_SLOT, scene.slots);
   scene.overlayStart = start;
-  for (let i = ordinary; i < sorted.length; i += 1) {
-    sorted[i].setSlot(start + i - ordinary);
+  scene.slots = start;
+  scene.overlayTree.walk(from, scene.visit);
+  for (; next < sorted.length; next += 1) {
+    sorted[next].addSlot(scene.slots, null);
+    scene.slots += 1;
   }
+}
+
+/**
+ * Build one of a renderer's trees again from its panels: the overlays, or
+ * the ordinary panels.
+ *
+ * @param {Scene} scene
+ * @param {LayerTree} tree
+ * @param {boolean} overlay
+ */
+function buildTree(scene, tree, overlay) {
+  tree.begin();
+  for (const panel of scene.panels) {
+    if (panel.overlay === overlay) {
+      panel.addTo(tree);
+    }
+  }
+  tree.build();
 }
 
 /**

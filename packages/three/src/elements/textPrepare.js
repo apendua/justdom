@@ -36,6 +36,12 @@ export const UPLOAD_BYTES_PER_FRAME = 512 * 1024;
  * @property {(step: number | null) => void} retarget The step the panel is
  *   preparing now, as the panel's `createTextScale().prepared` says after
  *   each measurement.
+ * @property {(step: number) => boolean} ready Whether `step` is the step
+ *   being prepared and the pump has nothing left to do for it: every run
+ *   the panel had is drawn at it, and every array they were staged into is
+ *   uploaded. What `createTextScale().measure` waits for before it shows a
+ *   step. A run added or changed since is not ready until the pump has
+ *   been round again.
  * @property {() => void} dispose
  */
 
@@ -54,8 +60,9 @@ export const TextPrepareContext = createProperty(
 /**
  * A panel's prepare pump: it draws every run at the step the panel is
  * preparing, a run at a time, in whatever time the panels' own pumps leave
- * in the frame, and then uploads the arrays those runs were staged into. The
- * rules it follows are section 5.1 of `docs/freedom-text-step-cache.md`.
+ * in the frame, and then uploads the arrays those runs were staged into.
+ * The panel shows the step once the pump says it is `ready`. The rules it
+ * follows are section 5.1 of `docs/freedom-text-step-cache.md`.
  *
  * @param {{
  *   scheduler: PortalScheduler,
@@ -86,6 +93,12 @@ export function createTextPreparer({
   const queue = new Set();
   /** @type {number | null} */
   let target = null;
+  /**
+   * Whether the pump has drawn every queued run at `target` and uploaded
+   * every array it staged them into. False from the moment a run is queued
+   * until the tick that finds nothing left.
+   */
+  let complete = false;
 
   /** @type {PortalPump} */
   const pump = {
@@ -108,7 +121,8 @@ export function createTextPreparer({
       if (now() >= deadline) {
         return false;
       }
-      return !batch.commitStaged(UPLOAD_BYTES_PER_FRAME, upload);
+      complete = !batch.commitStaged(UPLOAD_BYTES_PER_FRAME, upload);
+      return complete;
     },
   };
 
@@ -118,6 +132,7 @@ export function createTextPreparer({
       return;
     }
     queue.add(run);
+    complete = false;
     scheduler.schedule(pump);
   };
 
@@ -138,9 +153,14 @@ export function createTextPreparer({
       const previous = target;
       target = step;
       queue.clear();
+      complete = false;
       if (step === null) {
         // Nothing to prepare, so nothing to ask frames for.
         scheduler.remove(pump);
+      } else {
+        // Even with no run to queue: the tick that finds nothing to do is
+        // what says the step is ready.
+        scheduler.schedule(pump);
       }
       // Rules 3 and 4: what was made for a step the panel no longer holds
       // goes now. A run never lets go of the raster it is showing.
@@ -153,11 +173,13 @@ export function createTextPreparer({
         enqueue(run);
       }
     },
+    ready: (step) => step === target && complete,
     dispose() {
       scheduler.remove(pump);
       queue.clear();
       runs.clear();
       target = null;
+      complete = false;
     },
   };
 }

@@ -42,9 +42,10 @@ export function flushBatches(state, time) {
   if (renderer && camera) {
     state.layerOrder.frame(time, renderer, camera);
   }
-  // First, so that a step the panel has just crossed is one the runs
-  // re-rasterize against rather than one they find out about next frame.
-  state.textScale?.measure();
+  // First, so that a step the panel shows from this frame is one the runs
+  // swap to in it rather than one they find out about next frame. The step
+  // is shown once the prepare pump has it ready.
+  state.textScale?.measure(state.textPreparer?.ready);
   // And the step it is preparing, which that measurement may have moved.
   if (state.textScale) {
     state.textPreparer?.retarget(state.textScale.prepared());

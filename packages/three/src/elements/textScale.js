@@ -102,15 +102,12 @@ const STEPS_PER_DOUBLING = 2;
 
 /**
  * How far under a step's own boundary the measurement has to fall before the
- * panel is rasterized smaller again.
+ * panel is worth rasterizing smaller again.
  *
  * A step covers everything from the step below it up to itself, and a panel
- * sitting exactly on that boundary would re-draw every label it has, twice,
- * every time the player's head drifted a centimetre. Coarsening is held back
- * to a fifth under the boundary instead, which is a gap no amount of standing
- * still can cross. Sharpening is not held back at all: going up is the
- * direction somebody is walking towards the panel to do, and a frame of soft
- * text on the way in is what the delay would cost.
+ * sitting exactly on that boundary would otherwise be asked to coarsen every
+ * time the player's head drifted a centimetre. The measurement has to fall a
+ * fifth under the boundary, and then stay there (`RELEASE_MS`).
  */
 const COARSEN_MARGIN = 0.8;
 
@@ -118,7 +115,7 @@ const COARSEN_MARGIN = 0.8;
  * How close to the shown step the measurement has to come before the panel
  * starts preparing the step above it.
  *
- * The step above is published the moment the measurement passes the shown
+ * The step above is wanted the moment the measurement passes the shown
  * step, so this is a share of the shown step, not of the one above. At 0.85
  * a player leaning in at a steady pace gives the pump the last sixth of the
  * way, and one standing still at the hold below a step (`COARSEN_MARGIN`) is
@@ -127,13 +124,35 @@ const COARSEN_MARGIN = 0.8;
 export const PREPARE_SHARE = 0.85;
 
 /**
- * How long the measurement has to stay under `PREPARE_SHARE` of the shown
- * step before the panel stops preparing the step above and frees what it
- * made. Long enough that a head swaying on the threshold does not throw the
- * work away and start it again, short enough that a player who stepped back
- * does not leave a step's worth of memory behind for long.
+ * How long the measurement has to stay low before the panel gives memory
+ * back: before it lets go of the step it prepared above the shown one, and
+ * before it starts on a step below the shown one.
+ *
+ * Neither is ever urgent. A raster larger than the panel needs is sampled
+ * through its mipmaps and reads as well as a smaller one would, so all a
+ * panel gains by coarsening is memory, and what it pays is every run drawn
+ * again the next time the head comes back. A head turning from panel to
+ * panel moves a tenth of a metre every second or two, which is a fifth of
+ * the distance to a panel at arm's length, so a count shorter than that
+ * motion made a panel in reach draw its text again on every turn of the
+ * head. Five seconds is longer than looking away and back, and short for
+ * memory nobody is reading.
  */
-export const ABANDON_MS = 1000;
+export const RELEASE_MS = 5000;
+
+/**
+ * How long a panel goes on showing a step that is too soft while the step
+ * it wants is being prepared, before it shows the new step whether or not
+ * the prepare pump has finished it.
+ *
+ * The pump runs in the time the panels' own work leaves in a frame, and a
+ * panel whose work never leaves any would otherwise stay soft for good.
+ * Past the wait the runs the pump did not reach are drawn under the panel's
+ * own budget and their arrays go up in the frame they are shown, which is
+ * the stall the pump exists to avoid, so the wait is long: two seconds of
+ * text a step too soft is hard to see, and a dropped frame is not.
+ */
+export const SHARPEN_WAIT_MS = 2000;
 
 const scratchScale = new THREE.Vector3();
 const scratchPosition = new THREE.Vector3();
@@ -144,19 +163,20 @@ const scratchCentre = new THREE.Vector3();
 
 /**
  * The step a measurement belongs to: the power of root two at or above it,
- * inside what this panel is allowed to be drawn at.
+ * inside what this panel is allowed to be drawn at, `min` to `max`.
  *
  * Stepped at all rather than taken as it comes, because the measurement moves
  * with the player's head and every change of it re-rasterizes the whole
  * panel. A handful of steps is what makes the answer sit still.
  *
  * @param {number} measured
+ * @param {number} min
  * @param {number} max
  * @returns {number}
  */
-function stepFor(measured, max) {
-  if (!Number.isFinite(measured) || measured <= 1) {
-    return 1;
+function stepFor(measured, min, max) {
+  if (!Number.isFinite(measured) || measured <= min) {
+    return min;
   }
   const exponent = Math.ceil(Math.log2(measured) * STEPS_PER_DOUBLING);
   return Math.min(max, 2 ** (exponent / STEPS_PER_DOUBLING));
@@ -222,8 +242,8 @@ export function stepBelow(step) {
 }
 
 /**
- * The step a panel showing `step` publishes when the measurement passes it,
- * or null for a panel at its cap. Worked out as `stepFor` does, so that it is
+ * The step a panel showing `step` wants when the measurement passes it, or
+ * null for a panel at its cap. Worked out as `stepFor` does, so that it is
  * the very number a run is later asked to draw at.
  *
  * @param {number} step
@@ -239,8 +259,8 @@ export function stepAbove(step, max) {
 /**
  * Whether a panel showing `shown` holds a run's raster at `held`: the shown
  * step, the one below it, and the one it is preparing. The one below is the
- * step a panel leaned into has just left, which is the one the player
- * leaning back out comes to first, and it costs half the shown step's memory.
+ * step a panel leaned into has just left, which is the one a panel left
+ * alone coarsens to first, and it costs half the shown step's memory.
  *
  * @param {number} shown
  * @param {number} held
@@ -252,8 +272,32 @@ export function holdsStep(shown, held, prepared = null) {
 }
 
 /**
+ * @typedef {object} TextScaleOptions
+ * @property {number} [minScale] The least this panel is rasterized at. A
+ *   panel whose `minScale` and `maxScale` come out equal is drawn at that
+ *   scale and never measured.
+ * @property {number} [maxScale] The most this panel is rasterized at, for a
+ *   panel that would rather be soft than large — a long list, where the
+ *   ceiling is reached by hundreds of runs at once rather than by one. Only
+ *   ever lowers: `MAX_TEXT_SCALE` is what a run is allowed to cost at all,
+ *   and nothing asked for here goes above it.
+ * @property {() => number} [now] The clock `RELEASE_MS` and
+ *   `SHARPEN_WAIT_MS` are measured on, injectable so tests are
+ *   deterministic.
+ */
+
+/** What `measure` takes a step to be when nobody prepares steps. */
+const alwaysReady = () => true;
+
+/**
  * The panel's own answer to "how sharp should this text be", remeasured once
  * a frame and published as a step the runs can be rasterized at.
+ *
+ * A step is never shown the moment the measurement asks for it, except the
+ * first of a view. The panel prepares it first (`prepared`) and shows it
+ * once whoever prepares says it is ready, so that showing it costs a swap
+ * of textures. The rules are section 5.1 of
+ * `docs/freedom-text-step-cache.md`.
  *
  * @param {Object3D} container The portal's container. Its world matrix
  *   carries the scale that turns a CSS pixel into metres, whatever the scene
@@ -262,45 +306,81 @@ export function holdsStep(shown, held, prepared = null) {
  * @param {WebGLRenderer} renderer
  * @param {Camera} camera The camera the scene renders through, which is only
  *   the viewer's outside an immersive session — see above.
- * @param {number} [maxScale] The most this panel is rasterized at, for a
- *   panel that would rather be soft than large — a long list, where the
- *   ceiling is reached by hundreds of runs at once rather than by one. Only
- *   ever lowers: `MAX_TEXT_SCALE` is what a run is allowed to cost at all,
- *   and nothing asked for here goes above it.
- * @param {{ now?: () => number }} [options] The clock `ABANDON_MS` is
- *   measured on, injectable so tests are deterministic.
+ * @param {TextScaleOptions} [options]
  */
 export function createTextScale(
   container,
   renderer,
   camera,
-  maxScale = MAX_TEXT_SCALE,
-  { now = () => performance.now() } = {},
+  { minScale = 1, maxScale = MAX_TEXT_SCALE, now = () => performance.now() } = {},
 ) {
   const max = Math.min(
     MAX_TEXT_SCALE,
     Math.max(1, Number.isFinite(maxScale) ? maxScale : MAX_TEXT_SCALE),
   );
-  const published = Signal.of(1);
+  // The cap wins over the floor, as it wins over the measurement.
+  const min = Math.min(max, Math.max(1, Number.isFinite(minScale) ? minScale : 1));
+  const published = Signal.of(min);
   /** Read back without tracking anything, which a frame callback must not. */
-  let step = 1;
+  let step = min;
   /**
-   * The step being prepared ahead of the measurement reaching it, or null.
-   * Always the step above `step` when set; the rules are in section 5.1 of
-   * `docs/freedom-text-step-cache.md`.
+   * The step being prepared, or null: the one the measurement wants and the
+   * panel does not show yet, above or below the shown one, or the step above
+   * the shown one while the measurement is near it. The rules are in section
+   * 5.1 of `docs/freedom-text-step-cache.md`.
    *
    * @type {number | null}
    */
   let prepared = null;
   /**
+   * Whether the view the panel is measured in has shown a step: the page's
+   * view, or a session's. The first measurement of a view is shown at once
+   * (rule 14).
+   */
+  let viewed = false;
+  /** Whether the last measurement was taken in a session. */
+  let presenting = false;
+  /**
+   * When the measurement passed the shown step, or null while it is at or
+   * under it. `SHARPEN_WAIT_MS` counts from here.
+   *
+   * @type {number | null}
+   */
+  let risingSince = null;
+  /**
+   * When the measurement fell far enough under the shown step to coarsen
+   * (`COARSEN_MARGIN`), or null while it is above that. `RELEASE_MS` counts
+   * from here before a step below is prepared.
+   *
+   * @type {number | null}
+   */
+  let lowSince = null;
+  /**
    * When the measurement last fell under `PREPARE_SHARE` of the shown step
-   * while `prepared` was set, or null while it is above it.
+   * while a step above was prepared, or null while it is above it.
+   * `RELEASE_MS` counts from here before that step is let go.
    *
    * @type {number | null}
    */
   let fallingSince = null;
   /** The panel's middle, in the container's own pixels. */
   const centre = new THREE.Vector3();
+
+  /**
+   * Show `wanted`: the runs draw at it from the next commit. Every count
+   * starts again against the new step (rule 5).
+   *
+   * @param {number} wanted
+   * @returns {void}
+   */
+  const show = (wanted) => {
+    step = wanted;
+    published.set(wanted);
+    prepared = null;
+    risingSince = null;
+    lowSince = null;
+    fallingSince = null;
+  };
 
   return {
     /**
@@ -322,9 +402,8 @@ export function createTextScale(
     holds: (held) => holdsStep(step, held, prepared),
 
     /**
-     * The step being prepared ahead of the measurement, or null. Untracked,
-     * like `holds`: it is read once a frame by whoever runs the preparing,
-     * right after `measure`.
+     * The step being prepared, or null. Untracked, like `holds`: it is read
+     * once a frame by whoever runs the preparing, right after `measure`.
      *
      * @returns {number | null}
      */
@@ -345,11 +424,20 @@ export function createTextScale(
     },
 
     /**
-     * Take the measurement and publish it if it has moved a step.
+     * Take the measurement, show the step it wants if that step is ready,
+     * and say which step to prepare.
      *
+     * @param {(step: number) => boolean} [ready] Whether every run of the
+     *   panel is drawn and uploaded at `step`, so that showing it draws and
+     *   uploads nothing: the prepare pump's `ready`. A panel nothing prepares
+     *   for shows a step as soon as the measurement wants it.
      * @returns {void}
      */
-    measure() {
+    measure(ready = alwaysReady) {
+      if (min === max) {
+        // One step to show, and it is shown.
+        return;
+      }
       const pixelsPerUnit = pixelsPerUnitAtUnitDistance(renderer, camera);
       if (!pixelsPerUnit) {
         return;
@@ -375,25 +463,63 @@ export function createTextScale(
         middle.distanceTo(scratchViewer.setFromMatrixPosition(viewer.matrixWorld)),
       );
       const measured = (metresPerPixel * pixelsPerUnit) / distance;
-      const wanted = stepFor(measured, max);
-      // Up at once, down only once the measurement is clear of the boundary
-      // this step sits on, which is a step's worth below the step itself.
+      const wanted = stepFor(measured, min, max);
+      const time = now();
+
+      // Rule 14: a view's first measurement is shown at once.
+      if (presenting !== renderer.xr.isPresenting) {
+        presenting = renderer.xr.isPresenting;
+        viewed = false;
+      }
+      if (!viewed) {
+        viewed = true;
+        if (wanted !== step) {
+          show(wanted);
+        }
+      }
+
+      // Rule 5: up as soon as the step is ready, or the wait for it is over.
+      if (wanted > step) {
+        risingSince ??= time;
+        if (ready(wanted) || time - risingSince >= SHARPEN_WAIT_MS) {
+          show(wanted);
+        }
+      } else {
+        risingSince = null;
+      }
+
+      // Rule 13: down once the measurement has stayed clear of the boundary
+      // this step sits on, which is a step's worth below the step itself,
+      // and the step it wants is ready.
       const boundary = step / 2 ** (1 / STEPS_PER_DOUBLING);
-      if (wanted > step || (wanted < step && measured <= boundary * COARSEN_MARGIN)) {
-        step = wanted;
-        published.set(wanted);
-        // Rule 3: the step above is a different step now. Whatever was
-        // prepared is the shown step, the one below it, or let go of.
-        prepared = null;
+      let coarsening = false;
+      if (wanted < step && measured <= boundary * COARSEN_MARGIN) {
+        lowSince ??= time;
+        coarsening = time - lowSince >= RELEASE_MS;
+        if (coarsening && ready(wanted)) {
+          show(wanted);
+          coarsening = false;
+        }
+      } else {
+        lowSince = null;
+      }
+
+      // Rules 1 and 4: what to prepare, against the step shown now.
+      if (wanted > step || coarsening) {
+        prepared = wanted;
         fallingSince = null;
+        return;
       }
       const above = stepAbove(step, max);
       if (above !== null && measured >= PREPARE_SHARE * step) {
         prepared = above;
         fallingSince = null;
+      } else if (prepared !== null && prepared < step) {
+        // A step below that the measurement no longer wants.
+        prepared = null;
       } else if (prepared !== null) {
-        fallingSince ??= now();
-        if (now() - fallingSince >= ABANDON_MS) {
+        fallingSince ??= time;
+        if (time - fallingSince >= RELEASE_MS) {
           prepared = null;
           fallingSince = null;
         }

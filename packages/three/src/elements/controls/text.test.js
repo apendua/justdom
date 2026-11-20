@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { Signal, UpdateChannel, withChannel } from "justdom-signal";
 import { createMirror } from "../mirror.js";
 import { text } from "./text.js";
-import { TextBatchContext } from "../paint/textBatch.js";
+import { TextBatch, TextBatchContext } from "../paint/textBatch.js";
 import { holdsStep, stepBelow, TextScaleContext } from "../textScale.js";
 import { createTextPreparer, TextPrepareContext } from "../textPrepare.js";
 import { createPortalScheduler } from "../portal/portalScheduler.js";
@@ -13,7 +13,6 @@ import { paintBatch } from "../../test/textRuns.js";
 
 /**
  * @import {PaintBatch} from '../paint/paintBatch.js';
- * @import {TextBatch} from '../paint/textBatch.js';
  * @import {TextPreparer} from '../textPrepare.js';
  */
 
@@ -603,5 +602,75 @@ describe("prepared text steps", () => {
     } finally {
       p.run.done();
     }
+  });
+
+  test("a step is ready once the pump has drawn and sent up everything for it", () => {
+    const scale = handScale();
+    // The pump's clock passes the deadline after the first run it prepares,
+    // so its upload waits for a second frame.
+    let time = 0;
+    const p = preparedRun(scale, { budget: 1, now: () => time++ });
+    try {
+      assert.equal(p.preparer.ready(Math.SQRT2), false, "nothing is being prepared");
+      p.prepare(Math.SQRT2);
+      assert.equal(p.uploaded.length, 0);
+      assert.equal(p.preparer.ready(Math.SQRT2), false, "drawn, and not sent up yet");
+
+      time = 0;
+      p.prepare(Math.SQRT2);
+      assert.equal(p.uploaded.length, 1);
+      assert.equal(p.preparer.ready(Math.SQRT2), true);
+      assert.equal(p.preparer.ready(2), false, "another step is not");
+      assert.equal(p.running(), false, "and the pump asks for no more frames");
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("a step stops being ready when a run changes, until the pump has been round", () => {
+    const scale = handScale();
+    const p = preparedRun(scale);
+    try {
+      p.prepare(Math.SQRT2);
+      assert.equal(p.preparer.ready(Math.SQRT2), true);
+
+      p.run.node.data = "another label";
+      p.run.mirror.characterDataChanged(p.run.node);
+      assert.equal(p.preparer.ready(Math.SQRT2), false);
+      p.prepare(Math.SQRT2);
+      assert.equal(p.preparer.ready(Math.SQRT2), true);
+
+      p.prepare(null);
+      assert.equal(p.preparer.ready(Math.SQRT2), false, "let go of");
+    } finally {
+      p.run.done();
+    }
+  });
+
+  test("a step with no run to draw is ready after one frame of the pump", () => {
+    /** @type {(() => void) | null} */
+    let tick = null;
+    const scheduler = createPortalScheduler({
+      budget: Infinity,
+      now: () => 0,
+      requestFrames: (callback) => {
+        tick = callback;
+        return () => {
+          tick = null;
+        };
+      },
+    });
+    const preparer = createTextPreparer({
+      scheduler,
+      batch: new TextBatch(/** @type {PaintBatch} */ ({})),
+      holds: () => false,
+      upload: () => {},
+      now: () => 0,
+    });
+    preparer.retarget(2);
+    assert.equal(preparer.ready(2), false);
+    /** @type {(() => void) | null} */ (tick)?.();
+    assert.equal(preparer.ready(2), true);
+    preparer.dispose();
   });
 });

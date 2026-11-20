@@ -1,8 +1,9 @@
 # Text steps without the stall: holding and preparing rasterized steps
 
-**Status:** implemented: held steps (PR 1 in section 6) and preparing ahead (PR 2). Sections 2 and 3
-describe and measure the package before them, so "today" there is that state. PR 3 (cheaper
-rasters), the byte cap of 5.5 and the profiling script are not built. **Scope:**
+**Status:** implemented: held steps (PR 1 in section 6), preparing ahead (PR 2) and steps shown once
+they are ready (section 6.2). Sections 2 and 3.1 to 3.6 describe and measure the package before
+them, so "today" there is that state. PR 3 (cheaper rasters) and the byte cap of 5.5 are not built.
+**Scope:**
 `packages/three/src/elements/{textScale,controls/textRun,textHelpers,paint/textBatch,textPrepare,portal/portalScheduler,portal/portal}.js`.
 **Follows:** [`freedom-atomic-panel-updates.md`](./freedom-atomic-panel-updates.md), which is why a
 panel's reading is budgeted and its writing lands in one frame.
@@ -143,6 +144,30 @@ remote DevTools performance trace on the headset (`chrome://inspect`) while lean
 monitor would settle both. The design below does not depend on the answer, but the order of the
 stack in section 6 does.
 
+### 3.7 A head that moves among panels, after PR 2
+
+Measured for section 6.2, with held steps and preparing ahead in place. On a headset the stall was
+still plain when the head moved among several panels. `packages/three/bench/textSteps.browser.mjs`
+puts the desk in a session as 3.1 does, with a 320 by 200 px canvas so that SwiftShader draws about
+20 frames a second, and moves the head by the clock along two paths: a circle of 15 cm every six
+seconds, six times, as a head does that leans from panel to panel, and a walk of 75 cm towards the
+monitor and back in six seconds.
+
+| Path          | Before 6.2: runs rasterized | Arrays | Uploaded | After 6.2: runs rasterized | Arrays | Uploaded |
+| ------------- | --------------------------- | ------ | -------- | -------------------------- | ------ | -------- |
+| Circle, 36 s  | 1410                        | 359    | 29.2 MB  | 442                        | 131    | 10.9 MB  |
+| Walk, 6 s     | 611                         | 124    | 15.6 MB  | 523                        | 111    | 14.6 MB  |
+| At rest, 10 s | 12                          | 12     | 1.1 MB   | 12                         | 12     | 1.1 MB   |
+
+Before, every turn of the circle drew the panels' text again. A panel coarsened the moment the
+measurement fell a fifth under its boundary and freed the step above, and it freed a step it had
+prepared after one second, so the step the head came back to six seconds later was drawn from
+nothing. After, the first turn draws what the path needs and the later ones draw nothing new. The
+walk has to draw each step it crosses either way. What 6.2 changes there is where: the runs are
+drawn one at a time by the prepare pump and their arrays go up 512 kB a frame, instead of in the
+crossing's reading frames and its commit. Frame times on this machine do not show that, since a
+frame with nothing to do takes up to 50 ms here now and then; the headset trace of 3.6 would.
+
 ## 4. Goals
 
 - A step that the panel showed recently is shown again without rasterizing or uploading anything.
@@ -164,35 +189,47 @@ Each panel keeps, beside the step it shows:
 - **The held steps `H`.** Steps whose rasters (per run) and arrays (per size class) the panel keeps.
   `S` is always in `H`.
 - **The prepared step `P`.** One step, or none, that a low-priority pump is rasterizing and
-  uploading. It is in `H` from the moment it is set, so nothing made for it is freed until it is
-  dropped. It is complete when the pump has prepared every run and uploaded every class it wrote.
+  uploading: the step the measurement wants and the panel does not show yet, above `S` or below it,
+  or the step above `S` while the measurement is near `S`. It is in `H` from the moment it is set,
+  so nothing made for it is freed until it is dropped. It is ready when the pump has prepared every
+  run and uploaded every class it wrote.
+- **Three counts**, each a time since something began, on the clock of the frames that measure:
+  `rising`, since the measurement passed `S`; `low`, since it fell under the coarsening boundary of
+  `S`; and `falling`, since it fell under `PREPARE_SHARE` of `S` while a step above was prepared.
+
+A step is shown when it is ready and not when the measurement first wants it. Text a step too soft
+for some frames is hard to see. The runs read under the panel's budget and the arrays uploaded in
+the commit frame, which is what an unprepared step costs, are a dropped frame.
 
 The rules:
 
-1. **Start preparing.** The step above `S` is published the moment the measurement passes `S`
-   itself, since a step is the ladder step at or above the measurement. When the measurement rises
-   to `PREPARE_SHARE` (0.85) of `S`, `P` becomes the step above `S`: the next ladder step, or the
-   panel's cap if that is lower. A panel at its cap has no step above and prepares nothing. Only
-   upwards: the step below `S` is usually the one the panel just left, and it is held.
+1. **Start preparing.** `P` is set by the first of these that holds, at every measurement. The
+   measurement is above `S`: `P` is the step it belongs to, which is more than one step up when it
+   moved fast. Coarsening is due (rule 13): `P` is the step the measurement belongs to. The
+   measurement is at or above `PREPARE_SHARE` (0.85) of `S` and `S` has a step above it: `P` is that
+   step, the next ladder step or the panel's cap if that is lower. A panel at its cap has no step
+   above, and one at its floor (`minTextScale`) none below.
 2. **Pause preparing.** The prepare pump runs only in the time the panels' own pumps leave in the
    frame budget. The scheduler offers it the frame after every other pump, and only while time is
    left, and never gives it the one unit of work it guarantees the first pump of a frame. A frame
    with no time left prepares nothing. Nothing about the pause loses work.
-3. **Retarget.** `P` is the step above `S` or none, so it moves only when `S` does. A step change
-   clears `P`, and rule 1 is applied again against the new `S` in the same measurement. The pump
-   then frees the rasters made for the old `P` unless the old `P` is in the new `H`: it is when the
-   panel crossed into it, or when it is the step below the new `S`.
-4. **Abandon.** If the measurement falls back below `PREPARE_SHARE` of `S` and stays there for
-   `ABANDON_MS` (1 s), measured on the frames that measure it, the panel drops `P` and the pump
-   frees what was made for it. A measurement back at or above `PREPARE_SHARE` of `S` before then
-   resets the count.
-5. **Cross.** When the measurement crosses into a step, the panel publishes it, as today. If the
-   step is in `H`, every run's selector finds its raster in the cache, and the commit only swaps
-   textures and rebinds buckets. If it is `P` and incomplete, the runs not yet prepared are read
-   under the panel's budget as today, and the prepared ones are cache hits. A prepared run whose
-   class the pump has not built yet makes the crossing's rebuild build that class, as a shown write
-   would, so the step's uploads that the pump did not reach land on the commit frame. The panel does
-   not hold the publish back for preparation to finish. Rule 3 then applies to `P`.
+3. **Retarget.** When rule 1 names another step, or rule 4 drops `P`, the pump frees the rasters
+   made for the old `P` unless the old `P` is in the new `H`: it is when the panel now shows it, or
+   when it is the step below `S`.
+4. **Abandon.** When none of rule 1 holds and `P` is above `S`, the `falling` count starts. At
+   `RELEASE_MS` (5 s) the panel drops `P`. A measurement back at or above `PREPARE_SHARE` of `S`
+   before then ends the count. A `P` below `S` that rule 1 no longer names is dropped at once: the
+   measurement took the coarsening back, and nothing was waiting for it.
+5. **Show.** While the measurement is above `S`, the `rising` count runs, and it ends when the
+   measurement is at or under `S` again. The panel shows the step the measurement belongs to as soon
+   as the pump says that step is ready, or when the count reaches `SHARPEN_WAIT_MS` (2 s), ready or
+   not: a panel whose own work leaves the pump no time would otherwise stay soft. Showing a ready
+   step swaps textures and rebinds buckets. Showing one that is not ready reads the runs the pump
+   did not reach under the panel's budget, and a prepared run whose class the pump has not built yet
+   makes the rebuild build that class, as a shown write would, so those uploads land on the commit
+   frame. Showing a step clears `P` and all three counts, and rules 1 and 4 are applied against the
+   new `S` in the same measurement. A panel with no prepare pump, one with no renderer or no frames,
+   shows a step the moment the measurement wants it.
 6. **Evict.** After a step change, `H` keeps `S`, the step below `S`, and `P`. Any other step leaves
    `H`. Each run frees its rasters at steps outside `H` when it next shows a new texture, at that
    commit, and a class's array is freed once no run has a layer in it. So a step the panel publishes
@@ -220,6 +257,19 @@ The rules:
     and that commit carries every staged layer, since it builds from the whole mirror. A staged
     layer given back (rules 3, 4, 7 and 9) no longer counts towards a build. Staged layers that no
     shown write carried are committed by the prepare pump once its queue is empty (5.4).
+
+13. **Coarsen.** The step below `S` covers the measurements up to `S` over root two. When the
+    measurement is at or under `COARSEN_MARGIN` (0.8) of that boundary, the `low` count starts, and
+    it ends when the measurement rises above it. At `RELEASE_MS` coarsening is due: rule 1 sets `P`
+    to the step the measurement belongs to, in place of a step above, and the panel shows it when
+    the pump says it is ready. There is no bound on that wait, since nothing is too soft meanwhile.
+    A run that kept its raster at the step below `S` is ready at once.
+14. **A view's first measurement is shown at once.** A view is the page's or a session's. A panel
+    has shown nothing in a view it has not been measured in, and the measurement jumps when a
+    session starts or ends, so the step the first measurement belongs to is shown without waiting
+    for the pump. A panel starts at its floor, which is 1 unless `minTextScale` raises it.
+15. **A panel whose floor is its cap** (`minTextScale` equal to `maxTextScale`) shows that step from
+    the start, is never measured, and prepares nothing.
 
 Any case these rules do not cover is a gap in this section first.
 
@@ -277,8 +327,10 @@ draw, has a texture of its own. The pump sends that up through the same `upload`
 Array and mirror bytes grow with the square of the step. On the desk, one panel's commit uploaded up
 to 2.5 MB of arrays, and the panel keeps the same again in mirrors, plus its runs' canvases. Holding
 `S`, the step below and `P` costs at most (1 + 0.5 + 2) times the shown step's bytes, 3.5x, while
-preparing up, and 1.5x otherwise. The cap is per panel and defaults to 4x the shown step's bytes. It
-only evicts, and it never refuses to show `S`.
+preparing the step above, and 1.5x otherwise. A measurement that skipped steps prepares a `P`
+further up, which costs what the panel is about to show in any case. `RELEASE_MS` is how long the
+3.5x outlasts the head's moving away. The cap is per panel and defaults to 4x the shown step's
+bytes. It only evicts, and it never refuses to show `S`.
 
 Batched runs keep a canvas each only so that `#settle` can tell when a raster changed. Holding three
 steps triples those canvases. Dropping a batched run's canvas once its pixels are in the mirror
@@ -315,7 +367,8 @@ If the headset trace shows the GPU upload dominating and rasterizing cheap, 5.4 
 ### 6.1 Where PR 1 differs from the design, or fills it in
 
 This section is about PR 1. PR 2 rewrote rules 1 to 5 where they could not work as written, and
-added rule 12; 5.1 says what the code does.
+added rule 12. Section 6.2 rewrote rules 1 and 3 to 5 again and added rules 13 to 15. 5.1 says what
+the code does.
 
 - **A batch member's layers are keyed by the raster's canvas, not by its step.** A canvas is one
   step's raster, so the two keys pick the same layer, and the batch never has to learn steps. The
@@ -334,18 +387,39 @@ added rule 12; 5.1 says what the code does.
   disposes them after the mesh has the new texture. Before, the selector's `onCleanup` disposed the
   old texture, and the warm/commit split held that cleanup back to the commit. The cache keeps
   rasters past any one computation, so the effect does it instead.
-- **The profiling script of section 3 is not in the repository.** It was run from a scratch copy
-  when this document was written. PR 1 is checked by its tests, and the walk in 3.2 is worth running
-  again with the script once it lands.
+- **The profiling script of section 3 was not in the repository.** It was run from a scratch copy
+  when this document was written, and PR 1 was checked by its tests. Section 6.2 landed one.
+
+### 6.2 Steps shown once they are ready
+
+On a headset, with PR 1 and PR 2 in place, the stall was still visible whenever the head moved among
+several panels (3.7). Three things about the rules caused it, and 5.1 now says what replaced them.
+
+- **A panel gave memory back within a second, and drew it again on the next turn of the head.**
+  Coarsening was immediate once the measurement was a fifth under the boundary, and it freed the
+  step above. A prepared step was freed after `ABANDON_MS`, one second. A head that turns from panel
+  to panel moves a fifth of the distance to a panel in reach and comes back seconds later. Both now
+  wait `RELEASE_MS`, five seconds, of the measurement staying low (rules 4 and 13).
+- **A step was shown the moment the measurement passed into it, prepared or not.** What the pump had
+  not reached was read under the panel's budget, dozens of runs in one update, and uploaded in the
+  commit frame. A step is now shown when the pump says it is ready, and coarsening goes through the
+  pump as well (rules 5 and 13). `SHARPEN_WAIT_MS` bounds how long a panel stays soft.
+- **Every step on the way was drawn.** A measurement that skips a step now prepares the step it
+  reached (rule 1), which answers the third open question below.
+
+Two cases show a step without the pump: a view's first measurement (rule 14), since waiting there
+would draw a mounting panel at its floor and then again, and a panel nothing prepares for. And a
+panel can opt out. `minTextScale` raises its floor, and a floor at `maxTextScale` is one step, drawn
+once and never measured (rule 15).
+
+The profiling script is in the repository now, as `packages/three/bench/textSteps.browser.mjs`. It
+counts through the page's own canvas and WebGL calls and wraps nothing in the package.
 
 ## 7. Open questions
 
 - Is 3.5x the shown step's memory acceptable on a panel capped at step 4? A long list at step 4 is
   what `maxTextScale` exists for, and its cap would apply to the holding too.
-- `PREPARE_SHARE`, `ABANDON_MS` and `UPLOAD_BYTES_PER_FRAME` are guesses. The headset trace should
-  set them.
-- Should a measurement that rises fast enough to skip a step prepare the step it is heading for
-  instead of the next one? Rule 3 covers it by retargeting. A velocity estimate would do it earlier,
-  at the cost of another state to describe.
+- `PREPARE_SHARE`, `RELEASE_MS`, `SHARPEN_WAIT_MS` and `UPLOAD_BYTES_PER_FRAME` are guesses. The
+  headset trace should set them.
 - The forced sweeps in 3.5 drop frames on the desk with or without step changes. They need their own
   investigation.

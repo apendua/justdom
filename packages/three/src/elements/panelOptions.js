@@ -38,6 +38,7 @@ import { PanelOptionsContext } from "../panelContexts.js";
  *   `PortalOptions.haptics`).
  * @property {boolean} [thumbstickWheel]
  * @property {number} [maxTextScale]
+ * @property {number} [minTextScale]
  * @property {boolean} [atomic]
  * @property {boolean} [opaqueToRays]
  * @property {number} [priority]

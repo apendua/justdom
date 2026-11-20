@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "A panel shows a new text step only once it is drawn and uploaded, and gives a step's memory back after five seconds instead of at once, so moving the head among panels no longer redraws their text. minTextScale sets a floor; equal to maxTextScale, a panel's text is drawn once.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

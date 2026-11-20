@@ -12,7 +12,7 @@ import {
 import { LayerTree } from "./layerTree.js";
 import { getBorderBoxSize } from "../mirror/geometryReads.js";
 import { isGenerated } from "../pseudoElements.js";
-import { addOverlay, hasOverlays, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
+import { addOverlay, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
 import { createDepthClear } from "../blocker.js";
 
 /**
@@ -47,11 +47,29 @@ import { createDepthClear } from "../blocker.js";
  *   (`halfPlanes.js`). They hang under the mesh they copy, take no rays,
  *   and are kept in step with it each frame the layer stays cut. The planes
  *   are written in world space, so they follow the panel when it moves.
- * - Panels are drawn whole, far to near, each in a slot of `PANEL_PIECES`
- *   pieces, sorted once a frame by the distance from the viewpoint to their
- *   middles. The panel's depth quad draws last in its slot.
- * - Overlay panels (`PortalOptions.overlay`) are sorted the same way among
- *   themselves, in the slots from `OVERLAY_SLOT` on, after every ordinary
+ * - The renderer's panels are ordered among themselves by a tree of their
+ *   own (`sortPanels`): one `LayerTree` over the shown panels' roots, in
+ *   world space, built when a panel joins, leaves, moves, changes size or
+ *   is shown or hidden, and walked from the viewpoint every frame. Each
+ *   piece of a panel the walk visits takes the next slot of `PANEL_PIECES`
+ *   places, and the panel draws its whole walk once in each of its slots.
+ *   The tree cuts a panel only where it passes through another's
+ *   rectangle (`onlyWhereMet`), so a panel nothing passes through is one
+ *   piece and one slot, drawn whole, back to front. Coplanar panels draw
+ *   in the order they joined the renderer's, and a panel not in the tree,
+ *   hidden or of no size, after the rest, far to near.
+ * - A panel the tree cuts is cut as a layer is: every layer of it is cut,
+ *   in each slot, by the panel piece's half-planes after its own
+ *   (`#findCut`), the first slot's piece drawn by the layers' meshes and
+ *   the rest by proxies. Only the root's meshes in its own band and not
+ *   the batch's are its own, since the depth quad, the blocker, the
+ *   loading frame and the other layers' draws hang under the root's object
+ *   too. The panel's depth quad draws last in its last slot, uncut: what
+ *   it hides is drawn after the whole panel, in front of every piece of it
+ *   the tree put before.
+ * - Overlay panels (`PortalOptions.overlay`) are not in the tree. They are
+ *   sorted far to near among themselves by the distance to their middles,
+ *   a slot each, in the slots from `OVERLAY_SLOT` on, after every ordinary
  *   panel. The depth buffer is cleared once, before the first of them
  *   (`createDepthClear`), so the scene and the ordinary panels drawn before
  *   hide none of them, and their depth quads settle where the sort is wrong
@@ -94,6 +112,52 @@ const OVERFLOW = PANEL_PIECES - 2;
  */
 const FIRST_BASE = -1;
 
+/** The half-planes of a piece cut by none, and their sides. */
+const NO_PLANES = /** @type {readonly THREE.Plane[]} */ ([]);
+const NO_SIDES = /** @type {readonly number[]} */ ([]);
+
+/**
+ * The base of `place` in the slot that starts at `start`, both in pieces.
+ *
+ * @param {number} start
+ * @param {number} place
+ * @returns {number}
+ */
+function slotBase(start, place) {
+  return (start + Math.min(place, OVERFLOW)) * PIECE_BAND;
+}
+
+/**
+ * Write a cut piece's half-planes into a material's uniforms.
+ *
+ * @param {HalfPlaneUniforms} uniforms
+ * @param {CutPiece} piece
+ * @param {THREE.Matrix4} panelToWorld
+ */
+function writePiece(uniforms, piece, panelToWorld) {
+  writeHalfPlanes(
+    uniforms,
+    piece.planes,
+    piece.sides,
+    panelToWorld,
+    piece.worldPlanes,
+    piece.worldSides,
+  );
+}
+
+/**
+ * A piece a cut layer draws: the half-planes that cut it out of its layer,
+ * in the panel's frame, those that cut its slot's piece out of the panel,
+ * in world space, and the base it draws from.
+ */
+class CutPiece {
+  planes = NO_PLANES;
+  sides = NO_SIDES;
+  worldPlanes = NO_PLANES;
+  worldSides = NO_SIDES;
+  base = 0;
+}
+
 /**
  * The panel's order, for its boxes to tell it which elements are layers.
  * Null outside a portal.
@@ -130,7 +194,59 @@ export function getLayerOrder(root) {
  * @property {Set<LayerOrder>} panels
  * @property {LayerOrder[]} sorted
  * @property {number} overlayStart The first overlay's slot, as last sorted.
+ * @property {LayerTree} tree The ordinary panels' tree (`sortPanels`).
+ * @property {boolean} changed Whether a panel joined or left since the
+ *   tree was last built.
+ * @property {number} slots How many slots its walk has given so far.
+ * @property {(piece: Polygon) => void} visit Give a piece the next slot.
  */
+
+/**
+ * How far apart, in world units, two panels' planes may be and still share
+ * a node of the renderer's tree: ten micrometres for a scene in metres.
+ */
+const PANELS_COPLANAR = 1e-5;
+
+/**
+ * Of two coplanar panels, the one that joined the renderer's first, which
+ * the tree keeps between builds whatever the viewer has done since.
+ *
+ * @param {Polygon} a
+ * @param {Polygon} b
+ * @returns {number}
+ */
+function joinedFirst(a, b) {
+  return a.index - b.index;
+}
+
+/**
+ * The panel a piece of the renderer's tree is of.
+ *
+ * @param {Polygon} piece
+ * @returns {LayerOrder}
+ */
+function panelOf(piece) {
+  return /** @type {LayerOrder} */ (orders.get(/** @type {Element} */ (piece.layer)));
+}
+
+/** @returns {Scene} */
+function createScene() {
+  /** @type {Scene} */
+  const scene = {
+    time: Number.NaN,
+    panels: new Set(),
+    sorted: [],
+    overlayStart: OVERLAY_SLOT,
+    tree: new LayerTree({ coplanar: PANELS_COPLANAR, tie: joinedFirst, onlyWhereMet: true }),
+    changed: true,
+    slots: 0,
+    visit: (piece) => {
+      panelOf(piece).addSlot(scene.slots, piece);
+      scene.slots += 1;
+    },
+  };
+  return scene;
+}
 
 /** @type {WeakMap<object, Scene>} */
 const scenes = new WeakMap();
@@ -242,8 +358,16 @@ export class LayerOrder {
    */
   #from = 0;
   #to = 0;
-  /** The layers the last walk found cut. @type {Map<PaintNode, Polygon[]>} */
+  /** The layers the last walk found cut. @type {Map<PaintNode, CutPiece[]>} */
   #cut = new Map();
+  /** What `#cut`'s pieces are taken from, and how many are. @type {CutPiece[]} */
+  #cutPool = [];
+  #cutUsed = 0;
+  /**
+   * Scratch for the pieces of each layer the panel's own tree cuts.
+   * @type {Map<PaintNode, Polygon[]>}
+   */
+  #inner = new Map();
   /** @type {Map<THREE.Mesh, Copied>} */
   #copies = new Map();
   /**
@@ -262,8 +386,23 @@ export class LayerOrder {
   #spareCopies = [];
   /** Scratch for the meshes of one layer. @type {THREE.Mesh[]} */
   #meshes = [];
-  /** The panel's place among the panels, in pieces. */
+  /** The panel's place among the panels, in pieces: its first slot's. */
   #offset = 0;
+  /**
+   * Where each of the panel's slots starts, in pieces, in the order the
+   * renderer's tree walked them; one for a panel no other panel cuts.
+   *
+   * @type {number[]}
+   */
+  #slots = [0];
+  /**
+   * For each of `#slots`, the piece of the panel's root the renderer's tree
+   * drew there, whose half-planes, in world space, cut it out; or null for
+   * a panel the tree did not cut.
+   *
+   * @type {(Polygon | null)[]}
+   */
+  #slotPieces = [null];
   /**
    * The renderer's panels this one is among, once it has walked.
    * @type {Scene | null}
@@ -271,6 +410,15 @@ export class LayerOrder {
   #scene = null;
   /** Its distance from the viewpoint, as the panels were last sorted. */
   distance = 0;
+  /** Whether the renderer's tree, as last built, holds the panel's root. */
+  inTree = false;
+  /**
+   * Where the panel's root stood, its size, and whether it was shown, when
+   * `movedInScene` last read them.
+   *
+   * @type {Placed & { shown: boolean }}
+   */
+  #inScene = { matrix: new THREE.Matrix4(), width: Number.NaN, height: 0, shown: false };
   /** Scratch for the layers cut before this walk. @type {Set<PaintNode>} */
   #wasCut = new Set();
   /** The bases of the layers in `#cut`. @type {Set<number>} */
@@ -305,6 +453,22 @@ export class LayerOrder {
     const material = /** @type {THREE.Material} */ (mesh.material);
     if (mesh.visible && material.visible && halfPlanesOf(material)) {
       this.#meshes.push(mesh);
+    }
+  };
+  /** The root's base, for `#collectRoot`. */
+  #rootBase = 0;
+  /**
+   * Gather into `#meshes` a mesh the root draws, cut when another panel
+   * crosses it: one `#collect` takes, in the root's band and not one of the
+   * batch's draws, which `#meshesOf` finds apart. The rest under the root's
+   * object are the panel's own, the depth quad above all, which the cut
+   * leaves whole.
+   *
+   * @param {THREE.Mesh} mesh
+   */
+  #collectRoot = (mesh) => {
+    if (bandBase(mesh.renderOrder) === this.#rootBase && !this.#batch.isDraw(mesh)) {
+      this.#collect(mesh);
     }
   };
   /**
@@ -406,13 +570,14 @@ export class LayerOrder {
     viewpoint.setFromMatrixPosition(viewer.matrixWorld);
     let scene = scenes.get(renderer);
     if (!scene) {
-      scene = { time: Number.NaN, panels: new Set(), sorted: [], overlayStart: OVERLAY_SLOT };
+      scene = createScene();
       scenes.set(renderer, scene);
     }
     if (this.#scene !== scene) {
-      this.#scene?.panels.delete(this);
+      this.#leaveScene();
       this.#scene = scene;
       scene.panels.add(this);
+      scene.changed = true;
     }
     if (scene.time !== time) {
       scene.time = time;
@@ -442,7 +607,9 @@ export class LayerOrder {
     this.#place();
     this.#findCut();
     if (this.#depthQuad) {
-      this.#depthQuad.renderOrder = (this.#offset + PANEL_PIECES - 1) * PIECE_BAND;
+      // Last in the panel's last slot, the only one it draws in.
+      const last = this.#slots[this.#slots.length - 1];
+      this.#depthQuad.renderOrder = (last + PANEL_PIECES - 1) * PIECE_BAND;
     }
     if (this.#depthClear) {
       // Before the first overlay's slot, after the last ordinary panel's
@@ -512,12 +679,87 @@ export class LayerOrder {
   }
 
   /**
-   * Put the panel in a slot among the panels.
+   * Put the panel in one slot among the panels, whole.
    *
    * @param {number} slot
    */
   setSlot(slot) {
-    this.#offset = slot * PANEL_PIECES;
+    this.clearSlots();
+    this.addSlot(slot, null);
+  }
+
+  /** Take the panel out of its slots, for `sortPanels` to give it new ones. */
+  clearSlots() {
+    this.#slots.length = 0;
+    this.#slotPieces.length = 0;
+  }
+
+  /**
+   * Give the panel its next slot among the panels, for one piece of it.
+   *
+   * @param {number} slot
+   * @param {Polygon | null} piece The piece of its root the renderer's tree
+   *   drew there, or null for the panel whole.
+   */
+  addSlot(slot, piece) {
+    if (this.#slots.length === 0) {
+      this.#offset = slot * PANEL_PIECES;
+    }
+    this.#slots.push(slot * PANEL_PIECES);
+    this.#slotPieces.push(piece);
+  }
+
+  /**
+   * Read where the panel's root stands in the world, its size, and whether
+   * it is shown, for the renderer's tree. Says whether any of them changed
+   * since the last read, which builds the tree again (`sortPanels`).
+   *
+   * @returns {boolean}
+   */
+  movedInScene() {
+    const { width, height } = getBorderBoxSize(/** @type {HTMLElement} */ (this.#root));
+    this.#container.updateWorldMatrix(true, false);
+    const shown = isShown(this.#container);
+    const placed = this.#inScene;
+    if (
+      placed.shown === shown &&
+      placed.width === width &&
+      placed.height === height &&
+      placed.matrix.equals(this.#container.matrixWorld)
+    ) {
+      return false;
+    }
+    placed.shown = shown;
+    placed.width = width;
+    placed.height = height;
+    // Not placed: a record of where the panel was, not an object.
+    placed.matrix.copy(this.#container.matrixWorld);
+    return true;
+  }
+
+  /**
+   * Add the panel's root to the renderer's tree, where `movedInScene` last
+   * read it, if it is shown.
+   *
+   * @param {LayerTree} tree
+   */
+  addTo(tree) {
+    const placed = this.#inScene;
+    this.inTree =
+      placed.shown && tree.add(this.#root, 0, placed.matrix, placed.width, placed.height);
+  }
+
+  /** Take the panel out of the renderer's panels, if it is among them. */
+  #leaveScene() {
+    const scene = this.#scene;
+    if (!scene?.panels.delete(this)) {
+      return;
+    }
+    scene.changed = true;
+    if (scene.panels.size === 0) {
+      // Nothing builds the tree again, and its polygons hold the roots.
+      scene.tree.release();
+    }
   }
 
   /**
@@ -546,7 +788,7 @@ export class LayerOrder {
     }
     this.#spares.clear();
     orders.delete(this.#root);
-    this.#scene?.panels.delete(this);
+    this.#leaveScene();
     this.#scene = null;
     this.#held.clear();
     this.#depthClear?.removeFromParent();
@@ -725,16 +967,20 @@ export class LayerOrder {
   }
 
   /**
+   * The base of a place in the panel's first slot.
+   *
    * @param {number} place
    * @returns {number}
    */
   #baseAt(place) {
-    return (this.#offset + Math.min(place, OVERFLOW)) * PIECE_BAND;
+    return slotBase(this.#offset, place);
   }
 
   /**
    * Which layers the walk found cut, and their pieces in the walk's order,
-   * into `#cut`, and their bases into `#cutBases`.
+   * into `#cut`, and their bases into `#cutBases`. A layer is cut by the
+   * walk when it has a piece with half-planes, short of the slot's last
+   * place, and in every slot when the renderer's tree cut the panel.
    */
   #findCut() {
     const overflowing = this.#overflowing;
@@ -743,6 +989,11 @@ export class LayerOrder {
     before.clear();
     for (const [layer, pieces] of this.#cut) {
       before.add(layer);
+      pieces.length = 0;
+    }
+    this.#cutUsed = 0;
+    const inner = this.#inner;
+    for (const pieces of inner.values()) {
       pieces.length = 0;
     }
     for (const piece of this.#order) {
@@ -754,18 +1005,64 @@ export class LayerOrder {
         overflowing.add(piece.layer);
         continue;
       }
-      let pieces = this.#cut.get(piece.layer);
+      let pieces = inner.get(piece.layer);
       if (!pieces) {
         pieces = [];
-        this.#cut.set(piece.layer, pieces);
+        inner.set(piece.layer, pieces);
       }
       pieces.push(piece);
-      before.delete(piece.layer);
+    }
+    for (const [layer, pieces] of inner) {
+      if (pieces.length === 0 || overflowing.has(layer)) {
+        inner.delete(layer);
+      }
+    }
+    if (this.#slots.length > 1) {
+      // Crossed by another panel: every layer, in every slot.
+      for (const [layer, base] of this.#bases) {
+        const pieces = this.#cutOf(layer, before);
+        const own = inner.get(layer);
+        for (let slot = 0; slot < this.#slots.length; slot += 1) {
+          const start = this.#slots[slot];
+          const panelPiece = this.#slotPieces[slot];
+          const worldPlanes = panelPiece?.halfPlanes ?? NO_PLANES;
+          const worldSides = panelPiece?.sides ?? NO_SIDES;
+          if (!own) {
+            // Whole in each slot, at its place in the first.
+            const inSlot = base + (start - this.#offset) * PIECE_BAND;
+            pieces.push(this.#cutPiece(NO_PLANES, NO_SIDES, worldPlanes, worldSides, inSlot));
+            continue;
+          }
+          for (const piece of own) {
+            pieces.push(
+              this.#cutPiece(
+                piece.halfPlanes,
+                piece.sides,
+                worldPlanes,
+                worldSides,
+                slotBase(start, piece.place),
+              ),
+            );
+          }
+        }
+      }
+    } else {
+      for (const [layer, own] of inner) {
+        const pieces = this.#cutOf(layer, before);
+        for (const piece of own) {
+          pieces.push(
+            this.#cutPiece(
+              piece.halfPlanes,
+              piece.sides,
+              NO_PLANES,
+              NO_SIDES,
+              this.#baseAt(piece.place),
+            ),
+          );
+        }
+      }
     }
     for (const layer of before) {
-      this.#cut.delete(layer);
-    }
-    for (const layer of overflowing) {
       this.#cut.delete(layer);
     }
     const last = this.#cutBases;
@@ -789,6 +1086,48 @@ export class LayerOrder {
     if (changed || cutBases.size !== last.size) {
       this.#batch.invalidate();
     }
+  }
+
+  /**
+   * The list of a layer's pieces in `#cut`, made if it has none, and the
+   * layer taken out of the ones no longer cut.
+   *
+   * @param {PaintNode} layer
+   * @param {Set<PaintNode>} before
+   * @returns {CutPiece[]}
+   */
+  #cutOf(layer, before) {
+    before.delete(layer);
+    let pieces = this.#cut.get(layer);
+    if (!pieces) {
+      pieces = [];
+      this.#cut.set(layer, pieces);
+    }
+    return pieces;
+  }
+
+  /**
+   * A piece from the pool, filled.
+   *
+   * @param {readonly THREE.Plane[]} planes
+   * @param {readonly number[]} sides
+   * @param {readonly THREE.Plane[]} worldPlanes
+   * @param {readonly number[]} worldSides
+   * @param {number} base
+   * @returns {CutPiece}
+   */
+  #cutPiece(planes, sides, worldPlanes, worldSides, base) {
+    if (this.#cutUsed === this.#cutPool.length) {
+      this.#cutPool.push(new CutPiece());
+    }
+    const piece = this.#cutPool[this.#cutUsed];
+    this.#cutUsed += 1;
+    piece.planes = planes;
+    piece.sides = sides;
+    piece.worldPlanes = worldPlanes;
+    piece.worldSides = worldSides;
+    piece.base = base;
+    return piece;
   }
 
   /**
@@ -933,7 +1272,7 @@ export class LayerOrder {
 
   /**
    * @param {PaintNode} layer
-   * @param {Polygon[]} pieces In the walk's order.
+   * @param {CutPiece[]} pieces In the walk's order, slot by slot.
    * @param {Set<THREE.Mesh>} seen The meshes drawn cut this frame.
    * @param {Set<THREE.Material>} written Their materials.
    */
@@ -947,7 +1286,7 @@ export class LayerOrder {
       if (!own) {
         continue;
       }
-      writeHalfPlanes(own, pieces[0].halfPlanes, pieces[0].sides, toWorld);
+      writePiece(own, pieces[0], toWorld);
       written.add(material);
       let copied = this.#copies.get(mesh);
       if (copied?.source !== material) {
@@ -976,8 +1315,8 @@ export class LayerOrder {
         const uniforms = /** @type {HalfPlaneUniforms} */ (
           halfPlanesOf(/** @type {THREE.Material} */ (proxy.material))
         );
-        writeHalfPlanes(uniforms, pieces[i].halfPlanes, pieces[i].sides, toWorld);
-        proxy.renderOrder = this.#baseAt(pieces[i].place) + local;
+        writePiece(uniforms, pieces[i], toWorld);
+        proxy.renderOrder = pieces[i].base + local;
       }
     }
   }
@@ -985,7 +1324,8 @@ export class LayerOrder {
   /**
    * The meshes that draw a layer: those under its object, short of the
    * layers nested in it, and the batches' meshes whose order is in its
-   * first piece's band.
+   * first piece's band. For the root, only those in its band
+   * (`#collectRoot`).
    *
    * @param {PaintNode} layer
    * @param {number} base
@@ -997,6 +1337,9 @@ export class LayerOrder {
     const object = this.#objectOf(layer);
     if (object && layer !== this.#root) {
       eachMesh(object, this.#layerOf, this.#collect);
+    } else if (object) {
+      this.#rootBase = base;
+      eachMesh(object, this.#layerOf, this.#collectRoot);
     }
     for (const mesh of this.#batched) {
       if (mesh.visible && bandBase(mesh.renderOrder) === base) {
@@ -1031,39 +1374,77 @@ function inPanel(object, container, out) {
 }
 
 /**
- * Sort a renderer's panels far to near from `from`, a slot each: the
- * ordinary panels from slot 0, the overlays after them from `OVERLAY_SLOT`,
- * or from the slot after the last ordinary panel's when there are more
- * ordinary panels than fit below it.
+ * Order a renderer's panels from `from`: the ordinary panels by the walk of
+ * their tree, a slot a piece from slot 0, and those not in it after them
+ * far to near; the overlays far to near after them, a slot each, from
+ * `OVERLAY_SLOT`, or from the slot after the last ordinary panel's when
+ * there are more than fit below it. The tree is built again when a panel
+ * joins or leaves, or an ordinary one moves, changes size, or is shown or
+ * hidden, and walked every frame.
  *
  * @param {Scene} scene
  * @param {THREE.Vector3} from
  */
 function sortPanels(scene, from) {
+  let build = scene.changed;
+  scene.changed = false;
+  for (const panel of scene.panels) {
+    panel.distance = panel.distanceTo(from);
+    panel.clearSlots();
+    if (!panel.overlay && panel.movedInScene()) {
+      build = true;
+    }
+  }
+  const tree = scene.tree;
+  if (build) {
+    tree.begin();
+    for (const panel of scene.panels) {
+      if (!panel.overlay) {
+        panel.addTo(tree);
+      }
+    }
+    tree.build();
+  }
+  scene.slots = 0;
+  tree.walk(from, scene.visit);
+  // What is left: the ordinary panels not in the tree, then the overlays.
   const sorted = scene.sorted;
   sorted.length = 0;
   for (const panel of scene.panels) {
-    panel.distance = panel.distanceTo(from);
-    sorted.push(panel);
-  }
-  if (!hasOverlays()) {
-    // No overlay up: every panel is ordinary, a slot each from 0.
-    sorted.sort(fartherFirst);
-    for (let slot = 0; slot < sorted.length; slot += 1) {
-      sorted[slot].setSlot(slot);
+    if (panel.overlay || !panel.inTree) {
+      sorted.push(panel);
     }
-    return;
   }
   sorted.sort(ordinaryFirst);
   let ordinary = 0;
   while (ordinary < sorted.length && !sorted[ordinary].overlay) {
+    sorted[ordinary].addSlot(scene.slots, null);
+    scene.slots += 1;
     ordinary += 1;
   }
-  const start = Math.max(OVERLAY_SLOT, ordinary);
+  const start = Math.max(OVERLAY_SLOT, scene.slots);
   scene.overlayStart = start;
-  for (let slot = 0; slot < sorted.length; slot += 1) {
-    sorted[slot].setSlot(slot < ordinary ? slot : start + slot - ordinary);
+  for (let i = ordinary; i < sorted.length; i += 1) {
+    sorted[i].setSlot(start + i - ordinary);
   }
+}
+
+/**
+ * Whether an object is drawn: shown, as every object above it is, up to a
+ * scene.
+ *
+ * @param {THREE.Object3D} object
+ * @returns {boolean}
+ */
+function isShown(object) {
+  let each = object;
+  while (each.parent) {
+    if (!each.visible) {
+      return false;
+    }
+    each = each.parent;
+  }
+  return each.visible && /** @type {THREE.Scene} */ (each).isScene === true;
 }
 
 /**

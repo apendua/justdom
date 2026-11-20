@@ -2930,3 +2930,234 @@ describe("a panel drawn in paint order", () => {
     far.teardown();
   });
 });
+
+describe("panels that cross", () => {
+  /**
+   * A translucent panel standing flat, and one swung `angle` about the
+   * vertical line through its middle and moved `shift` world units up,
+   * both in one scene, middles together for no shift: a letter carried
+   * through a plant. Each holds a card, and the swung one, if `raised`, a
+   * card swung out of its plane, a layer cut inside its panel.
+   *
+   * @param {{ shift?: number, raised?: boolean }} [options]
+   */
+  async function crossing({ shift = 0, raised = false } = {}) {
+    const flat = await page([{ id: "card", style: CARD, at: [20, 20, 360, 60] }], {
+      rootStyle: "background: rgba(60, 160, 90, 0.5)",
+    });
+    const swung = await page(
+      [
+        { id: "card", style: CARD, at: [20, 20, 360, 60] },
+        ...(raised
+          ? [
+              /** @type {import("../test/pagePanel.js").PageSpec} */ ({
+                id: "raised",
+                style: `${CARD}; z-index: 1; transform: ${matrix3d(["rotateY", 30])}; transform-origin: 50px 50px 0px`,
+                at: [100, 160, 100, 100],
+              }),
+            ]
+          : []),
+      ],
+      { rootStyle: "background: rgba(250, 250, 240, 0.5)" },
+    );
+    const world = new THREE.Scene();
+    world.add(flat.scene, swung.scene);
+    flat.scene.position.set(0, 0, -3000);
+    swung.scene.position.set(0, 0, -3000);
+    swung.scene.rotation.y = Math.PI / 3;
+    world.updateMatrixWorld(true);
+    // Turned about its corner: move it so that the two middles meet.
+    const middle = (/** @type {{ panel: THREE.Object3D }} */ g) =>
+      g.panel.localToWorld(new THREE.Vector3(200, 150, 0));
+    swung.scene.position.add(middle(flat).sub(middle(swung)));
+    swung.scene.position.y += shift;
+    world.updateMatrixWorld(true);
+
+    const renderer = /** @type {THREE.WebGLRenderer} */ (
+      /** @type {unknown} */ ({ xr: { isPresenting: false } })
+    );
+    const camera = new THREE.PerspectiveCamera();
+    camera.updateMatrixWorld();
+    let time = 0;
+    const pages = [flat, swung];
+    return {
+      world,
+      flat,
+      swung,
+      /** One frame of both panels, as the portal's late frame runs it. */
+      async frame() {
+        time += 1;
+        world.updateMatrixWorld(true);
+        for (const g of pages) {
+          const order = /** @type {import("./paint/layerOrder.js").LayerOrder} */ (
+            getLayerOrder(g.root)
+          );
+          order.frame(time, renderer, camera);
+          await g.settle();
+          order.cut();
+        }
+      },
+      teardown() {
+        flat.teardown();
+        swung.teardown();
+      },
+    };
+  }
+
+  /**
+   * The meshes of a panel that draw cut, its proxies left out.
+   *
+   * @param {THREE.Object3D} panel
+   * @returns {THREE.Mesh[]}
+   */
+  function cutMeshes(panel) {
+    return drawn(panel).filter((mesh) => {
+      const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
+      return !isProxy(mesh) && uniforms && uniforms.uHalfPlaneCount.value > 0;
+    });
+  }
+
+  test("cuts a panel that crosses another's plane, and draws its pieces either side of the other", async () => {
+    // Goes red with the panels drawn whole, far to near by their middles:
+    // one panel's draws all come before the other's or all after, and the
+    // one drawn first has its depth quad hide every part of the other
+    // behind its plane, through its own clear background.
+    const g = await crossing();
+    await g.frame();
+    await g.frame();
+    const { flat, swung } = g;
+
+    const cut = [flat, swung].filter((page) => proxiesOf(page.panel).length > 0);
+    assert.equal(cut.length, 1, "one panel is cut by the other's plane");
+    const [crossed] = cut;
+    const other = crossed === flat ? swung : flat;
+    assert.equal(proxiesOf(other.panel).length, 0, "and the other is drawn whole");
+
+    // Every draw of the crossed panel is drawn once a side: one before the
+    // other panel's first draw, and one after the other panel's depth quad.
+    const orders = drawn(crossed.panel)
+      .filter((mesh) => {
+        const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
+        return uniforms && uniforms.uHalfPlaneCount.value > 0;
+      })
+      .map((mesh) => mesh.renderOrder);
+    const otherBase = getLayerBase(other.root) ?? Number.NaN;
+    const otherQuad = depthQuadOf(other.panel).renderOrder;
+    assert.ok(
+      orders.some((order) => order < otherBase),
+      `a piece before ${otherBase}: ${orders}`,
+    );
+    assert.ok(
+      orders.some((order) => order > otherQuad),
+      `a piece after ${otherQuad}: ${orders}`,
+    );
+    assert.ok(
+      depthQuadOf(crossed.panel).renderOrder > Math.max(...orders),
+      "its depth quad after all of it",
+    );
+    g.teardown();
+  });
+
+  test("cuts each layer of a crossed panel by its own half-planes and the panel's, the root's by the panel's alone", async () => {
+    // The swung panel's raised card is cut inside its panel too. Goes red
+    // with the root taking every mesh under its object as its own: the
+    // raised card's draw is stamped with the root's piece, one half-plane,
+    // after its own.
+    const g = await crossing({ raised: true });
+    await g.frame();
+    await g.frame();
+    const { swung } = g;
+    assert.ok(proxiesOf(swung.panel).length > 0, "the swung panel is the one cut");
+    const raised = getLayerBase(swung.get("raised"));
+    const counts = cutMeshes(swung.panel).map((mesh) => [
+      bandBase(mesh.renderOrder) === raised,
+      /** @type {import("./paint/halfPlanes.js").HalfPlaneUniforms} */ (
+        halfPlanesOf(/** @type {THREE.Material} */ (mesh.material))
+      ).uHalfPlaneCount.value,
+    ]);
+    assert.ok(counts.length > 0);
+    for (const [isRaised, count] of counts) {
+      assert.equal(count, isRaised ? 2 : 1, `${counts}`);
+    }
+    g.teardown();
+  });
+
+  test("draws two panels whole again once they part", async () => {
+    const g = await crossing();
+    await g.frame();
+    await g.frame();
+    assert.ok(
+      [g.flat, g.swung].some((page) => proxiesOf(page.panel).length > 0),
+      "cut while they cross",
+    );
+    g.swung.scene.position.x += 5000;
+    await g.frame();
+    for (const page of [g.flat, g.swung]) {
+      assert.equal(proxiesOf(page.panel).length, 0, "no proxies");
+      assert.deepEqual(cutMeshes(page.panel), [], "nothing cut");
+    }
+    const slotOf = (/** @type {number} */ order) => Math.floor(order / (PANEL_PIECES * PIECE_BAND));
+    const slots = [g.flat, g.swung].map((page) => {
+      const slot = slotOf(getLayerBase(page.root) ?? Number.NaN);
+      assert.equal(slotOf(depthQuadOf(page.panel).renderOrder), slot, "its quad in its one slot");
+      return slot;
+    });
+    assert.notEqual(slots[0], slots[1], "a slot each");
+    g.teardown();
+  });
+
+  test("cuts neither of two panels that cross each other's planes but not each other", async () => {
+    // The swung panel is moved up, clear of the flat one: each panel still
+    // straddles the other's plane, as the desk's tilted keyboard and the
+    // flat panels beside it do, but the two rectangles never meet. Goes
+    // red with a panel cut wherever it straddles another's plane.
+    const g = await crossing({ shift: 800 });
+    await g.frame();
+    await g.frame();
+    for (const page of [g.flat, g.swung]) {
+      assert.equal(proxiesOf(page.panel).length, 0, "no proxies");
+      assert.deepEqual(cutMeshes(page.panel), [], "nothing cut");
+    }
+    g.teardown();
+  });
+
+  test("gives a hidden panel no plane to cut the others with", async () => {
+    // Goes red with a hidden panel in the tree: the visible one is cut
+    // along a panel nobody sees, and pays the draws.
+    const g = await crossing();
+    g.flat.scene.visible = false;
+    await g.frame();
+    await g.frame();
+    assert.equal(proxiesOf(g.swung.panel).length, 0, "no proxies");
+    assert.deepEqual(cutMeshes(g.swung.panel), [], "nothing cut");
+    g.teardown();
+  });
+
+  test("builds the panels' tree only when a panel moves", async () => {
+    // Goes red with the tree built every frame, which costs the cube of
+    // the panels a frame for the same tree.
+    const g = await crossing();
+    const build = LayerTree.prototype.build;
+    let builds = 0;
+    LayerTree.prototype.build = function () {
+      builds += 1;
+      build.call(this);
+    };
+    try {
+      // The second panel joins the renderer's after the first frame's sort.
+      await g.frame();
+      await g.frame();
+      const first = builds;
+      assert.ok(first > 0, "built once the panels are placed");
+      await g.frame();
+      await g.frame();
+      assert.equal(builds, first, "nothing moved, nothing built");
+      g.swung.scene.position.y += 10;
+      await g.frame();
+      assert.ok(builds > first, "built again for a panel that moved");
+    } finally {
+      LayerTree.prototype.build = build;
+    }
+    g.teardown();
+  });
+});

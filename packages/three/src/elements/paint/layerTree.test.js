@@ -148,6 +148,105 @@ describe("LayerTree", () => {
     assert.deepEqual(walked(tree, IN_FRONT), [door, root, door]);
   });
 
+  test("takes the distance two planes share a node within, and their order there, as it is made", () => {
+    // As the renderer's tree of panels is made: a hair apart in its units
+    // is apart, and two in one plane draw by the tie, not paint order.
+    const [first, second] = siblings("", "");
+    /** @param {import("./layerTree.js").Polygon} polygon */
+    const rank = (polygon) => (polygon.layer === second ? 0 : 1);
+    const tree = new LayerTree({ coplanar: 1e-6, tie: (a, b) => rank(a) - rank(b) });
+    tree.begin();
+    tree.add(first, 0, placed(0), 100, 100);
+    tree.add(second, 0, placed(0), 100, 100);
+    tree.build();
+    assert.equal(tree.nodes, 1);
+    assert.deepEqual(walked(tree, IN_FRONT), [second, first]);
+
+    tree.begin();
+    tree.add(first, 0, placed(0), 100, 100);
+    tree.add(second, 0, placed(0.001), 100, 100);
+    tree.build();
+    assert.equal(tree.nodes, 2, "within `COPLANAR` px, but not within its own distance");
+  });
+
+  test("cuts a polygon sent clear of a splitter where it passes through one across its plane", () => {
+    // Three panels, as the renderer's tree sees them. `r` in z = 0; `s` in
+    // x = 0.5, through `r`, so `r` cuts it at z = 0; `p` in y = 2, above
+    // `r`, straddling `r`'s plane clear of it and passing through `s` on
+    // both sides of z = 0. Goes red with `p` sent whole to the front: its
+    // strip at z < 0, left of `s`, is behind `s`'s back piece but drawn
+    // after it.
+    const [r, s, p] = siblings("", "", "");
+    /**
+     * @param {number[]} origin
+     * @param {number[]} u
+     * @param {number[]} v
+     */
+    const rect = (origin, u, v) => {
+      const e1 = new THREE.Vector3(...u);
+      const e2 = new THREE.Vector3(...v);
+      return new THREE.Matrix4()
+        .makeBasis(e1, e2, new THREE.Vector3().crossVectors(e1, e2))
+        .setPosition(new THREE.Vector3(...origin));
+    };
+    const tree = new LayerTree({
+      coplanar: 1e-6,
+      tie: (a, b) => a.index - b.index,
+      onlyWhereMet: true,
+    });
+    tree.begin();
+    tree.add(r, 0, rect([0, 0, 0], [1, 0, 0], [0, 1, 0]), 1, 1);
+    tree.add(s, 0, rect([0.5, 0, -1], [0, 0, 2], [0, 3, 0]), 1, 1);
+    tree.add(p, 0, rect([0, 2, -0.2], [1, 0, 0], [0, 0, 1.2]), 1, 1);
+    tree.build();
+    /** @type {import("./layerTree.js").Polygon[]} */
+    const order = [];
+    tree.walk(new THREE.Vector3(3, 2.5, 0.5), (piece) => order.push(piece));
+    const left = (/** @type {import("./layerTree.js").Polygon} */ piece) =>
+      piece.points.slice(0, piece.count).every((point) => point.x <= 0.5 + 1e-9);
+    // Behind `r`'s plane, from where the viewer stands, `p`'s strip left
+    // of `s` is behind `s`'s back piece, so it draws first.
+    const behindR = (/** @type {import("./layerTree.js").Polygon} */ piece) =>
+      piece.points.slice(0, piece.count).some((point) => point.z < -1e-9);
+    const names = order.map((piece) => (piece.layer === p ? "p" : piece.layer === s ? "s" : "r"));
+    const strip = order.findIndex((piece) => piece.layer === p && left(piece) && behindR(piece));
+    const sBack = order.findIndex((piece) => piece.layer === s && behindR(piece));
+    assert.ok(strip >= 0 && sBack >= 0, `${names}`);
+    assert.ok(strip < sBack, `p's strip draws before s's back piece: ${names}`);
+  });
+
+  test("still sends a polygon whole when it passes through nothing across the plane", () => {
+    // Two panels that straddle each other's planes apart.
+    const [a, b] = siblings("", "");
+    const tree = new LayerTree({ coplanar: 1e-6, onlyWhereMet: true });
+    tree.begin();
+    tree.add(a, 0, placed(0), 100, 100);
+    // Turned a third of a turn and lifted clear of `a`.
+    tree.add(
+      b,
+      0,
+      new THREE.Matrix4().makeTranslation(0, 300, 0).multiply(placed(0, Math.PI / 3)),
+      100,
+      100,
+    );
+    tree.build();
+    assert.equal(tree.pieces.length, 2, "nothing cut");
+  });
+
+  test("lets go of the layers its pools hold when released", () => {
+    // The renderer's tree of panels outlives its panels. Goes red with a
+    // pooled polygon still holding a gone panel's root.
+    const [root] = siblings("");
+    const tree = new LayerTree();
+    tree.begin();
+    tree.add(root, 0, placed(0), 100, 100);
+    tree.build();
+    const [polygon] = tree.pieces;
+    tree.release();
+    assert.equal(tree.root, null);
+    assert.equal(polygon.layer, null);
+  });
+
   test("splits by the shallowest layer first", () => {
     const [root] = siblings("");
     const door = document.createElement("div");

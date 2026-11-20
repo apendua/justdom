@@ -9,19 +9,31 @@ import { isGenerated } from "../pseudoElements.js";
 /*
  * The tree a panel drawn in paint order orders its layers with: a binary
  * space partition over their planes, in the panel's frame, as Chromium's
- * compositor orders a `preserve-3d` context (`cc/trees/bsp_tree.cc`), by
- * these rules:
+ * compositor orders a `preserve-3d` context (`cc/trees/bsp_tree.cc`). The
+ * renderer's panels are ordered among themselves by one too, over their
+ * roots' planes in world space (`sortPanels` in `layerOrder.js`), which
+ * gives it its own tie and its own distance for coplanar. By these rules:
  *
  * - Splitters are chosen parent first: of the polygons left, the ones nested
  *   in the fewest layers, then of those the one that splits the fewest
  *   others, and of equal ones the first added, which is tree order.
  * - Two layers are coplanar when every corner of one is within `COPLANAR`
  *   px of the other's plane. They share a node and draw in paint order
- *   (`comparePaintOrder`).
+ *   (`comparePaintOrder`), or the tie the tree was made with.
  * - A polygon that crosses a splitter's plane is cut in two along it, and
  *   each piece carries the plane and the side it keeps, a half-plane its
  *   draw tests. The two pieces of one cut keep `>= 0` and `< 0` of one
  *   plane, so no point is drawn twice and none is lost.
+ * - A tree made `onlyWhereMet`, the renderer's tree of panels, cuts a
+ *   polygon only where it meets the splitter: when the line it crosses the
+ *   splitter's plane along misses the splitter's polygon, the polygon goes
+ *   whole to the side its middle is on, and does not count as a split when
+ *   the splitter is chosen. Unless it meets another polygon of the set not
+ *   wholly on that side (`#meetsAcross`): then it is cut, so that the part
+ *   of it across the plane is ordered against that one. Two panels apart
+ *   are then ordered by where their middles are, and only panels that pass
+ *   through each other are cut. Inside a panel every crossing is cut, as
+ *   Chromium cuts it.
  * - The walk visits the pieces from back to front for a viewpoint: at each
  *   node the side the viewpoint is not on, then the node's own pieces, then
  *   the side it is on.
@@ -226,10 +238,51 @@ const CORNERS = /** @type {const} */ ([
   [0, 1],
 ]);
 
+/** Scratch for `#meets` and `middleSide`. */
+const segmentStart = new THREE.Vector3();
+const segmentEnd = new THREE.Vector3();
+const direction = new THREE.Vector3();
+const edge = new THREE.Vector3();
+const inward = new THREE.Vector3();
+const toPoint = new THREE.Vector3();
+const middle = new THREE.Vector3();
+
+/**
+ * The mean of a polygon's corners, into `out`.
+ *
+ * @param {Polygon} polygon
+ * @param {THREE.Vector3} out
+ * @returns {THREE.Vector3}
+ */
+function middleOf(polygon, out) {
+  out.set(0, 0, 0);
+  for (let i = 0; i < polygon.count; i += 1) {
+    out.add(polygon.points[i]);
+  }
+  return out.divideScalar(polygon.count);
+}
+
+/**
+ * How far in front of `plane` a polygon's middle is.
+ *
+ * @param {Polygon} polygon
+ * @param {THREE.Plane} plane
+ * @returns {number}
+ */
+function middleSide(polygon, plane) {
+  return plane.distanceToPoint(middleOf(polygon, middle));
+}
+
 /**
  * A panel's tree, rebuilt in place.
  */
 export class LayerTree {
+  /** How far apart two planes may be and still share a node. */
+  #coplanar;
+  /** The order of the polygons that share a node. */
+  #tie;
+  /** Whether a polygon is cut only where it meets the splitter. */
+  #onlyWhereMet;
   /** @type {Polygon[]} */
   #pool = [];
   #used = 0;
@@ -249,6 +302,32 @@ export class LayerTree {
   pieces = [];
   /** How many nodes the tree has. */
   nodes = 0;
+
+  /**
+   * @param {object} [options]
+   * @param {number} [options.coplanar] How far apart, in the tree's units,
+   *   two planes may be and still share a node: `COPLANAR` px by default.
+   * @param {(a: Polygon, b: Polygon) => number} [options.tie] The order of
+   *   the polygons in one node: paint order by default.
+   * @param {boolean} [options.onlyWhereMet] Cut a polygon only where it
+   *   meets the splitter's polygon, not wherever it crosses its plane.
+   */
+  constructor({ coplanar = COPLANAR, tie = byPaintOrder, onlyWhereMet = false } = {}) {
+    this.#coplanar = coplanar;
+    this.#tie = tie;
+    this.#onlyWhereMet = onlyWhereMet;
+  }
+
+  /**
+   * Start a build, as `begin` does, and let go of every layer the pools
+   * hold, for a tree that outlives what it ordered.
+   */
+  release() {
+    this.begin();
+    for (const polygon of this.#pool) {
+      polygon.layer = /** @type {PaintNode} */ (/** @type {unknown} */ (null));
+    }
+  }
 
   /** Start a build: every polygon and node goes back to its pool. */
   begin() {
@@ -336,7 +415,7 @@ export class LayerTree {
       }
       let splits = 0;
       for (const other of set) {
-        if (other !== candidate && this.#straddles(other, candidate.plane)) {
+        if (other !== candidate && this.#cuts(other, candidate)) {
           splits += 1;
         }
       }
@@ -363,13 +442,23 @@ export class LayerTree {
         front.push(polygon);
       } else if (side === -1) {
         back.push(polygon);
+      } else if (
+        this.#onlyWhereMet &&
+        !this.#meets(polygon, splitter) &&
+        !this.#meetsAcross(polygon, splitter, set)
+      ) {
+        (middleSide(polygon, splitter.plane) >= 0 ? front : back).push(polygon);
       } else {
+        if (this.#onlyWhereMet) {
+          // `#meetsAcross` left other polygons' distances.
+          this.#side(polygon, splitter.plane);
+        }
         const [ahead, behind] = this.#split(polygon, splitter.plane, id);
         front.push(ahead);
         back.push(behind);
       }
     }
-    node.pieces.sort(byPaintOrder);
+    node.pieces.sort(this.#tie);
     node.front = this.#build(front);
     node.back = this.#build(back);
     return node;
@@ -400,8 +489,8 @@ export class LayerTree {
     for (let i = 0; i < polygon.count; i += 1) {
       const d = plane.distanceToPoint(polygon.points[i]);
       this.#distances[i] = d;
-      ahead ||= d > COPLANAR;
-      behind ||= d < -COPLANAR;
+      ahead ||= d > this.#coplanar;
+      behind ||= d < -this.#coplanar;
     }
     if (ahead && behind) {
       return 2;
@@ -410,12 +499,103 @@ export class LayerTree {
   }
 
   /**
+   * Whether `splitter` would cut `polygon` in two.
+   *
    * @param {Polygon} polygon
-   * @param {THREE.Plane} plane
+   * @param {Polygon} splitter
    * @returns {boolean}
    */
-  #straddles(polygon, plane) {
-    return this.#side(polygon, plane) === 2;
+  #cuts(polygon, splitter) {
+    return (
+      this.#side(polygon, splitter.plane) === 2 &&
+      (!this.#onlyWhereMet || this.#meets(polygon, splitter))
+    );
+  }
+
+  /**
+   * Whether a polygon that crosses the splitter's plane clear of the
+   * splitter meets another polygon of the set that is not wholly on the
+   * side the polygon's middle is on: one in the splitter's plane, across
+   * it, or on its far side. Sent whole to its middle's side, it would be
+   * ordered against that one in the wrong subtree, or not at all.
+   *
+   * @param {Polygon} polygon
+   * @param {Polygon} splitter
+   * @param {Polygon[]} set
+   * @returns {boolean}
+   */
+  #meetsAcross(polygon, splitter, set) {
+    const ahead = middleSide(polygon, splitter.plane) >= 0;
+    for (const other of set) {
+      if (other === polygon || other === splitter) {
+        continue;
+      }
+      const side = this.#side(other, splitter.plane);
+      if (side === (ahead ? 1 : -1)) {
+        continue;
+      }
+      if (this.#side(polygon, other.plane) === 2 && this.#meets(polygon, other)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether a polygon that crosses the splitter's plane, by the distances
+   * `#side` left, crosses it inside the splitter's polygon: whether the
+   * segment it crosses the plane along meets that convex polygon. The
+   * segment is clipped to each of the polygon's edges in turn.
+   *
+   * @param {Polygon} polygon
+   * @param {Polygon} splitter
+   * @returns {boolean}
+   */
+  #meets(polygon, splitter) {
+    const distances = this.#distances;
+    const coplanar = this.#coplanar;
+    let ends = 0;
+    for (let i = 0; i < polygon.count && ends < 2; i += 1) {
+      const j = (i + 1) % polygon.count;
+      const da = distances[i];
+      const db = distances[j];
+      const end = ends === 0 ? segmentStart : segmentEnd;
+      if (Math.abs(da) <= coplanar) {
+        end.copy(polygon.points[i]);
+        ends += 1;
+      } else if ((da > coplanar && db < -coplanar) || (da < -coplanar && db > coplanar)) {
+        end.copy(polygon.points[i]).lerp(polygon.points[j], da / (da - db));
+        ends += 1;
+      }
+    }
+    if (ends < 2) {
+      segmentEnd.copy(segmentStart);
+    }
+    let from = 0;
+    let to = 1;
+    const n = splitter.count;
+    middleOf(splitter, middle);
+    direction.subVectors(segmentEnd, segmentStart);
+    for (let i = 0; i < n && from <= to; i += 1) {
+      const a = splitter.points[i];
+      edge.subVectors(splitter.points[(i + 1) % n], a);
+      inward.crossVectors(splitter.plane.normal, edge);
+      if (inward.dot(toPoint.subVectors(middle, a)) < 0) {
+        inward.negate();
+      }
+      const start = inward.dot(toPoint.subVectors(segmentStart, a)) + coplanar * inward.length();
+      const along = inward.dot(direction);
+      if (along === 0) {
+        if (start < 0) {
+          return false;
+        }
+      } else if (along > 0) {
+        from = Math.max(from, -start / along);
+      } else {
+        to = Math.min(to, -start / along);
+      }
+    }
+    return from <= to;
   }
 
   /**
@@ -431,19 +611,20 @@ export class LayerTree {
     const front = this.#piece(polygon, plane, 1, splitter);
     const back = this.#piece(polygon, plane, -1, splitter);
     const distances = this.#distances;
+    const coplanar = this.#coplanar;
     const n = polygon.count;
     for (let i = 0; i < n; i += 1) {
       const a = polygon.points[i];
       const b = polygon.points[(i + 1) % n];
       const da = distances[i];
       const db = distances[(i + 1) % n];
-      if (da >= -COPLANAR) {
+      if (da >= -coplanar) {
         front.point(front.count++).copy(a);
       }
-      if (da <= COPLANAR) {
+      if (da <= coplanar) {
         back.point(back.count++).copy(a);
       }
-      if ((da > COPLANAR && db < -COPLANAR) || (da < -COPLANAR && db > COPLANAR)) {
+      if ((da > coplanar && db < -coplanar) || (da < -coplanar && db > coplanar)) {
         const t = da / (da - db);
         front.point(front.count++).copy(a).lerp(b, t);
         back.point(back.count++).copy(a).lerp(b, t);

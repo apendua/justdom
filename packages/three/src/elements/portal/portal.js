@@ -544,7 +544,7 @@ function buildPortal(ctx, ownOptions = {}) {
 
   // And the order its layers draw in from where the viewer stands, walked
   // each frame before the batches flush and cut after (`layerOrder.js`),
-  // which moves the depth quad to the end of the panel's slot.
+  // which moves the depth quad to the end of the panel's last slot.
   state.layerOrder = new LayerOrder({
     container: state.containerObject,
     root: state.containerElement,

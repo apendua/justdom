@@ -73,9 +73,10 @@ export { anchorToViewer } from "./anchor.js";
 export { installCrashPanel, CRASH_PANEL_ID } from "./crash.js";
 export {
   canDrawHtmlInCanvas,
+  createElementTexture,
+  drawInCanvas,
   htmlTextureMaterial,
   paintedElement,
-  requestPaint,
 } from "./htmlTexture.js";
 
 /**

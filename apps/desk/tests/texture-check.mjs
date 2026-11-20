@@ -1,11 +1,11 @@
 /**
  * Puts the desk's HTML-in-Canvas variant (`?panels=texture`) up in a
- * session on the emulated headset, in headless Chromium with the feature
- * that variant needs turned on (`--enable-blink-features=CanvasDrawElement`).
+ * session on the emulated headset, in headless Chromium. That variant needs
+ * Chromium 157 or later, which ships HTML-in-Canvas with no flag, so
+ * `CHROMIUM` has to name one: the driver's default is older.
  *
- *   node tests/texture-check.mjs
- *   SHOTS=out node tests/texture-check.mjs   # and photograph each session
  *   CHROMIUM=<path> node tests/texture-check.mjs
+ *   SHOTS=out CHROMIUM=<path> node tests/texture-check.mjs   # and photograph each session
  *
  * For each look in turn, it enters a session and checks that:
  *
@@ -20,9 +20,9 @@
  *   back to the page;
  * - the page throws nothing along the way.
  *
- * Unlike `tests/xr-check.mjs` it is not run on pull requests: the feature
- * is behind a flag, and a Chromium that drops or renames it would fail the
- * check for a reason no change here made.
+ * It prints the Chromium it ran on first. Unlike `tests/xr-check.mjs` it is
+ * not run on pull requests: CI's Chromium is the one justdom-xr's
+ * playwright-core pins, 156 with playwright-core 1.64.
  */
 import { join, resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -61,7 +61,8 @@ async function main() {
   /** @type {typeof import("../src/looks.ts")} */
   const looks = /** @type {any} */ (await server.ssrLoadModule("/src/looks.ts"));
 
-  const browser = await launch({ args: ["--enable-blink-features=CanvasDrawElement"] });
+  const browser = await launch();
+  console.log(`Chromium ${browser.version()}`);
   try {
     for (const look of looks.LOOKS) {
       const { id } = look;

@@ -144,29 +144,36 @@ box.
 each zone into a texture instead of `justdom-three` mirroring it. The page is the same justdom page,
 and only the way it reaches the headset changes. `?panels=texture&emulator` tries it on a desktop.
 
-It needs [HTML-in-Canvas](https://github.com/WICG/html-in-canvas), which only Chromium has, behind a
-flag: turn on `chrome://flags/#canvas-draw-element`, or start Chromium with
-`--enable-blink-features=CanvasDrawElement`. Without it the page says so in the corner and offers no
-session. It was tried in Chromium 153 under the emulator. The proposal is still moving: its README
-has since renamed the canvas's `layoutsubtree` attribute to `content="drawable"`, and Chromium has
-changed `texElementImage2D`'s arguments once already. three r185's `HTMLTexture` does the upload and
-knows both forms of that call, but a Chromium that follows the README further may need changes here.
-There is no flag in the Quest Browser, and the Quest stops rendering the page during a session,
-which is when the canvas's `paint` event fires, so the panels would not change there.
+It needs [HTML-in-Canvas](https://github.com/WICG/html-in-canvas), which Chrome ships with no flag
+from [Chrome 157](https://developer.chrome.com/blog/html-in-canvas). Without it the page says so in
+the corner and offers no session. It was tried in Chrome for Testing 157 under the emulator
+(`tests/texture-check.mjs`). An earlier Chromium had the API behind
+`chrome://flags/#canvas-draw-element`, up to 154 under older names (`layoutsubtree`,
+`texElementImage2D`), and the desk no longer runs there. The Quest stops rendering the page during a
+session, which is when the canvas's `paint` event fires, so the panels would not change there.
 
-How it draws (`src/texture/Scene.ts`):
+How it draws (`src/texture/Scene.ts`, with `drawInCanvas` and `createElementTexture` from
+`justdom-three`):
 
 - When a session starts, the desk's element (`[data-desk]`) is moved into the renderer's canvas,
-  which gets `layoutsubtree`. The browser lays it out there and draws it nowhere on the page. The
-  staging comes off as it does for the mirror, and the wall and the tabletop between the zones are
-  hidden, so the texture is the zones on a transparent ground.
-- The canvas fires `paint` when the browser has painted the desk again. On the first one three's
-  `HTMLTexture` is made from the desk; on each one it is marked for upload, and three uploads it
-  with `texElementImage2D` on the next frame. Made before the first paint, three uploads on every
-  frame and throws until the paint arrives.
+  which gets `content="drawable"`, and the desk gets `drawable`. The browser lays it out there and
+  draws it nowhere on the page. The staging comes off as it does for the mirror, and the wall and
+  the tabletop between the zones are hidden, so the texture is the zones on a transparent ground.
+- The canvas fires `paint` when the browser has painted the desk again, and the event lists the desk
+  among the elements whose picture changed. On each such paint the desk is drawn into its texture
+  with `texElementSubImage2D`, at its size in CSS px. That call only writes into storage that
+  exists, so the storage is allocated first, and again whenever the desk's size changes. three r185
+  to r187's `HTMLTexture` still uploads with `texElementImage2D`, which Chrome 157 no longer has, so
+  the texture is an `ExternalTexture` around a WebGL texture of the desk's own. The panels are
+  hidden until the first paint, since there is no picture before it.
 - The whole desk is one texture. Each zone the look places is a flat plane, posed as the mirror
   poses it, whose UVs are the zone's rect in the desk, measured again on every paint.
-- When the session ends the desk goes back into `.stage`, and the canvas loses `layoutsubtree`.
+- When the session ends the desk goes back into `.stage`, loses `drawable`, and the canvas loses
+  `content`.
+- The desk does not call `updateElementGeometry`, which tells the browser where a drawable element
+  appears on the canvas so that its own hit testing and focus rings follow. In a session each zone
+  is a plane of its own in the room, not one place on the canvas, and the desk routes a ray's input
+  itself, as follows.
 
 How input reaches the DOM (`src/texture/forwarding.ts`): a ray on a panel lands at a UV, which is a
 point of the desk in client px. The page is asked which element is there by a walk over the zone's
@@ -198,12 +205,14 @@ What it does not do that the mirror does:
 - The events are untrusted (`isTrusted` is false), and the drag carries a `new DataTransfer()`,
   which keeps data but ignores `effectAllowed` and `dropEffect`. The desk reads neither.
 
-`node tests/texture-check.mjs` checks it on the emulated headset, in Chromium with the flag turned
-on: for each look the desk is drawn from the canvas, the ray marks the power control and its trigger
-ends the session and puts the desk back; on Beige Box '84 a key types on the monitor and a floppy
-dragged onto the drive loads its program. It is not run on pull requests, since a Chromium that
-drops or renames the flag would fail it for no change here. `SHOTS=<dir>` photographs each session,
-and `CHROMIUM` works as it does for `tests/xr-check.mjs`.
+`CHROMIUM=<path> node tests/texture-check.mjs` checks it on the emulated headset, in a Chromium of
+157 or later, whose version it prints first: for each look the desk is drawn from the canvas, the
+ray marks the power control and its trigger ends the session and puts the desk back; on Beige Box
+'84 a key types on the monitor and a floppy dragged onto the drive loads its program. `CHROMIUM`
+works as it does for `tests/xr-check.mjs`, but the driver's default Chromium is older than 157, so
+here it has to be given. Chrome for Testing has builds to download. The check is not run on pull
+requests, since CI's Chromium, the one justdom-xr's `playwright-core` pins, is 156. `SHOTS=<dir>`
+photographs each session.
 
 ## How it is put together
 

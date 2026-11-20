@@ -4,14 +4,16 @@ import { whilePresenting } from "justdom-xr/scene";
 import {
   $,
   children,
+  createElementTexture,
   cursors,
+  drawInCanvas,
   followUserActions,
   getScene,
   getXRSession,
   htmlTextureMaterial,
   interactions,
+  paintedElement,
   RendererContext,
-  requestPaint,
   type XREventMap,
 } from "justdom-three";
 import { component, effects, effectsOnly, on, onCleanup, useEffects } from "justdom-signal";
@@ -29,17 +31,14 @@ type PanelMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREven
  * hit reads straight off as a point of the desk.
  */
 function panelMesh(): PanelMesh {
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), htmlTextureMaterial()) as PanelMesh;
-  // Until the desk has been painted once there is nothing to show.
-  mesh.visible = false;
-  return mesh;
+  return new THREE.Mesh(new THREE.PlaneGeometry(1, 1), htmlTextureMaterial()) as PanelMesh;
 }
 
 /**
  * Size `mesh` to `zone` and point its UVs at the zone's rect in the
  * texture of `desk`, in the desk's own px. A portal draws a px a
  * centimetre, and `pose` scales the group for that, so the plane is a
- * hundredth of a metre per px. Rows of an `HTMLTexture` run from the
+ * hundredth of a metre per px. Rows of the desk's texture run from the
  * element's top, so `t` grows downwards, the other way to the plane's `v`.
  * Written only when the zone has moved or changed size since the last fit.
  */
@@ -81,13 +80,13 @@ function fitToZone(mesh: PanelMesh, zone: HTMLElement, desk: HTMLElement): void 
  * same room as `components/Scene.ts`, with each zone the look places drawn
  * from a texture rather than mirrored object by object.
  *
- * While a session runs the desk's element is a child of the renderer's
- * canvas, whose `layoutsubtree` lets the browser lay it out and draw it
- * there, and nowhere else, and three's `HTMLTexture` is made from it. Every time the
- * browser paints it anew the canvas fires `paint`, three uploads it again
- * with `texElementImage2D`, and the panels are fitted to where their zones
- * are now. When the session ends the element goes back where it was on the
- * page.
+ * While a session runs the desk's element is a drawable child of the
+ * renderer's canvas (`drawInCanvas`), which the browser lays out and draws
+ * there, and nowhere else. Every time the browser paints it anew the canvas
+ * fires `paint` listing it, its picture is uploaded again with
+ * `texElementSubImage2D` (`createElementTexture`), and the panels are fitted
+ * to where their zones are now. When the session ends the element goes back
+ * where it was on the page.
  *
  * A ray on a panel is a point of the desk, which `forwarding.ts` turns into
  * the events a mouse would have sent there, so the page's own handlers run
@@ -109,11 +108,10 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           ctx,
           component(() => {
             const { look, root, elements } = desk.get();
-            const canvas = RendererContext.get(ctx).domElement;
+            const renderer = RendererContext.get(ctx);
+            const canvas = renderer.domElement;
             const home = root.parentElement;
-            canvas.setAttribute("layoutsubtree", "");
-            canvas.append(root);
-            requestPaint(canvas);
+            const undraw = drawInCanvas(canvas, root);
             // The looks write `:hover` and `:active` alone, which a panel's
             // portal rewrites to answer the flags the forwarder sets. Nothing
             // here mirrors the desk, so the session asks for the rewrite.
@@ -133,30 +131,24 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
               return forwarder;
             };
 
-            // The texture is made on the first paint, and not before. Made
-            // earlier, three moves the desk into the canvas itself on the
-            // first frame and asks for a paint, and on every frame after it
-            // uploads again, which throws until the paint has come ("No
-            // cached paint record"): a session's frames do not wait for the
-            // page's. Made from an element the canvas already holds, the
-            // `HTMLTexture` sets the canvas's `onpaint` to mark it for upload
-            // on every paint after, so here a paint only fits the panels.
-            let texture: THREE.HTMLTexture | null = null;
+            // The desk is uploaded at each paint that painted it, and the
+            // panels are shown from the first: before that there is no
+            // picture, and an upload throws. A session's frames do not wait
+            // for the page's paints, so until then they draw the room alone.
+            const { texture, upload, dispose } = createElementTexture(renderer, root);
+            // Rows from the element's top, as `fitToZone` counts them.
+            texture.flipY = false;
+            let painted = false;
             const meshes: PanelMesh[] = [];
             const fits: (() => void)[] = [];
-            const onPaint = () => {
-              if (!texture) {
-                texture = new THREE.HTMLTexture(root);
-                texture.colorSpace = THREE.SRGBColorSpace;
-                // Rows from the element's top, as `fitToZone` counts them.
-                // three flips a texture's rows on upload unless told not to,
-                // and `texElementImage2D` honours it.
-                texture.flipY = false;
-                for (const mesh of meshes) {
-                  mesh.material.map = texture;
-                  mesh.material.needsUpdate = true;
-                  mesh.visible = true;
-                }
+            const onPaint = (event: Event) => {
+              if (!paintedElement(event, root)) {
+                return;
+              }
+              upload();
+              if (!painted) {
+                painted = true;
+                meshes.forEach((mesh) => (mesh.visible = true));
               }
               fits.forEach((fit) => fit());
             };
@@ -165,11 +157,11 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
             onCleanup(() => {
               canvas.removeEventListener("paint", onPaint);
               forwarders.forEach((forwarder) => forwarder.cancel());
-              texture?.dispose();
+              dispose();
               if (home && root.parentElement !== home) {
                 home.append(root);
               }
-              canvas.removeAttribute("layoutsubtree");
+              undraw();
               stopFollowing();
             });
 
@@ -194,6 +186,10 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
                   fit();
                   fits.push(fit);
                   meshes.push(m);
+                  m.material.map = texture;
+                  // Until the desk has been painted once there is nothing
+                  // to show.
+                  m.visible = painted;
                   onCleanup(() => {
                     fits.splice(fits.indexOf(fit), 1);
                     meshes.splice(meshes.indexOf(m), 1);

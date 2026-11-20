@@ -9,22 +9,25 @@ you and what it costs.
 
 The Desk demo does both. <a href="/demos/desk/?emulator" target="_self">The mirror</a> is its
 default, and <a href="/demos/desk/?panels=texture&emulator" target="_self">texture mode</a> draws
-the same desk with HTML-in-Canvas. Both links start the headset emulator. Texture mode needs a
-Chromium that still has the API's first names, with `chrome://flags/#canvas-draw-element` turned on
-([Where each one runs](#where-each-one-runs) says which). Without the API the page says so in a
-corner and offers no session.
+the same desk with HTML-in-Canvas. Both links start the headset emulator. Texture mode needs Chrome
+157 or later, which has the API with no flag ([Where each one runs](#where-each-one-runs) says
+more). Without the API the page says so in a corner and offers no session.
 
 ## How the texture mode works
 
 When the session starts, the page moves its desk element into the renderer's canvas and marks the
-canvas so that the browser lays out what is inside it. The browser paints the desk there and nowhere
-on the page. Each time the canvas fires `paint`, three's `HTMLTexture` uploads the desk as one
-texture, and each zone of the desk is a flat plane cut out of it.
+canvas `content="drawable"` and the desk `drawable`, so that the browser lays the desk out there.
+The browser paints the desk there and nowhere on the page. Each time the canvas fires `paint` for
+the desk, the desk is drawn into one texture with `texElementSubImage2D`, and each zone of the desk
+is a flat plane cut out of it. `justdom-three`'s `drawInCanvas` and `createElementTexture` do both
+halves; three's own `HTMLTexture` still calls the API's earlier name, which Chrome 157 dropped.
 
 The browser does not route a ray's input to an element it painted into a texture, so the desk does
-that itself. A ray's point on a plane is a point of the desk in client px. The desk finds the
-element there and sends it the pointer, mouse, click and drag events a mouse would, and writes
-`data-xr-hover` and `data-xr-active` as the mirror does. The desk's README has the details.
+that itself. The API's `updateElementGeometry` tells the browser where an element appears on the
+canvas, for its own hit testing, but in a session each zone is a plane of its own in the room, not
+one place on the canvas. A ray's point on a plane is a point of the desk in client px. The desk
+finds the element there and sends it the pointer, mouse, click and drag events a mouse would, and
+writes `data-xr-hover` and `data-xr-active` as the mirror does. The desk's README has the details.
 
 ## What each one draws
 
@@ -65,18 +68,19 @@ The mirror needs WebGL and WebXR, so it runs in the Quest Browser and in every b
 headset.
 
 HTML-in-Canvas is a Chromium API. [Chrome 157](https://developer.chrome.com/blog/html-in-canvas)
-ships it as stable, after an origin trial; before that it is behind the flag. Mozilla
+ships it as stable, with no flag, after an origin trial; before that it was behind
+`chrome://flags/#canvas-draw-element`. Mozilla
 ([standards-positions#1076](https://github.com/mozilla/standards-positions/issues/1076)) and WebKit
 ([standards-positions#630](https://github.com/WebKit/standards-positions/issues/630)) have not taken
-a position on it. The Quest Browser has no flag for it, and it stops rendering the page during an
-immersive session, which is when the canvas would fire `paint`.
+a position on it. The Quest Browser stops rendering the page during an immersive session, which is
+when the canvas would fire `paint`.
 
-The API changed on its way to stable, and the desk has not followed. It was written against Chromium
-153 with the flag on, using the canvas's `layoutsubtree` attribute and `texElementImage2D`. Chrome
-150 had already changed that call's arguments, and the
-[origin trial's changes](https://developer.chrome.com/blog/html-in-canvas-ot-changes) rename the
-attribute to `content="drawable"` and the call to `texElementSubImage2D`. A Chrome with the new
-names needs the desk updated before texture mode works there.
+The API changed on its way to stable. The
+[origin trial's changes](https://developer.chrome.com/blog/html-in-canvas-ot-changes) renamed the
+canvas's `layoutsubtree` attribute to `content="drawable"`, with `drawable` on each element to draw,
+and `texElementImage2D` to `texElementSubImage2D`, which draws into storage the caller has allocated
+instead of allocating it. The desk and the showcase use the names Chrome 157 ships, and do not run
+in a Chromium that has only the earlier ones.
 
 ## Which one to use
 

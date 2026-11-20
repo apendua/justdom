@@ -228,13 +228,13 @@ disagree in magenta. It prints the panels with the most different first. Text ne
 pixel, so the two are compared in 4 px blocks, and a block counts only when its average colour is
 far off.
 
-It is a tool, not a test, and nothing runs it on a pull request. The browser needs
-`--enable-blink-features=CanvasDrawElement`, which the script passes, and a later Chromium may
-rename the API; the script stops with an error if the page fell back to the mirror. Two differences
-are the reference's and not the mirror's: the browser's picture is cut to the card, so anything that
-hangs off the card is missing from it, and an animation in it may stand at another point of its
-timeline than the mirror's does, so a panel that moves (motion, the typed paragraph on text) differs
-there whatever the mirror draws.
+It is a tool, not a test, and nothing runs it on a pull request. It needs Chromium 157 or later,
+which ships HTML-in-Canvas with no flag, and the Chromium the visual suite installs is older, so
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` has to name one. The script stops with an error if the page fell
+back to the mirror. Two differences are the reference's and not the mirror's: the browser's picture
+is cut to the card, so anything that hangs off the card is missing from it, and an animation in it
+may stand at another point of its timeline than the mirror's does, so a panel that moves (motion,
+the typed paragraph on text) differs there whatever the mirror draws.
 
 ## One thing that will bite whoever changes the harness
 

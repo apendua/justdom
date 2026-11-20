@@ -96,19 +96,11 @@ async function serve() {
  *   over nothing from here.
  * @param {string} [options.query] More of the address's query, after
  *   `emulator=bare`, such as `panel=all`.
- * @param {string[]} [options.args] More switches for Chromium, such as the
- *   one that turns HTML-in-Canvas on for `?panels=texture`.
  * @param {number} [options.deviceScaleFactor] Device px per CSS px. The
  *   baselines are photographed at 1.
  * @returns {Promise<{ page: Page, browser: Browser, close: () => Promise<void> }>}
  */
-export async function openShowcase({
-  freeze = true,
-  init,
-  query,
-  args = [],
-  deviceScaleFactor = 1,
-} = {}) {
+export async function openShowcase({ freeze = true, init, query, deviceScaleFactor = 1 } = {}) {
   const server = await serve();
   const browser = await chromium.launch({
     executablePath: findChromium(),
@@ -122,7 +114,6 @@ export async function openShowcase({
       "--force-color-profile=srgb",
       "--disable-lcd-text",
       "--font-render-hinting=none",
-      ...args,
     ],
   });
   const page = await browser.newPage({

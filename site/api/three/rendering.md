@@ -108,13 +108,22 @@ closes.
 
 ### Elements the browser draws
 
-Four helpers are for a scene that shows an element the browser draws itself, with
+Five helpers are for a scene that shows an element the browser draws itself, with
 [HTML-in-Canvas](/guide/html-in-canvas), beside or instead of a mirror. `canDrawHtmlInCanvas()` says
-whether the browser can: it needs both `texElementImage2D` on WebGL2 and `requestPaint` on the
-canvas, which Chromium has behind `chrome://flags/#canvas-draw-element`. `htmlTextureMaterial()` is
-the unlit, see-through material for three's `HTMLTexture`. three uploads that texture as RGBA8,
-which the GPU does not decode from sRGB, so a plain material shows every colour lighter than the
-page drew it; this one decodes it in the shader. `requestPaint(canvas)` asks the browser to paint
-what the canvas holds and fire `paint`, and `paintedElement(event, element)` says whether a `paint`
-event painted that element, so that a texture made from it has something to upload. The desk's
-texture mode and the showcase's `?panels=texture` both use them.
+whether the browser can: it needs both `texElementSubImage2D` on WebGL2 and `requestPaint` on the
+canvas, which Chrome has with no flag from 157. `drawInCanvas(canvas, element)` makes the element a
+drawable child of the canvas (`content="drawable"` on the canvas, `drawable` on the element) and
+asks for a `paint`; the function it returns takes both attributes off again, the canvas's once no
+drawable child is left, and leaves moving the element out to the caller.
+`createElementTexture(renderer, element)` returns `{ texture, upload, dispose }`: `texture` is a
+three `ExternalTexture`, and `upload()` draws the element's latest picture into it with
+`texElementSubImage2D`, at the element's size in device px, allocating the storage again when that
+size changes. Its rows run from the element's bottom, as three's own uploads do, unless
+`texture.flipY` is `false`. three's own `HTMLTexture` (r185 to r187) uploads with
+`texElementImage2D`, which Chrome 157 no longer has. `paintedElement(event, element)` says whether a
+`paint` event lists that element among those whose picture changed, so that `upload` has something
+new to draw: before the first such paint there is no picture, and an upload throws.
+`htmlTextureMaterial()` is the unlit, see-through material for that texture. `texElementSubImage2D`
+writes RGBA8, which the GPU does not decode from sRGB, so a plain material shows every colour
+lighter than the page drew it; this one decodes it in the shader. The desk's texture mode and the
+showcase's `?panels=texture` both use them.

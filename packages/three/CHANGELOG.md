@@ -1,6 +1,13 @@
 # Change Log - justdom-three
 
-This log was last generated on Fri, 20 Nov 2026 23:50:03 GMT and should not be manually modified.
+This log was last generated on Sat, 21 Nov 2026 08:02:16 GMT and should not be manually modified.
+
+## 0.39.0
+Sat, 21 Nov 2026 08:02:16 GMT
+
+### Minor changes
+
+- Replace the `overlay` panel option with `layer: "world" | "overlay" | "hud"`. A HUD panel draws over every overlay as an overlay draws over the world, after a depth clear of its own, and takes the ray from a nearer overlay. `overlay: true` is now `layer: "overlay"`
 
 ## 0.38.1
 Fri, 20 Nov 2026 23:50:03 GMT

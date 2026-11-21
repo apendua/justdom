@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The controller ray is a soft beam that fades out with distance from the hand, rather than a line.",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

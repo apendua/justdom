@@ -1,6 +1,13 @@
 # Change Log - justdom-three
 
-This log was last generated on Sat, 21 Nov 2026 08:02:16 GMT and should not be manually modified.
+This log was last generated on Sat, 21 Nov 2026 12:50:12 GMT and should not be manually modified.
+
+## 0.40.0
+Sat, 21 Nov 2026 12:50:12 GMT
+
+### Minor changes
+
+- The controller ray is a soft beam that fades out with distance from the hand, rather than a line.
 
 ## 0.39.0
 Sat, 21 Nov 2026 08:02:16 GMT

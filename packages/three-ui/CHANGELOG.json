@@ -2,6 +2,21 @@
   "name": "justdom-three-ui",
   "entries": [
     {
+      "version": "0.7.5",
+      "tag": "justdom-three-ui_v0.7.5",
+      "date": "Sat, 21 Nov 2026 12:50:12 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.40.0`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.40.0`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.7.4",
       "tag": "justdom-three-ui_v0.7.4",
       "date": "Sat, 21 Nov 2026 08:02:16 GMT",

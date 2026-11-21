@@ -1,6 +1,13 @@
 # Change Log - justdom-three-ui
 
-This log was last generated on Fri, 20 Nov 2026 23:50:03 GMT and should not be manually modified.
+This log was last generated on Sat, 21 Nov 2026 08:02:16 GMT and should not be manually modified.
+
+## 0.7.4
+Sat, 21 Nov 2026 08:02:16 GMT
+
+### Patches
+
+- Draw the frame rate readout in the HUD layer, so a game's menu drawn as an overlay no longer hides it
 
 ## 0.7.3
 Fri, 20 Nov 2026 23:50:03 GMT

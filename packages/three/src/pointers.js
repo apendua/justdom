@@ -210,11 +210,11 @@ export const DEFAULT_RAY_LENGTH = 5;
  * Ends a controller's ray where the ray itself ends: at whatever it hit, or at
  * `fallback` when it hit nothing.
  *
- * The ray is drawn as a unit segment down -Z, so its length is its z scale —
- * and the manager casts from the same origin along the same line, which makes
+ * The ray is drawn along a unit segment down -Z (`createRay`), so its length
+ * is its z scale — and the manager casts from the same origin along the same line, which makes
  * its hit distance and that scale the same number.
  *
- * @param {THREE.Object3D} ray The line, already parented to `controller`.
+ * @param {THREE.Object3D} ray The beam, already parented to `controller`.
  * @param {THREE.XRTargetRaySpace} controller
  * @param {Pointers} all
  * @param {number} [fallback]

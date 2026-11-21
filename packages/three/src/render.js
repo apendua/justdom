@@ -4,6 +4,7 @@ import { InteractionManager, InteractionContext } from "./interactions.js";
 import { PanelOptionsContext, PortalPluginsContext } from "./panelContexts.js";
 import { createSceneHost } from "./sceneServices.js";
 import { fitRayToHit } from "./pointers.js";
+import { createRay } from "./ray.js";
 import { reportCrash } from "./crash.js";
 import { mouse, renderPointer } from "./mouse.js";
 import { addToParent } from "./operators.js";
@@ -235,17 +236,8 @@ export function render(fn, options = {}) {
       ctx = PanelOptionsContext.set(ctx, options.panelOptions);
     }
 
-    // Add simple rays to controllers. This will need to be revisited.
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, -1),
-    ]);
-
-    const lineMaterial = new THREE.LineBasicMaterial({
-      color: 0xdddddd,
-    });
-    const line = new THREE.Line(lineGeometry, lineMaterial);
-    line.name = "line";
+    // The beam each controller points with, cloned per hand (`ray.js`).
+    const beam = createRay();
 
     // Each slot is three spaces on one input: the target ray it points with,
     // the grip a held thing sits in, and the hand space whose joints three
@@ -265,7 +257,7 @@ export function render(fn, options = {}) {
       // The length is not fixed: each ray is cut at whatever it is pointing
       // at, so it stops at the surface rather than disappearing into it. Both
       // clones share the geometry, which is why the length lives in the scale.
-      const ray = line.clone();
+      const ray = beam.clone();
       controller.add(ray);
       subscriber.add(fitRayToHit(ray, controller, interactionManager.pointers).subscribe());
       const handle = createControllerHandle(index, controller, grip, hand, ray);

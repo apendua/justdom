@@ -163,10 +163,11 @@ export function getXRSession(ctx) {
  * @property {THREE.XRTargetRaySpace} controller Target ray space: origin at the
  *   controller, -Z pointing where it aims.
  * @property {THREE.XRGripSpace} grip Grip space: where a held object sits.
- * @property {THREE.Object3D} ray The line drawn down the target ray, a child
- *   of `controller`, cut at whatever the ray is on. Hiding it hides the line
- *   and nothing else: the hand still points, hovers and presses, and its
- *   cursor still shows on what it points at.
+ * @property {THREE.Object3D} ray The beam drawn down the target ray, a child
+ *   of `controller`, cut at whatever the ray is on and faded out with the
+ *   distance from the hand (`ray.js`). Hiding it hides the beam and nothing
+ *   else: the hand still points, hovers and presses, and its cursor still
+ *   shows on what it points at.
  * @property {THREE.XRHandSpace} hand Hand space: `joints` are the twenty-five
  *   `XRHandJoint`s three fills in every frame while a tracked hand drives
  *   this slot, each an `Object3D` in the reference space. Empty and hidden

@@ -5,6 +5,7 @@ import { keepProgram } from "./paint/programKeeper.js";
 /**
  * @import {XREventMap} from '../core.js';
  * @import {ProgramKind} from './paint/programKeeper.js';
+ * @import {PanelLayer} from '../drawOrder.js';
  */
 
 /**
@@ -196,25 +197,26 @@ const clearMaterial = new THREE.MeshBasicMaterial({
 });
 
 /**
- * The render each renderer last cleared depth in, and for which camera: an
- * eye, without multiview. Written in place, so a frame makes nothing.
+ * The render a renderer last cleared depth in for a layer, and for which
+ * camera: an eye, without multiview. Written in place, so a frame makes
+ * nothing.
  *
- * @type {WeakMap<THREE.WebGLRenderer, { frame: number, camera: THREE.Camera | null }>}
+ * @typedef {{ frame: number, camera: THREE.Camera | null }} LastClear
  */
-const lastClears = new WeakMap();
 
 /**
- * Clear the depth buffer, once for each render and camera: every overlay
- * has a clear, at one order before the first overlay's slot, and only the
- * first of them drawn clears. The rest would wipe the depth quads of the
- * overlays drawn before them, and an overlay would no longer be hidden by
- * a nearer one, as panels are.
+ * Clear the depth buffer, once for each render, camera and layer: every
+ * overlay and HUD panel has a clear, at one order before the first slot of
+ * its layer, and only the first of a layer's drawn clears. The rest would
+ * wipe the depth quads of the panels of that layer drawn before them, and
+ * a panel would no longer be hidden by a nearer one in its layer, as panels
+ * are.
  *
+ * @param {WeakMap<THREE.WebGLRenderer, LastClear>} lastClears The layer's.
  * @param {THREE.WebGLRenderer} renderer
- * @param {THREE.Scene} scene
  * @param {THREE.Camera} camera
  */
-function clearDepth(renderer, scene, camera) {
+function clearDepth(lastClears, renderer, camera) {
   const frame = renderer.info.render.frame;
   let last = lastClears.get(renderer);
   if (!last) {
@@ -230,22 +232,48 @@ function clearDepth(renderer, scene, camera) {
 }
 
 /**
- * A mesh that draws nothing and clears the depth buffer where it falls in
- * the draw order, once for each render and camera (`clearDepth`): what the
- * overlay panels start with, so that what was drawn before them, the scene
- * and the ordinary panels, hides none of them (`LayerOrder`). In a session
- * with no multiview three draws the eyes one after the other, and the clear
- * takes both eyes' depth; the eye drawn first has drawn everything by then,
- * so only its depth goes, which no later draw reads. Shared, as a
- * blocker's is: nothing in it is a panel's. Never culled, since it has no
- * bounds to cull by, and no ray target.
+ * The hook each layer's clears call before they draw, each with its own
+ * record of the layer's last clears (`clearDepth`).
  *
+ * @type {Map<PanelLayer, THREE.Object3D["onBeforeRender"]>}
+ */
+const clearHooks = new Map();
+
+/**
+ * The hook a layer's clears call before they draw, one for the layer.
+ *
+ * @param {PanelLayer} layer
+ * @returns {THREE.Object3D["onBeforeRender"]}
+ */
+function clearHook(layer) {
+  let hook = clearHooks.get(layer);
+  if (!hook) {
+    /** @type {WeakMap<THREE.WebGLRenderer, LastClear>} */
+    const lastClears = new WeakMap();
+    hook = (renderer, _scene, camera) => clearDepth(lastClears, renderer, camera);
+    clearHooks.set(layer, hook);
+  }
+  return hook;
+}
+
+/**
+ * A mesh that draws nothing and clears the depth buffer where it falls in
+ * the draw order, once for each render, camera and layer (`clearDepth`):
+ * what the panels of `layer` start with, so that what was drawn before
+ * them, the scene and the panels of lower layers, hides none of them
+ * (`LayerOrder`). In a session with no multiview three draws the eyes one
+ * after the other, and the clear takes both eyes' depth; the eye drawn
+ * first has drawn everything by then, so only its depth goes, which no
+ * later draw reads. Shared, as a blocker's is: nothing in it is a panel's.
+ * Never culled, since it has no bounds to cull by, and no ray target.
+ *
+ * @param {Exclude<PanelLayer, "world">} layer
  * @returns {THREE.Mesh}
  */
-export function createDepthClear() {
+export function createDepthClear(layer) {
   const mesh = new THREE.Mesh(nothing, clearMaterial);
   mesh.frustumCulled = false;
   mesh.raycast = () => {};
-  mesh.onBeforeRender = clearDepth;
+  mesh.onBeforeRender = clearHook(layer);
   return mesh;
 }

@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
+import { HUD_PANEL_ORDER, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
 import { pagePanel } from "../../test/pagePanel.js";
 import { settle } from "../../test/portalHarness.js";
 import { stubGlRenderer } from "../../test/stubGl.js";
@@ -19,11 +19,11 @@ const CARD = "position: absolute; background: rgb(255, 255, 255)";
  *
  * @param {THREE.Scene} scene
  * @param {number} distance
- * @param {boolean} overlay
+ * @param {import("../../drawOrder.js").PanelLayer} layer
  */
-async function panelAt(scene, distance, overlay) {
+async function panelAt(scene, distance, layer) {
   const page = await pagePanel([{ id: "card", style: CARD, at: [100, 100, 100, 100] }], {
-    portal: { overlay },
+    portal: { layer },
   });
   page.scene.position.set(0, 0, -distance);
   scene.add(page.scene);
@@ -52,25 +52,25 @@ function colourMeshes(panel) {
   return meshes;
 }
 
-describe("overlay panels", () => {
-  test("draw after every ordinary panel, nearer or not, and clear the depth buffer first", async () => {
-    // A HUD three metres out and an ordinary panel at one: sorted far to
-    // near, the HUD would draw first and the panel over it, and the
+describe("overlay and HUD panels", () => {
+  test("draw after every world panel, nearer or not, and clear the depth buffer first", async () => {
+    // A menu three metres out and a world panel at one: sorted far to
+    // near, the menu would draw first and the panel over it, and the
     // scene's depth would hide it. Goes red with the overlay sorted as an
-    // ordinary panel, or drawn with no clear before it.
+    // world panel, or drawn with no clear before it.
     const { renderer, restoreContext } = stubGlRenderer();
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera();
-    const hud = await panelAt(scene, 3, true);
-    const board = await panelAt(scene, 1, false);
+    const menu = await panelAt(scene, 3, "overlay");
+    const board = await panelAt(scene, 1, "world");
 
     // Two frames: the first sorts before the second panel has joined.
     for (const time of [1, 2]) {
-      for (const each of [hud, board]) {
+      for (const each of [menu, board]) {
         each.order.frame(time, /** @type {any} */ (renderer), camera);
       }
     }
-    for (const each of [hud, board]) {
+    for (const each of [menu, board]) {
       await settle(each.portal);
       each.order.cut();
     }
@@ -78,7 +78,7 @@ describe("overlay panels", () => {
     /** @type {string[]} */
     const drawn = [];
     for (const [each, name] of /** @type {const} */ ([
-      [hud, "overlay"],
+      [menu, "overlay"],
       [board, "panel"],
     ])) {
       for (const mesh of colourMeshes(each.panel)) {
@@ -99,15 +99,79 @@ describe("overlay panels", () => {
     assert.equal(drawn.indexOf("clear"), firstOverlay - 1, "one clear, just before the overlay");
     assert.equal(drawn.lastIndexOf("clear"), firstOverlay - 1);
     assert.ok(drawn.lastIndexOf("panel") < firstOverlay, "every panel draw before it");
-    for (const mesh of colourMeshes(hud.panel)) {
+    for (const mesh of colourMeshes(menu.panel)) {
       assert.ok(mesh.renderOrder >= OVERLAY_PANEL_ORDER, `overlay at ${mesh.renderOrder}`);
     }
     for (const mesh of colourMeshes(board.panel)) {
       assert.ok(mesh.renderOrder < OVERLAY_PANEL_ORDER, `panel at ${mesh.renderOrder}`);
     }
 
-    hud.portal.disconnect();
+    menu.portal.disconnect();
     board.portal.disconnect();
+    restoreContext();
+  });
+
+  test("draw before every HUD panel, nearer or not, which clears the depth buffer again first", async () => {
+    // A readout three metres out, a menu at one and a board at half a
+    // metre: each layer draws over the one below, wherever its panels
+    // stand. Goes red with the readout drawn as an overlay, sorted with
+    // the menu, or with no clear of its own before it.
+    const { renderer, restoreContext } = stubGlRenderer();
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    const readout = await panelAt(scene, 3, "hud");
+    const menu = await panelAt(scene, 1, "overlay");
+    const board = await panelAt(scene, 0.5, "world");
+    const panels = [readout, menu, board];
+    for (const time of [1, 2]) {
+      for (const each of panels) {
+        each.order.frame(time, /** @type {any} */ (renderer), camera);
+      }
+    }
+    for (const each of panels) {
+      await settle(each.portal);
+      each.order.cut();
+    }
+
+    /** @type {string[]} */
+    const drawn = [];
+    for (const [each, name] of /** @type {const} */ ([
+      [readout, "hud"],
+      [menu, "overlay"],
+      [board, "world"],
+    ])) {
+      for (const mesh of colourMeshes(each.panel)) {
+        mesh.onBeforeRender = () => {
+          if (drawn.at(-1) !== name) {
+            drawn.push(name);
+          }
+        };
+      }
+    }
+    const clearDepth = renderer.clearDepth.bind(renderer);
+    renderer.clearDepth = () => {
+      drawn.push("clear");
+      clearDepth();
+    };
+    renderer.render(scene, camera);
+    assert.deepEqual(drawn, ["world", "clear", "overlay", "clear", "hud"]);
+    drawn.length = 0;
+    renderer.render(scene, camera);
+    assert.deepEqual(
+      drawn,
+      ["world", "clear", "overlay", "clear", "hud"],
+      "and again in the next render",
+    );
+    for (const mesh of colourMeshes(menu.panel)) {
+      assert.ok(mesh.renderOrder < HUD_PANEL_ORDER, `overlay at ${mesh.renderOrder}`);
+    }
+    for (const mesh of colourMeshes(readout.panel)) {
+      assert.ok(mesh.renderOrder >= HUD_PANEL_ORDER, `HUD at ${mesh.renderOrder}`);
+    }
+
+    for (const each of panels) {
+      each.portal.disconnect();
+    }
     restoreContext();
   });
 
@@ -119,8 +183,8 @@ describe("overlay panels", () => {
     const { renderer, restoreContext } = stubGlRenderer();
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera();
-    const near = await panelAt(scene, 1, true);
-    const far = await panelAt(scene, 2, true);
+    const near = await panelAt(scene, 1, "overlay");
+    const far = await panelAt(scene, 2, "overlay");
     for (const time of [1, 2]) {
       for (const each of [near, far]) {
         each.order.frame(time, /** @type {any} */ (renderer), camera);
@@ -187,9 +251,9 @@ describe("overlay panels", () => {
     };
     // The card 800 by 600 across its middle, which the readout's middle
     // is in front of as the eye sees it.
-    const card = await panelAt(scene, 1000, true);
+    const card = await panelAt(scene, 1000, "overlay");
     place(card, 2, new THREE.Vector3(0, 0, -1000));
-    const readout = await panelAt(scene, 950, true);
+    const readout = await panelAt(scene, 950, "overlay");
     place(readout, 0.25, new THREE.Vector3(-300, 200, -950));
     const from = new THREE.Vector3();
     const middleOf = (/** @type {{ panel: THREE.Object3D }} */ g) => middle(g).distanceTo(from);
@@ -234,16 +298,16 @@ describe("overlay panels", () => {
     // A portal no walk ever runs for, with no renderer in its context,
     // drawn by the app's own loop. Goes red with the clear left at 0.
     const scene = new THREE.Scene();
-    const hud = await panelAt(scene, 1, true);
+    const menu = await panelAt(scene, 1, "overlay");
     /** @type {THREE.Mesh | undefined} */
     let clear;
-    hud.panel.traverse((object) => {
+    menu.panel.traverse((object) => {
       if (object instanceof THREE.Mesh && object.geometry.drawRange.count === 0) {
         clear = object;
       }
     });
     assert.ok(clear, "the overlay's clear");
     assert.ok(clear.renderOrder > OVERLAY_PANEL_ORDER - 1, `the clear at ${clear.renderOrder}`);
-    hud.portal.disconnect();
+    menu.portal.disconnect();
   });
 });

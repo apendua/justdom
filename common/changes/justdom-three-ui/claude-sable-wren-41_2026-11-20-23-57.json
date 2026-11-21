@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "Draw the frame rate readout in the HUD layer, so a game's menu drawn as an overlay no longer hides it",
+      "type": "patch",
+      "packageName": "justdom-three-ui"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

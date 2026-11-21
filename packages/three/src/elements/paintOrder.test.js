@@ -70,16 +70,17 @@ function inSlot(order, slot) {
  * @param {object} [options]
  * @param {string} [options.rootStyle]
  * @param {boolean} [options.opaqueToRays] The panel option of that name.
- * @param {boolean} [options.overlay] The panel option of that name.
+ * @param {import("../drawOrder.js").PanelLayer} [options.layer] The panel
+ *   option of that name.
  * @param {InteractionManager} [options.manager] Another page's, for a test
  *   with two panels in one hand's reach.
  */
 async function page(
   children,
-  { rootStyle = "", opaqueToRays = true, overlay = false, manager: shared } = {},
+  { rootStyle = "", opaqueToRays = true, layer = "world", manager: shared } = {},
 ) {
   const { root, manager, portal, scene, panel, get } = await pagePanel(children, {
-    portal: { opaqueToRays, overlay },
+    portal: { opaqueToRays, layer },
     rootStyle,
     manager: shared,
   });
@@ -2954,14 +2955,14 @@ describe("panels that cross", () => {
    * both in one scene, middles together for no shift: a letter carried
    * through a plant. Each holds a card, and the swung one, if `raised`, a
    * card swung out of its plane, a layer cut inside its panel. Both are
-   * overlays (`PortalOptions.overlay`) if `overlay`.
+   * in `layer` (`PortalOptions.layer`).
    *
-   * @param {{ shift?: number, raised?: boolean, overlay?: boolean }} [options]
+   * @param {{ shift?: number, raised?: boolean, layer?: import("../drawOrder.js").PanelLayer }} [options]
    */
-  async function crossing({ shift = 0, raised = false, overlay = false } = {}) {
+  async function crossing({ shift = 0, raised = false, layer = "world" } = {}) {
     const flat = await page([{ id: "card", style: CARD, at: [20, 20, 360, 60] }], {
       rootStyle: "background: rgba(60, 160, 90, 0.5)",
-      overlay,
+      layer,
     });
     const swung = await page(
       [
@@ -2976,7 +2977,7 @@ describe("panels that cross", () => {
             ]
           : []),
       ],
-      { rootStyle: "background: rgba(250, 250, 240, 0.5)", overlay },
+      { rootStyle: "background: rgba(250, 250, 240, 0.5)", layer },
     );
     const world = new THREE.Scene();
     world.add(flat.scene, swung.scene);
@@ -3035,13 +3036,13 @@ describe("panels that cross", () => {
     });
   }
 
-  for (const overlay of [false, true]) {
-    test(`cuts a${overlay ? "n overlay" : " panel"} that crosses another's plane, and draws its pieces either side of the other`, async () => {
+  for (const layer of /** @type {const} */ (["world", "overlay", "hud"])) {
+    test(`cuts a ${layer} panel that crosses another's plane, and draws its pieces either side of the other`, async () => {
       // Goes red with the panels drawn whole, far to near by their middles:
       // one panel's draws all come before the other's or all after, and the
       // one drawn first has its depth quad hide every part of the other
       // behind its plane, through its own clear background.
-      const g = await crossing({ overlay });
+      const g = await crossing({ layer });
       await g.frame();
       await g.frame();
       const { flat, swung } = g;

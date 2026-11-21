@@ -65,6 +65,7 @@ const LAYERS = {
   "mouse.js": "scene",
   "panelContexts.js": "scene",
   "pointers.js": "scene",
+  "ray.js": "scene",
   "render.js": "scene",
   "scene.js": "scene",
   "sceneServices.js": "scene",

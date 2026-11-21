@@ -88,7 +88,7 @@ export const OVERLAY_HANDLE_RENDER_ORDER = 3e8;
 
 /**
  * Where a HUD panel's bars go: past the HUD panels' slots, which start at
- * `HUD_PANEL_ORDER` (4e8) and of which 95 fit below it, after the depth
+ * `HUD_PANEL_ORDER` (4e8) and of which 94 fit below it, after the depth
  * clear the HUD starts with.
  */
 export const HUD_HANDLE_RENDER_ORDER = 5e8;

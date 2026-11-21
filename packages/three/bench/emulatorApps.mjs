@@ -72,19 +72,25 @@ async function enter(page, url, shown, ready, ids = []) {
 
 /**
  * Each app, each page of it handed to `visit`: one server and one browser
- * an app, and a page a look.
+ * an app, and a page a look. The desk takes options: `setUp` is handed
+ * each page before it loads anything, for a bench that wraps what the page
+ * calls, and `look` is the id of the one look to open.
  *
- * @type {Record<string, (visit: Visit) => Promise<void>>}
+ * @type {Record<string, (visit: Visit, options?: { setUp?: (page: Page) => Promise<void>, look?: string }) => Promise<void>>}
  */
 export const APPS = {
-  async desk(visit) {
+  async desk(visit, { setUp, look: only } = {}) {
     const { url, server } = await serve("desk");
     /** @type {typeof import("../../../apps/desk/src/looks.ts")} */
     const looks = /** @type {any} */ (await server.ssrLoadModule("/src/looks.ts"));
     const browser = await launch();
     try {
       for (const look of looks.LOOKS) {
+        if (only && look.id !== only) {
+          continue;
+        }
         const page = await browser.newPage({ viewport: { width: 1024, height: 640 } });
+        await setUp?.(page);
         await enter(
           page,
           `${url}?look=${look.id}&emulator=bare`,

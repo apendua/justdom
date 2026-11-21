@@ -23,25 +23,27 @@ structurally; so does anything else that builds real DOM nodes and knows how to 
 
 The options, each with the section that says what it does:
 
-| Option             | Default     | What it does                                                                                                                         |
-| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `root`             | none        | An element of the page to mirror where it stands. [Mirroring DOM the page already has](#mirroring-dom-the-page-already-has).         |
-| `opaqueToRays`     | `true`      | Whether the panel's background stops rays. [The panel's background](#the-panel-s-background).                                        |
-| `layer`            | `"world"`   | `"overlay"` draws over the world and takes the ray first; `"hud"` draws over the overlays too. [Layers](#layers).                    |
-| `keyboard`         | the scene's | The keyboard its fields are typed with, or `false`. [Text fields and the keyboard](#text-fields-and-the-keyboard).                   |
-| `thumbstickWheel`  | `false`     | The thumbstick as a mouse wheel on this panel. [What a ray sends the page](#what-a-ray-sends-the-page).                              |
-| `haptics`          | the scene's | What the hand feels from the panel's controls, or `false`. [Haptics](#haptics).                                                      |
-| `loadingFrame`     | the scene's | The frame shown while a long mount runs, or `false`. [Loading, budget and updates](#loading-budget-and-updates).                     |
-| `onLoadingChanged` | none        | Told once, with `false`, when the initial mount lands. [Loading, budget and updates](#loading-budget-and-updates).                   |
-| `budget`           | `5`         | Milliseconds per frame, only for a portal outside `render()`. [Loading, budget and updates](#loading-budget-and-updates).            |
-| `priority`         | `0`         | This panel's say in the scene's shared budget. [Loading, budget and updates](#loading-budget-and-updates).                           |
-| `atomic`           | `true`      | Whether an update lands whole. [Loading, budget and updates](#loading-budget-and-updates).                                           |
-| `maxTextScale`     | `4`         | The ceiling on how finely this panel's text is rasterized. [How sharp the text comes out](#how-sharp-the-text-comes-out).            |
-| `draggable`        | `false`     | Whether the player can move the panel, or a `PanelDragOptions`. [Letting the player move a panel](#letting-the-player-move-a-panel). |
-| `plugins`          | none        | Element plugins for this panel alone, asked before the scene's. [Element plugins](#element-plugins).                                 |
+| Option             | Default     | What it does                                                                                                                                           |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `root`             | none        | An element of the page to mirror where it stands. [Mirroring DOM the page already has](#mirroring-dom-the-page-already-has).                           |
+| `opaqueToRays`     | `true`      | Whether the panel's background stops rays. [The panel's background](#the-panel-s-background).                                                          |
+| `layer`            | `"world"`   | `"overlay"` draws over the world and takes the ray first; `"hud"` draws over the overlays too. [Layers](#layers).                                      |
+| `keyboard`         | the scene's | The keyboard its fields are typed with, or `false`. [Text fields and the keyboard](#text-fields-and-the-keyboard).                                     |
+| `thumbstickWheel`  | `false`     | The thumbstick as a mouse wheel on this panel. [What a ray sends the page](#what-a-ray-sends-the-page).                                                |
+| `haptics`          | the scene's | What the hand feels from the panel's controls, or `false`. [Haptics](#haptics).                                                                        |
+| `loadingFrame`     | the scene's | The frame shown while a long mount runs, or `false`. [Loading, budget and updates](#loading-budget-and-updates).                                       |
+| `onLoadingChanged` | none        | Told once, with `false`, when the initial mount lands. [Loading, budget and updates](#loading-budget-and-updates).                                     |
+| `budget`           | `5`         | Milliseconds per frame, only for a portal outside `render()`. [Loading, budget and updates](#loading-budget-and-updates).                              |
+| `priority`         | `0`         | This panel's say in the scene's shared budget. [Loading, budget and updates](#loading-budget-and-updates).                                             |
+| `atomic`           | `true`      | Whether an update lands whole. [Loading, budget and updates](#loading-budget-and-updates).                                                             |
+| `maxTextScale`     | `4`         | The ceiling on how finely this panel's text is rasterized. [How sharp the text comes out](#how-sharp-the-text-comes-out).                              |
+| `minTextScale`     | `1`         | The floor on it. Equal to `maxTextScale`, the text is drawn once. [A panel that never draws its text again](#a-panel-that-never-draws-its-text-again). |
+| `draggable`        | `false`     | Whether the player can move the panel, or a `PanelDragOptions`. [Letting the player move a panel](#letting-the-player-move-a-panel).                   |
+| `plugins`          | none        | Element plugins for this panel alone, asked before the scene's. [Element plugins](#element-plugins).                                                   |
 
-`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority` and `budget` can also be set for the whole scene; see [Panel defaults](#panel-defaults).
+`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `minTextScale`, `atomic`,
+`opaqueToRays`, `priority` and `budget` can also be set for the whole scene; see
+[Panel defaults](#panel-defaults).
 
 ### What a ray sends the page
 
@@ -1000,10 +1002,8 @@ dom(ctx, MapView(ctx), [], { draggable: { level: false, handleWidth: 20 } });
 
 The scale a panel is placed at is also what decides how finely its text is rasterized. Each panel
 measures how many device pixels it paints per CSS pixel, once a frame, and rasterizes at a step of
-the ladder 1, √2, 2, 2√2, 4, the one at or above what it measured. Coarsening is held back until the
-measurement is a fifth clear of the boundary, so a panel you are standing in front of does not
-re-rasterize because you drifted a centimetre. `textScale.js` says why the ladder is in steps of
-root two and why four is the ceiling.
+the ladder 1, √2, 2, 2√2, 4, the one at or above what it measured. `textScale.js` says why the
+ladder is in steps of root two and why four is the ceiling.
 
 ```js
 import { dom } from "justdom-three";
@@ -1016,20 +1016,41 @@ of hundreds of rows, which reaches the ceiling with every row at once; what a st
 quadratic in it. It only ever lowers. Off a scene — a portal on a plain page, or under a test runner
 — the page's `devicePixelRatio` is the whole answer, since the panel _is_ the page.
 
-A run keeps what it drew at the step below the one its panel shows. A player who leans in crosses
-into a step and then usually leans back out of it, and the step they come back to is the one below:
-the panel shows it again without drawing anything or uploading anything, from the rasters and the
-arrays it kept. Holding the step below costs half again what the shown step costs, since a step
-costs half the one above it.
+Drawing a panel's text again at a new step is work, and a panel does it without dropping frames:
 
-And the step above is drawn before it is needed. Once the measurement comes within 0.85 of the step
-a panel shows, the panel draws every run at the step above, a run at a time, in whatever frame time
-the panels' own work leaves, and then sends what it drew to the GPU, at most 512 kB of arrays a
-frame. Walking on across the boundary then swaps textures and draws nothing. If the measurement
-falls back under 0.85 for a second, the panel lets that step go. Any other step, two below or one
-above that is not being prepared, is let go of as the panel moves on. While a step is prepared, a
-panel keeps up to three and a half times what the shown step costs: the step below at half and the
-step above at twice.
+- **A step is drawn before it is shown.** Once the measurement comes within 0.85 of the step a panel
+  shows, the panel draws every run at the step above, a run at a time, in whatever frame time the
+  panels' own work leaves, and then sends what it drew to the GPU, at most 512 kB of arrays a frame.
+  When the measurement passes the shown step, the panel shows the new one as soon as all of that is
+  done, which swaps textures and draws nothing. Until then it shows the step it had, a little soft.
+  A panel whose own work leaves no frame time shows the new step after two seconds regardless, and
+  draws what is missing then.
+- **A panel is slow to coarsen.** Text drawn larger than a panel needs is sampled through its
+  mipmaps and reads as well, so coarsening only saves memory. A panel coarsens once the measurement
+  has stayed a fifth under the step's lower boundary for five seconds, and it draws the smaller step
+  before showing it, as above. It keeps a step it prepared for five seconds after the measurement
+  falls back under 0.85 as well. A head that turns from panel to panel and back draws nothing.
+- **A run keeps what it drew at the step below the one its panel shows**, so coarsening by one step
+  draws and uploads nothing.
+
+While a step above is prepared, a panel keeps up to three and a half times what the shown step
+costs: the step below at half and the step above at twice.
+
+### A panel that never draws its text again
+
+```js
+import { dom } from "justdom-three";
+
+dom(ctx, Hud(ctx), [], { minTextScale: 2, maxTextScale: 2 });
+```
+
+`minTextScale` is the floor: a panel is never rasterized under it, 1 by default. With `maxTextScale`
+at the same number the panel is drawn at that scale once, is never measured, and never draws its
+text again because the player moved. That is the setting for a scene where a steady frame rate
+matters more than the last step of sharpness. Pick the step the panel needs at the nearest distance
+it is read from. From further away the mipmaps take care of it, and from nearer the text is
+magnified and goes soft. The memory is that step's the whole time. A floor under the cap, such as
+`{ minTextScale: 2 }`, leaves the panel measuring and takes the steps under 2 off its ladder.
 
 ### Panel defaults
 
@@ -1049,14 +1070,14 @@ render(Scene, {
 });
 ```
 
-`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `atomic`, `opaqueToRays`,
-`priority` and `budget` can be set this way. A panel's own options are laid over them: its value
-wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object is spread over
-the scene's, so a panel can change one thing about them without restating the rest; `false` at
-either level is none, for those three. `withPanelOptions(ctx, options)` does the same for a part of
-the scene, over whatever is in scope already. `plugins` is not among them — it has `portalPlugins`,
-whose list a panel's own is put in front of rather than in place of — and neither are `root`,
-`draggable` and `onLoadingChanged`, which are only ever one panel's.
+`keyboard`, `loadingFrame`, `haptics`, `thumbstickWheel`, `maxTextScale`, `minTextScale`, `atomic`,
+`opaqueToRays`, `priority` and `budget` can be set this way. A panel's own options are laid over
+them: its value wins, except that a `keyboard`, a `loadingFrame` or a `haptics` given as an object
+is spread over the scene's, so a panel can change one thing about them without restating the rest;
+`false` at either level is none, for those three. `withPanelOptions(ctx, options)` does the same for
+a part of the scene, over whatever is in scope already. `plugins` is not among them — it has
+`portalPlugins`, whose list a panel's own is put in front of rather than in place of — and neither
+are `root`, `draggable` and `onLoadingChanged`, which are only ever one panel's.
 
 ## Element plugins
 

@@ -47,6 +47,15 @@ export const LAYER_RANK = { world: 0, overlay: 1, hud: 2 };
 export const OVERLAY_PANEL_ORDER = 2e8;
 
 /**
+ * Where a controller's beam draws (`ray.js`): past every world panel and a
+ * world panel's strips at `HANDLE_RENDER_ORDER` (1e8), which would otherwise
+ * draw over it where it crosses them, since it writes no depth; and short of
+ * the overlays' depth clear, so an overlay or HUD panel still draws over it.
+ * It is depth-tested, so what stands in front of it in the world hides it.
+ */
+export const RAY_RENDER_ORDER = OVERLAY_PANEL_ORDER - 1;
+
+/**
  * Where HUD panels start drawing: past every overlay's slot and an
  * overlay's strips, and short of a HUD panel's strips at
  * `HUD_HANDLE_RENDER_ORDER` (5e8) and the cursor. The depth buffer is

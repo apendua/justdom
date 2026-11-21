@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RAY_RENDER_ORDER } from "./drawOrder.js";
 
 /**
  * How far from the hand the beam has faded out completely, in metres. A panel
@@ -88,10 +89,16 @@ void main() {
  * uniform and allocates nothing. `clone()` shares the geometry and the
  * material, so every hand's beam is drawn from one of each.
  *
- * The bounding sphere is the quad's own, a metre across scaled to the ray's
- * length, so the beam is culled with the segment it is drawn along. It is
+ * It draws at `RAY_RENDER_ORDER`, after the world's panels: transparent and
+ * writing no depth, it would otherwise be painted over by any panel drawn
+ * after it, which is the stretch just before the hit.
+ *
+ * The bounding sphere is a sphere round the quad, x from -1 to 1, scaled by
+ * the ray's length, so it holds the narrowed beam with room to spare, and it
+ * is computed here rather than on the first frame it is culled. The beam is
  * never a ray target: the interaction manager only casts at the objects that
- * are registered with it.
+ * are registered with it, and the mesh answers no other caster either, since
+ * to a raycaster it would be a sheet two metres wide.
  *
  * @param {THREE.ColorRepresentation} [color]
  * @returns {THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>}
@@ -104,6 +111,7 @@ export function createRay(color = 0xffffff) {
     new THREE.Float32BufferAttribute([-1, 0, 0, 1, 0, 0, -1, 0, -1, 1, 0, -1], 3),
   );
   geometry.setIndex([0, 2, 1, 1, 2, 3]);
+  geometry.computeBoundingSphere();
   const material = new THREE.ShaderMaterial({
     uniforms: {
       color: { value: new THREE.Color(color) },
@@ -123,5 +131,7 @@ export function createRay(color = 0xffffff) {
   });
   const ray = new THREE.Mesh(geometry, material);
   ray.name = "ray";
+  ray.renderOrder = RAY_RENDER_ORDER;
+  ray.raycast = () => {};
   return ray;
 }

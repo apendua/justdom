@@ -1,6 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
+import { OVERLAY_PANEL_ORDER } from "./drawOrder.js";
+import { HANDLE_RENDER_ORDER } from "./elements/panelHandles.js";
 import {
   createRay,
   RAY_FADE_IN,
@@ -38,6 +40,27 @@ describe("createRay", () => {
     assert.equal(material.uniforms.widthFar.value, RAY_WIDTH_FAR);
     assert.ok(RAY_WIDTH_FAR > RAY_WIDTH_NEAR, "the beam spreads as it fades");
     assert.match(material.fragmentShader, /reach/);
+  });
+
+  test("draws after the world's panels and their strips, and before the overlays", () => {
+    const ray = createRay();
+    // Three sorts the transparent pass by `renderOrder` first, and the beam
+    // writes no depth, so a panel drawn after it would paint over it.
+    assert.ok(ray.renderOrder > HANDLE_RENDER_ORDER, "after a world panel's strips");
+    assert.ok(ray.renderOrder < OVERLAY_PANEL_ORDER, "before the overlays' depth clear");
+    // Still hidden by what stands in front of it.
+    assert.equal(ray.material.depthTest, true);
+  });
+
+  test("is no target for a raycaster", () => {
+    const ray = createRay();
+    ray.scale.z = 2;
+    ray.updateMatrixWorld();
+    const raycaster = new THREE.Raycaster(
+      new THREE.Vector3(0.5, 1, -1),
+      new THREE.Vector3(0, -1, 0),
+    );
+    assert.deepEqual(raycaster.intersectObject(ray), []);
   });
 
   test("every clone draws from one geometry and one material", () => {

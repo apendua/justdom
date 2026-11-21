@@ -69,8 +69,8 @@ The rules:
   object inside another is reached by the outer one's walk.
 - The ray each controller draws is a soft beam, bright at the hand and faded out completely 1.5 m
   from it, so something across the room is shown by its cursor alone. It is cut at the hit, and
-  stretches back out to a fixed reach when the hand is pointing at nothing. It is the handle's
-  `ray`, so an app can hide it while a hand is busy with something else.
+  stretches back out to that 1.5 m when the hand is pointing at nothing. It is the handle's `ray`,
+  so an app can hide it while a hand is busy with something else.
 
 `cursors(ctx, options)` puts a mark where each ray meets something interactive, one per hand that is
 pointing at something, gone with the hit:

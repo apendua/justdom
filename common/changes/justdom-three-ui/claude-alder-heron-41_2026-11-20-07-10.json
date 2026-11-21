@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three-ui",
+      "comment": "The diagnostics panel shows the longest a single run took to draw ahead of a text step in the last minute and the longest a single upload took, and the controls carry the reading as `textWork`. `createWorkMeter` is the arithmetic behind it.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

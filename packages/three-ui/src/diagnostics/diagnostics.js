@@ -8,8 +8,9 @@
  * the same reading, in the room, where it can be read while playing.
  */
 import { Signal, useEffect, useEffects } from "justdom-signal";
-import { children, getCamera, useFrame } from "justdom-three";
+import { children, getCamera, textWork, useFrame } from "justdom-three";
 import { chartCeiling, createFrameMeter } from "./frameMeter.js";
+import { createWorkMeter } from "./workMeter.js";
 import { Panel } from "./panel.js";
 
 /**
@@ -28,7 +29,15 @@ import { Panel } from "./panel.js";
  * @property {Signal<number>} ceiling What full height on the chart means, in
  *   frames per second: the display's own rate, as far as it can be told from
  *   what it has managed so far.
+ * @property {Signal<WorkReading | null>} textWork The longest one run took
+ *   to draw ahead of the step its panel is about to show, in the last
+ *   minute, and the longest one upload took (`textWork` in
+ *   `justdom-three`). Null until two seconds have been measured.
  * @property {() => void} toggle Shows the panel, or hides it.
+ */
+
+/**
+ * @import {WorkReading} from './workMeter.js';
  */
 
 /**
@@ -51,6 +60,7 @@ export function createDiagnostics({ visible: initial = true } = {}) {
     // one that starts too tall spends the first seconds saying the scene is
     // struggling when it is not.
     ceiling: Signal.of(chartCeiling(0)),
+    textWork: Signal.of(/** @type {WorkReading | null} */ (null)),
     toggle: () => {
       visible.setFn((shown) => !shown);
     },
@@ -101,7 +111,18 @@ export function useDiagnostics(ctx, controls) {
       controls.history.set(history);
     },
   });
-  useFrame(ctx, (time) => meter.frame(time));
+  const work = textWork(ctx);
+  const workMeter = createWorkMeter({
+    onSample: (reading) => {
+      controls.textWork.set(reading);
+    },
+  });
+  useFrame(ctx, (time) => {
+    meter.frame(time);
+    if (work) {
+      workMeter.frame(time, work);
+    }
+  });
 
   // The switch, as the guard on an effect of its own: the panel is built by a
   // run that read `visible` as true and taken down by the run that reads it

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { HUD_PANEL_ORDER, InteractionContext, InteractionManager } from "justdom-three";
 import { createDiagnostics } from "./diagnostics.js";
-import { Panel } from "./panel.js";
+import { Panel, textWorkLine } from "./panel.js";
 
 describe("the diagnostics panel", () => {
   test("is in the HUD, so neither the scene nor an overlay can hide it", () => {
@@ -32,5 +32,12 @@ describe("the diagnostics panel", () => {
       unmount?.();
       subscription.unsubscribe();
     }
+  });
+
+  test("says how long the longest pieces took, to a tenth of a millisecond", () => {
+    const controls = createDiagnostics();
+    assert.equal(textWorkLine(controls), "draw -- · upload -- ms");
+    controls.textWork.set({ drawMs: 3.14, uploadMs: 0.86 });
+    assert.equal(textWorkLine(controls), "draw 3.1 · upload 0.9 ms");
   });
 });

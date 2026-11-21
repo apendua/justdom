@@ -676,4 +676,72 @@ describe("prepared text steps", () => {
     assert.equal(preparer.ready(2 ** 1.5), false);
     preparer.dispose();
   });
+
+  test("the pump keeps the longest draw and the longest upload in the scene's account", () => {
+    // A clock that only the work moves: a run that draws for 3 ms and is
+    // staged, one that draws for 2 ms and hands back a texture that takes
+    // 6 ms to send up, one that draws for 1 ms and hands back one that
+    // takes 1 ms, and 4 ms of building the staged arrays. The longest of
+    // each kind is neither the last of its kind nor the sum.
+    let time = 0;
+    /** @type {(() => void) | null} */
+    let tick = null;
+    const scheduler = createPortalScheduler({
+      budget: Infinity,
+      now: () => time,
+      requestFrames: (callback) => {
+        tick = callback;
+        return () => {
+          tick = null;
+        };
+      },
+    });
+    const large = new THREE.Texture();
+    const small = new THREE.Texture();
+    const work = { longestDrawMs: 0, longestUploadMs: 0 };
+    const preparer = createTextPreparer({
+      scheduler,
+      batch: /** @type {TextBatch} */ (
+        /** @type {unknown} */ ({
+          commitStaged: () => {
+            time += 4;
+            return false;
+          },
+        })
+      ),
+      holds: () => false,
+      upload: (texture) => {
+        time += texture === large ? 6 : 1;
+      },
+      work,
+      now: () => time,
+    });
+    preparer.register({
+      prepare: () => {
+        time += 3;
+        return null;
+      },
+      release: () => {},
+    });
+    preparer.register({
+      prepare: () => {
+        time += 2;
+        return large;
+      },
+      release: () => {},
+    });
+    preparer.register({
+      prepare: () => {
+        time += 1;
+        return small;
+      },
+      release: () => {},
+    });
+    preparer.retarget(2);
+    /** @type {(() => void) | null} */ (tick)?.();
+
+    assert.deepEqual(work, { longestDrawMs: 3, longestUploadMs: 6 });
+    assert.equal(preparer.ready(2), true);
+    preparer.dispose();
+  });
 });

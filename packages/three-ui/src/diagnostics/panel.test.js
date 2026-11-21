@@ -1,15 +1,16 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { InteractionContext, InteractionManager, OVERLAY_PANEL_ORDER } from "justdom-three";
+import { HUD_PANEL_ORDER, InteractionContext, InteractionManager } from "justdom-three";
 import { createDiagnostics } from "./diagnostics.js";
 import { Panel } from "./panel.js";
 
 describe("the diagnostics panel", () => {
-  test("is an overlay, so the scene cannot hide it", () => {
-    // An overlay carries the depth clear that runs before the overlays draw,
-    // an empty mesh ordered just under them. Goes red with the panel drawn
-    // as an ordinary one, whose own orders a nearer panel draws over.
+  test("is in the HUD, so neither the scene nor an overlay can hide it", () => {
+    // A HUD panel carries the depth clear that runs before the HUD draws, an
+    // empty mesh ordered just under it. Goes red with the panel drawn in the
+    // world, which has no clear, or as an overlay, whose clear runs before
+    // the overlays and leaves a nearer menu card to hide the readout.
     const ctx = InteractionContext.set({}, new InteractionManager());
     const camera = new THREE.Group();
     /** @type {(() => void) | undefined} */
@@ -25,8 +26,8 @@ describe("the diagnostics panel", () => {
           clear = object;
         }
       });
-      assert.ok(clear, "the overlay's depth clear");
-      assert.ok(clear.renderOrder > OVERLAY_PANEL_ORDER - 1, `the clear at ${clear.renderOrder}`);
+      assert.ok(clear, "the HUD's depth clear");
+      assert.ok(clear.renderOrder > HUD_PANEL_ORDER - 1, `the clear at ${clear.renderOrder}`);
     } finally {
       unmount?.();
       subscription.unsubscribe();

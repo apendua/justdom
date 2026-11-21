@@ -23,9 +23,16 @@ import { withPanelOptions } from "../panelOptions.js";
 import {
   DEFAULT_HANDLE_WIDTH,
   HANDLE_RENDER_ORDER,
+  HUD_HANDLE_RENDER_ORDER,
   OVERLAY_HANDLE_RENDER_ORDER,
 } from "../panelHandles.js";
-import { isInOverlay, objectNodes, OVERLAY_PANEL_ORDER } from "../../drawOrder.js";
+import {
+  getLayerRank,
+  HUD_PANEL_ORDER,
+  LAYER_RANK,
+  objectNodes,
+  OVERLAY_PANEL_ORDER,
+} from "../../drawOrder.js";
 import { getLayerOrder } from "../paint/layerOrder.js";
 import { RendererContext } from "../../scene.js";
 import { recordingSource } from "../../test/rumble.js";
@@ -711,26 +718,28 @@ describe("a draggable panel", () => {
     assert.equal(targets.has(top), false);
   });
 
-  test("an overlay's strips take the ray first and draw after the overlays; a panel's do neither", () => {
+  test("strips are in their panel's layer, for the ray and the draw", () => {
     // The strips hang beside the container, not in it, so a mark on the
     // container alone leaves them to lose the ray to a crate in front of
-    // the HUD. And an ordinary panel's bars drawn after the depth clear
-    // would show through whatever stands in front of the panel. Goes red
-    // with only the container marked, or with one order for every bar.
-    for (const overlay of [true, false]) {
-      const { portal, parent } = setup({ draggable: true, overlay });
+    // the menu. And a world panel's bars drawn after the depth clear would
+    // show through whatever stands in front of the panel. Goes red with
+    // only the container marked, or with one order for the bars of two
+    // layers.
+    for (const [layer, order] of /** @type {const} */ ([
+      ["world", HANDLE_RENDER_ORDER],
+      ["overlay", OVERLAY_HANDLE_RENDER_ORDER],
+      ["hud", HUD_HANDLE_RENDER_ORDER],
+    ])) {
+      const { portal, parent } = setup({ draggable: true, layer });
       const top = /** @type {THREE.Object3D} */ (parent.getObjectByName("panel-handle-top"));
       const bar = /** @type {THREE.Mesh} */ (parent.getObjectByName("panel-handle-top-bar"));
-      assert.equal(isInOverlay(top), overlay, "the strip's ray");
-      assert.equal(
-        bar.renderOrder,
-        overlay ? OVERLAY_HANDLE_RENDER_ORDER : HANDLE_RENDER_ORDER,
-        "the bar's order",
-      );
+      assert.equal(getLayerRank(top), LAYER_RANK[layer], `the ${layer} strip's ray`);
+      assert.equal(bar.renderOrder, order, `the ${layer} bar's order`);
       portal.disconnect();
-      assert.equal(isInOverlay(top), false, "the mark goes with the panel");
+      assert.equal(getLayerRank(top), LAYER_RANK.world, "the mark goes with the panel");
     }
     assert.ok(HANDLE_RENDER_ORDER < OVERLAY_PANEL_ORDER, "a panel's bars before the clear");
+    assert.ok(OVERLAY_HANDLE_RENDER_ORDER < HUD_PANEL_ORDER, "an overlay's before the HUD's");
   });
 
   test("lays the strips out with the panel while it mounts", async () => {
@@ -842,16 +851,32 @@ describe("a draggable panel", () => {
     }
   });
 
-  test("an overlay's loading frame draws in the overlay's slot, after the depth clear", async () => {
+  test("an overlay's or HUD panel's loading frame draws in its slot, after its layer's clear", async () => {
     // At its own orders of 0 and 1 the frame draws before the clear, and a
-    // HUD still mounting behind a crate shows nothing. Goes red with the
+    // menu still mounting behind a crate shows nothing. Goes red with the
     // frame left at those orders.
+    for (const [layer, start] of /** @type {const} */ ([
+      ["overlay", OVERLAY_PANEL_ORDER],
+      ["hud", HUD_PANEL_ORDER],
+    ])) {
+      await loadingFrameIn(layer, start);
+    }
+  });
+
+  /**
+   * Mount a panel in `layer` slowly enough for its loading frame to show,
+   * and check that every mesh of the frame draws at `start` or later.
+   *
+   * @param {import("../../drawOrder.js").PanelLayer} layer
+   * @param {number} start
+   */
+  async function loadingFrameIn(layer, start) {
     const clock = fakeClock();
     try {
       const { ctx } = countingManager();
       const renderer = /** @type {any} */ ({});
       const portal = createPortal(RendererContext.set(ctx, renderer), {
-        overlay: true,
+        layer,
         budget: 0,
         loadingFrame: { delay: 250, minimumTime: 1000 },
       });
@@ -888,7 +913,7 @@ describe("a draggable panel", () => {
       });
       assert.ok(orders.length > 1, "the frame and its dots");
       for (const each of orders) {
-        assert.ok(each >= OVERLAY_PANEL_ORDER, `a mesh of the frame at ${each}`);
+        assert.ok(each >= start, `a mesh of the ${layer} frame at ${each}`);
       }
 
       subscription.unsubscribe();
@@ -897,7 +922,7 @@ describe("a draggable panel", () => {
     } finally {
       clock.restore();
     }
-  });
+  }
 
   test("with no loading frame, keeps its strips out of the raycast until it loads", async () => {
     const { ctx } = countingManager();

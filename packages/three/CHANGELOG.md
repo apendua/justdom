@@ -1,6 +1,13 @@
 # Change Log - justdom-three
 
-This log was last generated on Fri, 20 Nov 2026 20:16:14 GMT and should not be manually modified.
+This log was last generated on Fri, 20 Nov 2026 23:50:03 GMT and should not be manually modified.
+
+## 0.38.1
+Fri, 20 Nov 2026 23:50:03 GMT
+
+### Patches
+
+- Order overlay panels by a plane tree of their own, so an overlay in front draws after one behind it even where its middle is farther, and two overlays that cross are cut
 
 ## 0.38.0
 Fri, 20 Nov 2026 20:16:14 GMT

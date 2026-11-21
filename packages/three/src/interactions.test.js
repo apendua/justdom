@@ -11,7 +11,7 @@ import {
   setWorldMatrix,
 } from "./interactions.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
-import { addOverlay, objectNodes, registerDrawOrder } from "./drawOrder.js";
+import { markLayer, objectNodes, registerDrawOrder } from "./drawOrder.js";
 import { BOX_BUCKET_BIAS } from "./elements/paint/boxBatch.js";
 
 /**
@@ -988,7 +988,7 @@ describe("getIntersection", () => {
   });
 
   test("a hit on an overlay panel wins over anything nearer", () => {
-    // A HUD a metre and a half out, with a crate between it and the hand:
+    // A menu a metre and a half out, with a crate between it and the hand:
     // the overlay is drawn over the crate, so the ray is on the overlay.
     // Goes red with the nearest hit taken.
     const manager = new InteractionManager();
@@ -996,7 +996,7 @@ describe("getIntersection", () => {
     const container = new THREE.Object3D();
     const hud = targetMesh(1.5);
     container.add(hud);
-    const removeOverlay = addOverlay(container);
+    const removeOverlay = markLayer(container, "overlay");
     manager.add(crate);
     manager.add(hud);
     try {
@@ -1017,12 +1017,36 @@ describe("getIntersection", () => {
     const farHud = targetMesh(3);
     near.add(nearHud);
     far.add(farHud);
-    const removes = [addOverlay(near), addOverlay(far)];
+    const removes = [markLayer(near, "overlay"), markLayer(far, "overlay")];
     manager.add(crate);
     manager.add(farHud);
     manager.add(nearHud);
     try {
       assert.equal(manager.getIntersection(fakeController())?.object, nearHud);
+    } finally {
+      for (const remove of removes) remove();
+    }
+  });
+
+  test("a hit on a HUD panel wins over a nearer overlay and anything nearer still", () => {
+    // A readout three metres out, behind a menu at two and a crate at one:
+    // the HUD is drawn over both, so the ray is on the readout. Goes red
+    // with the first hit in any layer above the world taken, which is the
+    // menu's.
+    const manager = new InteractionManager();
+    const crate = targetMesh(1);
+    const menu = new THREE.Object3D();
+    const hud = new THREE.Object3D();
+    const menuCard = targetMesh(2);
+    const readout = targetMesh(3);
+    menu.add(menuCard);
+    hud.add(readout);
+    const removes = [markLayer(menu, "overlay"), markLayer(hud, "hud")];
+    manager.add(crate);
+    manager.add(menuCard);
+    manager.add(readout);
+    try {
+      assert.equal(manager.getIntersection(fakeController())?.object, readout);
     } finally {
       for (const remove of removes) remove();
     }

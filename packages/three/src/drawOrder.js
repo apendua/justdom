@@ -12,70 +12,107 @@
 export const OVERLAY_RENDER_ORDER = 1e9;
 
 /**
- * Where overlay panels (`PortalOptions.overlay`) start drawing: past every
- * ordinary panel's slot and an ordinary panel's strips at
- * `HANDLE_RENDER_ORDER` (1e8), past any order a scene gives its own objects
- * short of this, and short of an overlay's strips at
- * `OVERLAY_HANDLE_RENDER_ORDER` (3e8) and the cursor. The depth buffer is
- * cleared once before the first overlay (`layerOrder.js`), so nothing drawn
- * before the overlays hides them, and they hide one another as panels do.
+ * Which of the scene's layers a panel draws in (`PortalOptions.layer`).
+ * Each layer draws over every one before it, whatever stands where, and
+ * takes a ray from it, whatever the ray met nearer:
+ *
+ * - `"world"`, the default: the panel stands in the scene, and what is in
+ *   front of it hides it.
+ * - `"overlay"`: over the world, for a game's menu.
+ * - `"hud"`: over the overlays too, for an instrument the player keeps in
+ *   view, such as a frame rate readout.
+ *
+ * Within a layer the panels hide one another as panels do.
+ *
+ * @typedef {"world" | "overlay" | "hud"} PanelLayer
+ */
+
+/**
+ * Each layer's rank, the order the layers draw in: a layer of higher rank
+ * draws over, and takes the rays of, every layer of lower rank.
+ *
+ * @type {Readonly<Record<PanelLayer, number>>}
+ */
+export const LAYER_RANK = { world: 0, overlay: 1, hud: 2 };
+
+/**
+ * Where overlay panels (`PortalOptions.layer`) start drawing: past every
+ * world panel's slot and a world panel's strips at `HANDLE_RENDER_ORDER`
+ * (1e8), past any order a scene gives its own objects short of this, and
+ * short of an overlay's strips at `OVERLAY_HANDLE_RENDER_ORDER` (3e8), the
+ * HUD and the cursor. The depth buffer is cleared once before the first
+ * overlay (`layerOrder.js`), so nothing drawn before the overlays hides
+ * them, and they hide one another as panels do.
  */
 export const OVERLAY_PANEL_ORDER = 2e8;
 
 /**
- * The objects the overlay panels that are up hang in: each one's container,
- * and a draggable one's frame, which holds its strips.
- *
- * @type {Set<import('three').Object3D>}
+ * Where HUD panels start drawing: past every overlay's slot and an
+ * overlay's strips, and short of a HUD panel's strips at
+ * `HUD_HANDLE_RENDER_ORDER` (5e8) and the cursor. The depth buffer is
+ * cleared again before the first of them, so neither the world nor an
+ * overlay hides one.
  */
-const overlays = new Set();
+export const HUD_PANEL_ORDER = 4e8;
 
 /**
- * Say that what hangs in `object` is drawn over everything that is not an
- * overlay, so that a ray on it is on it whatever else the ray meets nearer
- * (`isInOverlay`). Returns what takes the mark off.
+ * The objects the overlay and HUD panels that are up hang in, each one's
+ * container and a draggable one's frame, which holds its strips, with the
+ * rank of the panel's layer.
+ *
+ * @type {Map<import('three').Object3D, number>}
+ */
+const layered = new Map();
+
+/**
+ * Say that what hangs in `object` is drawn in `layer`, so that a ray on it
+ * is on it whatever the ray meets nearer in a layer below
+ * (`getLayerRank`). Returns what takes the mark off.
  *
  * @param {import('three').Object3D} object
+ * @param {Exclude<PanelLayer, "world">} layer
  * @returns {() => void}
  */
-export function addOverlay(object) {
-  overlays.add(object);
+export function markLayer(object, layer) {
+  layered.set(object, LAYER_RANK[layer]);
   return () => {
-    overlays.delete(object);
+    layered.delete(object);
   };
 }
 
 /**
- * Whether any overlay panel is up: what lets a scene with none skip every
- * question about them.
+ * Whether any overlay or HUD panel is up: what lets a scene with none skip
+ * every question about layers.
  *
  * @returns {boolean}
  */
-export function hasOverlays() {
-  return overlays.size > 0;
+export function hasLayers() {
+  return layered.size > 0;
 }
 
 /**
- * Whether `object` is drawn by an overlay panel, or hangs in one. A walk up
- * the parents, skipped while no overlay is up.
+ * The rank of the layer `object` is drawn in (`LAYER_RANK`): the nearest
+ * mark above it, and the world's, 0, for an object with none. A walk up the
+ * parents, skipped while no overlay or HUD panel is up.
  *
  * @param {import('three').Object3D} object
- * @returns {boolean}
+ * @returns {number}
  */
-export function isInOverlay(object) {
-  if (overlays.size === 0) {
-    return false;
+export function getLayerRank(object) {
+  if (layered.size === 0) {
+    return LAYER_RANK.world;
   }
   for (
     let node = /** @type {import('three').Object3D | null} */ (object);
     node;
     node = node.parent
   ) {
-    if (overlays.has(node)) {
-      return true;
+    const rank = layered.get(node);
+    if (rank !== undefined) {
+      return rank;
     }
   }
-  return false;
+  return LAYER_RANK.world;
 }
 
 /**

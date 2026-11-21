@@ -706,20 +706,6 @@ export class TextBatch {
   }
 
   /**
-   * `changed` for every run that is a child of `object`, which share its
-   * clip.
-   *
-   * @param {THREE.Object3D} object
-   * @returns {void}
-   */
-  changedUnder(object) {
-    const children = object.children;
-    for (let i = 0; i < children.length; i++) {
-      this.changed(/** @type {THREE.Mesh} */ (children[i]));
-    }
-  }
-
-  /**
    * An object moved, and nothing else about it changed (`moved` in
    * `paintBatch.js`).
    *

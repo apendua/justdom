@@ -34,10 +34,8 @@ describe("the diagnostics panel", () => {
     }
   });
 
-  test("says how long the longest pieces took, to a tenth of a millisecond", () => {
-    const controls = createDiagnostics();
-    assert.equal(textWorkLine(controls), "draw -- · upload -- ms");
-    controls.textWork.set({ drawMs: 3.14, uploadMs: 0.86 });
-    assert.equal(textWorkLine(controls), "draw 3.1 · upload 0.9 ms");
+  test("says how long the longest piece took, to a tenth of a millisecond", () => {
+    assert.equal(textWorkLine("draw", undefined), "draw -- ms");
+    assert.equal(textWorkLine("upload", 0.86), "upload 0.9 ms");
   });
 });

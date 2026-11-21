@@ -110,18 +110,18 @@ function chartBar(controls, index) {
 }
 
 /**
- * The line of text readings: how long the slowest run of the last minute
- * took to draw ahead of its step, and how long the slowest upload took.
+ * One of the two text readings as the panel words it: how long the slowest
+ * piece of its kind took in the last minute. Each has a line of its own, at
+ * a size that can be read in a headset. On one line the two were 9 mm tall
+ * at a metre, and could not be.
  *
- * @param {DiagnosticsControls} controls
+ * @param {string} name
+ * @param {number | undefined} ms Undefined two seconds in, before there is a
+ *   window to report.
  * @returns {string}
  */
-export function textWorkLine(controls) {
-  const reading = controls.textWork.get();
-  // Two seconds in, before there is a window to report.
-  return reading === null
-    ? "draw -- · upload -- ms"
-    : `draw ${reading.drawMs.toFixed(1)} · upload ${reading.uploadMs.toFixed(1)} ms`;
+export function textWorkLine(name, ms) {
+  return `${name} ${ms === undefined ? "--" : ms.toFixed(1)} ms`;
 }
 
 /**
@@ -186,7 +186,14 @@ export const Panel = component(
             ),
           ]),
           $("div", [set("className", caption), children(text`text ahead, longest piece`)]),
-          $("div", [set("className", work), children(text`${() => textWorkLine(controls)}`)]),
+          $("div", [
+            set("className", work),
+            children(text`${() => textWorkLine("draw", controls.textWork.get()?.drawMs)}`),
+          ]),
+          $("div", [
+            set("className", work),
+            children(text`${() => textWorkLine("upload", controls.textWork.get()?.uploadMs)}`),
+          ]),
         ),
       ]),
       [

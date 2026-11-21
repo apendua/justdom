@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three-ui",
+      "comment": "The diagnostics panel shows its two text readings on a line each, at a size that can be read in a headset.",
+      "type": "patch"
+    }
+  ],
+  "packageName": "justdom-three-ui",
+  "email": "noreply@anthropic.com"
+}

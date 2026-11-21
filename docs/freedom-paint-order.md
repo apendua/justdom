@@ -196,14 +196,18 @@ each of its slots. These are the rules:
 - **Coplanar panels**, within `PANELS_COPLANAR` (10 µm) of each other's plane, share a node and draw
   in the order they joined the renderer. The tree is kept between builds, so a tie that followed the
   viewer would follow where the viewer stood at the last build instead.
-- **Overlays** are in a tree of their own, built and walked the same way, whose pieces take the
-  slots from `OVERLAY_SLOT`, or from the slot after the last ordinary one when the ordinary panels
-  take more. An overlay outside it, hidden or of no size, comes after the rest, far to near. Their
-  middles alone do not order them: a frame rate readout hung off to the side of the eye, in front of
-  a menu card straight ahead, has the farther middle. Drawn first, its depth quad hid the card
-  behind it, and the sky showed through its translucent background.
+- **Layers** (`PortalOptions.layer`): the world's panels, the overlays and the HUD panels are each
+  in a tree of their own, built and walked the same way, a layer at a time in that order. The
+  world's pieces take the slots from 0, the overlays' those from `OVERLAY_SLOT` and the HUD's those
+  from `HUD_SLOT`, or from the slot after the layer below's last when that layer takes more. A panel
+  outside its layer's tree, hidden or of no size, comes after the rest of its layer, far to near. A
+  layer's middles alone do not order it: a frame rate readout hung off to the side of the eye, in
+  front of a menu card straight ahead, has the farther middle. Drawn first, its depth quad hid the
+  card behind it, and the sky showed through its translucent background. Each layer but the world
+  starts with a depth clear (`createDepthClear`), which only the first of its panels drawn in a
+  render runs for each camera.
 
-When the renderer's last panel leaves, both trees let go of the roots their pooled polygons hold
+When the renderer's last panel leaves, every tree lets go of the roots its pooled polygons hold
 (`LayerTree.release`).
 
 The pieces past a slot's last place but one share that place, and a layer with a piece there is

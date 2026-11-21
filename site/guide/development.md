@@ -54,8 +54,8 @@ A frame rate readout in the corner of the page measures the desktop preview, whi
 reading nobody needs: once the headset takes the display, the page stops being drawn.
 `useDiagnostics(ctx, controls)` from [`justdom-three-ui`](/api/three-ui#diagnostics) draws the same
 reading head-locked in the room, with a minute of history as bars coloured against the display's own
-rate. It is faint, lets rays through, and draws over the scene rather than in it, as an
-[overlay panel](/api/three/panels#overlay-panels).
+rate. It is faint, lets rays through, and draws over the scene and any menu rather than in it, as a
+[HUD panel](/api/three/panels#layers).
 
 ```js
 import { useEffects, effects } from "justdom-signal";

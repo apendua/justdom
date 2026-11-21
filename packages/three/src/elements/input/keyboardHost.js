@@ -19,6 +19,7 @@ import { CameraContext, RendererContext, SceneContext } from "../../scene.js";
  * @import {KeyboardPreview} from './keyboardPreview.js';
  * @import {PanelHandles} from '../panelHandles.js';
  * @import {LevelPose} from '../../carry.js';
+ * @import {PanelLayer} from '../../drawOrder.js';
  */
 
 /**
@@ -62,9 +63,9 @@ const DEFAULT_TILT = (24 * Math.PI) / 180;
  *   of its own, and none of the app's defaults — except the panel's
  *   `haptics`, which the board's keys follow, since the same hand presses
  *   both, with the hover on unless the panel turned it off by name.
- * @property {boolean} overlay Whether the panel is an overlay
- *   (`PortalOptions.overlay`), which makes the board one too: a board the
- *   scene could hide would leave a field in a HUD with nothing to type on.
+ * @property {PanelLayer} layer The panel's layer (`PortalOptions.layer`),
+ *   which is the board's too: a board the scene or an overlay could hide
+ *   would leave a field in a menu or a HUD with nothing to type on.
  * @property {THREE.Object3D} containerObject The panel's perimeter.
  * @property {() => THREE.Object3D | null} hangFrom Where a board below the
  *   panel hangs, so it is placed and scaled with the panel: what the panel
@@ -293,7 +294,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
               putDown = { board: levelPose(anchor.matrixWorld), head: headOf(room.camera) };
             },
           },
-          binding.overlay,
+          binding.layer,
         )
       : null;
     if (handles) {
@@ -359,7 +360,7 @@ export function createKeyboardHost({ createPortal, ctx: sceneCtx = null }) {
       preview ? InputFocusContext.set(binding.ctx, preview.focus) : binding.ctx,
       {
         opaqueToRays: true,
-        overlay: binding.overlay,
+        layer: binding.layer,
         // A board that has been asked for is wanted now; a frame standing in
         // for it would be one more thing to look at.
         loadingFrame: false,

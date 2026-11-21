@@ -38,7 +38,7 @@ export {
   applyLevelPose,
 } from "./carry.js";
 export { createPortal } from "./elements/portal/portal.js";
-export { OVERLAY_PANEL_ORDER } from "./drawOrder.js";
+export { HUD_PANEL_ORDER, OVERLAY_PANEL_ORDER } from "./drawOrder.js";
 export { enableThemingMode, followUserActions } from "./elements/css/documentStyles.js";
 export { enableOutlinesMode, outlinesReport } from "./elements/dev/outlines.js";
 export {
@@ -111,6 +111,10 @@ export {
 
 /**
  * @typedef {import('./elements/portal/portal.js').PortalOptions} PortalOptions
+ */
+
+/**
+ * @typedef {import('./drawOrder.js').PanelLayer} PanelLayer
  */
 
 /**

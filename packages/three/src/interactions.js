@@ -9,7 +9,7 @@ import {
   Stream,
   withComputation,
 } from "justdom-signal";
-import { getObjectDrawOrder, hasOverlays, isInOverlay, isLaterInTree } from "./drawOrder.js";
+import { getLayerRank, getObjectDrawOrder, hasLayers, isLaterInTree } from "./drawOrder.js";
 import { noteMatrixChange } from "./matrixEpoch.js";
 
 /**
@@ -733,9 +733,10 @@ export const LEVEL = 1e-6;
 
 /**
  * The hit drawn on top, among those sorted by distance: the nearest, unless
- * hits level with it are drawn over it. An overlay panel is drawn over
- * everything else (`PortalOptions.overlay`), so the nearest hit on one
- * counts as the nearest, however much the ray met before it. A panel puts
+ * hits level with it are drawn over it. A panel in a higher layer
+ * (`PortalOptions.layer`) is drawn over everything in a lower one, so the
+ * nearest hit in the highest layer the ray meets counts as the nearest,
+ * however much the ray met before it. A panel puts
  * its content level, and of level hits the later draw order
  * (`getObjectDrawOrder`) is drawn over the earlier, since nothing in a
  * panel writes depth but its depth quad. Of level hits drawn at one order,
@@ -748,12 +749,14 @@ export const LEVEL = 1e-6;
  */
 function onTop(sorted) {
   let first = 0;
-  // A scene with no overlay up asks nothing of its hits.
-  if (hasOverlays()) {
-    for (let i = 0; i < sorted.length; i++) {
-      if (isInOverlay(sorted[i].object)) {
+  // A scene with no overlay or HUD up asks nothing of its hits.
+  if (hasLayers() && sorted.length > 1) {
+    let top = getLayerRank(sorted[0].object);
+    for (let i = 1; i < sorted.length; i++) {
+      const rank = getLayerRank(sorted[i].object);
+      if (rank > top) {
         first = i;
-        break;
+        top = rank;
       }
     }
   }

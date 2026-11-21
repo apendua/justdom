@@ -27,7 +27,7 @@ The options, each with the section that says what it does:
 | ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `root`             | none        | An element of the page to mirror where it stands. [Mirroring DOM the page already has](#mirroring-dom-the-page-already-has).         |
 | `opaqueToRays`     | `true`      | Whether the panel's background stops rays. [The panel's background](#the-panel-s-background).                                        |
-| `overlay`          | `false`     | Whether the panel draws over everything that is not an overlay, and takes the ray first. [Overlay panels](#overlay-panels).          |
+| `layer`            | `"world"`   | `"overlay"` draws over the world and takes the ray first; `"hud"` draws over the overlays too. [Layers](#layers).                    |
 | `keyboard`         | the scene's | The keyboard its fields are typed with, or `false`. [Text fields and the keyboard](#text-fields-and-the-keyboard).                   |
 | `thumbstickWheel`  | `false`     | The thumbstick as a mouse wheel on this panel. [What a ray sends the page](#what-a-ray-sends-the-page).                              |
 | `haptics`          | the scene's | What the hand feels from the panel's controls, or `false`. [Haptics](#haptics).                                                      |
@@ -475,36 +475,45 @@ import { dom } from "justdom-three";
 dom(ctx, panel, [effects((panel) => panel.position.copy(position))], { opaqueToRays: false });
 ```
 
-That is for readouts, and mainly for a head-locked overlay, which rides between the eye and the
-whole scene. What goes is the panel's own background, and only that: a `cursor: pointer` element
-inside is still a ray target.
+That is for readouts, and mainly for a head-locked HUD, which rides between the eye and the whole
+scene. What goes is the panel's own background, and only that: a `cursor: pointer` element inside is
+still a ray target.
 
-### Overlay panels
+### Layers
 
-A game's HUD or pause menu should not be hidden by a crate that rolls in front of it, nor lose the
-hand's ray to one. `overlay: true` makes a panel draw over every object of the scene and every
-ordinary panel, wherever they stand:
+A game's pause menu should not be hidden by a crate that rolls in front of it, nor lose the hand's
+ray to one, and a frame rate readout should not be hidden by the menu. The `layer` option puts a
+panel in one of three layers, drawn in this order:
+
+- `"world"`, the default: the panel stands in the scene, and whatever is in front of it hides it.
+- `"overlay"`: over every object of the scene and every world panel, wherever they stand. For a
+  menu.
+- `"hud"`: over the overlays too. For an instrument the player keeps in view.
 
 ```js
 import { effects } from "justdom-signal";
 import { dom } from "justdom-three";
 
-dom(ctx, hud, [effects((hud) => hud.position.copy(position))], { overlay: true });
+dom(ctx, menu, [effects((menu) => menu.position.copy(position))], { layer: "overlay" });
+dom(ctx, readout, [effects((readout) => readout.position.copy(corner))], { layer: "hud" });
 ```
 
-- **Drawn last.** The overlays draw after every ordinary panel and its strips. The depth buffer is
-  cleared once before the first of them, so nothing drawn before hides any of them, and among
-  themselves they hide one another as panels do. A loading frame an overlay shows while it mounts
-  draws with it. Only an object the scene gives a `renderOrder` of `OVERLAY_PANEL_ORDER` (2e8,
-  exported) or more draws after the overlays. The cursor and a drag's ghost still draw over them.
-- **Hit first.** A ray that meets an overlay is on the overlay, whatever it met nearer, and of two
-  overlays it is on the nearer. With `opaqueToRays: false` only the overlay's controls take the ray
-  this way; a ray between them goes on to the scene.
-- **Its strips and keyboard too.** A draggable overlay's strips, and the board a field in an overlay
-  opens, are overlays as well.
+- **Drawn after the layer below.** A layer's panels draw after every panel of the layers below and
+  their strips. The depth buffer is cleared once before the first of them, so nothing drawn before
+  hides any of them, and among themselves they hide one another as panels do. A loading frame such a
+  panel shows while it mounts draws with it. Only an object the scene gives a `renderOrder` of
+  `OVERLAY_PANEL_ORDER` (2e8, exported) or more draws after the overlays, and only one of
+  `HUD_PANEL_ORDER` (4e8, exported) or more after the HUD. The cursor and a drag's ghost still draw
+  over both.
+- **Hit first.** A ray is on the nearest hit in the highest layer it meets, whatever it met nearer
+  in a lower one. With `opaqueToRays: false` only the panel's controls take the ray this way; a ray
+  between them goes on to the layers below.
+- **Its strips and keyboard too.** A draggable panel's strips, and the board a field in it opens,
+  are in its layer.
 
-Ordinary panels are unchanged. `overlay` is not one of the scene's
-[panel defaults](#panel-defaults): each panel says for itself.
+Each layer past the world costs one more depth clear for each eye, on frames where one of its panels
+is up. `layer` is not one of the scene's [panel defaults](#panel-defaults): each panel says for
+itself.
 
 ### Loading, budget and updates
 

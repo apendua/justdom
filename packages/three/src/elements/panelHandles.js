@@ -4,12 +4,13 @@ import { carry } from "../carry.js";
 import { interactions } from "../interactions.js";
 import { $ } from "../operators.js";
 import { keepProgram } from "./paint/programKeeper.js";
-import { addOverlay } from "../drawOrder.js";
+import { markLayer } from "../drawOrder.js";
 
 /**
  * @import {Unsubscribable} from 'justdom-signal';
  * @import {PointerCancelEvent, PointerEvent, XREventMap} from '../core.js';
  * @import {ProgramKind} from './paint/programKeeper.js';
+ * @import {PanelLayer} from '../drawOrder.js';
  */
 
 /**
@@ -32,8 +33,9 @@ import { addOverlay } from "../drawOrder.js";
  * on it they show faintly, so there is something to find; the one a ray is
  * on, and all of them while the panel is being carried, show in full.
  *
- * The bars draw after every ordinary panel (`HANDLE_RENDER_ORDER`), and an
- * overlay's after every overlay (`OVERLAY_HANDLE_RENDER_ORDER`). They are
+ * The bars draw after every world panel (`HANDLE_RENDER_ORDER`), an
+ * overlay's after every overlay (`OVERLAY_HANDLE_RENDER_ORDER`) and a HUD
+ * panel's after every HUD panel (`HUD_HANDLE_RENDER_ORDER`). They are
  * translucent, and so is every box a panel draws, so all of them go in the
  * transparent pass, which three sorts by `renderOrder` before distance. At
  * the default of 0 a bar drew before any panel, and since it writes no
@@ -67,8 +69,8 @@ export const HANDLE_OPACITY_NEAR = 0.25;
 export const HANDLE_OPACITY_ACTIVE = 0.9;
 
 /**
- * Where an ordinary panel's bars go in the draw: past the slots the
- * ordinary panels draw in, each `PANEL_PIECES` bands of `PIECE_BAND`
+ * Where a world panel's bars go in the draw: past the slots the
+ * world panels draw in, each `PANEL_PIECES` bands of `PIECE_BAND`
  * (`layerOrder.js`), of which 95 fit below it, and short of the overlays at
  * `OVERLAY_PANEL_ORDER` and the cursor and a drag's ghost at
  * `OVERLAY_RENDER_ORDER`, which go over everything.
@@ -76,13 +78,31 @@ export const HANDLE_OPACITY_ACTIVE = 0.9;
 export const HANDLE_RENDER_ORDER = 1e8;
 
 /**
- * Where an overlay panel's bars go (`PortalOptions.overlay`): past the
+ * Where an overlay panel's bars go (`PortalOptions.layer`): past the
  * overlays' slots, which start at `OVERLAY_PANEL_ORDER` (2e8) and of which
- * 95 fit below it, and so after the depth clear the overlays start with. An
- * ordinary panel's bars stay at `HANDLE_RENDER_ORDER`, before the clear,
+ * 95 fit below it, and so after the depth clear the overlays start with. A
+ * world panel's bars stay at `HANDLE_RENDER_ORDER`, before the clear,
  * depth-tested against the scene as they always were.
  */
 export const OVERLAY_HANDLE_RENDER_ORDER = 3e8;
+
+/**
+ * Where a HUD panel's bars go: past the HUD panels' slots, which start at
+ * `HUD_PANEL_ORDER` (4e8) and of which 95 fit below it, after the depth
+ * clear the HUD starts with.
+ */
+export const HUD_HANDLE_RENDER_ORDER = 5e8;
+
+/**
+ * Where each layer's bars go.
+ *
+ * @type {Readonly<Record<PanelLayer, number>>}
+ */
+const HANDLE_ORDERS = {
+  world: HANDLE_RENDER_ORDER,
+  overlay: OVERLAY_HANDLE_RENDER_ORDER,
+  hud: HUD_HANDLE_RENDER_ORDER,
+};
 
 const BAR_COLOR = 0xe8ecf2;
 /** The drawn bar's thickness, in px, and its length as a share of its side. */
@@ -154,13 +174,14 @@ const SIDES = ["top", "bottom", "left", "right"];
  * @param {WeakKey} ctx A context with interactions and a renderer: the
  *   carry follows the hand once a frame.
  * @param {PanelDragOptions} [options]
- * @param {boolean} [overlay] Whether the strips are an overlay panel's:
- *   drawn after the overlays (`OVERLAY_HANDLE_RENDER_ORDER`), and the frame
- *   marked as an overlay, so that a ray on a strip, or on what hangs in the
- *   frame, is on it whatever it met nearer (`isInOverlay`).
+ * @param {PanelLayer} [layer] The layer of the panel the strips are
+ *   for: drawn after that layer's panels (`HANDLE_ORDERS`), and for an
+ *   overlay or HUD panel the frame marked as in its layer, so that a ray on
+ *   a strip, or on what hangs in the frame, is on it whatever it met nearer
+ *   in a lower layer (`getLayerRank`).
  * @returns {PanelHandles}
  */
-export function createPanelHandles(ctx, options = {}, overlay = false) {
+export function createPanelHandles(ctx, options = {}, layer = "world") {
   const frame = new THREE.Group();
   /** @type {THREE.Group<XREventMap>} */
   const face = new THREE.Group();
@@ -190,7 +211,7 @@ export function createPanelHandles(ctx, options = {}, overlay = false) {
   // and three's raycast does not ask the material.
   const hitMaterial = new THREE.MeshBasicMaterial({ visible: false });
 
-  const removeOverlay = overlay ? addOverlay(frame) : null;
+  const removeLayer = layer === "world" ? null : markLayer(frame, layer);
 
   const strips = SIDES.map((side) => {
     const hit = /** @type {THREE.Mesh<THREE.PlaneGeometry, THREE.Material, XREventMap>} */ (
@@ -200,7 +221,7 @@ export function createPanelHandles(ctx, options = {}, overlay = false) {
     const bar = new THREE.Mesh(plane, keepProgram(barMaterial(), BAR_PROGRAM));
     bar.name = `panel-handle-${side}-bar`;
     bar.visible = false;
-    bar.renderOrder = overlay ? OVERLAY_HANDLE_RENDER_ORDER : HANDLE_RENDER_ORDER;
+    bar.renderOrder = HANDLE_ORDERS[layer];
     // Beside the strip rather than under it, so the ray tests the strip
     // alone.
     group.add(hit, bar);
@@ -311,7 +332,7 @@ export function createPanelHandles(ctx, options = {}, overlay = false) {
       updateVisible();
     },
     dispose() {
-      removeOverlay?.();
+      removeLayer?.();
       for (const subscription of subscriptions) {
         subscription.unsubscribe();
       }

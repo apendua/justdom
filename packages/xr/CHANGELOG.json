@@ -2,6 +2,21 @@
   "name": "justdom-xr",
   "entries": [
     {
+      "version": "0.7.3",
+      "tag": "justdom-xr_v0.7.3",
+      "date": "Fri, 20 Nov 2026 23:50:03 GMT",
+      "comments": {
+        "dependency": [
+          {
+            "comment": "Updating dependency \"justdom-three\" to `0.38.1`"
+          },
+          {
+            "comment": "Updating dependency \"justdom-three\" to `^0.38.1`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.7.2",
       "tag": "justdom-xr_v0.7.2",
       "date": "Fri, 20 Nov 2026 20:16:14 GMT",

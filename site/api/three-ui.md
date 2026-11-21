@@ -265,9 +265,9 @@ neither is what the GPU does with an upload after the call returns.
   option this widget is the reason for.
 - **It draws over the scene rather than in it.** Anything nearer in the same direction would hide
   it, which is the honest answer for a thing in the room and the wrong one for an instrument, so the
-  panel is an [overlay](/api/three/panels#overlay-panels): it draws after the rest of the scene and
-  every ordinary panel, over a cleared depth buffer. Only another overlay nearer than it, such as a
-  game's own HUD, can hide it, as overlays hide one another the way panels do.
+  panel is in the [HUD layer](/api/three/panels#layers): it draws after the rest of the scene, every
+  world panel and every overlay, such as a game's menu, over a cleared depth buffer. Only another
+  HUD panel nearer than it can hide it, as HUD panels hide one another the way panels do.
 - **It measures whether or not it is being drawn.** Counting frames is a `+= 1` in a callback the
   renderer was making anyway; drawing the panel is what costs something, and that is what the switch
   turns off.

@@ -74,6 +74,7 @@ import {
  * @import {PortalPlugin} from '../plugins.js';
  * @import {PanelDragOptions} from '../panelHandles.js';
  * @import {PortalState} from './portalState.js';
+ * @import {PanelLayer} from '../../drawOrder.js';
  */
 
 /**
@@ -138,18 +139,22 @@ export const OBSERVER_OPTIONS = {
  * @property {boolean} [opaqueToRays] Whether the panel stops rays that land on
  *   it. True by default, which is what any panel with something to press wants.
  *   False leaves the portal drawn but untouchable, for a readout the player
- *   only looks at — a head-locked overlay in particular, which sits between
+ *   only looks at — a head-locked HUD in particular, which sits between
  *   the eye and everything else and would otherwise be in the way of every
  *   ray that crossed it.
- * @property {boolean} [overlay] Whether the panel draws over everything in
- *   the scene that is not an overlay, for a game's HUD or menu: no object
- *   and no ordinary panel hides it, wherever they stand, and a ray that
- *   meets it is on it, whatever the ray met nearer. Among themselves
- *   overlays hide one another as panels do. A draggable overlay's strips
- *   and the keyboard of a field in an overlay are overlays too. Only a
- *   scene object given a `renderOrder` of `OVERLAY_PANEL_ORDER` (2e8) or
- *   more draws over one. Off by default. Not
- *   among the scene's `PanelOptions`, since each panel says for itself.
+ * @property {PanelLayer} [layer] Which of the scene's layers the panel
+ *   draws in: `"world"` by default, where it stands in the scene and what
+ *   is in front of it hides it; `"overlay"`, over everything in the world,
+ *   for a game's menu; or `"hud"`, over the overlays too, for an instrument
+ *   the player keeps in view. Nothing in a lower layer hides a panel,
+ *   wherever it stands, and a ray that meets the panel is on it, whatever
+ *   the ray met nearer in a lower layer. Within a layer panels hide one
+ *   another as they do in the world. A draggable panel's strips and the
+ *   keyboard of a field in it are in its layer too. A scene object draws
+ *   over an overlay only with a `renderOrder` of `OVERLAY_PANEL_ORDER`
+ *   (2e8) or more, and over a HUD panel only with `HUD_PANEL_ORDER` (4e8)
+ *   or more. Not among the scene's `PanelOptions`, since each panel says
+ *   for itself.
  * @property {number | (() => number)} [budget] Milliseconds of each frame the
  *   portal may spend mounting and settling content, **when it paces
  *   itself** — a portal built outside a rendering context, with no shared
@@ -325,7 +330,7 @@ function buildPortal(ctx, ownOptions = {}) {
     haptics = {},
     thumbstickWheel = false,
     draggable = false,
-    overlay = false,
+    layer = "world",
     plugins: ownPlugins = [],
   } = mergePanelOptions(PanelOptionsContext.get(ctx), ownOptions);
   const keyboard = resolveKeyboard(keyboardOption);
@@ -562,7 +567,7 @@ function buildPortal(ctx, ownOptions = {}) {
     objectOf: (node) => state.nodeToObject.get(node),
     batch: state.paintBatch,
     depthQuad: state.depthQuad,
-    overlay,
+    layer,
   });
   state.ctx = LayerOrderContext.set(state.ctx, state.layerOrder);
   if (state.blocker) {
@@ -650,7 +655,7 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   state.handles =
     draggable && hasRenderer
-      ? createPanelHandles(baseCtx, draggable === true ? {} : draggable, overlay)
+      ? createPanelHandles(baseCtx, draggable === true ? {} : draggable, layer)
       : null;
 
   /**
@@ -682,9 +687,10 @@ function buildPortal(ctx, ownOptions = {}) {
    */
   state.loadingFrameObject =
     loadingFrame && state.hasFrames ? createLoadingFrame(loadingFrame) : null;
-  // An overlay's frame draws in the overlay's slot, after the depth clear,
-  // or the scene would hide a HUD still mounting behind a crate.
-  if (overlay && state.loadingFrameObject) {
+  // An overlay's or a HUD panel's frame draws in the panel's slot, after
+  // its layer's depth clear, or the scene would hide a menu still mounting
+  // behind a crate.
+  if (layer !== "world" && state.loadingFrameObject) {
     state.layerOrder.holdInSlot(state.loadingFrameObject.object);
   }
   state.stopLoadingFrame = () => {};
@@ -877,7 +883,7 @@ function buildPortal(ctx, ownOptions = {}) {
             haptics: haptics === false ? false : { hover: true, ...haptics },
           }),
           options: keyboard,
-          overlay,
+          layer,
           containerObject: state.containerObject,
           // A draggable panel's frame, where the board moves with the panel
           // and a ray on its keys is not a ray on the panel.

@@ -133,12 +133,13 @@ export function textWorkLine(controls) {
  * stopped rays here would be a pane of glass the player's own pointer kept
  * landing on, a foot in front of the game.
  *
- * And it is an overlay. A metre out is where the panel is, not where the game
- * is: a card at arm's length or a board carried up to the face is nearer in
- * the same direction and would hide it, which is the honest answer for a thing
- * in the room and the wrong one for an instrument. As an overlay it draws after
- * every ordinary panel and the rest of the scene, over a cleared depth buffer,
- * so the reading stays legible whatever the scene is doing.
+ * And it is in the HUD layer. A metre out is where the panel is, not where the
+ * game is: a card at arm's length or a board carried up to the face is nearer
+ * in the same direction and would hide it, which is the honest answer for a
+ * thing in the room and the wrong one for an instrument. So is a game's menu
+ * drawn as an overlay. In the HUD it draws after the rest of the scene, every
+ * world panel and every overlay, over a cleared depth buffer, so the reading
+ * stays legible whatever the scene is doing.
  *
  * @type {(ctx: WeakKey, controls: DiagnosticsControls) => import("justdom-signal").Source<Component>}
  */
@@ -195,7 +196,7 @@ export const Panel = component(
           obj.scale.setScalar(UI_SCALE);
         }),
       ],
-      { opaqueToRays: false, overlay: true },
+      { opaqueToRays: false, layer: "hud" },
     );
   },
 );

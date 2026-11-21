@@ -2,6 +2,18 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.38.1",
+      "tag": "justdom-three_v0.38.1",
+      "date": "Fri, 20 Nov 2026 23:50:03 GMT",
+      "comments": {
+        "patch": [
+          {
+            "comment": "Order overlay panels by a plane tree of their own, so an overlay in front draws after one behind it even where its middle is farther, and two overlays that cross are cut"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.38.0",
       "tag": "justdom-three_v0.38.0",
       "date": "Fri, 20 Nov 2026 20:16:14 GMT",

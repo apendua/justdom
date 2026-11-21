@@ -51,6 +51,18 @@ const POINTER = "cursor: pointer";
 const CARD = `position: absolute; background: rgb(255, 255, 255); ${POINTER}`;
 
 /**
+ * Put a panel in one slot among the panels, whole, as `sortPanels` puts
+ * one no tree holds.
+ *
+ * @param {import("./paint/layerOrder.js").LayerOrder} order
+ * @param {number} slot
+ */
+function inSlot(order, slot) {
+  order.clearSlots();
+  order.addSlot(slot, null);
+}
+
+/**
  * Build the page under a 400 by 300 root, mirror it into a panel drawn in
  * paint order, and let a hand press it.
  *
@@ -58,12 +70,17 @@ const CARD = `position: absolute; background: rgb(255, 255, 255); ${POINTER}`;
  * @param {object} [options]
  * @param {string} [options.rootStyle]
  * @param {boolean} [options.opaqueToRays] The panel option of that name.
+ * @param {import("../drawOrder.js").PanelLayer} [options.layer] The panel
+ *   option of that name.
  * @param {InteractionManager} [options.manager] Another page's, for a test
  *   with two panels in one hand's reach.
  */
-async function page(children, { rootStyle = "", opaqueToRays = true, manager: shared } = {}) {
+async function page(
+  children,
+  { rootStyle = "", opaqueToRays = true, layer = "world", manager: shared } = {},
+) {
   const { root, manager, portal, scene, panel, get } = await pagePanel(children, {
-    portal: { opaqueToRays },
+    portal: { opaqueToRays, layer },
     rootStyle,
     manager: shared,
   });
@@ -989,7 +1006,7 @@ describe("a panel drawn in paint order", () => {
     /** @type {Map<THREE.Mesh, number>} */
     let after = new Map();
     batch(() => {
-      order.setSlot(1);
+      inSlot(order, 1);
       order.walk(from);
       after = colourMeshes(g.panel);
     });
@@ -1024,7 +1041,7 @@ describe("a panel drawn in paint order", () => {
     ]);
     const order = await g.walk();
     // A slot past the first, where no layer's fallback band can land.
-    order.setSlot(1);
+    inSlot(order, 1);
     await g.walk();
     const card = g.get("card");
     card.style.transform = matrix3d(["translateZ", 8]);
@@ -1078,14 +1095,14 @@ describe("a panel drawn in paint order", () => {
       },
     ]);
     const order = await g.walk();
-    order.setSlot(1);
+    inSlot(order, 1);
     await g.walk();
     const card = g.get("card");
     const parent = /** @type {Element} */ (card.parentElement);
     card.remove();
     await g.settle();
     await g.walk();
-    order.setSlot(2);
+    inSlot(order, 2);
     await g.walk();
     parent.append(card);
     await g.settle();
@@ -1135,7 +1152,7 @@ describe("a panel drawn in paint order", () => {
     };
     try {
       batch(() => {
-        order.setSlot(1);
+        inSlot(order, 1);
         order.walk(from);
         assert.ok(asked > 0, "the batch asked to lay its draws again");
       });
@@ -1159,7 +1176,7 @@ describe("a panel drawn in paint order", () => {
     // panel's own.
     const g = await page([{ id: "card", style: CARD, at: [20, 20, 100, 100] }]);
     const order = await g.walk();
-    order.setSlot(1);
+    inSlot(order, 1);
     await g.walk();
     // The card's look changes, which runs the effect that orders its box.
     g.get("card").style.background = "rgb(0, 0, 255)";
@@ -2937,13 +2954,15 @@ describe("panels that cross", () => {
    * vertical line through its middle and moved `shift` world units up,
    * both in one scene, middles together for no shift: a letter carried
    * through a plant. Each holds a card, and the swung one, if `raised`, a
-   * card swung out of its plane, a layer cut inside its panel.
+   * card swung out of its plane, a layer cut inside its panel. Both are
+   * in `layer` (`PortalOptions.layer`).
    *
-   * @param {{ shift?: number, raised?: boolean }} [options]
+   * @param {{ shift?: number, raised?: boolean, layer?: import("../drawOrder.js").PanelLayer }} [options]
    */
-  async function crossing({ shift = 0, raised = false } = {}) {
+  async function crossing({ shift = 0, raised = false, layer = "world" } = {}) {
     const flat = await page([{ id: "card", style: CARD, at: [20, 20, 360, 60] }], {
       rootStyle: "background: rgba(60, 160, 90, 0.5)",
+      layer,
     });
     const swung = await page(
       [
@@ -2958,7 +2977,7 @@ describe("panels that cross", () => {
             ]
           : []),
       ],
-      { rootStyle: "background: rgba(250, 250, 240, 0.5)" },
+      { rootStyle: "background: rgba(250, 250, 240, 0.5)", layer },
     );
     const world = new THREE.Scene();
     world.add(flat.scene, swung.scene);
@@ -3017,46 +3036,48 @@ describe("panels that cross", () => {
     });
   }
 
-  test("cuts a panel that crosses another's plane, and draws its pieces either side of the other", async () => {
-    // Goes red with the panels drawn whole, far to near by their middles:
-    // one panel's draws all come before the other's or all after, and the
-    // one drawn first has its depth quad hide every part of the other
-    // behind its plane, through its own clear background.
-    const g = await crossing();
-    await g.frame();
-    await g.frame();
-    const { flat, swung } = g;
+  for (const layer of /** @type {const} */ (["world", "overlay", "hud"])) {
+    test(`cuts a ${layer} panel that crosses another's plane, and draws its pieces either side of the other`, async () => {
+      // Goes red with the panels drawn whole, far to near by their middles:
+      // one panel's draws all come before the other's or all after, and the
+      // one drawn first has its depth quad hide every part of the other
+      // behind its plane, through its own clear background.
+      const g = await crossing({ layer });
+      await g.frame();
+      await g.frame();
+      const { flat, swung } = g;
 
-    const cut = [flat, swung].filter((page) => proxiesOf(page.panel).length > 0);
-    assert.equal(cut.length, 1, "one panel is cut by the other's plane");
-    const [crossed] = cut;
-    const other = crossed === flat ? swung : flat;
-    assert.equal(proxiesOf(other.panel).length, 0, "and the other is drawn whole");
+      const cut = [flat, swung].filter((page) => proxiesOf(page.panel).length > 0);
+      assert.equal(cut.length, 1, "one panel is cut by the other's plane");
+      const [crossed] = cut;
+      const other = crossed === flat ? swung : flat;
+      assert.equal(proxiesOf(other.panel).length, 0, "and the other is drawn whole");
 
-    // Every draw of the crossed panel is drawn once a side: one before the
-    // other panel's first draw, and one after the other panel's depth quad.
-    const orders = drawn(crossed.panel)
-      .filter((mesh) => {
-        const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
-        return uniforms && uniforms.uHalfPlaneCount.value > 0;
-      })
-      .map((mesh) => mesh.renderOrder);
-    const otherBase = getLayerBase(other.root) ?? Number.NaN;
-    const otherQuad = depthQuadOf(other.panel).renderOrder;
-    assert.ok(
-      orders.some((order) => order < otherBase),
-      `a piece before ${otherBase}: ${orders}`,
-    );
-    assert.ok(
-      orders.some((order) => order > otherQuad),
-      `a piece after ${otherQuad}: ${orders}`,
-    );
-    assert.ok(
-      depthQuadOf(crossed.panel).renderOrder > Math.max(...orders),
-      "its depth quad after all of it",
-    );
-    g.teardown();
-  });
+      // Every draw of the crossed panel is drawn once a side: one before the
+      // other panel's first draw, and one after the other panel's depth quad.
+      const orders = drawn(crossed.panel)
+        .filter((mesh) => {
+          const uniforms = halfPlanesOf(/** @type {THREE.Material} */ (mesh.material));
+          return uniforms && uniforms.uHalfPlaneCount.value > 0;
+        })
+        .map((mesh) => mesh.renderOrder);
+      const otherBase = getLayerBase(other.root) ?? Number.NaN;
+      const otherQuad = depthQuadOf(other.panel).renderOrder;
+      assert.ok(
+        orders.some((order) => order < otherBase),
+        `a piece before ${otherBase}: ${orders}`,
+      );
+      assert.ok(
+        orders.some((order) => order > otherQuad),
+        `a piece after ${otherQuad}: ${orders}`,
+      );
+      assert.ok(
+        depthQuadOf(crossed.panel).renderOrder > Math.max(...orders),
+        "its depth quad after all of it",
+      );
+      g.teardown();
+    });
+  }
 
   test("cuts each layer of a crossed panel by its own half-planes and the panel's, the root's by the panel's alone", async () => {
     // The swung panel's raised card is cut inside its panel too. Goes red

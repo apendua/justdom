@@ -1,8 +1,8 @@
 import { $, attr, children, CLASS_NAME, className, style, stylesheet, text } from "justdom-core";
 import { Derived } from "justdom-signal";
 import { CATEGORY_LABELS, type Element } from "../data/elements";
-import { discoveredText, kelvinText, massText, noteOf, phaseText } from "../facts";
-import { formatKelvin, lookOf } from "../looks";
+import { discoveredText, massText, meltsText, noteOf, phaseText, stateCaption } from "../facts";
+import { lookOf } from "../looks";
 import type { TableState } from "../store/TableState";
 import { DIM, EDGE, FONT, INK, SURFACE_RAISED, tint } from "./theme";
 
@@ -189,13 +189,10 @@ export function Popup(element: Element, state: TableState) {
               ]),
               fact("Atomic mass", () => `${massText(element)} u`),
               fact(
-                () =>
-                  state.mode === "phase"
-                    ? `At ${formatKelvin(state.kelvin)}`
-                    : "At room temperature",
-                () => phaseText(element, state.mode === "phase" ? state.kelvin : 298),
+                () => stateCaption(state),
+                () => phaseText(element, state),
               ),
-              fact("Melts", () => kelvinText(element.melts)),
+              fact("Melts", () => meltsText(element)),
               fact("Discovered", () => discoveredText(element)),
               ...(remark ? [$("div", [attr("class", note), children(text`${remark}`)])] : []),
             ),

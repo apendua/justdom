@@ -28,6 +28,8 @@ export const Scene = (table: HTMLElement, state: TableState) =>
     // Kept across sessions, so a second session's chart starts from the
     // first one's scale rather than from nothing.
     const diagnostics = createDiagnostics();
+    // Built once, and mounted in each session.
+    const atom = Atom(state);
 
     useEffects(getScene(ctx), [
       effects((scene) => {
@@ -66,7 +68,7 @@ export const Scene = (table: HTMLElement, state: TableState) =>
             }),
           ]),
         ),
-        whilePresenting(ctx, () => Atom(ctx, state)),
+        whilePresenting(ctx, () => atom(ctx)),
         cursors(ctx, { color: "#5cc8ff" }),
       ),
     ]);

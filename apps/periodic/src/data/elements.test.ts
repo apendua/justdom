@@ -40,9 +40,16 @@ describe("ELEMENTS", () => {
     expect(ELEMENTS.filter((e) => e.discovered <= MENDELEEV_YEAR)).toHaveLength(63);
   });
 
-  it("has every gap Mendeleev left filled after his year", () => {
-    for (const number of Object.keys(MENDELEEV_PREDICTIONS)) {
-      expect(ELEMENTS[Number(number) - 1].discovered).toBeGreaterThan(MENDELEEV_YEAR);
+  it("has fluorine and not helium in Mendeleev's year, as his table of 1869 does", () => {
+    const known = (symbol: string) =>
+      ELEMENTS.find((e) => e.symbol === symbol)!.discovered <= MENDELEEV_YEAR;
+    expect(known("F")).toBe(true);
+    expect(known("He")).toBe(false);
+  });
+
+  it("has every element Mendeleev predicted found after he left room for it", () => {
+    for (const [number, { gapSince }] of Object.entries(MENDELEEV_PREDICTIONS)) {
+      expect(ELEMENTS[Number(number) - 1].discovered).toBeGreaterThan(gapSince);
     }
   });
 

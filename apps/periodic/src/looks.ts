@@ -2,6 +2,7 @@ import {
   type Category,
   type Element,
   type Phase,
+  MENDELEEV_NAMED,
   MENDELEEV_PREDICTIONS,
   MENDELEEV_YEAR,
   phaseAt,
@@ -102,8 +103,9 @@ export interface View {
  * - `tone`, the colour its border, glow and symbol are drawn in;
  * - `known`, false for an element the discovery view's year has not
  *   reached, which is drawn as a dim ghost;
- * - `prophecy`, the name Mendeleev gave a gap the year falls in, from his
- *   table of 1869 to the discovery that filled it;
+ * - `prophecy`, for an element not yet found in a year Mendeleev's table
+ *   already left room for it: the name he gave it, or `"gap"` before he
+ *   named it;
  * - `fresh`, for an element discovered in the last `FRESH_YEARS` of the
  *   discovery view's year, which glows;
  * - `badge`, a short word the tile shows under its symbol in this view.
@@ -141,9 +143,12 @@ export function lookOf(element: Element, view: View): Look {
     }
     case "discovery": {
       const known = element.discovered <= view.year;
+      const prediction = MENDELEEV_PREDICTIONS[element.number];
       const prophecy =
-        !known && view.year >= MENDELEEV_YEAR
-          ? (MENDELEEV_PREDICTIONS[element.number] ?? null)
+        !known && prediction && view.year >= prediction.gapSince
+          ? view.year >= MENDELEEV_NAMED
+            ? prediction.name
+            : "gap"
           : null;
       return {
         ...base,

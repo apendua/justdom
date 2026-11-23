@@ -2,10 +2,11 @@
 
 The 118 elements in Mendeleev's arrangement, with four ways to colour them: by category, by state at
 a temperature you set, by electronegativity, and by the year each was discovered, with the gaps
-Mendeleev left in 1869 shown as the elements he predicted. Point at a tile and a popup comes up over
-it while the panel above the transition metals shows the element in full, with a Bohr model of its
-shells. In a headset it is the same DOM, mirrored into one panel, and the atom of the element under
-the ray turns in three dimensions beside the table.
+Mendeleev left in 1869 and 1871 shown as the elements he predicted, under the names he gave them
+in 1871. Point at a tile and a popup comes up over it while the panel above the transition metals
+shows the element in full, with a Bohr model of its shells. In a headset it is the same DOM,
+mirrored into one panel, and the atom of the element under the ray turns in three dimensions beside
+the table.
 
 ## Running it
 
@@ -26,11 +27,13 @@ precaches exactly the JS the page loads. It then loads the page alone in headles
 can present nothing, and fails if the headset scene is fetched. Then it plays a session on the
 emulated headset: it points the ray at iron's tile and checks that the popup and the inspector show
 iron, pins it with the trigger, presses Discovery and the 1869 chip and checks that the table counts
-63 known elements with gallium's tile a predicted gap, and leaves by the ×. `SHOTS=<dir>` also
-photographs the page and the session, and `STACKS=1` prints a stack for anything the page throws. It
-drives the browser and the controller through `justdom-xr/driver`; `CHROMIUM=<path>` points it at a
-Chromium other than the one it looks for. A pull request that changes this app or a package it
-imports runs it, with the other apps' checks, from `.github/workflows/driven.yml`.
+63 known elements with gallium's tile a predicted gap, and leaves by the ×. Last it enters and
+leaves a second session and fails if the renderer then holds more geometries than after the first.
+`SHOTS=<dir>` also photographs the page and the session, and `STACKS=1` prints a stack for anything
+the page throws. It drives the browser and the controller through `justdom-xr/driver`;
+`CHROMIUM=<path>` points it at a Chromium other than the one it looks for. A pull request that
+changes this app or a package it imports runs it, with the other apps' checks, from
+`.github/workflows/driven.yml`.
 
 ## How it is put together
 
@@ -40,6 +43,7 @@ imports runs it, with the other apps' checks, from `.github/workflows/driven.yml
 | `src/looks.ts`            | How a tile is coloured in each view: a plain function of the element and the view's settings, shared by the tiles, the popup, the inspector, the legend and the atom.       |
 | `src/facts.ts`            | How the popup and the inspector write a figure: units, blanks and the one-line notes.                                                                                       |
 | `src/store/TableState.ts` | The one store the page and the headset read: the view and its setting, the element under the pointer and the one pinned.                                                    |
+| `src/store/player.ts`     | The discovery view's Play: one timer that steps the year, which every control stops.                                                                                        |
 | `src/components/`         | The table (`PeriodicTable`), its tiles, the popup, the inspector with its Bohr model, the header with the views and their sliders, and the legend.                          |
 | `src/xr.ts`               | The session: makes the renderer with the controller and hand models from `justdom-xr`'s `inputModels()`, and the Enter button.                                              |
 | `src/components/Scene.ts` | The scene: the panel, a backdrop, lights, the cursors, the frame rate and the atom.                                                                                         |

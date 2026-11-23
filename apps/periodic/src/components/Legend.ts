@@ -10,14 +10,7 @@ import {
   stylesheet,
   text,
 } from "justdom-core";
-import {
-  type Category,
-  CATEGORY_LABELS,
-  ELEMENTS,
-  MENDELEEV_YEAR,
-  type Phase,
-  phaseAt,
-} from "../data/elements";
+import { type Category, CATEGORY_LABELS, ELEMENTS, type Phase, phaseAt } from "../data/elements";
 import {
   CATEGORY_TONES,
   EN_MAX,
@@ -103,22 +96,26 @@ function Swatch(tone: string, label: string) {
 
 /**
  * A category to pick out: while the pointer or a ray is on it, every tile
- * of another category dims.
+ * of another category dims, and a press picks it out or lets it go. A
+ * finger's arrival and departure are no hover: a tap sends both around its
+ * click, and if they set and cleared the pick, a second tap could never
+ * let it go.
  */
-function Pick(category: Category, state: TableState) {
+export function Pick(category: Category, state: TableState) {
   const tone = CATEGORY_TONES[category];
   return $("span", [
     attr("class", entry),
     attr({ "data-pick": "" }),
-    on("pointerenter", () => {
-      state.highlight = category;
+    on("pointerenter", (event: PointerEvent) => {
+      if (event.pointerType !== "touch") {
+        state.highlight = category;
+      }
     }),
-    on("pointerleave", () => {
-      if (state.highlight === category) {
+    on("pointerleave", (event: PointerEvent) => {
+      if (event.pointerType !== "touch" && state.highlight === category) {
         state.highlight = null;
       }
     }),
-    // A tap on a phone sends no hover worth keeping, so a press toggles it.
     on("click", () => {
       state.highlight = state.highlight === category ? null : category;
     }),
@@ -189,7 +186,7 @@ export function Legend(state: TableState) {
                 style({ marginTop: "0" }),
                 children(
                   ...ERAS.map((era) => Swatch(era.tone, era.label)),
-                  Swatch(PREDICTION_TONE, `A gap Mendeleev left in ${MENDELEEV_YEAR}`),
+                  Swatch(PREDICTION_TONE, "An element Mendeleev left room for"),
                   $("span", [
                     attr("class", note),
                     children(

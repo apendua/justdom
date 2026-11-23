@@ -20,7 +20,9 @@
  * - the trigger pins it;
  * - Discovery, then the 1869 chip, turn the table back to Mendeleev's year,
  *   with gallium's tile a gap he foretold;
- * - the × ends the session.
+ * - the × ends the session;
+ * - a second session, entered and left, holds no more geometry on the GPU
+ *   than the first left behind, so the atom is not built again each time.
  *
  * The script fails if any of them does not happen, or if the page throws
  * along the way. It is kept out of `npm test` because it needs a browser.
@@ -38,6 +40,7 @@ import {
   frames,
   headPosition,
   launch,
+  observeThree,
   precache,
   press,
 } from "justdom-xr/driver";
@@ -105,6 +108,8 @@ async function main() {
       errors.push(error.message);
       console.log("[pageerror]", process.env.STACKS ? error.stack : error.message);
     });
+    // The renderer, for the GPU memory three keeps count of.
+    await observeThree(page);
     await page.goto(`${url}?emulator=bare`, { waitUntil: "load" });
     await page.waitForSelector("button[aria-label=Oganesson]");
     await page.waitForSelector("#ARButton, #VRButton");
@@ -213,6 +218,53 @@ async function main() {
       !(await page.evaluate(() => document.querySelector("#table[data-xr-portal]"))),
       "the × ends the session",
     );
+
+    console.log("\n== a second session");
+    {
+      const geometries = () =>
+        page.evaluate(
+          () => /** @type {any} */ (window).threeRenderers.at(-1).info.memory.geometries,
+        );
+      // The panel goes a little after the session does, so the count is
+      // read once it holds still for a second.
+      const settledGeometries = async () => {
+        let count = await geometries();
+        for (let tries = 0; tries < 20; tries++) {
+          await page.waitForTimeout(1000);
+          const next = await geometries();
+          if (next === count) break;
+          count = next;
+        }
+        return count;
+      };
+      const first = await settledGeometries();
+      await page.click("#ARButton, #VRButton");
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#table[data-xr-portal]") &&
+          !document.querySelector("[data-xr-loading]"),
+      );
+      await frames(page, 30);
+      await page.evaluate(() =>
+        /** @type {any} */ (window).threeRenderers.at(-1).xr.getSession().end(),
+      );
+      await page.waitForFunction(() => !document.querySelector("#table[data-xr-portal]"));
+      // What the panel built goes a little later still, so the count has
+      // ten seconds to come back down before it is read.
+      await page
+        .waitForFunction(
+          (before) =>
+            /** @type {any} */ (window).threeRenderers.at(-1).info.memory.geometries <= before,
+          first,
+          { timeout: 10_000 },
+        )
+        .catch(() => {});
+      const second = await settledGeometries();
+      check(
+        second <= first,
+        `a second session freed what it built (${first} geometries after the first, ${second} after the second)`,
+      );
+    }
 
     check(errors.length === 0, `the page threw nothing (${errors.length} errors)`);
     await page.close();

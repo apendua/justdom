@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ELEMENTS, MENDELEEV_YEAR } from "./data/elements";
+import { ELEMENTS, MENDELEEV_NAMED, MENDELEEV_YEAR } from "./data/elements";
 import {
   CATEGORY_TONES,
   EN_STOPS,
@@ -44,16 +44,24 @@ describe("lookOf", () => {
     expect(lookOf(element("He"), en)).toMatchObject({ tone: UNKNOWN_TONE, badge: "–" });
   });
 
-  it("shows Mendeleev's gaps from his year until they were filled", () => {
-    const at = (year: number) => lookOf(element("Ga"), { ...view, mode: "discovery", year });
-    expect(at(MENDELEEV_YEAR - 1)).toMatchObject({ known: false, prophecy: null });
-    expect(at(MENDELEEV_YEAR)).toMatchObject({
+  it("shows Mendeleev's gaps from his table of 1869, named from 1871", () => {
+    const at = (symbol: string, year: number) =>
+      lookOf(element(symbol), { ...view, mode: "discovery", year });
+    expect(at("Ga", MENDELEEV_YEAR - 1)).toMatchObject({ known: false, prophecy: null });
+    expect(at("Ga", MENDELEEV_YEAR)).toMatchObject({
       known: false,
-      prophecy: "eka-aluminium",
+      prophecy: "gap",
       tone: PREDICTION_TONE,
     });
-    expect(at(1875)).toMatchObject({ known: true, prophecy: null, fresh: true });
-    expect(at(1875 + FRESH_YEARS)).toMatchObject({ fresh: false });
+    expect(at("Ga", MENDELEEV_NAMED)).toMatchObject({ prophecy: "eka-aluminium" });
+    expect(at("Ga", 1875)).toMatchObject({ known: true, prophecy: null, fresh: true });
+    expect(at("Ga", 1875 + FRESH_YEARS)).toMatchObject({ fresh: false });
+  });
+
+  it("leaves technetium out of the table of 1869, which had no room for it", () => {
+    const at = (year: number) => lookOf(element("Tc"), { ...view, mode: "discovery", year });
+    expect(at(MENDELEEV_YEAR)).toMatchObject({ prophecy: null });
+    expect(at(MENDELEEV_NAMED)).toMatchObject({ prophecy: "eka-manganese" });
   });
 
   it("never calls an element known since antiquity new", () => {

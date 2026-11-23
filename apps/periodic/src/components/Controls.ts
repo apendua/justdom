@@ -13,7 +13,7 @@ import {
   when,
 } from "justdom-core";
 import { canPassThrough, passthrough, xrSession } from "justdom-xr/session";
-import { MENDELEEV_YEAR } from "../data/elements";
+import { MENDELEEV_YEAR, ROOM_KELVIN } from "../data/elements";
 import {
   formatKelvin,
   kelvinAt,
@@ -21,10 +21,10 @@ import {
   positionOfKelvin,
   positionOfYear,
   YEAR_MAX,
-  YEAR_MIN,
   yearAt,
 } from "../looks";
 import type { TableState } from "../store/TableState";
+import { createPlayer, type Player } from "../store/player";
 import { DIM, EDGE, FONT, INK, pressable, SURFACE, SURFACE_RAISED } from "./theme";
 
 const ACCENT = "#5cc8ff";
@@ -305,7 +305,7 @@ function Chip(label: string, isOn: () => boolean, onPress: () => void) {
 const TEMPERATURES = [
   { label: "Absolute zero", kelvin: 0 },
   { label: "Liquid nitrogen", kelvin: 77 },
-  { label: "Room", kelvin: 298 },
+  { label: "Room", kelvin: ROOM_KELVIN },
   { label: "Iron melts", kelvin: 1811 },
   { label: "Sun's surface", kelvin: 5772 },
 ];
@@ -319,41 +319,8 @@ const YEARS = [
   { label: "Today", year: YEAR_MAX },
 ];
 
-/** Years the discovery view plays through each tick, and the tick, in ms. */
-const PLAY_STEP = 2;
-const PLAY_TICK = 60;
-
-/**
- * Plays the discovery view's years from 1600 to today. A timer, not
- * `requestAnimationFrame`, since the page's animation frames stop while a
- * headset session has the display.
- */
-function play(state: TableState) {
-  if (state.playing) {
-    state.playing = false;
-    return;
-  }
-  if (state.year >= YEAR_MAX) {
-    state.year = YEAR_MIN;
-  }
-  state.playing = true;
-  const timer = setInterval(() => {
-    if (!state.playing || state.mode !== "discovery") {
-      state.playing = false;
-      clearInterval(timer);
-      return;
-    }
-    const next = Math.min(YEAR_MAX, state.year + PLAY_STEP);
-    state.year = next;
-    if (next >= YEAR_MAX) {
-      state.playing = false;
-      clearInterval(timer);
-    }
-  }, PLAY_TICK);
-}
-
 /** The setting each view has: a temperature, a year, or nothing to set. */
-function Dial(state: TableState) {
+function Dial(state: TableState, player: Player) {
   return $("div", [
     attr("class", dial),
     children(
@@ -400,7 +367,7 @@ function Dial(state: TableState) {
                     attr("class", segment),
                     attr({ "data-on": "" }),
                     set({ type: "button" }),
-                    on("click", () => play(state)),
+                    on("click", () => player.toggle()),
                     children(text`${() => (state.playing ? "❚❚ Pause" : "▶ Play")}`),
                   ]),
                   $("span", [
@@ -410,7 +377,7 @@ function Dial(state: TableState) {
                   Slider(
                     () => positionOfYear(state.year),
                     (position) => {
-                      state.playing = false;
+                      player.stop();
                       state.year = yearAt(position);
                     },
                     "linear-gradient(90deg, #ffa552, #5cc8ff, #4fd1a5, #b78cff)",
@@ -423,7 +390,7 @@ function Dial(state: TableState) {
                           label,
                           () => state.year === year,
                           () => {
-                            state.playing = false;
+                            player.stop();
                             state.year = year;
                           },
                         ),
@@ -458,6 +425,7 @@ function Dial(state: TableState) {
  * header also carries the passthrough switch and the × that ends it.
  */
 export function Controls(state: TableState) {
+  const player = createPlayer(state);
   return $("div", [
     children(
       $("div", [
@@ -486,7 +454,7 @@ export function Controls(state: TableState) {
                   attr("data-on", () => (state.mode === id ? "" : undefined)),
                   on("click", () => {
                     state.mode = id;
-                    state.playing = false;
+                    player.stop();
                   }),
                   children(text`${label}`),
                 ]),
@@ -524,7 +492,7 @@ export function Controls(state: TableState) {
           ),
         ),
       ]),
-      Dial(state),
+      Dial(state, player),
     ),
   ]);
 }

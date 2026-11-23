@@ -6,7 +6,10 @@
  * element with no stable one), Pauling electronegativity, the melting and
  * boiling points at one atmosphere in kelvin, the density near room
  * temperature in g/cm³ and the year the element was first identified, 0 for
- * one known since antiquity. A blank is a value nobody has measured. An
+ * one known since antiquity. Fluorine was identified in 1810, though not
+ * isolated until 1886. Helium's year is 1895, when it was found on Earth:
+ * the line seen in the Sun's spectrum in 1868 made it no element chemists
+ * could handle, and Mendeleev's table of 1869 has no helium. A blank is a value nobody has measured. An
  * element that turns straight to gas at one atmosphere, as carbon and
  * arsenic do, has its sublimation point as both its melting and its boiling
  * point. From meitnerium on, too few atoms have ever been made to say how
@@ -59,14 +62,14 @@ export interface Element {
 // | melts | boils | density | discovered
 const ROWS = `
 1|H|Hydrogen|1.008|nonmetal|1s1|2.20|13.99|20.27|0.00008988|1766
-2|He|Helium|4.0026|noble-gas|1s2|||4.22|0.0001785|1868
+2|He|Helium|4.0026|noble-gas|1s2|||4.22|0.0001785|1895
 3|Li|Lithium|6.94|alkali-metal|[He] 2s1|0.98|453.65|1603|0.534|1817
 4|Be|Beryllium|9.0122|alkaline-earth|[He] 2s2|1.57|1560|2742|1.85|1798
 5|B|Boron|10.81|metalloid|[He] 2s2 2p1|2.04|2349|4200|2.34|1808
 6|C|Carbon|12.011|nonmetal|[He] 2s2 2p2|2.55|3915|3915|2.267|0
 7|N|Nitrogen|14.007|nonmetal|[He] 2s2 2p3|3.04|63.15|77.36|0.0012506|1772
 8|O|Oxygen|15.999|nonmetal|[He] 2s2 2p4|3.44|54.36|90.20|0.001429|1774
-9|F|Fluorine|18.998|halogen|[He] 2s2 2p5|3.98|53.48|85.03|0.001696|1886
+9|F|Fluorine|18.998|halogen|[He] 2s2 2p5|3.98|53.48|85.03|0.001696|1810
 10|Ne|Neon|20.180|noble-gas|[He] 2s2 2p6||24.56|27.07|0.0009002|1898
 11|Na|Sodium|22.990|alkali-metal|[Ne] 3s1|0.93|370.94|1156.09|0.968|1807
 12|Mg|Magnesium|24.305|alkaline-earth|[Ne] 3s2|1.31|923|1363|1.738|1755
@@ -282,14 +285,25 @@ export const ELEMENTS: readonly Element[] = ROWS.trim()
 export const elementByNumber = (number: number): Element | undefined => ELEMENTS[number - 1];
 
 /**
- * The four gaps Mendeleev left in his table of 1869, with the names he gave
- * the elements he said would fill them, and the properties he foretold.
+ * The four elements Mendeleev predicted before they were found: the year
+ * his table first left room for each, and the name he gave it. His table of
+ * 1869 has unnamed gaps for scandium, gallium and germanium; his paper of
+ * 1871 named those three and added a fourth, eka-manganese, which became
+ * technetium.
  */
-export const MENDELEEV_PREDICTIONS: Readonly<Record<number, string>> = {
-  21: "eka-boron",
-  31: "eka-aluminium",
-  32: "eka-silicon",
-  43: "eka-manganese",
+export interface Prediction {
+  gapSince: number;
+  name: string;
+}
+
+/** The year Mendeleev named the elements he predicted. */
+export const MENDELEEV_NAMED = 1871;
+
+export const MENDELEEV_PREDICTIONS: Readonly<Record<number, Prediction>> = {
+  21: { gapSince: 1869, name: "eka-boron" },
+  31: { gapSince: 1869, name: "eka-aluminium" },
+  32: { gapSince: 1869, name: "eka-silicon" },
+  43: { gapSince: MENDELEEV_NAMED, name: "eka-manganese" },
 };
 
 /** The year Mendeleev published his table. */
@@ -297,6 +311,9 @@ export const MENDELEEV_YEAR = 1869;
 
 /** What a substance is at `kelvin`, at one atmosphere, or null where nobody knows. */
 export type Phase = "solid" | "liquid" | "gas";
+
+/** Room temperature, in kelvin: 25 °C. */
+export const ROOM_KELVIN = 298;
 
 export function phaseAt(element: Element, kelvin: number): Phase | null {
   const { melts, boils } = element;

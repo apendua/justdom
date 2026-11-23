@@ -57,8 +57,13 @@ function ballPoints(count: number, seed: number, out: Float32Array): void {
  * sets how many instances draw and where the nucleons sit, and a frame only
  * writes the electrons' matrices, through objects kept for it, so the frame
  * loop allocates nothing.
+ *
+ * Made once a scene, too: `Atom(state)` builds the meshes and hands back
+ * what mounts them, which each session calls. A session that built its own
+ * would leave the last one's geometries and materials on the GPU, since
+ * three frees neither until it is told to.
  */
-export function Atom(ctx: WeakKey, state: TableState) {
+export function Atom(state: TableState) {
   const nucleonGeometry = new THREE.SphereGeometry(NUCLEON, 12, 8);
   const nucleus = new THREE.InstancedMesh(
     nucleonGeometry,
@@ -154,23 +159,24 @@ export function Atom(ctx: WeakKey, state: TableState) {
     body.scale.setScalar(pop);
   };
 
-  return $(new THREE.Group(), [
-    effects((o) => {
-      o.position.set(...ATOM_AT);
-    }),
-    effects(() => {
-      show();
-    }),
-    effects(() => {
-      // The tone the table draws the element in, which the view changes
-      // without changing the element.
-      const tone = lookOf(shownElement(state), state).tone;
-      electronMaterial.color.set(tone);
-      glow.color.set(tone);
-    }),
-    effects(() => {
-      useFrame(ctx, tick);
-    }),
-    children($(body)),
-  ]);
+  return (ctx: WeakKey) =>
+    $(new THREE.Group(), [
+      effects((o) => {
+        o.position.set(...ATOM_AT);
+      }),
+      effects(() => {
+        show();
+      }),
+      effects(() => {
+        // The tone the table draws the element in, which the view changes
+        // without changing the element.
+        const tone = lookOf(shownElement(state), state).tone;
+        electronMaterial.color.set(tone);
+        glow.color.set(tone);
+      }),
+      effects(() => {
+        useFrame(ctx, tick);
+      }),
+      children($(body)),
+    ]);
 }

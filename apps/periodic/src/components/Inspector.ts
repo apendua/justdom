@@ -12,7 +12,17 @@ import {
 import { Derived } from "justdom-signal";
 import { xrSession } from "justdom-xr/session";
 import { CATEGORY_LABELS, type Element } from "../data/elements";
-import { densityText, discoveredText, kelvinText, massText, noteOf, phaseText } from "../facts";
+import {
+  densityText,
+  discoveredText,
+  electronegativityText,
+  kelvinText,
+  massText,
+  meltsText,
+  noteOf,
+  phaseText,
+  stateCaption,
+} from "../facts";
 import { lookOf } from "../looks";
 import { shownElement, type TableState } from "../store/TableState";
 import { DIM, EDGE, FAINT, FONT, INK, MONO, SURFACE, tint } from "./theme";
@@ -348,23 +358,17 @@ export function Inspector(state: TableState) {
           $("div", [
             attr("class", facts),
             children(
-              ...fact(
-                "Melts",
-                at((e) => kelvinText(e.melts)),
-              ),
+              ...fact("Melts", at(meltsText)),
               ...fact(
                 "Boils",
                 at((e) => kelvinText(e.boils)),
               ),
               ...fact("Density", at(densityText)),
-              ...fact(
-                "Electroneg.",
-                at((e) => e.electronegativity?.toFixed(2) ?? "unknown"),
-              ),
+              ...fact("Electroneg.", at(electronegativityText)),
               ...fact("Discovered", at(discoveredText)),
               ...fact(
-                () => (state.mode === "phase" ? `At ${state.kelvin} K` : "At 25 °C"),
-                at((e) => phaseText(e, state.mode === "phase" ? state.kelvin : 298)),
+                () => stateCaption(state),
+                at((e) => phaseText(e, state)),
               ),
             ),
           ]),

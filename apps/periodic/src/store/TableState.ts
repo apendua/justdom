@@ -1,11 +1,8 @@
 import { store } from "justdom-signal";
 import type { Category, Element } from "../data/elements";
-import { elementByNumber } from "../data/elements";
+import { elementByNumber, ROOM_KELVIN } from "../data/elements";
 import type { Mode, View } from "../looks";
 import { YEAR_MAX } from "../looks";
-
-/** Room temperature, where the state view starts. */
-export const ROOM_KELVIN = 298;
 
 /** The element the inspector shows before anyone points at one: gold. */
 export const FIRST_PINNED = 79;
@@ -30,6 +27,7 @@ export interface TableState extends View {
 export function createTableState(): TableState {
   return store<TableState>({
     mode: "category" as Mode,
+    // The state view starts at room temperature.
     kelvin: ROOM_KELVIN,
     year: YEAR_MAX,
     hovered: null,

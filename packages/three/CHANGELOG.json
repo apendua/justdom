@@ -2,6 +2,30 @@
   "name": "justdom-three",
   "entries": [
     {
+      "version": "0.40.0",
+      "tag": "justdom-three_v0.40.0",
+      "date": "Sat, 21 Nov 2026 12:50:12 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "The controller ray is a soft beam that fades out with distance from the hand, rather than a line."
+          }
+        ]
+      }
+    },
+    {
+      "version": "0.39.0",
+      "tag": "justdom-three_v0.39.0",
+      "date": "Sat, 21 Nov 2026 08:02:16 GMT",
+      "comments": {
+        "minor": [
+          {
+            "comment": "Replace the `overlay` panel option with `layer: \"world\" | \"overlay\" | \"hud\"`. A HUD panel draws over every overlay as an overlay draws over the world, after a depth clear of its own, and takes the ray from a nearer overlay. `overlay: true` is now `layer: \"overlay\"`"
+          }
+        ]
+      }
+    },
+    {
       "version": "0.38.1",
       "tag": "justdom-three_v0.38.1",
       "date": "Fri, 20 Nov 2026 23:50:03 GMT",

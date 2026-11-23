@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { InteractionContext, InteractionManager } from "./interactions.js";
 import { cursors, DEFAULT_RAY_LENGTH, fitRayToHit, pointers } from "./pointers.js";
 import { fakeFrameLoop } from "./test/frameLoop.js";
+import { createRay } from "./ray.js";
 import { HANDLE_RENDER_ORDER } from "./elements/panelHandles.js";
 
 /**
@@ -419,13 +420,8 @@ describe("fitRayToHit", () => {
     controller = fakeController();
     loop = fakeFrameLoop();
     manager.addController(controller, loop.onAnimationFrame).subscribe();
-    // A unit segment down -Z, the way the renderer draws one.
-    ray = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, 0, -1),
-      ]),
-    );
+    // The beam the renderer draws, a unit segment down -Z.
+    ray = createRay();
     controller.add(ray);
   });
 

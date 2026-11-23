@@ -91,6 +91,9 @@ headset also open in a desktop browser, with an emulated headset.
   knock it down with a slingshot.
 - [Hex Minesweeper](https://justdom.dev/demos/minesweeper/): minesweeper on a hexagonal grid, one
   `<svg>` wired to signals.
+- [Periodic Table](https://justdom.dev/demos/periodic/): the 118 elements, coloured by category,
+  state, electronegativity or year of discovery, with the atom under the ray turning beside the
+  table in a headset.
 
 ## Why justdom
 

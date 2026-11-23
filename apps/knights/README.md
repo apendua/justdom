@@ -91,8 +91,8 @@ session, and `STACKS=1` prints a stack for anything the page throws. It drives t
 controller through `justdom-xr/driver`, which launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
-tests or benchmarks, runs it, with minesweeper's, the desk's and Euclid's, from
-`.github/workflows/driven.yml`.
+tests or benchmarks, runs it, with minesweeper's, the desk's, Euclid's and the periodic table's,
+from `.github/workflows/driven.yml`.
 
 | File                      | What it is                                                                                                                                                                                  |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

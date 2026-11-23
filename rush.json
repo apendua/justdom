@@ -68,6 +68,7 @@
     { "packageName": "euclid", "projectFolder": "apps/euclid" },
     { "packageName": "knights", "projectFolder": "apps/knights" },
     { "packageName": "minesweeper", "projectFolder": "apps/minesweeper" },
+    { "packageName": "periodic", "projectFolder": "apps/periodic" },
     { "packageName": "showcase", "projectFolder": "apps/showcase" },
     { "packageName": "todo-ssr", "projectFolder": "apps/todo-ssr" },
     { "packageName": "todo", "projectFolder": "apps/todo" },

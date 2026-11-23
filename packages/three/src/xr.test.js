@@ -283,6 +283,39 @@ describe("createXRButton", () => {
     assert.deepEqual(seen.init, { optionalFeatures: ["local-floor"] });
   });
 
+  test("htmlInCanvas: true asks both session kinds for html-in-canvas, and nothing else does", async () => {
+    let seen = captureInit((mode) => mode === "immersive-ar");
+    let button = await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      handTracking: false,
+      htmlInCanvas: true,
+    });
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, { optionalFeatures: ["html-in-canvas"] });
+
+    seen = captureInit((mode) => mode === "immersive-vr");
+    button = await createXRButton(fakeRenderer(), {
+      anchor: false,
+      frameRate: false,
+      handTracking: false,
+      htmlInCanvas: true,
+      vr: { optionalFeatures: ["html-in-canvas"] },
+    });
+    button.click();
+    await settle();
+    assert.deepEqual(seen.init, {
+      optionalFeatures: ["html-in-canvas", "local-floor", "bounded-floor", "layers"],
+    });
+
+    seen = captureInit(() => true);
+    button = await createXRButton(fakeRenderer(), { anchor: false, frameRate: false });
+    button.click();
+    await settle();
+    assert.ok(!(seen.init?.optionalFeatures ?? []).includes("html-in-canvas"));
+  });
+
   test("asks an AR session for local-floor, which the anchor measures upright in", async () => {
     let seen = captureInit(() => true);
     let button = await createXRButton(fakeRenderer(), { frameRate: false, handTracking: false });

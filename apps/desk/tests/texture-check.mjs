@@ -9,6 +9,8 @@
  *
  * For each look in turn, it enters a session and checks that:
  *
+ * - the session asks for `html-in-canvas`, which keeps the browser
+ *   rendering the page while it runs;
  * - the desk's element is moved into the renderer's canvas, and the
  *   browser paints it there;
  * - the right controller's ray, aimed at the power control from the
@@ -79,8 +81,15 @@ async function main() {
       });
       await page.goto(`${url}?look=${id}&emulator=bare&panels=texture`, { waitUntil: "load" });
       await page.waitForSelector("#ARButton, #VRButton");
-      // Paints of the canvas, counted from before the session.
+      // Paints of the canvas, counted from before the session, and the
+      // features the session is asked for.
       await page.evaluate(() => {
+        const xr = /** @type {XRSystem} */ (navigator.xr);
+        const request = xr.requestSession.bind(xr);
+        xr.requestSession = (mode, init) => {
+          /** @type {any} */ (window).sessionInit = init;
+          return request(mode, init);
+        };
         /** @type {any} */ (window).paints = 0;
         for (const canvas of document.querySelectorAll("canvas")) {
           canvas.addEventListener("paint", () => {
@@ -98,6 +107,13 @@ async function main() {
           () => true,
           () => false,
         );
+      const features = await page.evaluate(
+        () => /** @type {any} */ (window).sessionInit?.optionalFeatures ?? [],
+      );
+      check(
+        features.includes("html-in-canvas"),
+        "the session asks for html-in-canvas, which keeps the page rendering",
+      );
       check(inCanvas, "the desk is drawn from inside the renderer's canvas");
       if (!inCanvas) {
         await page.close();

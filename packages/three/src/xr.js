@@ -134,6 +134,13 @@ export function suppressSessionOffers() {
 const VR_DEFAULT_FEATURES = ["local-floor", "bounded-floor", "layers"];
 
 /**
+ * The session feature that keeps the page rendering during an immersive
+ * session, so that elements drawn into a canvas with HTML-in-Canvas go on
+ * firing `paint`. `createXRButton` asks for it with `htmlInCanvas: true`.
+ */
+const HTML_IN_CANVAS_FEATURE = "html-in-canvas";
+
+/**
  * A session init with one more optional feature in it, leaving whatever the
  * caller asked for alone — including that same feature, asked for twice.
  *
@@ -223,6 +230,13 @@ function withOptionalFeature(init, feature) {
  * app is 2D or immersive, and this is the half of that answer that lives in
  * the page.
  *
+ * `htmlInCanvas: true` asks for `html-in-canvas`, as an optional feature of
+ * both session kinds, for a scene that shows elements the browser draws into
+ * the renderer's canvas (`drawInCanvas`). Without it the browser stops
+ * rendering the page while an immersive session runs, so the canvas fires no
+ * `paint` and an element texture keeps the picture it had when the session
+ * started. A browser that does not know the feature ignores the request.
+ *
  * The AR session no longer asks for `dom-overlay`, which three's `ARButton`
  * added along with an empty `<div>` on the page and a close cross drawn into
  * it. Nothing here ever used it: these are headset apps, where the overlay is
@@ -241,6 +255,7 @@ function withOptionalFeature(init, feature) {
  *   autoEnter?: boolean;
  *   crashPanel?: boolean;
  *   handTracking?: boolean;
+ *   htmlInCanvas?: boolean;
  * }} [sessionInit]
  * @returns {Promise<HTMLElement>}
  */
@@ -250,6 +265,13 @@ export async function createXRButton(renderer, sessionInit = {}) {
       ...sessionInit,
       ar: withOptionalFeature(sessionInit.ar, "hand-tracking"),
       vr: withOptionalFeature(sessionInit.vr, "hand-tracking"),
+    };
+  }
+  if (sessionInit.htmlInCanvas === true) {
+    sessionInit = {
+      ...sessionInit,
+      ar: withOptionalFeature(sessionInit.ar, HTML_IN_CANVAS_FEATURE),
+      vr: withOptionalFeature(sessionInit.vr, HTML_IN_CANVAS_FEATURE),
     };
   }
   renderer.xr.setReferenceSpaceType("local");

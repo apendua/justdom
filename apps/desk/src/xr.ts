@@ -57,7 +57,7 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
         );
       }
 
-      createXRButton(renderer).then((button) => {
+      createXRButton(renderer, scene.button).then((button) => {
         document.body.appendChild(button);
       });
     },
@@ -72,6 +72,8 @@ type SceneOptions = Omit<NonNullable<Parameters<typeof render>[1]>, "createContr
 interface DeskScene {
   scene: Parameters<typeof render>[0];
   options: SceneOptions;
+  /** What the Enter button asks the session for, past its own defaults. */
+  button?: Parameters<typeof createXRButton>[1];
 }
 
 /** The desk mirrored by `justdom-three`, with what its panels need. */
@@ -98,12 +100,15 @@ async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
 
 /**
  * The desk drawn into a texture, or nothing where the browser cannot draw
- * HTML into a canvas: the page says so and offers no session.
+ * HTML into a canvas: the page says so and offers no session. The session
+ * asks for `html-in-canvas`, which keeps the browser rendering the page
+ * while it runs, so the canvas goes on firing `paint` and the panels follow
+ * the desk.
  */
 async function textureScene(desk: Readable<MountedDesk>): Promise<DeskScene | null> {
   if (!canDrawHtmlInCanvas()) {
     return null;
   }
   const { TextureScene } = await import("./texture/Scene.js");
-  return { scene: TextureScene(desk), options: {} };
+  return { scene: TextureScene(desk), options: {}, button: { htmlInCanvas: true } };
 }

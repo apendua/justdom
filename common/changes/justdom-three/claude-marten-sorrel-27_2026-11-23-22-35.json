@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "createXRButton takes htmlInCanvas: ask both session kinds for the html-in-canvas feature, which keeps the browser rendering the page during an immersive session, so an element drawn into the canvas goes on firing paint",
+      "type": "minor",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

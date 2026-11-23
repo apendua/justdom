@@ -72,8 +72,13 @@ ships it as stable, with no flag, after an origin trial; before that it was behi
 `chrome://flags/#canvas-draw-element`. Mozilla
 ([standards-positions#1076](https://github.com/mozilla/standards-positions/issues/1076)) and WebKit
 ([standards-positions#630](https://github.com/WebKit/standards-positions/issues/630)) have not taken
-a position on it. The Quest Browser stops rendering the page during an immersive session, which is
-when the canvas would fire `paint`.
+a position on it.
+
+A browser stops rendering the page during an immersive session, and with it the canvas's `paint`
+events, unless the session asks for the `html-in-canvas` feature. With the feature the element in
+the canvas stays live: it is laid out and painted as on the page, and every change to it fires
+`paint` again. Both demos ask for it, as an optional feature, through
+`createXRButton(renderer, { htmlInCanvas: true })`.
 
 The API changed on its way to stable. The
 [origin trial's changes](https://developer.chrome.com/blog/html-in-canvas-ot-changes) renamed the
@@ -84,8 +89,8 @@ in a Chromium that has only the earlier ones.
 
 ## Which one to use
 
-Use the mirror for a headset app. It is the one of the two that runs on a Quest today, and its
-panels are part of the scene.
+Use the mirror for a headset app. It runs in every browser with WebXR, where texture mode needs
+HTML-in-Canvas as well, and its panels are part of the scene.
 
 Texture mode is useful on a desktop as a reference. It shows exactly what the browser would paint,
 so putting it beside the mirror shows where the mirror is off. Try the two Desk links above side by

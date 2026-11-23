@@ -14,6 +14,7 @@ import { list } from "./core.js";
 import { OVERLAY_RENDER_ORDER } from "./drawOrder.js";
 import { $ } from "./operators.js";
 import { InteractionContext } from "./interactions.js";
+import { RAY_REACH } from "./ray.js";
 
 /**
  * @import { Signal } from 'justdom-signal';
@@ -201,20 +202,21 @@ export function pointers(ctx) {
 }
 
 /**
- * How far a ray is drawn when it is pointing at nothing, in metres. Far enough
- * to read as heading off into the scene, without being a line across the room.
+ * How far a ray is drawn when it is pointing at nothing, in metres: as far as
+ * the beam can be seen, since it has faded out completely at `RAY_REACH`, and
+ * any further would only rasterise a quad nobody sees.
  */
-export const DEFAULT_RAY_LENGTH = 5;
+export const DEFAULT_RAY_LENGTH = RAY_REACH;
 
 /**
  * Ends a controller's ray where the ray itself ends: at whatever it hit, or at
  * `fallback` when it hit nothing.
  *
- * The ray is drawn as a unit segment down -Z, so its length is its z scale —
- * and the manager casts from the same origin along the same line, which makes
- * its hit distance and that scale the same number.
+ * The ray is drawn along a unit segment down -Z (`createRay`), so its length
+ * is its z scale — and the manager casts from the same origin along the same
+ * line, which makes its hit distance and that scale the same number.
  *
- * @param {THREE.Object3D} ray The line, already parented to `controller`.
+ * @param {THREE.Object3D} ray The beam, already parented to `controller`.
  * @param {THREE.XRTargetRaySpace} controller
  * @param {Pointers} all
  * @param {number} [fallback]

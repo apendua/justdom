@@ -47,6 +47,13 @@ import {
 
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+/**
+ * How long the session may take to put the table's panel up. Under
+ * SwiftShader on a laptop it takes about fifteen seconds, and a CI runner
+ * has taken more than thirty; the margin is for a slow runner.
+ */
+const LOAD_TIMEOUT = 240_000;
+
 const SHOTS = process.env.SHOTS;
 if (SHOTS) {
   mkdirSync(SHOTS, { recursive: true });
@@ -118,12 +125,16 @@ async function main() {
     if (SHOTS) {
       await page.screenshot({ path: join(SHOTS, "page.png") });
     }
+    const entered = Date.now();
     await page.click("#ARButton, #VRButton");
     await page.waitForFunction(
       () =>
         document.querySelector("#table[data-xr-portal]") &&
         !document.querySelector("[data-xr-loading]"),
+      undefined,
+      { timeout: LOAD_TIMEOUT, polling: 1000 },
     );
+    console.log(`  the panel was up ${((Date.now() - entered) / 1000).toFixed(1)} s after Enter`);
     await frames(page, 30);
 
     // Where the head was as the session started, which is the origin of the
@@ -243,6 +254,8 @@ async function main() {
         () =>
           document.querySelector("#table[data-xr-portal]") &&
           !document.querySelector("[data-xr-loading]"),
+        undefined,
+        { timeout: LOAD_TIMEOUT, polling: 1000 },
       );
       await frames(page, 30);
       await page.evaluate(() =>

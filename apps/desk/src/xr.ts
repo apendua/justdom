@@ -28,7 +28,10 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
   // What the monitor reveals its listing with in a session. Handed to the
   // page from here, so that the page does not import the mirror itself.
   revealer.set(makeReveal);
-  const scene = panels === "texture" ? await textureScene(desk) : await mirrorScene(desk);
+  const scene =
+    panels === "texture"
+      ? await textureScene(desk)
+      : await mirrorScene(desk, pinnedTextScale(query));
   if (!scene) {
     return;
   }
@@ -75,7 +78,10 @@ interface DeskScene {
 }
 
 /** The desk mirrored by `justdom-three`, with what its panels need. */
-async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
+async function mirrorScene(
+  desk: Readable<MountedDesk>,
+  textScale: number | null,
+): Promise<DeskScene> {
   // The charts, the memo and the plant are inline SVG, which a portal draws
   // only with the plugin that does. It is a separate entry point, so it is
   // loaded only once a session can be offered.
@@ -91,9 +97,21 @@ async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
         // other.
         keyboard: { create: ({ onKey, field }) => NoteKeyboard({ onKey, field }) },
         haptics: { flavor: "key" },
+        ...(textScale === null ? {} : { minTextScale: textScale, maxTextScale: textScale }),
       },
     },
   };
+}
+
+/**
+ * `?textScale=2`: every panel's text drawn once at that scale and never
+ * again, wherever the head goes. For telling on a headset what drawing text
+ * at a new scale costs from what moving the head costs otherwise. Null when
+ * the query does not name a positive number.
+ */
+function pinnedTextScale(query: URLSearchParams): number | null {
+  const scale = Number(query.get("textScale"));
+  return scale > 0 ? scale : null;
 }
 
 /**

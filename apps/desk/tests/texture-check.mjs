@@ -9,8 +9,8 @@
  *
  * For each look in turn, it enters a session and checks that:
  *
- * - the session asks for `html-in-canvas`, which keeps the browser
- *   rendering the page while it runs;
+ * - the session asks for `html-in-canvas`, which keeps the canvas's own
+ *   subtree painted while it runs;
  * - the desk's element is moved into the renderer's canvas, and the
  *   browser paints it there;
  * - the right controller's ray, aimed at the power control from the
@@ -112,7 +112,7 @@ async function main() {
       );
       check(
         features.includes("html-in-canvas"),
-        "the session asks for html-in-canvas, which keeps the page rendering",
+        "the session asks for html-in-canvas, which keeps the canvas's subtree painting",
       );
       check(inCanvas, "the desk is drawn from inside the renderer's canvas");
       if (!inCanvas) {

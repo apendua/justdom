@@ -149,11 +149,12 @@ from [Chrome 157](https://developer.chrome.com/blog/html-in-canvas). Without it 
 the corner and offers no session. It was tried in Chrome for Testing 157 under the emulator
 (`tests/texture-check.mjs`). An earlier Chromium had the API behind
 `chrome://flags/#canvas-draw-element`, up to 154 under older names (`layoutsubtree`,
-`texElementImage2D`), and the desk no longer runs there. A browser stops rendering the page during
-an immersive session unless the session asks for the `html-in-canvas` feature, and without that the
-canvas would fire no `paint` and the panels would keep the picture the session started with. So the
-Enter button asks for it, as an optional feature (`htmlInCanvas: true` on `createXRButton`), and the
-desk is painted, and uploaded, for as long as the session runs.
+`texElementImage2D`), and the desk no longer runs there. A headset browser such as the Quest's stops
+rendering the page during an immersive session. A session that asks for the `html-in-canvas` feature
+keeps the canvas's own subtree laid out and painted, while the rest of the page stays suspended.
+Without it the canvas would fire no `paint` and the panels would keep the picture the session
+started with. So the Enter button asks for it, as an optional feature (`htmlInCanvas: true` on
+`createXRButton`), and the desk is painted, and uploaded, for as long as the session runs.
 
 How it draws (`src/texture/Scene.ts`, with `drawInCanvas` and `createElementTexture` from
 `justdom-three`):

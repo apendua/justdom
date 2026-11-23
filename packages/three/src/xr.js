@@ -134,9 +134,10 @@ export function suppressSessionOffers() {
 const VR_DEFAULT_FEATURES = ["local-floor", "bounded-floor", "layers"];
 
 /**
- * The session feature that keeps the page rendering during an immersive
- * session, so that elements drawn into a canvas with HTML-in-Canvas go on
- * firing `paint`. `createXRButton` asks for it with `htmlInCanvas: true`.
+ * The session feature that keeps a canvas's drawable children laid out and
+ * painted during an immersive session, so that elements drawn into it with
+ * HTML-in-Canvas go on firing `paint`. The rest of the page stays suspended.
+ * `createXRButton` asks for it with `htmlInCanvas: true`.
  */
 const HTML_IN_CANVAS_FEATURE = "html-in-canvas";
 
@@ -232,10 +233,12 @@ function withOptionalFeature(init, feature) {
  *
  * `htmlInCanvas: true` asks for `html-in-canvas`, as an optional feature of
  * both session kinds, for a scene that shows elements the browser draws into
- * the renderer's canvas (`drawInCanvas`). Without it the browser stops
- * rendering the page while an immersive session runs, so the canvas fires no
- * `paint` and an element texture keeps the picture it had when the session
- * started. A browser that does not know the feature ignores the request.
+ * the renderer's canvas (`drawInCanvas`). A headset browser such as the
+ * Quest's stops rendering the page while an immersive session runs, so
+ * without it the canvas fires no `paint` and an element texture keeps the
+ * picture it had when the session started. With it the canvas's own subtree
+ * goes on being laid out and painted, while the rest of the page is still
+ * suspended. A browser that does not know the feature ignores the request.
  *
  * The AR session no longer asks for `dom-overlay`, which three's `ARButton`
  * added along with an empty `<div>` on the page and a close cross drawn into

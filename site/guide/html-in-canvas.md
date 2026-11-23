@@ -74,11 +74,11 @@ ships it as stable, with no flag, after an origin trial; before that it was behi
 ([standards-positions#630](https://github.com/WebKit/standards-positions/issues/630)) have not taken
 a position on it.
 
-A browser stops rendering the page during an immersive session, and with it the canvas's `paint`
-events, unless the session asks for the `html-in-canvas` feature. With the feature the element in
-the canvas stays live: it is laid out and painted as on the page, and every change to it fires
-`paint` again. Both demos ask for it, as an optional feature, through
-`createXRButton(renderer, { htmlInCanvas: true })`.
+A headset browser such as the Quest's stops rendering the page during an immersive session, and with
+it the canvas's `paint` events, unless the session asks for the `html-in-canvas` feature. With the
+feature the canvas's own subtree stays live: it is laid out and painted as on the page, and every
+change to it fires `paint` again. The rest of the page is still suspended. Both demos ask for it, as
+an optional feature, through `createXRButton(renderer, { htmlInCanvas: true })`.
 
 The API changed on its way to stable. The
 [origin trial's changes](https://developer.chrome.com/blog/html-in-canvas-ot-changes) renamed the

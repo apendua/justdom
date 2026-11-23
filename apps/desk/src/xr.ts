@@ -101,9 +101,9 @@ async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
 /**
  * The desk drawn into a texture, or nothing where the browser cannot draw
  * HTML into a canvas: the page says so and offers no session. The session
- * asks for `html-in-canvas`, which keeps the browser rendering the page
- * while it runs, so the canvas goes on firing `paint` and the panels follow
- * the desk.
+ * asks for `html-in-canvas`, which keeps the canvas's own subtree, the
+ * desk, laid out and painted while it runs, so the canvas goes on firing
+ * `paint` and the panels follow the desk.
  */
 async function textureScene(desk: Readable<MountedDesk>): Promise<DeskScene | null> {
   if (!canDrawHtmlInCanvas()) {

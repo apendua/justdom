@@ -9,11 +9,12 @@
  * one known since antiquity. Fluorine was identified in 1810, though not
  * isolated until 1886. Helium's year is 1895, when it was found on Earth:
  * the line seen in the Sun's spectrum in 1868 made it no element chemists
- * could handle, and Mendeleev's table of 1869 has no helium. A blank is a value nobody has measured. An
- * element that turns straight to gas at one atmosphere, as carbon and
- * arsenic do, has its sublimation point as both its melting and its boiling
- * point. From meitnerium on, too few atoms have ever been made to say how
- * the element behaves, so its category and configuration are predicted.
+ * could handle, and Mendeleev's table of 1869 has no helium. A blank is a
+ * value nobody has measured. An element that turns straight to gas at one
+ * atmosphere, as carbon and arsenic do, has its sublimation point as both
+ * its melting and its boiling point. From meitnerium on, too few atoms have
+ * ever been made to say how the element behaves, so its category and
+ * configuration are predicted.
  */
 
 export type Category =

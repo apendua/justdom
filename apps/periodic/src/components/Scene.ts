@@ -18,8 +18,8 @@ import { Atom } from "./Atom";
  * where it stands, so a ray on a tile is the pointer on the real tile, and
  * the inspector the page fills for it is drawn in the panel. The popup is
  * not mounted in a session (`PeriodicTable`).
- * The atom reads the same state the page writes, so it follows the ray
- * from tile to tile.
+ * The atom reads the same state the page writes, so it follows the ray to
+ * the tile it rests on (`createPointer`).
  *
  * Both exist only while a session is presenting. Between sessions the page
  * is all anyone sees.

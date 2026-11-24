@@ -196,8 +196,20 @@ async function main() {
     await aimAt(page, head, await onTable(iron));
     await frames(page, 10);
     check(await has(iron, "data-xr-hover"), "the ray is on iron's tile");
+    // The inspector follows the ray once it has rested on the tile for
+    // `SETTLE_MS`, which is a time, not a number of frames.
+    const inspected = await page
+      .waitForFunction(
+        () => /IronTransition metal/.test(document.querySelector("#table")?.textContent ?? ""),
+        undefined,
+        { timeout: 5_000 },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+    check(inspected, "the inspector shows iron");
     const text = await tableText();
-    check(/IronTransition metal/.test(text), "the inspector shows iron");
     check(!text.includes("26 · Transition metal"), "and no popup comes up over it");
     check(
       await page.evaluate(() =>

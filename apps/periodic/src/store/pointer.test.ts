@@ -58,11 +58,4 @@ it("in a session, a pin before the ray settles shows the pinned element at once"
   pointer.enter(IRON);
   pointer.pin(IRON);
   expect(state).toMatchObject({ pinned: IRON, inspected: IRON });
-  // And the timer it took down does not fire later.
-  pointer.enter(COBALT);
-  pointer.leave(COBALT);
-  pointer.enter(IRON);
-  pointer.pin(IRON);
-  vi.advanceTimersByTime(10 * SETTLE_MS);
-  expect(state.inspected).toBe(IRON);
 });

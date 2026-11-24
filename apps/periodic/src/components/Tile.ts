@@ -12,6 +12,7 @@ import {
 import { Derived } from "justdom-signal";
 import type { Element } from "../data/elements";
 import { lookOf } from "../looks";
+import type { Pointer } from "../store/pointer";
 import type { TableState } from "../store/TableState";
 import { DIM, FONT, INK, pressable, tint } from "./theme";
 
@@ -134,9 +135,9 @@ const caption = stylesheet`
  * One element's tile, placed in the table's grid by its column and row. It
  * reports the pointer to the state as it comes and goes, and a press pins
  * the element in the inspector. A finger's arrival is no hover: on a phone
- * a tap pins, and the popup is for a mouse or a ray.
+ * a tap pins, and the popup is for a mouse (a session shows none).
  */
-export function Tile(element: Element, state: TableState) {
+export function Tile(element: Element, state: TableState, pointer: Pointer) {
   const look = new Derived(() => lookOf(element, state));
   const order = element.column + element.row * 2;
   return $("button", [
@@ -158,16 +159,14 @@ export function Tile(element: Element, state: TableState) {
     attr("data-fresh", () => (look.get().fresh ? "" : undefined)),
     on("pointerenter", (event: PointerEvent) => {
       if (event.pointerType !== "touch") {
-        state.hovered = element.number;
+        pointer.enter(element.number);
       }
     }),
     on("pointerleave", () => {
-      if (state.hovered === element.number) {
-        state.hovered = null;
-      }
+      pointer.leave(element.number);
     }),
     on("click", () => {
-      state.pinned = element.number;
+      pointer.pin(element.number);
     }),
     children(
       $("span", [attr("class", number), children(text`${element.number}`)]),

@@ -14,9 +14,14 @@ export const FIRST_PINNED = 79;
  * the page and to the headset's scene, which draws the same element's atom.
  */
 export interface TableState extends View {
-  /** The element under the pointer, or a ray. */
+  /** The element under the pointer, or a ray: the one the popup is over, on the page. */
   hovered: number | null;
-  /** The element last pressed, which the inspector shows when none is hovered. */
+  /**
+   * The element the inspector and the atom show when none is pinned:
+   * `hovered`, once the pointer has settled on it (`createPointer`).
+   */
+  inspected: number | null;
+  /** The element last pressed, which the inspector shows when none is inspected. */
   pinned: number;
   /** The category the pointer is on in the legend, whose tiles stand out. */
   highlight: Category | null;
@@ -31,15 +36,16 @@ export function createTableState(): TableState {
     kelvin: ROOM_KELVIN,
     year: YEAR_MAX,
     hovered: null,
+    inspected: null,
     pinned: FIRST_PINNED,
     highlight: null,
     playing: false,
   });
 }
 
-/** The element the inspector and the atom show: the hovered one, else the pinned one. */
+/** The element the inspector and the atom show: the inspected one, else the pinned one. */
 export function shownElement(state: TableState): Element {
-  const number = state.hovered ?? state.pinned;
+  const number = state.inspected ?? state.pinned;
   const element = elementByNumber(number);
   if (!element) {
     throw new Error(`No element ${number}`);

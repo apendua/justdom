@@ -15,8 +15,8 @@
  * service worker, and the page alone, with no emulator, must not fetch the
  * headset scene. Then, in a session, in order:
  *
- * - the ray on iron's tile hovers it: the page's popup comes up over the
- *   tile and the inspector shows iron;
+ * - the ray on iron's tile hovers it: the inspector shows iron, the page's
+ *   popup stays down, and nothing on the table has a transition to run;
  * - the trigger pins it;
  * - Discovery, then the 1869 chip, turn the table back to Mendeleev's year,
  *   with gallium's tile a gap he foretold;
@@ -197,8 +197,18 @@ async function main() {
     await frames(page, 10);
     check(await has(iron, "data-xr-hover"), "the ray is on iron's tile");
     const text = await tableText();
-    check(text.includes("26 · Transition metal"), "the popup comes up over it");
-    check(/IronTransition metal/.test(text), "and the inspector shows iron");
+    check(/IronTransition metal/.test(text), "the inspector shows iron");
+    check(!text.includes("26 · Transition metal"), "and no popup comes up over it");
+    check(
+      await page.evaluate(() =>
+        [...document.querySelectorAll("#table *")].every((node) =>
+          getComputedStyle(node)
+            .transitionDuration.split(",")
+            .every((duration) => parseFloat(duration) === 0),
+        ),
+      ),
+      "and nothing on the table fades",
+    );
     if (SHOTS) {
       await frames(page, 20);
       await page.screenshot({ path: join(SHOTS, "session-iron.png") });

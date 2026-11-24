@@ -1,6 +1,8 @@
 import { $, attr, branch, children, CLASS_NAME, Nothing, stylesheet } from "justdom-core";
+import { xrSession } from "justdom-xr/session";
 import { ELEMENTS, elementByNumber } from "../data/elements";
 import { CATEGORY_TONES } from "../looks";
+import { createPointer } from "../store/pointer";
 import type { TableState } from "../store/TableState";
 import { Controls } from "./Controls";
 import { Inspector } from "./Inspector";
@@ -18,6 +20,12 @@ import { EDGE, FONT, NIGHT } from "./theme";
  * and the popup reads the same two to find its tile without measuring.
  * On a phone the columns keep a width a finger can hit, and the grid
  * scrolls sideways under the inspector, which docks at the bottom.
+ *
+ * In a session nothing on the card fades: a transition is a restyle of
+ * every box it runs on, read again by the panel on every frame it runs,
+ * and a change of view would fade all 118 tiles for half a second. There
+ * the change lands in one step, as do the tile's lift and glow under the
+ * ray.
  */
 const card = stylesheet`
   .${CLASS_NAME} {
@@ -31,6 +39,11 @@ const card = stylesheet`
     background-color: ${NIGHT};
     background-image: radial-gradient(circle at 30% 0%, #1b2547 0%, ${NIGHT} 65%);
     font-family: ${FONT};
+  }
+
+  .${CLASS_NAME}[data-session],
+  .${CLASS_NAME}[data-session] * {
+    transition: none !important;
   }
 
   @container table (max-width: 600px) {
@@ -99,8 +112,10 @@ const LANTHANIDES = { label: "57–71", tone: CATEGORY_TONES.lanthanide };
 const ACTINIDES = { label: "89–103", tone: CATEGORY_TONES.actinide };
 
 export function PeriodicTable(state: TableState) {
+  const pointer = createPointer(state);
   return $("div", [
     attr("class", card),
+    attr("data-session", () => (xrSession.get() ? "" : undefined)),
     children(
       Controls(state),
       $("div", [
@@ -110,15 +125,18 @@ export function PeriodicTable(state: TableState) {
             attr("class", grid),
             children(
               Inspector(state),
-              ...ELEMENTS.map((element) => Tile(element, state)),
+              ...ELEMENTS.map((element) => Tile(element, state, pointer)),
               SeriesMarker(LANTHANIDES.label, LANTHANIDES.tone, 3, 6, () =>
                 Boolean(state.highlight && state.highlight !== "lanthanide"),
               ),
               SeriesMarker(ACTINIDES.label, ACTINIDES.tone, 3, 7, () =>
                 Boolean(state.highlight && state.highlight !== "actinide"),
               ),
+              // Not in a session, where it would be a new card for the
+              // panel to build on every tile the ray crosses, and the
+              // inspector and the atom already show the element.
               branch(
-                () => state.hovered,
+                () => (xrSession.get() ? null : state.hovered),
                 (number) => {
                   const element = number === null ? undefined : elementByNumber(number);
                   return element ? Popup(element, state) : Nothing();

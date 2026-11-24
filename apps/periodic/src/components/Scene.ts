@@ -16,7 +16,8 @@ import { Atom } from "./Atom";
  * Nothing here builds the table. The element handed in is the one the page
  * mounted it into and is showing right now; `dom(ctx, element)` watches it
  * where it stands, so a ray on a tile is the pointer on the real tile, and
- * the popup and the inspector the page draws for it are drawn in the panel.
+ * the inspector the page fills for it is drawn in the panel. The popup is
+ * not mounted in a session (`PeriodicTable`).
  * The atom reads the same state the page writes, so it follows the ray
  * from tile to tile.
  *

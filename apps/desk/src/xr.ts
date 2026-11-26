@@ -14,7 +14,9 @@ import type { Panels } from "./texture/panels.js";
  * can present, so on a laptop the page is the page and nothing else.
  *
  * `?trace` records each session's frames and saves them as it ends
- * (`deskTrace.ts`), under the dev server.
+ * (`deskTrace.ts`), under the dev server. `?diag`, with texture panels,
+ * puts a readout of the session's features and the canvas's paints in the
+ * room (`texture/diagnostics.ts`).
  *
  * `panels` says how the zones reach the room: mirrored object by object
  * (`components/Scene.ts`), or drawn into a texture by the browser
@@ -101,9 +103,9 @@ async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
 /**
  * The desk drawn into a texture, or nothing where the browser cannot draw
  * HTML into a canvas: the page says so and offers no session. The session
- * asks for `html-in-canvas`, which keeps the canvas's own subtree, the
- * desk, laid out and painted while it runs, so the canvas goes on firing
- * `paint` and the panels follow the desk.
+ * asks for `html-in-canvas`, which is meant to keep the canvas's own
+ * subtree, the desk, painted while it runs, so that the panels follow the
+ * desk. On a Quest they were still seen frozen with it asked for.
  */
 async function textureScene(desk: Readable<MountedDesk>): Promise<DeskScene | null> {
   if (!canDrawHtmlInCanvas()) {

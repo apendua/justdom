@@ -23,7 +23,7 @@ export interface PaintCounts {
  * The readout is a 2D canvas of its own on a plane 0.5 m ahead of where the
  * head was as the session started and a little above, drawn again every
  * 30 frames. It is built inside the scene's component, and taken down with
- * it.
+ * it, so a look changed during a session starts every count from zero.
  */
 export function paintDiagnostics(
   canvas: HTMLCanvasElement,
@@ -56,7 +56,7 @@ export function paintDiagnostics(
       `features: ${features ? features.join(", ") || "(none)" : "(enabledFeatures not exposed)"}`,
       `html-in-canvas granted: ${features ? features.includes("html-in-canvas") : "unknown"}`,
       `paints: ${counts.paints}   listing the desk: ${counts.deskPaints}`,
-      `session frames: ${frame}   requestPaint each frame: ${repaint}`,
+      `frames: ${frame}   requestPaint each frame: ${repaint}`,
       `document.visibilityState: ${document.visibilityState}`,
     ];
     lines.forEach((line, i) => g.fillText(line, 24, 56 + i * 64, board.width - 48));

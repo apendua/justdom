@@ -114,8 +114,8 @@ installEmulator({ touch: { pitch: 0 } })
     });
     render(scene, { pointer }).subscribe({
       next: (renderer) => {
-        // A panel the browser draws is repainted during the session only
-        // where the session asked for `html-in-canvas`.
+        // A panel the browser draws is meant to go on being repainted
+        // during the session where the session asked for `html-in-canvas`.
         createXRButton(renderer, { htmlInCanvas: panels === "texture" }).then((button) => {
           // The steps stand either side of the XR button, whose width
           // depends on what it says (see `.deck-step` in `index.css`).

@@ -6,6 +6,7 @@ import { createSceneHost } from "./sceneServices.js";
 import { fitRayToHit } from "./pointers.js";
 import { createRay } from "./ray.js";
 import { reportCrash } from "./crash.js";
+import { holdThroughLoss } from "./lostContext.js";
 import { mouse, renderPointer } from "./mouse.js";
 import { addToParent } from "./operators.js";
 import { containerSize, followSize, putCanvasIn, windowSize } from "./viewport.js";
@@ -172,6 +173,47 @@ export function mountScene(scene, ctx, fn, option) {
 }
 
 /**
+ * The callback `render` hands to `setAnimationLoop`: `drawFrame`, held
+ * through a lost context (`holdThroughLoss`), with what else it throws
+ * reported as a crash.
+ *
+ * While the context is lost no frame runs at all, the app's frame callbacks
+ * and the portals' budget included, since any of them may link a program or
+ * fill a texture, and nothing they drew would be seen. The loop itself stays
+ * armed, so frames run again as soon as the browser gives the context back.
+ * A frame that throws because the context went in the middle of it is cut
+ * short and let go. Any other throw ends the loop for good.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {(time: number, frame: XRFrame) => void} drawFrame
+ * @returns {(time: number, frame: XRFrame) => void}
+ */
+export function frameLoop(renderer, drawFrame) {
+  const draw = holdThroughLoss(renderer.getContext(), drawFrame);
+  return (time, frame) => {
+    try {
+      draw(time, frame);
+    } catch (err) {
+      // three asks for the next frame only once this callback has returned,
+      // so by the time anyone sees this the loop is already over: the scene
+      // stops where it stands, which is what a player reports as "it froze"
+      // with nothing to say about why. Taking the loop down explicitly is
+      // the same ending, minus the chance of a second throw on the way out.
+      renderer.setAnimationLoop(null);
+      // Straight to the panel where there is one -- an XR frame callback's
+      // throw is not reliably reported to the window; see `reportCrash`.
+      // Where there is not, the old ending stands: let it out and let the
+      // host be as loud about it as it was before.
+      if (reportCrash(renderer, err)) {
+        console.error(err);
+      } else {
+        throw err;
+      }
+    }
+  };
+}
+
+/**
  * @param {(ctx: WeakKey) => Subscribable<unknown>} fn Builds the tree, which is
  *   mounted rather than read: the scene is `render`'s, and this decorates it.
  *   `effectsOnly` is what a root that produces nothing is wrapped in.
@@ -202,7 +244,10 @@ export function render(fn, options = {}) {
         // The scene as it stands, so a resize is not shown as a cleared
         // canvas. Not with `presentingOnly`, which draws nothing outside a
         // session. `scene` is declared below; no draw comes before it is.
-        draw: options.presentingOnly ? undefined : () => renderer.render(scene, camera),
+        // Held through a lost context as a frame is (`frameLoop`).
+        draw: options.presentingOnly
+          ? undefined
+          : holdThroughLoss(renderer.getContext(), () => renderer.render(scene, camera)),
       }),
     );
     if (container) {
@@ -294,31 +339,7 @@ export function render(fn, options = {}) {
       subscriber.add(mounted);
     }
 
-    /**
-     * @param {number} time
-     * @param {XRFrame} frame
-     */
-    const loop = (time, frame) => {
-      try {
-        drawFrame(time, frame);
-      } catch (err) {
-        // three asks for the next frame only once this callback has returned,
-        // so by the time anyone sees this the loop is already over: the scene
-        // stops where it stands, which is what a player reports as "it froze"
-        // with nothing to say about why. Taking the loop down explicitly is
-        // the same ending, minus the chance of a second throw on the way out.
-        renderer.setAnimationLoop(null);
-        // Straight to the panel where there is one -- an XR frame callback's
-        // throw is not reliably reported to the window; see `reportCrash`.
-        // Where there is not, the old ending stands: let it out and let the
-        // host be as loud about it as it was before.
-        if (reportCrash(renderer, err)) {
-          console.error(err);
-        } else {
-          throw err;
-        }
-      }
-    };
+    const loop = frameLoop(renderer, drawFrame);
 
     if (options.presentingOnly) {
       // Only the session's loop. `setAnimationLoop` on the renderer arms two:

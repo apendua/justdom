@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "comment": "The frame loop no longer stops for good when the WebGL context is lost: frames are skipped while it is lost, a frame cut short by the loss is let go, and drawing resumes once the browser restores it",
+      "type": "patch",
+      "packageName": "justdom-three"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

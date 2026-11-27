@@ -16,9 +16,14 @@ import * as THREE from "three";
  * `restoreContext` loses the context and gives it back, as a browser does
  * when the GPU is reset, so three builds its program cache again.
  *
+ * `loseContext` loses it the way WebKit does, before any event: from then
+ * on `isContextLost` says so, `createShader` answers null and `shaderSource`
+ * throws on that null, until `restoreContext` sends the two events.
+ *
  * @returns {{
  *   renderer: THREE.WebGLRenderer,
  *   restoreContext: () => void,
+ *   loseContext: () => void,
  *   counts: {
  *     programs: number,
  *     programsFreed: number,
@@ -31,6 +36,7 @@ export function stubGlRenderer() {
   // `unseenDraws` are the draws made with every colour channel masked off.
   const counts = { programs: 0, programsFreed: 0, draws: 0, unseenDraws: 0 };
   let colourMasked = false;
+  let lost = false;
   /** @type {Map<string, number>} */
   const constants = new Map();
   /** @type {Map<number, string>} */
@@ -73,7 +79,16 @@ export function stubGlRenderer() {
     getShaderInfoLog: () => "",
     getProgramInfoLog: () => "",
     getError: () => 0,
-    isContextLost: () => false,
+    isContextLost: () => lost,
+    createShader: () => (lost ? null : {}),
+    shaderSource: (/** @type {unknown} */ shader) => {
+      if (shader === null) {
+        // As WebKit words it.
+        throw new TypeError(
+          "Argument 1 ('shader') to WebGL2RenderingContext.shaderSource must be an instance of WebGLShader",
+        );
+      }
+    },
     getUniformLocation: () => null,
     getAttribLocation: () => -1,
     createProgram: () => {
@@ -106,9 +121,14 @@ export function stubGlRenderer() {
     },
     removeEventListener() {},
   };
+  const loseContext = () => {
+    lost = true;
+  };
   const restoreContext = () => {
     const event = { preventDefault() {} };
+    lost = true;
     listeners.get("webglcontextlost")?.(event);
+    lost = false;
     listeners.get("webglcontextrestored")?.(event);
   };
   const gl = new Proxy(
@@ -143,5 +163,5 @@ export function stubGlRenderer() {
     context: /** @type {WebGL2RenderingContext} */ (gl),
     canvas: /** @type {HTMLCanvasElement} */ (/** @type {unknown} */ (canvas)),
   });
-  return { renderer, counts, restoreContext };
+  return { renderer, counts, restoreContext, loseContext };
 }

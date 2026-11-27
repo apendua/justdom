@@ -127,7 +127,8 @@ CI's.
 **Everything else** asks a question with one answer anywhere: that the panels are drawn at all, that
 they wear the colours their stylesheets asked for, that a style or an SVG attribute written into the
 mirrored DOM reaches the scene, that a `clip-path` shows half of the SVG panel's orange bar and all
-of it once it is taken off, and that the motion panel's animations play. These run and mean
+of it once it is taken off, that a gradient or a picture left on `background-repeat: repeat` draws
+its edges as it does on `no-repeat`, and that the motion panel's animations play. These run and mean
 something on any machine.
 
 ## Crashing on purpose

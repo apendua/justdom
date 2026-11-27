@@ -164,6 +164,15 @@ describe("the picture layer", () => {
     assert.doesNotMatch(fragmentShader, /texture2D\(uImage/);
   });
 
+  test("a repeated picture is sampled inside its box, so it does not wrap into the edge pixel", () => {
+    // The same wrap as a gradient's: an edge pixel shaded past the quad read
+    // the picture's far row on a repeating axis.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /vec2 unwrapped = \(at - uImageRect\.xy\) \/ imageSize;/);
+    assert.match(fragmentShader, /withPicture\(uFillColor, q, at, qdx, qdy\)/);
+    assert.match(fragmentShader, /fill = withPicture\(fill, q, at, qdx, qdy\);/);
+  });
+
   test("a picture is whole up to the edge it is cut to, so its border leaves no seam", () => {
     // The content box's edge is the border's inner edge, which the fill's
     // coverage already fades. A picture faded across it as well leaves a
@@ -253,6 +262,19 @@ describe("the picture layer", () => {
 });
 
 describe("the gradient layer", () => {
+  test("a gradient is sampled inside its box, so a repeat does not wrap into the edge pixel", () => {
+    // Under multisampling an edge pixel is shaded at its centre, which can lie
+    // past the quad. On a repeating axis that point is in the next tile: a
+    // fade dark at its foot drew a dark line along its top. Held to the box's
+    // edge alone, the far side would still wrap to the next tile's start.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /vec2 inset = min\(0\.5 \* fwidth\(q\), 0\.5 \* box\);/);
+    assert.match(fragmentShader, /return clamp\(q, inset, box - inset\);/);
+    assert.match(fragmentShader, /vec2 at = heldInBox\(q, uSize\);/);
+    assert.match(fragmentShader, /withGradient\(\s*fill, q, at, uGradient,/);
+    assert.match(fragmentShader, /vec2 local = at - tile\.xy;/);
+  });
+
   test("a box without a background image draws no gradient and holds no ramp", () => {
     const properties = propertiesOf({ backgroundColor: "rgb(10, 20, 30)" });
     const material = createRectMaterial();

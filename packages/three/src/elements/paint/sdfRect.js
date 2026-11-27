@@ -115,7 +115,9 @@ rectGeometry.setAttribute(
 // padding box, and uImageMode says which axes the tile repeats along (a
 // repeating axis samples the picture's wrapped coordinate and is bounded by
 // the clip alone) and whether the gradient is listed above the picture, in
-// which case the picture goes under the gradient rather than over it.
+// which case the picture goes under the gradient rather than over it. Its
+// colour is looked up at `heldInBox`'s point, as the gradient's is, and its
+// coverage at `q` itself.
 
 // The gradient layer, which CSS paints between the background colour and
 // the picture, and so does this. `gradient.js` has done everything that does
@@ -135,6 +137,9 @@ rectGeometry.setAttribute(
 // with an explicit level for the same reason: a box's kind differs from its
 // neighbour's along the seam between them, and it has no mipmaps to choose
 // between anyway.
+//
+// Its colour is looked up at `at`, which is `q` held inside the box
+// (`heldInBox`); its coverage is measured at `q` itself.
 //
 // The composite: the layer goes over the background colour, and the
 // element's opacity goes over both. The fill colour arrives with the opacity
@@ -179,13 +184,13 @@ float tileEdge(float q, float start, float size, float footprint) {
   float w = max(footprint, 1e-4);
   return 1.0 - smoothstep(0.0, 2.0 * w, abs(q - start - 0.5 * size) - 0.5 * size);
 }
-vec4 withGradient(vec4 fill, vec2 q, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
+vec4 withGradient(vec4 fill, vec2 q, vec2 at, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
   vec2 footprint = fwidth(q);
   if (gradient.x < 0.5) {
     return fill;
   }
   vec2 size = max(tile.zw, vec2(1e-6));
-  vec2 local = q - tile.xy;
+  vec2 local = at - tile.xy;
   vec2 wrapped = local - size * floor(local / size);
   local = mix(local, wrapped, step(0.5, gradient.zw));
   float coverage =
@@ -227,6 +232,17 @@ void main() {
 }
 `;
 
+// `heldInBox`, where a layer of the box looks its colour up: `q` held half a
+// pixel inside the border box, whose size is `box`. Under multisampling a pixel
+// the quad's edge only partly covers is shaded at its centre, which can lie
+// outside the quad, so `q` there runs past the box. On a repeating axis that
+// point is in the next tile: a fade dark at its foot drew a dark line along its
+// top, and a light rim along its foot, and a repeated picture did the same.
+// Held to the middle of the box's outermost pixel, the edge pixel takes the
+// colour inside it. Held to the edge alone it would not be enough at the far
+// side, where the wrap takes the edge itself to the next tile's start. A box
+// under a pixel across is held at its centre.
+
 /**
  * The distance-field maths every box in a portal is drawn with.
  *
@@ -247,6 +263,10 @@ void main() {
  * is the part that differs.
  */
 export const SDF_GLSL = /* glsl */ `
+vec2 heldInBox(vec2 q, vec2 box) {
+  vec2 inset = min(0.5 * fwidth(q), 0.5 * box);
+  return clamp(q, inset, box - inset);
+}
 float sdRoundedBox(vec2 p, vec2 halfSize, float radius) {
   vec2 q = abs(p) - halfSize + radius;
   return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
@@ -413,7 +433,7 @@ ${GRADIENT_GLSL}
 // \`qdx\` and \`qdy\` are the footprint of \`q\`, taken in \`main\`, outside the
 // branches this is called from, since a derivative taken in a branch is
 // undefined.
-vec4 withPicture(vec4 fill, vec2 q, vec2 qdx, vec2 qdy) {
+vec4 withPicture(vec4 fill, vec2 q, vec2 at, vec2 qdx, vec2 qdy) {
   // An axis that repeats tiles the clip box with copies of the picture, so it
   // is bounded by the clip box alone and samples the picture's own wrapped
   // coordinate; one that does not is bounded by where the picture lands.
@@ -422,7 +442,7 @@ vec4 withPicture(vec4 fill, vec2 q, vec2 qdx, vec2 qdy) {
     mix(uImageRect.zw, uImageClip.zw, uImageMode.xy)
   );
   vec2 imageSize = max(uImageRect.zw - uImageRect.xy, vec2(1e-6));
-  vec2 unwrapped = (q - uImageRect.xy) / imageSize;
+  vec2 unwrapped = (at - uImageRect.xy) / imageSize;
   vec2 uv = mix(unwrapped, fract(unwrapped), uImageMode.xy);
   // The level of detail is taken from the unwrapped coordinate. Where
   // \`fract\` wraps, the wrapped one jumps by a whole tile between two
@@ -456,15 +476,16 @@ void main() {
   vec2 q = vUnit * uSize;
   vec2 qdx = dFdx(q);
   vec2 qdy = dFdy(q);
+  vec2 at = heldInBox(q, uSize);
   // A background lists its picture under its gradient (uImageMode.z) or
   // over it; an <img>'s picture is always over both.
   bool pictureUnder = uImageOpacity > 0.0 && uImageMode.z > 0.5;
-  vec4 fill = pictureUnder ? withPicture(uFillColor, q, qdx, qdy) : uFillColor;
+  vec4 fill = pictureUnder ? withPicture(uFillColor, q, at, qdx, qdy) : uFillColor;
   fill = withGradient(
-    fill, q, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
+    fill, q, at, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
   );
   if (uImageOpacity > 0.0 && !pictureUnder) {
-    fill = withPicture(fill, q, qdx, qdy);
+    fill = withPicture(fill, q, at, qdx, qdy);
   }
   float alpha = fill.a * fillCoverage + uBorderColor.a * borderCoverage;
   if (alpha < 0.001) {

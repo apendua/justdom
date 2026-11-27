@@ -23,7 +23,7 @@ on:
         type: string
         default: ""
       repeat:
-        description: "Rounds a side, interleaved"
+        description: "Rounds a side, interleaved (times get a verdict from 5)"
         type: number
         default: 3
 

@@ -13,15 +13,22 @@
  * The comment follows the mirror suite's README on what to believe. Counts
  * are the same run to run, so any change in one is real and is flagged.
  * Times are not: measuring identical code twice has differed by 17%, so a
- * time is given as a median with the range of its rounds, and two ranges
- * that overlap are reported as no result rather than as a small one.
+ * time is given as a median with the range of its rounds. It is called
+ * faster or slower only when both sides had `MIN_ROUNDS` rounds and the two
+ * ranges stay apart; overlapping ranges are no result, not a small one.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** The fewest rounds a side needs before its range is worth comparing. */
-export const MIN_ROUNDS = 3;
+/**
+ * The fewest rounds a side needs before its times get a verdict. Two sets
+ * of rounds of the same code fall wholly apart by chance one time in ten at
+ * 3 rounds, about once a run across the report's rows, and one time in 126
+ * at 5. The label's run takes 3 rounds and so shows times without verdicts;
+ * a dispatch with `repeat` 5 is the timing check.
+ */
+export const MIN_ROUNDS = 5;
 
 /** The mirror suite's counters, in the order its README explains them. */
 const COUNTERS = ["getBoundingClientRect", "thrash", "fillText", "canvasCreated", "styleProperty"];
@@ -103,7 +110,7 @@ export function countsCell(compared) {
 
 /**
  * Two sets of times, one a round: medians with their ranges, and a verdict
- * only where the ranges stay apart and both sides had the rounds to show it.
+ * only where both sides had `MIN_ROUNDS` rounds and the ranges stay apart.
  *
  * @param {number[]} base
  * @param {number[]} head
@@ -117,7 +124,7 @@ export function compareTimes(base, head) {
       : fixed(values[0]);
   let verdict;
   if (Math.min(base.length, head.length) < MIN_ROUNDS) {
-    verdict = `fewer than ${MIN_ROUNDS} rounds`;
+    verdict = "";
   } else if (Math.max(...head) < Math.min(...base)) {
     verdict = "faster";
   } else if (Math.min(...head) > Math.max(...base)) {
@@ -221,6 +228,11 @@ export function mirrorSection(mirror) {
         b.map((v) => Math.round(v * 10) / 10),
         h.map((v) => Math.round(v * 10) / 10),
       );
+      // The header promises verdicts at this repeat; a scenario that missed
+      // a round on either side says why it has none.
+      if (mirror.repeat >= MIN_ROUNDS && !times[key].verdict) {
+        times[key].verdict = `${Math.min(b.length, h.length)} rounds`;
+      }
       const name = net ? `${key} frame gap above idle (ms)` : `${key} frame gap (ms)`;
       lines.push(`| ${name} | ${times[key].base} | ${times[key].head} | ${times[key].verdict} |`);
     }
@@ -247,7 +259,11 @@ export function mirrorSection(mirror) {
       (floors
         ? ` An idle frame costs ${fixed(floors.base)} ms on develop and ` +
           `${fixed(floors.head)} ms here; the times below are net of it.`
-        : " Without `idle` the times are raw."),
+        : " Without `idle` the times are raw.") +
+      (mirror.repeat < MIN_ROUNDS
+        ? ` Times are shown without a verdict below ${MIN_ROUNDS} rounds a side; run the ` +
+          `workflow by hand with \`repeat\` ${MIN_ROUNDS} to have them called faster or slower.`
+        : ""),
     alarms.map((alarm) => `> [!WARNING]\n> ${alarm}`).join("\n\n"),
     [
       "| Scenario | Counts | Frame gap (ms), develop → here | |",
@@ -296,7 +312,19 @@ export function parseTables(text) {
 /**
  * Two of the draw-call bench's tables, as one: develop's figure beside this
  * pull request's in each column, and only the rows in which something moved.
- * Draw counts do not vary run to run, so a row that differs is a change.
+ *
+ * Each figure is an average over the bench's frames. A fraction on either
+ * side drew differently from frame to frame: the panel animates (the desk's
+ * charts redraw on timers, from random data), and the frames a run happened
+ * to catch decide its figure. Such a row is counted apart as animated, with
+ * its figures, and is not called a change. A row on one side only is a
+ * change whatever its figures.
+ *
+ * The fraction is a hint, not a proof. An animating panel's average is
+ * whole whenever its frames' draws add up to a multiple of the frame count:
+ * the desk's Night Ops printed 154 in one same-code run and 154.4 in the
+ * other. A row whole on both sides that differs is listed as a change, so
+ * an animated one can still turn up there.
  *
  * @param {string[][]} base
  * @param {string[][]} head
@@ -306,9 +334,18 @@ function compareRows(base, head, columns) {
   const before = new Map(base.map(([name, ...values]) => [name, values]));
   const after = new Map(head.map(([name, ...values]) => [name, values]));
   const names = [...new Set([...before.keys(), ...after.keys()])];
-  const moved = names.filter(
+  const differ = names.filter(
     (name) => JSON.stringify(before.get(name)) !== JSON.stringify(after.get(name)),
   );
+  const whole = (/** @type {string[] | undefined} */ values) =>
+    (values ?? []).every((value) => !/\.\d/.test(value));
+  const moved = differ.filter(
+    (name) =>
+      !before.has(name) || !after.has(name) || (whole(before.get(name)) && whole(after.get(name))),
+  );
+  const animated = differ
+    .filter((name) => !moved.includes(name))
+    .map((name) => `${name} (${before.get(name)?.[0]} → ${after.get(name)?.[0]})`);
   const rows = moved.map((name) => {
     const cells = columns.map((_, i) => {
       const b = before.get(name)?.[i] ?? "—";
@@ -317,7 +354,7 @@ function compareRows(base, head, columns) {
     });
     return `| ${name} | ${cells.join(" | ")} |`;
   });
-  return { rows, unchanged: names.length - moved.length };
+  return { rows, animated, unchanged: names.length - differ.length };
 }
 
 /**
@@ -338,11 +375,22 @@ export function drawsSection(baseText, headText) {
     "Blank",
     "Re-packed",
   ]);
+  const animated = [...looks.animated, ...panels.animated];
+  const aside = animated.length
+    ? `${animated.length} animated, whose average depends on the frames a run caught, ` +
+      `differ and are not counted as changes: ${animated.join(", ")}.`
+    : "";
   if (!looks.rows.length && !panels.rows.length) {
-    return (
-      `Draw calls: the same on both sides, in all ${looks.unchanged} looks and apps and all ` +
-      `${panels.unchanged} panels.`
-    );
+    return [
+      animated.length
+        ? `Draw calls: no change in the other ${looks.unchanged} looks and apps and ` +
+          `${panels.unchanged} panels.`
+        : `Draw calls: the same on both sides, in all ${looks.unchanged} looks and apps and all ` +
+          `${panels.unchanged} panels.`,
+      aside,
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
   return [
     "Draw calls a frame, develop → this pull request. Only what moved is listed.",
@@ -361,6 +409,7 @@ export function drawsSection(baseText, headText) {
         ].join("\n")
       : "",
     `${looks.unchanged} looks or apps and ${panels.unchanged} panels did not change.`,
+    aside,
   ]
     .filter(Boolean)
     .join("\n\n");

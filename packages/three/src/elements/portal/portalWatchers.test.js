@@ -8,7 +8,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { Derived, Effect, Signal, toObservable, UpdateChannel, withChannel } from "justdom-signal";
-import { $, attr, children, className, stylesheet } from "justdom-core";
+import { $, attr, children, className, stylesheet, text } from "justdom-core";
 import { InteractionContext, InteractionManager } from "../../interactions.js";
 import { BUSY_ATTRIBUTE, LOADING_ATTRIBUTE } from "../mirror/mutationRules.js";
 import { getComputedStyleCached, getTransformStyle } from "../mirror/styleReads.js";
@@ -17,7 +17,18 @@ import { getPortalRoot } from "./portalRoot.js";
 import { syntheticEvent } from "../../test/events.js";
 
 import { enableOutlinesMode, outlinesReport } from "../dev/outlines.js";
-import { createPortal, drain, pump, settle } from "../../test/portalHarness.js";
+import { CameraContext, lateListeners, RendererContext } from "../../scene.js";
+import { placeAndScale } from "../place.js";
+import { stubCanvas } from "../../test/stubCanvas.js";
+import { installRange } from "../../test/textRange.js";
+import {
+  createPortal,
+  drain,
+  flushFrame,
+  nextMacrotask,
+  pump,
+  settle,
+} from "../../test/portalHarness.js";
 
 describe("createPortal", () => {
   test("mirroring a change asks for the rays to be cast again", async () => {
@@ -653,5 +664,95 @@ describe("createPortal", () => {
     dependentSubscription.unsubscribe();
     subscription.unsubscribe();
     portal.disconnect();
+  });
+});
+
+describe("a panel's text step, measured every frame", () => {
+  test("a step the measurement passes into is shown after the pump has sent it up", async () => {
+    // Goes red with `flushBatches` measuring without the pump's `ready`:
+    // the step is then shown the frame the measurement passes into it, the
+    // run is drawn at it under the panel's own budget, and nothing is sent
+    // up ahead of the frame that shows it.
+    const canvas = stubCanvas();
+    const restoreRange = installRange();
+    try {
+      /** @type {THREE.Texture[]} */
+      const uploaded = [];
+      // A thousand device pixels across a unit held a unit away, so a
+      // panel at a centimetre a px measures ten over its distance.
+      const renderer = /** @type {any} */ ({
+        xr: { isPresenting: false },
+        getDrawingBufferSize: (/** @type {THREE.Vector2} */ target) => target.set(1000, 1000),
+        initTexture: (/** @type {THREE.Texture} */ texture) => uploaded.push(texture),
+      });
+      const camera = new THREE.PerspectiveCamera((2 * Math.atan(0.5) * 180) / Math.PI, 1, 0.1, 100);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+      const ctx = CameraContext.set(
+        RendererContext.set(InteractionContext.set({}, new InteractionManager()), renderer),
+        camera,
+      );
+      const portal = createPortal(ctx);
+      const parent = new THREE.Group();
+      // 0.8 device pixels to the px: step 1, and under the share of it
+      // that prepares the step above.
+      placeAndScale(parent, 0, 0, -12.5, 1, 1, 1);
+      portal.addTo(parent);
+      /** @type {import("justdom-core").Mountable | undefined} */
+      let mountable;
+      const subscription = $("div", [children(text`a label`)]).subscribe((value) => {
+        mountable = value;
+      });
+      assert.ok(mountable);
+      portal.mount(mountable);
+      await settle(portal, renderer);
+      // A frame as `render()` runs one: the pumps, and then the late phase,
+      // which is where the panel measures.
+      const frame = async () => {
+        flushFrame(renderer);
+        for (const late of lateListeners.get(renderer) ?? []) {
+          late(0, /** @type {any} */ ({}));
+        }
+        await nextMacrotask();
+      };
+      await frame();
+
+      /** @type {THREE.Mesh | undefined} */
+      let run;
+      parent.traverse((object) => {
+        const mesh = /** @type {THREE.Mesh} */ (object);
+        if (mesh.isMesh && /** @type {THREE.MeshBasicMaterial} */ (mesh.material).alphaMap) {
+          run = mesh;
+        }
+      });
+      assert.ok(run, "the label is a run");
+      const drawnWidth = () =>
+        /** @type {THREE.Texture} */ (
+          /** @type {THREE.MeshBasicMaterial} */ (/** @type {THREE.Mesh} */ (run).material).alphaMap
+        ).image.width;
+      const atOne = drawnWidth();
+      assert.equal(uploaded.length, 0, "nothing was prepared at rest");
+
+      // The viewer steps up to 9 units away, 1.11 device pixels to the px:
+      // past step 1, into 1.41.
+      camera.position.z = -3.5;
+      camera.updateMatrixWorld();
+      let uploadedWhenShown = -1;
+      for (let count = 0; count < 20 && uploadedWhenShown < 0; count += 1) {
+        await frame();
+        if (drawnWidth() > atOne) {
+          uploadedWhenShown = uploaded.length;
+        }
+      }
+      assert.ok(uploadedWhenShown >= 0, "the run is shown at the larger step");
+      assert.ok(uploadedWhenShown > 0, "and its array went up before it was shown");
+
+      subscription.unsubscribe();
+      portal.disconnect();
+      await drain();
+    } finally {
+      restoreRange();
+      canvas.restore();
+    }
   });
 });

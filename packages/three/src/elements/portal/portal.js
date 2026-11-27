@@ -205,6 +205,15 @@ export const OBSERVER_OPTIONS = {
  *   and the canvas each run keeps, all sixteen times what they were. 2 is
  *   the setting for such a panel; 1 turns the measurement off in all but
  *   name. Never raises: 4 is what a run is allowed to cost at all.
+ * @property {number} [minTextScale] The fewest device pixels this panel's
+ *   text is rasterized for each of its CSS pixels, 1 by default. Raise it
+ *   for a panel that should not draw its text again as the player moves:
+ *   a panel never goes under it, so it changes step less often, and with
+ *   `maxTextScale` set to the same number it is drawn at that scale once
+ *   and never measured. Text drawn larger than the panel needs is sampled
+ *   through its mipmaps, so it reads as well from far away; what the floor
+ *   costs is its memory, which is quadratic in it. `maxTextScale` wins
+ *   where the two disagree.
  * @property {(loading: boolean) => void} [onLoadingChanged] Told when the
  *   panel finishes mounting its initial content. Fires once, with `false`:
  *   the loading state starts true and never comes back, because a panel that
@@ -314,6 +323,7 @@ function buildPortal(ctx, ownOptions = {}) {
     priority = 0,
     atomic = true,
     maxTextScale,
+    minTextScale,
     onLoadingChanged,
     loadingFrame = {},
     haptics = {},
@@ -448,7 +458,7 @@ function buildPortal(ctx, ownOptions = {}) {
       state.containerObject,
       renderer,
       CameraContext.get(state.ctx),
-      maxTextScale,
+      { minScale: minTextScale, maxScale: maxTextScale },
     );
     uploadTexture = (texture) => renderer.initTexture(texture);
     state.ctx = TextScaleContext.set(state.ctx, state.textScale);

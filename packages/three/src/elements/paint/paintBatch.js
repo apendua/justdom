@@ -335,8 +335,9 @@ ${sampleRuns}
     vec2 coverages = sdfCoverages(vUnit, vSize, vRadii, vBorder, vClip, vClipRadii);
     float fillCoverage = coverages.x;
     float borderCoverage = coverages.y;
+    vec2 q = vUnit * vSize;
     vec4 fill = withGradient(
-      vFillColor, vUnit * vSize, vSize, vGradient, vGradientGeometry, vGradientTile, vGradientRamp
+      vFillColor, q, heldInBox(q, vSize), vGradient, vGradientGeometry, vGradientTile, vGradientRamp
     );
     float alpha = fill.a * fillCoverage + vBorderColor.a * borderCoverage;
     if (alpha < 0.001) {

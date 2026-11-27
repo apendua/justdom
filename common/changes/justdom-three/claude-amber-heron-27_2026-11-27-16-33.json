@@ -1,7 +1,7 @@
 {
   "changes": [
     {
-      "comment": "A gradient left on background-repeat: repeat no longer draws a line of the next tile's colour along a box's edge under multisampling",
+      "comment": "A gradient or a picture left on background-repeat: repeat no longer draws a line of the next tile's colour along a box's edge under multisampling",
       "type": "patch",
       "packageName": "justdom-three"
     }

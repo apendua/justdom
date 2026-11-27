@@ -426,6 +426,66 @@ describe("the deck in an emulated headset", { timeout: 300_000 }, () => {
     );
   });
 
+  test("a background left on repeat draws its edges as one that does not repeat", async (t) => {
+    // A box's edge pixel can be shaded at a point just past the box, since
+    // the headset's frame is multisampled and a pixel the edge only partly
+    // covers is shaded at its centre. On an axis that repeats, that point is
+    // in the next tile, so a fade light at its top and dark at its foot drew
+    // a dark line along its top and a light one along its foot. A box drawn
+    // once, on `no-repeat`, has no next tile, so the two must draw the same.
+    // The gradient and the url() picture each had the wrap.
+    const FADE = "linear-gradient(rgb(250, 250, 253), rgb(20, 22, 29))";
+    const PICTURE = `url("data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4">` +
+        `<rect width="4" height="2" fill="rgb(250,250,253)"/>` +
+        `<rect y="2" width="4" height="2" fill="rgb(20,22,29)"/>` +
+        `</svg>`,
+    )}") 0 0 / 100% 100%`;
+    await showPanel(showcase.page, "backgrounds");
+    const paint = (/** @type {string | null} */ background) =>
+      showcase.page.evaluate((background) => {
+        const swatches = [
+          ...document.querySelectorAll('[data-panel="backgrounds"] div[style]'),
+        ].filter((element) => element instanceof HTMLElement);
+        if (swatches.length === 0) {
+          throw new Error("no swatches on the backgrounds panel");
+        }
+        for (const swatch of swatches) {
+          const element = /** @type {HTMLElement} */ (swatch);
+          element.dataset.background ??= element.style.background;
+          element.style.background = background ?? element.dataset.background;
+        }
+      }, background);
+    const photographWith = async (/** @type {string} */ background) => {
+      await paint(background);
+      await nextFrames(showcase.page, 10);
+      return photographScene(showcase.page, { freeze: true });
+    };
+
+    for (const [name, background] of [
+      ["gradient", FADE],
+      ["picture", PICTURE],
+    ]) {
+      await t.test(name, async () => {
+        const once = await photographWith(`${background} no-repeat`);
+        const repeated = await photographWith(`${background} repeat`);
+        const result = comparePng(repeated, once, MOVEMENT);
+        if (!result.same && result.diff) {
+          mkdirSync(OUTPUT, { recursive: true });
+          writeFileSync(join(OUTPUT, `background-repeat-${name}.diff.png`), result.diff);
+        }
+        assert.ok(
+          result.same,
+          `the swatches' ${name} on repeat differs from the same on no-repeat by ` +
+            `${result.changed} pixels: an edge pixel read the next tile. Look at ` +
+            `tests/output/background-repeat-${name}.diff.png.`,
+        );
+      });
+    }
+    await paint(null);
+    await nextFrames(showcase.page, 10);
+  });
+
   test("list markers are drawn", async () => {
     // A marker is not in the DOM, so the portal draws it from the item's
     // computed style. Turning the outside markers off with

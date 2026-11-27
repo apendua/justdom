@@ -1036,6 +1036,12 @@ Drawing a panel's text again at a new step is work, and a panel does it without 
 While a step above is prepared, a panel keeps up to three and a half times what the shown step
 costs: the step below at half and the step above at twice.
 
+A long block of text is drawn in bands. A text node whose lines cover more than 16 384 square px is
+several runs, each a band of whole lines within that, so no single drawing or upload is more than
+about a megabyte at the top step, and a line that changes draws its own band and not the block. A
+block with a `text-shadow`, or one typed out by `reveal.text`, is not batched, and is a draw call a
+band.
+
 `textWork(ctx)` has the longest piece of that work for the scene `ctx` is under, and is null outside
 a scene: `longestDrawMs`, the longest one run took to draw, and `longestUploadMs`, the longest one
 upload took to return. Each is a maximum since it was last set to zero, and the reader sets it back,

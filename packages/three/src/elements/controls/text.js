@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { Derived, effects, just, onCleanup, selector } from "justdom-signal";
 import { children } from "../../operators.js";
-import { getRunRenderStyle, isTintableText } from "../textHelpers.js";
+import { list } from "../../core.js";
+import { getRunRenderStyle, isTintableText, parseTextShadow } from "../textHelpers.js";
 import { getTextLayout } from "../mirror/textLayout.js";
 import { getInteriorClipBox, getScrollOffset } from "../mirror/geometryReads.js";
 import {
@@ -21,9 +22,18 @@ import {
 import { place } from "../place.js";
 import { TextBatchContext } from "../paint/textBatch.js";
 import { textRun } from "./textRun.js";
+import { cutIntoBands } from "./textBands.js";
 import { attachRevealNode, detachRevealNode, getRevealCut } from "../reveal.js";
 
 /**
+ * @import {TextBand} from './textBands.js';
+ */
+
+/**
+ * A text node, drawn as one run, or as a run for each band of its lines when
+ * they cover more than a band may (`cutIntoBands`). The object returned is
+ * placed where the node's line boxes start, and the runs are its children.
+ *
  * @param {WeakKey} ctx
  * @param {Text} textNode
  * @returns {import("justdom-signal").Source<THREE.Object3D>}
@@ -87,113 +97,155 @@ export function text(ctx, textNode) {
     { isEqual: clipBoxEqual },
   );
 
-  const clipUniform = unboundedClipUniform();
-
   /**
-   * Where this run is cut short, and the uniform that says so — for a node
-   * `reveal.text` built, and `null` for every other text node in the scene,
-   * which is the overwhelming majority of them and pays nothing for any of
-   * this, not even the vector.
+   * Where the node's text is cut short, for a node `reveal.text` built, and
+   * `null` for every other text node in the scene, which is the overwhelming
+   * majority of them and pays nothing for any of this, not even a vector.
    *
    * Asked here, before anything is built: what it answers decides which
-   * program the material compiles and whether the run joins the batch, and
-   * neither of those is a thing to change afterwards.
-   *
-   * The uniform starts at "nothing drawn" rather than "all of it". The effect
-   * below writes the real cut before the first frame either way, so this only
-   * says which way to fail — and a letter that flashed itself whole and then
-   * erased is the failure somebody would see.
+   * program a run's material compiles and whether the run joins the batch,
+   * and neither of those is a thing to change afterwards.
    */
   const cut = getRevealCut(textNode);
-  const reveal = cut
-    ? { cut, uniform: { value: new THREE.Vector4(-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1) } }
-    : null;
+
+  /**
+   * The node's lines in bands, each of which a run of its own draws.
+   *
+   * @type {readonly TextBand[]}
+   */
+  let banded = [];
+  const bands = new Derived(() => {
+    // How far ink reaches up out of a line, which a band of a cut node
+    // leaves room for: a shadow's blur, and its offset when that is upward.
+    const shadow = parseTextShadow(style.textShadow);
+    const room = shadow ? shadow.blur + Math.max(0, -shadow.offsetY) : 0;
+    banded = cutIntoBands(layout.lines, layout.bounds, room, banded);
+    return banded;
+  });
+
+  /**
+   * One number per band, which is what the runs are keyed by: a band whose
+   * lines change keeps its run, and the run draws them again.
+   */
+  const bandIndices = () => Array.from(bands.get(), (_, index) => index);
+
+  /**
+   * The run that draws the band at `index`.
+   *
+   * @param {number} index
+   */
+  const bandRun = (index) => {
+    // The band the run last had, which it keeps for a read after its band
+    // is gone. A node that loses lines takes this run away, but in the same
+    // change the node's clip or its cut can move, and the run's effects
+    // read those too and may run before the list of runs does.
+    let held = banded[index];
+    const band = new Derived(() => (held = bands.get()[index] ?? held));
+    const clipUniform = unboundedClipUniform();
+    // The node's cut, read from the band's own origin as its clip is. It
+    // starts at "nothing drawn" rather than "all of it". The effect below
+    // writes the real cut before the first frame either way, so this only
+    // says which way to fail, and a letter that flashed itself whole and
+    // then erased is the failure somebody would see.
+    const revealUniform = cut
+      ? { value: new THREE.Vector4(-UNBOUNDED, -UNBOUNDED, -UNBOUNDED, 1) }
+      : null;
+
+    return textRun(
+      ctx,
+      {
+        layout: () => band.get(),
+        renderStyle: () => renderStyle,
+        tint: () => tint,
+        // Faded by the opacity of every element it is in, as on a page,
+        // where an element's `opacity` fades its text with the rest of it.
+        opacity: () => {
+          const parentElement = getParentElement(textNode);
+          return parentElement ? getOpacity(parentElement) : 1;
+        },
+        renderOrder: () => {
+          const parentElement = getParentElement(textNode);
+          return parentElement ? getContentRenderOrder(parentElement) : 0;
+        },
+        // Text is hidden by its parent's `visibility`, which is where its
+        // computed style comes from. Read through `style`, whose per-key
+        // gate this run already pays for, rather than a per-node signal of
+        // its own.
+        hidden: () => hidesVisibility(style.visibility),
+        clip: clipUniform,
+        reveal: revealUniform,
+      },
+      [
+        // Where the band sits under the node's origin, and what trims it,
+        // which is the node's clip read from the band's own origin. A scroll
+        // shifts the clip while the band holds still, and a re-layout can
+        // move both. Each tells the batch only what it changed: a move is a
+        // matrix written where it is, and a clip is the run's numbers.
+        effects((obj) => {
+          const { top } = band.get();
+          const { position } = obj;
+          if (obj.matrixAutoUpdate || position.y !== top) {
+            place(obj, 0, top, 0.01);
+            batch?.moved(obj);
+          }
+          const box = clipBox.get();
+          const clip = clipUniform.value;
+          if (
+            clip.x !== box.left ||
+            clip.y !== box.top - top ||
+            clip.z !== box.right ||
+            clip.w !== box.bottom - top
+          ) {
+            clip.set(box.left, box.top - top, box.right, box.bottom - top);
+            batch?.changed(/** @type {THREE.Mesh} */ (obj));
+          }
+        }),
+        // Spread in rather than written inline and returning early,
+        // because an effect that does nothing is not free: it is a
+        // tracking scope built, mounted and torn down per text node, and a
+        // panel has one text node per label. Ordinary text does not build
+        // this at all.
+        ...(cut && revealUniform
+          ? [
+              // The whole of what a keystroke costs a band: one uniform
+              // write of four floats, and the draw that was going to happen
+              // anyway. Nothing here touches the texture, the geometry, the
+              // DOM or the batch.
+              effects(() => {
+                const [x, wholeBottom, cutBottom, direction] = cut.get();
+                const { top } = band.get();
+                revealUniform.value.set(x, wholeBottom - top, cutBottom - top, direction);
+              }),
+            ]
+          : []),
+      ],
+    );
+  };
 
   return just(object, [
-    // One effect for both cheap writes: where the text sits and what trims
-    // it move together — a scroll shifts the clip while the content-space
-    // position holds still, and a re-layout can move both.
-    // Each tells the batch only what it changed: a move is matrices
-    // written where they are, and a clip is the runs' numbers.
+    // Where the node's line boxes start. A move is matrices written where
+    // they are, which is all the batch is told.
     effects((obj) => {
       const { position } = obj;
       if (obj.matrixAutoUpdate || position.x !== layout.left || position.y !== layout.top) {
         place(obj, layout.left, layout.top, -0.01);
         batch?.moved(obj);
       }
-      const box = clipBox.get();
-      const clip = clipUniform.value;
-      if (
-        clip.x !== box.left ||
-        clip.y !== box.top ||
-        clip.z !== box.right ||
-        clip.w !== box.bottom
-      ) {
-        clip.set(box.left, box.top, box.right, box.bottom);
-        batch?.changedUnder(obj);
-      }
     }),
-    children(
-      textRun(
-        ctx,
-        {
-          layout: () => layout,
-          renderStyle: () => renderStyle,
-          tint: () => tint,
-          // Faded by the opacity of every element it is in, as on a page,
-          // where an element's `opacity` fades its text with the rest of it.
-          opacity: () => {
-            const parentElement = getParentElement(textNode);
-            return parentElement ? getOpacity(parentElement) : 1;
-          },
-          renderOrder: () => {
-            const parentElement = getParentElement(textNode);
-            return parentElement ? getContentRenderOrder(parentElement) : 0;
-          },
-          // Text is hidden by its parent's `visibility`, which is where its
-          // computed style comes from. Read through `style`, whose per-key
-          // gate this run already pays for, rather than a per-node signal of
-          // its own.
-          hidden: () => hidesVisibility(style.visibility),
-          clip: clipUniform,
-          reveal: reveal?.uniform ?? null,
-        },
-        [
-          // Reads nothing reactive, so this runs once, in the pass in
-          // which the run's `add` asks for a rebuild: the `moved` is never
-          // the only thing pending, and says what kind of change a place is.
-          effects((obj) => {
-            place(obj, 0, 0, 0.01);
-            batch?.moved(obj);
+    // Now that the node is somewhere `compareDocumentPosition` can answer
+    // about, which is what the offsets between a handle's nodes are found
+    // with. Spread in, as the cut's effect on a band is, so that ordinary
+    // text builds nothing for it.
+    ...(cut
+      ? [
+          effects(() => {
+            attachRevealNode(textNode);
+            onCleanup(() => {
+              detachRevealNode(textNode);
+            });
           }),
-          // Spread in rather than written inline and returning early,
-          // because an effect that does nothing is not free: it is a
-          // tracking scope built, mounted and torn down per text node, and a
-          // panel has one text node per label. Ordinary text does not build
-          // these at all.
-          ...(reveal
-            ? [
-                // Now that the node is somewhere `compareDocumentPosition`
-                // can answer about, which is what the offsets between a
-                // handle's nodes are found with.
-                effects(() => {
-                  attachRevealNode(textNode);
-                  onCleanup(() => {
-                    detachRevealNode(textNode);
-                  });
-                }),
-                // The whole of what a keystroke costs: one uniform write of
-                // four floats, and the draw that was going to happen anyway.
-                // Nothing here touches the texture, the geometry, the DOM or
-                // the batch.
-                effects(() => {
-                  const [x, wholeBottom, cutBottom, direction] = reveal.cut.get();
-                  reveal.uniform.value.set(x, wholeBottom, cutBottom, direction);
-                }),
-              ]
-            : []),
-        ],
-      ),
-    ),
+        ]
+      : []),
+    children(list(bandIndices, bandRun)),
   ]);
 }

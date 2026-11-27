@@ -58,6 +58,10 @@ the frame's times, the panels with work for a coming frame, and how far each of 
 has risen in the scene. `?trace=page` reads how far each has risen on the page as well, which can
 change what it measures. The console says where the file went.
 
+`?textScale=2` draws the text of every panel once, at twice the page's resolution, and never again
+however near the head comes (`minTextScale` and `maxTextScale` both 2). It is for a headset, to tell
+what drawing text at a new scale costs from everything else a moving head costs.
+
 `node tests/xr-check.mjs` puts each look up in turn in a session on the emulated headset in headless
 Chromium. It fails unless every zone the look places becomes a panel and loads, the ray aimed at the
 power control is on it, and the trigger there ends the session, or if the page throws. For the first

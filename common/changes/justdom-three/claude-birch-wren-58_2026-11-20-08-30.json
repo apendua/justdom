@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three",
+      "comment": "A text node whose lines cover more than 16 384 square px is drawn as several runs, each a band of whole lines, so no one drawing or upload of text is more than about a megabyte at the top step, and a line that changes draws its own band. A block with a shadow or a reveal is a draw call a band.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

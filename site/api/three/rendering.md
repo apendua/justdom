@@ -36,6 +36,12 @@ and the page's own animation frames stop with it, so a `requestAnimationFrame` l
 Under an emulator the page is presenting _and_ still rendering, so both work there and the
 difference only appears on a headset.
 
+While the WebGL context is lost no frame runs: `useFrame` callbacks, `onBeforeRender`,
+`onAfterRender` and the portals' budget all stop, and start again once the browser gives the context
+back. Safari on a phone takes it away when the page goes to the background or the screen locks. A
+clock kept in `useFrame` sees one long gap between two frames, as it does after a hidden tab. The
+draw after a resize, and a drag's picture of what it carries, are skipped while the context is lost.
+
 `RendererContext` is the property behind `useFrame` and the once-a-frame events below; it is
 exported so a test can mount a scene without a renderer: `RendererContext.set(ctx, {})` is enough
 for a frame callback to be registered and never called. `runFrame(renderer, time, frame)` runs one

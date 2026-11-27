@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { cameraFor, NO_SNAPSHOTS, snapshotsFor, takeSnapshot } from "./ghostSnapshot.js";
+import { stubGlRenderer } from "../../test/stubGl.js";
 
 /**
  * An element's object as a panel places one: in px, top-left origin, y
@@ -35,6 +36,7 @@ function recordingRenderer() {
   let clearAlpha = 0.5;
   const renderer = {
     isWebGLRenderer: true,
+    getContext: () => ({ isContextLost: () => false }),
     xr: { enabled: true },
     getRenderTarget: () => target,
     /** @param {THREE.WebGLRenderTarget} next */
@@ -252,5 +254,24 @@ describe("snapshotsFor", () => {
     });
     assert.ok(target);
     assert.equal(calls.find(([name]) => name === "render")?.[1], panel);
+  });
+
+  test("prepares nothing and takes no picture while the context is lost", () => {
+    // A press with the mouse or a finger prepares from the DOM's
+    // `pointerdown`, outside any frame, where WebKit's null shader would
+    // reach `shaderSource` and the window's `error` event.
+    const { renderer, counts, loseContext, restoreContext } = stubGlRenderer();
+    const snapshots = snapshotsFor(renderer);
+    const panel = new THREE.Group();
+    panel.add(new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial()));
+    loseContext();
+    snapshots.prepare(panel);
+    const box = { x: 0, y: 0, width: 10, height: 10 };
+    assert.equal(snapshots.take(panel, frame(), box), null);
+    assert.equal(counts.programs, 0);
+    restoreContext();
+    snapshots.prepare(panel);
+    assert.equal(counts.programs, 1);
+    assert.ok(snapshots.take(panel, frame(), box));
   });
 });

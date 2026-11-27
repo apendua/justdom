@@ -214,6 +214,21 @@ export function frameLoop(renderer, drawFrame) {
 }
 
 /**
+ * The draw `render` has `followSize` make after a resize: the scene as it
+ * stands, held through a lost context as a frame is (`frameLoop`). A resize
+ * comes from the window's `resize` or a `ResizeObserver`, outside any frame,
+ * so the frame loop's hold does not reach it.
+ *
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Scene} scene
+ * @param {THREE.Camera} camera
+ * @returns {() => void}
+ */
+export function resizeDraw(renderer, scene, camera) {
+  return holdThroughLoss(renderer.getContext(), () => renderer.render(scene, camera));
+}
+
+/**
  * @param {(ctx: WeakKey) => Subscribable<unknown>} fn Builds the tree, which is
  *   mounted rather than read: the scene is `render`'s, and this decorates it.
  *   `effectsOnly` is what a root that produces nothing is wrapped in.
@@ -233,6 +248,7 @@ export function render(fn, options = {}) {
     const height = Signal.of(0);
 
     const camera = renderCamera(options.camera);
+    const scene = new THREE.Scene();
 
     const { container } = options;
     subscriber.add(
@@ -243,11 +259,8 @@ export function render(fn, options = {}) {
         },
         // The scene as it stands, so a resize is not shown as a cleared
         // canvas. Not with `presentingOnly`, which draws nothing outside a
-        // session. `scene` is declared below; no draw comes before it is.
-        // Held through a lost context as a frame is (`frameLoop`).
-        draw: options.presentingOnly
-          ? undefined
-          : holdThroughLoss(renderer.getContext(), () => renderer.render(scene, camera)),
+        // session.
+        draw: options.presentingOnly ? undefined : resizeDraw(renderer, scene, camera),
       }),
     );
     if (container) {
@@ -261,7 +274,6 @@ export function render(fn, options = {}) {
     // when those pixels are rendered at a fraction of the resolution. three
     // keeps the value and applies it to whichever layer `setSession` makes.
     renderer.xr.setFoveation(options.foveation ?? 0);
-    const scene = new THREE.Scene();
     const interactionManager = new InteractionManager();
 
     let ctx = {};

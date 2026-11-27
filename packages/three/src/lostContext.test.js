@@ -1,7 +1,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { frameLoop } from "./render.js";
+import { frameLoop, resizeDraw } from "./render.js";
+import { followSize } from "./viewport.js";
 import { stubGlRenderer } from "./test/stubGl.js";
 
 /**
@@ -103,5 +104,40 @@ describe("frameLoop", () => {
     });
     assert.throws(() => s.frame(), fault);
     assert.equal(s.stopped, true);
+  });
+});
+
+describe("resizeDraw", () => {
+  test("draws nothing on a resize while the context is lost", () => {
+    const { renderer, counts, loseContext, restoreContext } = stubGlRenderer();
+    const scene = new THREE.Scene();
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshBasicMaterial());
+    scene.add(mesh);
+    const camera = new THREE.PerspectiveCamera();
+    let width = 100;
+    /** @type {() => void} */
+    let resized = () => {};
+    followSize(
+      renderer,
+      camera,
+      {
+        read: () => ({ width, height: 100, pixelRatio: 1 }),
+        subscribe: (onChange) => {
+          resized = onChange;
+          return () => {};
+        },
+      },
+      { onSize: () => {}, draw: resizeDraw(renderer, scene, camera) },
+    );
+    loseContext();
+    width = 200;
+    // Without the hold the draw links the mesh's program, and `shaderSource`
+    // throws on the null shader out of the resize's own event.
+    resized();
+    assert.equal(counts.draws, 0);
+    restoreContext();
+    width = 300;
+    resized();
+    assert.equal(counts.draws, 1);
   });
 });

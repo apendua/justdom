@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { holdThroughLoss } from "../../lostContext.js";
 
 /**
  * A picture of what is being dragged, for the ghost to carry.
@@ -191,6 +192,11 @@ export const NO_SNAPSHOTS = { prepare: () => {}, take: () => null };
  * own; three keys programs by their parameters, so for a panel whose kinds
  * are all compiled already that is a walk and some cache lookups.
  *
+ * Both are held through a lost context (`holdThroughLoss`): a press with
+ * the mouse or a finger prepares from the DOM's `pointerdown`, outside any
+ * frame, and three's `compile` never checks for a lost context. While it is
+ * lost nothing is prepared and no picture is taken.
+ *
  * @param {unknown} renderer
  * @returns {Snapshots}
  */
@@ -199,8 +205,20 @@ export function snapshotsFor(renderer) {
     return NO_SNAPSHOTS;
   }
   const webgl = /** @type {THREE.WebGLRenderer} */ (renderer);
+  const gl = webgl.getContext();
+  const prepare = holdThroughLoss(gl, (/** @type {THREE.Object3D} */ panel) =>
+    prepareSnapshot(webgl, panel),
+  );
+  const take = holdThroughLoss(
+    gl,
+    (
+      /** @type {THREE.Object3D} */ panel,
+      /** @type {THREE.Object3D} */ frame,
+      /** @type {Box} */ box,
+    ) => takeSnapshot(webgl, panel, frame, box),
+  );
   return {
-    prepare: (panel) => prepareSnapshot(webgl, panel),
-    take: (panel, frame, box) => takeSnapshot(webgl, panel, frame, box),
+    prepare,
+    take: (panel, frame, box) => take(panel, frame, box) ?? null,
   };
 }

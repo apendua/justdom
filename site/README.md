@@ -52,17 +52,18 @@ the still, which is the clip's last frame. The guide shows the two pictures in
 `npm run screenshots` makes them again from the last build: it serves `dist` and records each demo
 in headless Chromium doing what it is for, on a page and then in the emulated headset (Euclid
 writing out a pentagon, a todo added and ticked off, the showcase stepped through five of its
-panels, and the desk running on its own). Castle has the headset clip alone, of the castle knocked
-about with the slingshot, since its page is the same scene with nothing to do in it. Minesweeper and
-Knights, a few moves in, have the page clip alone, since the headset does not draw their boards
-right yet; `setups` in `scripts/screenshots.mjs` says what it gets wrong. In the headset the script
-presses an app's controls through their DOM, which the panels mirror, so no controller ray shows in
-a clip. The head sways slowly from side to side while it records, except in Castle, where it aims
-the slingshot, and eases back to where it started before the clip ends, so that the loop does not
-jump. While it sways, a wait for the panels to redraw is cut short in the clip. In both showcase
-clips, the wait for each panel to load and build up is cut out altogether, so the clip goes from one
-whole panel to the next. It also takes the todo app on a page and in an emulated headset for the
-guide. Run it by hand when a demo changes how it looks or behaves, after
+panels, the desk running on its own, and the periodic table's tiles pointed at, the table heated to
+the surface of the sun and turned back to Mendeleev's year). Castle has the headset clip alone, of
+the castle knocked about with the slingshot, since its page is the same scene with nothing to do in
+it. Minesweeper and Knights, a few moves in, have the page clip alone, since the headset does not
+draw their boards right yet; `setups` in `scripts/screenshots.mjs` says what it gets wrong. In the
+headset the script presses an app's controls through their DOM, which the panels mirror, so no
+controller ray shows in a clip. The head sways slowly from side to side while it records, except in
+Castle, where it aims the slingshot, and eases back to where it started before the clip ends, so
+that the loop does not jump. While it sways, a wait for the panels to redraw is cut short in the
+clip. In both showcase clips, the wait for each panel to load and build up is cut out altogether, so
+the clip goes from one whole panel to the next. It also takes the todo app on a page and in an
+emulated headset for the guide. Run it by hand when a demo changes how it looks or behaves, after
 `rush build --to justdom-site`. With app folder names after `--` it records only those, and `guide`
 names the guide's two.
 
@@ -70,9 +71,10 @@ The clips are H.264 MP4, 960 pixels wide, encoded by `ffmpeg`, which has to be o
 built with libx264 (the Debian and Ubuntu packages are). Each plays muted and loops in a `<video>`
 with its still as the poster, and a style in `.vitepress/config.mjs` shows the still in its place
 under reduced motion. That swaps the picture, not the download: the hidden video is still fetched.
-The eleven clips come to about 1.5 MB; as animated WebP they came to 7.5 MB, since the headset's
-view moves in every frame. Playwright looks for the Chromium build it was released with; where that
-is not installed, name another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+The thirteen clips come to about 2.7 MB, the periodic table's two 1.3 MB of it. The eleven before
+them came to 1.5 MB, and to 7.5 MB as animated WebP, since the headset's view moves in every frame.
+Playwright looks for the Chromium build it was released with; where that is not installed, name
+another in `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
 To work on the site:
 

@@ -295,16 +295,29 @@ async function pointer(page) {
  * @param {{ x: number, y: number } | import("playwright-core").Locator} target
  */
 async function glideAndClick(page, target) {
+  const { x, y } = await glide(page, target);
+  await page.waitForTimeout(200);
+  await page.mouse.click(x, y);
+}
+
+/**
+ * Glides the mouse to a point, or the middle of an element, and says where
+ * it stopped.
+ *
+ * @param {import("playwright-core").Page} page
+ * @param {{ x: number, y: number } | import("playwright-core").Locator} target
+ * @returns {Promise<{ x: number, y: number }>}
+ */
+async function glide(page, target) {
   let point = target;
   if ("boundingBox" in target) {
     const box = await target.boundingBox();
-    if (!box) throw new Error(`nothing to click: ${target}`);
+    if (!box) throw new Error(`nothing to point at: ${target}`);
     point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   }
   const { x, y } = /** @type {{ x: number, y: number }} */ (point);
   await page.mouse.move(x, y, { steps: 15 });
-  await page.waitForTimeout(200);
-  await page.mouse.click(x, y);
+  return { x, y };
 }
 
 /**
@@ -562,6 +575,52 @@ const setups = {
     // these five clicks the page's board shows 51 numbers, the panel's one.
     headset: false,
   },
+  // The pointer runs over a few tiles, with each one's popup, then the
+  // table is warmed to the surface of the sun and turned back to
+  // Mendeleev's year, and the years after it play in.
+  periodic: {
+    page: {
+      act: async (page) => {
+        for (const name of PERIODIC_TOUR) {
+          await glide(page, page.getByRole("button", { name, exact: true }));
+          await page.waitForTimeout(900);
+        }
+        await glideAndClick(page, page.getByRole("button", { name: "State", exact: true }));
+        await page.waitForTimeout(500);
+        await glideAndClick(page, page.getByRole("button", { name: "Sun's surface" }));
+        await page.waitForTimeout(1200);
+        await glideAndClick(page, page.getByRole("button", { name: "Discovery", exact: true }));
+        await glideAndClick(page, page.getByRole("button", { name: "Mendeleev, 1869" }));
+        await page.waitForTimeout(600);
+        await glide(page, page.getByRole("button", { name: "Gallium", exact: true }));
+        await page.waitForTimeout(1500);
+        await glideAndClick(page, page.getByRole("button", { name: "▶ Play" }));
+        await page.waitForTimeout(5500);
+      },
+    },
+    // The atom stands off the table's left edge, so the head turns a little
+    // left to have both.
+    headset: {
+      view: { yaw: 0.2, zoom: 0.75 },
+      act: async (page) => {
+        for (const name of PERIODIC_TOUR) {
+          await pointAt(page, name);
+          await drawn(page);
+          await page.waitForTimeout(1200);
+        }
+        await tapText(page, "State");
+        await drawn(page);
+        await tapText(page, "Sun's surface");
+        await drawn(page);
+        await page.waitForTimeout(1200);
+        await tapText(page, "Discovery");
+        await tapText(page, "Mendeleev, 1869");
+        await pointAt(page, "Gallium");
+        await drawn(page);
+        await page.waitForTimeout(1500);
+      },
+    },
+  },
   // White's first stack walks into the middle, and the computer answers.
   // The stacks are placed with Math.random, so a seeded game places them the
   // same way every run, and the field clicked is in the first stack's reach
@@ -627,6 +686,29 @@ const setups = {
     },
   },
 };
+
+/** The elements the periodic table's clips point at, in order, by name. */
+const PERIODIC_TOUR = ["Iron", "Gold", "Carbon", "Neon", "Uranium"];
+
+/**
+ * Points at the periodic table's tile for this element, in a session, the
+ * way a ray arriving on it does: the pointer leaves the tile it was on and
+ * enters this one, which is all the table listens for.
+ *
+ * @param {Page} page
+ * @param {string} name
+ */
+async function pointAt(page, name) {
+  await page.evaluate((name) => {
+    const init = { pointerType: "mouse", pointerId: 2, isPrimary: true };
+    for (const tile of document.querySelectorAll("button[aria-label]")) {
+      tile.dispatchEvent(new PointerEvent("pointerleave", init));
+    }
+    document
+      .querySelector(`button[aria-label="${name}"]`)
+      ?.dispatchEvent(new PointerEvent("pointerenter", init));
+  }, name);
+}
 
 /** The showcase panels its clips show, in order, by their ids. */
 const SHOWCASE_TOUR = ["backgrounds", "svg", "forms", "widgets", "svg-paint"];

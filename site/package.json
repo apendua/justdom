@@ -37,6 +37,7 @@
     "justdom-xr": "workspace:*",
     "knights": "workspace:*",
     "minesweeper": "workspace:*",
+    "periodic": "workspace:*",
     "playwright-core": "^1.56.0",
     "rxjs": "^7.8.2",
     "showcase": "workspace:*",

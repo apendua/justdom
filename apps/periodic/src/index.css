@@ -1,0 +1,32 @@
+/*
+ * The page is the night the table is set against. The table is a card of
+ * its own, which is what a session mirrors into its panel, so the page
+ * around it is only margin.
+ */
+html {
+  background: #05080f;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: #05080f;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 0;
+  }
+}
+
+/*
+ * The table is laid out by the width it is given, not the window's: its
+ * narrow layouts are container queries on this element. A session gives it
+ * the width of a wide window whatever the device, so the panel a phone's
+ * session mirrors is the same table a laptop's is.
+ */
+#table {
+  container: table / inline-size;
+}

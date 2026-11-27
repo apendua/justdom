@@ -67,7 +67,7 @@ the first did. It takes about two minutes. `SHOTS=<dir>` also photographs each s
 through `justdom-xr/driver`, which launches the Chromium at
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`; `CHROMIUM=<path>` points it at one installed
 elsewhere. A pull request that changes this app or a package it imports, other than in docs, unit
-tests or benchmarks, runs it, with minesweeper's, Euclid's and Knights', from
+tests or benchmarks, runs it, with minesweeper's, Euclid's, Knights' and the periodic table's, from
 `.github/workflows/driven.yml`.
 
 ## The paint-order probe

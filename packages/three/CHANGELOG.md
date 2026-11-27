@@ -1,6 +1,14 @@
 # Change Log - justdom-three
 
-This log was last generated on Sat, 21 Nov 2026 12:50:12 GMT and should not be manually modified.
+This log was last generated on Fri, 27 Nov 2026 17:43:14 GMT and should not be manually modified.
+
+## 0.40.1
+Fri, 27 Nov 2026 17:43:14 GMT
+
+### Patches
+
+- A gradient or a picture left on background-repeat: repeat no longer draws a line of the next tile's colour along a box's edge under multisampling
+- The frame loop no longer stops for good when the WebGL context is lost: frames are skipped while it is lost, a frame cut short by the loss is let go, and drawing resumes once the browser restores it. The draw after a resize and a drag's snapshots are skipped while it is lost
 
 ## 0.40.0
 Sat, 21 Nov 2026 12:50:12 GMT

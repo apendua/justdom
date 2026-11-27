@@ -54,6 +54,7 @@ const LAYERS = {
   "frameShare.js": "base",
   "htmlTexture.js": "base",
   "limits.js": "base",
+  "lostContext.js": "base",
   "matrixEpoch.js": "base",
   "operators.js": "base",
   "viewport.js": "base",

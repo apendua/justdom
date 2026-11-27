@@ -136,6 +136,16 @@ rectGeometry.setAttribute(
 // neighbour's along the seam between them, and it has no mipmaps to choose
 // between anyway.
 //
+// The colour is looked up at `q` held half a pixel inside the border box
+// (`box`, its size). Under multisampling a pixel the quad's edge only
+// partly covers is shaded at its centre, which can lie outside the quad, so
+// `q` there runs past the box. On a repeating axis that point is in the
+// next tile: a fade dark at its foot drew a dark line along its top, and a
+// light rim along its foot. Held to the middle of the box's outermost
+// pixel, the edge pixel takes the colour inside it. Held to the box's edge
+// alone it would not be enough at the far side, where `floor` wraps the
+// edge itself to the next tile's start.
+//
 // The composite: the layer goes over the background colour, and the
 // element's opacity goes over both. The fill colour arrives with the opacity
 // already folded in, so it is divided back out first — otherwise a
@@ -179,13 +189,14 @@ float tileEdge(float q, float start, float size, float footprint) {
   float w = max(footprint, 1e-4);
   return 1.0 - smoothstep(0.0, 2.0 * w, abs(q - start - 0.5 * size) - 0.5 * size);
 }
-vec4 withGradient(vec4 fill, vec2 q, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
+vec4 withGradient(vec4 fill, vec2 q, vec2 box, vec4 gradient, vec4 geometry, vec4 tile, vec2 ramp) {
   vec2 footprint = fwidth(q);
   if (gradient.x < 0.5) {
     return fill;
   }
   vec2 size = max(tile.zw, vec2(1e-6));
-  vec2 local = q - tile.xy;
+  vec2 inset = min(0.5 * footprint, 0.5 * box);
+  vec2 local = clamp(q, inset, box - inset) - tile.xy;
   vec2 wrapped = local - size * floor(local / size);
   local = mix(local, wrapped, step(0.5, gradient.zw));
   float coverage =
@@ -461,7 +472,7 @@ void main() {
   bool pictureUnder = uImageOpacity > 0.0 && uImageMode.z > 0.5;
   vec4 fill = pictureUnder ? withPicture(uFillColor, q, qdx, qdy) : uFillColor;
   fill = withGradient(
-    fill, q, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
+    fill, q, uSize, uGradient, uGradientGeometry, uGradientTile, uGradientRamp
   );
   if (uImageOpacity > 0.0 && !pictureUnder) {
     fill = withPicture(fill, q, qdx, qdy);

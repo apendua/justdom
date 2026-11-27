@@ -336,7 +336,7 @@ ${sampleRuns}
     float fillCoverage = coverages.x;
     float borderCoverage = coverages.y;
     vec4 fill = withGradient(
-      vFillColor, vUnit * vSize, vGradient, vGradientGeometry, vGradientTile, vGradientRamp
+      vFillColor, vUnit * vSize, vSize, vGradient, vGradientGeometry, vGradientTile, vGradientRamp
     );
     float alpha = fill.a * fillCoverage + vBorderColor.a * borderCoverage;
     if (alpha < 0.001) {

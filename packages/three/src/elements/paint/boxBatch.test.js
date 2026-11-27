@@ -652,6 +652,21 @@ describe("outline rings", () => {
   });
 });
 
+describe("batched gradients", () => {
+  test("a batched box samples its gradient inside its own size, as a box drawn alone does", () => {
+    const { meshes } = decoratedPanel([{ order: 7, x: 1 }]);
+    const material = /** @type {THREE.ShaderMaterial} */ (meshes[0].material);
+    assert.match(
+      material.fragmentShader,
+      /vec2 local = clamp\(q, inset, box - inset\) - tile\.xy;/,
+    );
+    assert.match(
+      material.fragmentShader,
+      /withGradient\(\s*vFillColor, vUnit \* vSize, vSize, vGradient,/,
+    );
+  });
+});
+
 describe("box shadows", () => {
   test("an outer shadow draws under every box at its level, an inset one over its own box", () => {
     const { laid } = decoratedPanel([

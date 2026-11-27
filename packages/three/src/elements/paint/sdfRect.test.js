@@ -253,6 +253,17 @@ describe("the picture layer", () => {
 });
 
 describe("the gradient layer", () => {
+  test("a gradient is sampled inside its box, so a repeat does not wrap into the edge pixel", () => {
+    // Under multisampling an edge pixel is shaded at its centre, which can lie
+    // past the quad. On a repeating axis that point is in the next tile: a
+    // fade dark at its foot drew a dark line along its top. Held to the box's
+    // edge alone, the far side would still wrap to the next tile's start.
+    const { fragmentShader } = createRectMaterial();
+    assert.match(fragmentShader, /vec2 inset = min\(0\.5 \* footprint, 0\.5 \* box\);/);
+    assert.match(fragmentShader, /vec2 local = clamp\(q, inset, box - inset\) - tile\.xy;/);
+    assert.match(fragmentShader, /withGradient\(\s*fill, q, uSize, uGradient,/);
+  });
+
   test("a box without a background image draws no gradient and holds no ramp", () => {
     const properties = propertiesOf({ backgroundColor: "rgb(10, 20, 30)" });
     const material = createRectMaterial();

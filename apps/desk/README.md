@@ -149,8 +149,12 @@ from [Chrome 157](https://developer.chrome.com/blog/html-in-canvas). Without it 
 the corner and offers no session. It was tried in Chrome for Testing 157 under the emulator
 (`tests/texture-check.mjs`). An earlier Chromium had the API behind
 `chrome://flags/#canvas-draw-element`, up to 154 under older names (`layoutsubtree`,
-`texElementImage2D`), and the desk no longer runs there. The Quest stops rendering the page during a
-session, which is when the canvas's `paint` event fires, so the panels would not change there.
+`texElementImage2D`), and the desk no longer runs there. A headset browser such as the Quest's stops
+rendering the page during an immersive session. The canvas then fires no `paint`, and the panels
+keep the picture the session started with. The Enter button asks for the `html-in-canvas` feature,
+as an optional feature (`htmlInCanvas: true` on `createXRButton`), which is meant to keep the
+canvas's own subtree laid out and painted during the session. On a Quest the panels were still seen
+frozen with it asked for, and `?diag` (below) is there to find out why.
 
 How it draws (`src/texture/Scene.ts`, with `drawInCanvas` and `createElementTexture` from
 `justdom-three`):
@@ -206,6 +210,15 @@ What it does not do that the mirror does:
 - The events are untrusted (`isTrusted` is false), and the drag carries a `new DataTransfer()`,
   which keeps data but ignores `effectAllowed` and `dropEffect`. The desk reads neither.
 
+`?panels=texture&diag` puts a readout in the room, ahead of where the head was as the session
+started and a little above it (`src/texture/diagnostics.ts`), for finding out on a headset whether
+the browser paints the desk during a session. Its lines are the features the session was granted,
+whether `html-in-canvas` is among them, how many `paint` events the canvas fired and how many of
+them listed the desk, the frames drawn, and `document.visibilityState`. `&repaint` also calls the
+canvas's `requestPaint()` on every frame. A paint asked for with nothing changed lists no element,
+so it adds to the paints and not to those listing the desk, and uploads nothing. The counts start
+from zero when the look changes.
+
 `CHROMIUM=<path> node tests/texture-check.mjs` checks it on the emulated headset, in a Chromium of
 157 or later, whose version it prints first: for each look the desk is drawn from the canvas, the
 ray marks the power control and its trigger ends the session and puts the desk back; on Beige Box
@@ -243,7 +256,7 @@ rules for a session. Each object is a `.zone` with an id, and the modules in `sr
 | `src/xr.ts`                      | The offer: the renderer, the Enter button, the SVG plugin and the note field's keyboard.                                                                                                                                                                        |
 | `src/components/Scene.ts`        | The room in the look's colours, and each zone posed where the look places it.                                                                                                                                                                                   |
 | `src/components/NoteKeyboard.ts` | What the note field's keyboard looks like in a session.                                                                                                                                                                                                         |
-| `src/texture/`                   | `?panels=texture`, above: which panels a session uses, the scene drawn from a texture, and the ray's input sent to the page as a mouse's events.                                                                                                                |
+| `src/texture/`                   | `?panels=texture`, above: which panels a session uses, the scene drawn from a texture, the ray's input sent to the page as a mouse's events, and the `?diag` readout.                                                                                           |
 | `src/probe/`                     | The paint-order probe's scenes, its recorder and its page's script, above; `paint-order-probe.html` is its page and `vite/probeResults.js` the route that saves its results.                                                                                    |
 
 Four things the page does differently while it is mirrored.

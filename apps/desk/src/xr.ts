@@ -14,7 +14,9 @@ import type { Panels } from "./texture/panels.js";
  * can present, so on a laptop the page is the page and nothing else.
  *
  * `?trace` records each session's frames and saves them as it ends
- * (`deskTrace.ts`), under the dev server.
+ * (`deskTrace.ts`), under the dev server. `?diag`, with texture panels,
+ * puts a readout of the session's features and the canvas's paints in the
+ * room (`texture/diagnostics.ts`).
  *
  * `panels` says how the zones reach the room: mirrored object by object
  * (`components/Scene.ts`), or drawn into a texture by the browser
@@ -57,7 +59,7 @@ export async function offerXR(desk: Readable<MountedDesk>, panels: Panels): Prom
         );
       }
 
-      createXRButton(renderer).then((button) => {
+      createXRButton(renderer, scene.button).then((button) => {
         document.body.appendChild(button);
       });
     },
@@ -72,6 +74,8 @@ type SceneOptions = Omit<NonNullable<Parameters<typeof render>[1]>, "createContr
 interface DeskScene {
   scene: Parameters<typeof render>[0];
   options: SceneOptions;
+  /** What the Enter button asks the session for, past its own defaults. */
+  button?: Parameters<typeof createXRButton>[1];
 }
 
 /** The desk mirrored by `justdom-three`, with what its panels need. */
@@ -98,12 +102,15 @@ async function mirrorScene(desk: Readable<MountedDesk>): Promise<DeskScene> {
 
 /**
  * The desk drawn into a texture, or nothing where the browser cannot draw
- * HTML into a canvas: the page says so and offers no session.
+ * HTML into a canvas: the page says so and offers no session. The session
+ * asks for `html-in-canvas`, which is meant to keep the canvas's own
+ * subtree, the desk, painted while it runs, so that the panels follow the
+ * desk. On a Quest they were still seen frozen with it asked for.
  */
 async function textureScene(desk: Readable<MountedDesk>): Promise<DeskScene | null> {
   if (!canDrawHtmlInCanvas()) {
     return null;
   }
   const { TextureScene } = await import("./texture/Scene.js");
-  return { scene: TextureScene(desk), options: {} };
+  return { scene: TextureScene(desk), options: {}, button: { htmlInCanvas: true } };
 }

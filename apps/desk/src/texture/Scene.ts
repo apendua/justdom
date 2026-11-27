@@ -21,6 +21,7 @@ import type { MountedDesk } from "../desk.js";
 import type { Readable } from "../session.js";
 import { disposedWithIt, lights, mug, pose, room } from "../components/Scene.js";
 import { createPointerForwarder, type PointerForwarder } from "./forwarding.js";
+import { paintDiagnostics, type PaintCounts } from "./diagnostics.js";
 
 type PanelMesh = THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial, XREventMap>;
 
@@ -91,6 +92,10 @@ function fitToZone(mesh: PanelMesh, zone: HTMLElement, desk: HTMLElement): void 
  * A ray on a panel is a point of the desk, which `forwarding.ts` turns into
  * the events a mouse would have sent there, so the page's own handlers run
  * for a hand as they do for a mouse.
+ *
+ * `?diag` adds a readout to the room of the session's features and the
+ * canvas's paints, and `?diag&repaint` also asks for a paint every frame
+ * (`diagnostics.ts`).
  */
 export const TextureScene = (desk: Readable<MountedDesk>) =>
   effectsOnly((ctx: WeakKey) => {
@@ -109,6 +114,7 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
           component(() => {
             const { look, root, elements } = desk.get();
             const renderer = RendererContext.get(ctx);
+            const query = new URLSearchParams(location.search);
             const canvas = renderer.domElement;
             const home = root.parentElement;
             const undraw = drawInCanvas(canvas, root);
@@ -139,12 +145,15 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
             // Rows from the element's top, as `fitToZone` counts them.
             texture.flipY = false;
             let painted = false;
+            const counts: PaintCounts = { paints: 0, deskPaints: 0 };
             const meshes: PanelMesh[] = [];
             const fits: (() => void)[] = [];
             const onPaint = (event: Event) => {
+              counts.paints += 1;
               if (!paintedElement(event, root)) {
                 return;
               }
+              counts.deskPaints += 1;
               upload();
               if (!painted) {
                 painted = true;
@@ -223,6 +232,19 @@ export const TextureScene = (desk: Readable<MountedDesk>) =>
               }),
               children(
                 $(room(look.room), [disposedWithIt]),
+                ...(query.has("diag")
+                  ? [
+                      $(
+                        paintDiagnostics(
+                          canvas,
+                          renderer.xr.getSession(),
+                          counts,
+                          query.has("repaint"),
+                        ),
+                        [],
+                      ),
+                    ]
+                  : []),
                 ...(look.mug ? [$(mug(), [disposedWithIt])] : []),
                 ...look.placements.flatMap((placement) => {
                   const zone = elements.get(placement.id);

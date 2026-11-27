@@ -72,8 +72,14 @@ ships it as stable, with no flag, after an origin trial; before that it was behi
 `chrome://flags/#canvas-draw-element`. Mozilla
 ([standards-positions#1076](https://github.com/mozilla/standards-positions/issues/1076)) and WebKit
 ([standards-positions#630](https://github.com/WebKit/standards-positions/issues/630)) have not taken
-a position on it. The Quest Browser stops rendering the page during an immersive session, which is
-when the canvas would fire `paint`.
+a position on it.
+
+A headset browser such as the Quest's stops rendering the page during an immersive session, and with
+it the canvas's `paint` events. Both demos ask the session for the `html-in-canvas` feature, as an
+optional feature, through `createXRButton(renderer, { htmlInCanvas: true })`. The feature is meant
+to keep the canvas's own subtree laid out and painted during the session, but on a Quest the panels
+were still seen frozen with it asked for
+([WICG/html-in-canvas#158](https://github.com/WICG/html-in-canvas/issues/158) reports the same).
 
 The API changed on its way to stable. The
 [origin trial's changes](https://developer.chrome.com/blog/html-in-canvas-ot-changes) renamed the

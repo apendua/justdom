@@ -76,15 +76,16 @@ synchronously, and gives up the focus the click left on it once the session star
 `Enter` typed in the session does not press it and end the session. `button.js` says what three's
 buttons get wrong.
 
-| Option         | Default  | What it does                                                                                                                                                                                                                                                               |
-| -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ar`, `vr`     | none     | The `XRSessionInit` for each mode. `hand-tracking` and `local-floor` are added as optional features unless the options below say otherwise, and a VR session asks for the default features `xr.js` lists.                                                                  |
-| `anchor`       | `true`   | Re-anchor the `local` origin to the first trustworthy viewer pose (`anchorToViewer`).                                                                                                                                                                                      |
-| `frameRate`    | `"high"` | Ask the runtime for its fastest rate; `"mid"`, a number in Hz, or `false` to leave the default (`requestFrameRate`).                                                                                                                                                       |
-| `offerSession` | `false`  | Let the browser offer the session from its own chrome, from a state of rest only.                                                                                                                                                                                          |
-| `autoEnter`    | `false`  | Ask for the session as soon as the button is built, where the platform hands the page an activation to spend (an installed PWA on Horizon OS). The button is built and returned either way.                                                                                |
-| `crashPanel`   | `true`   | A throw out of the frame loop, an uncaught exception or an unhandled rejection ends the session and writes the error, stack and all, onto the page, where it can be read on the headset. The panel's Copy button puts it on the clipboard, or selects it where it may not. |
-| `handTracking` | `true`   | Ask for the `hand-tracking` feature. See [Hands](./input#hands).                                                                                                                                                                                                           |
+| Option         | Default  | What it does                                                                                                                                                                                                                                                                                                                        |
+| -------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ar`, `vr`     | none     | The `XRSessionInit` for each mode. `hand-tracking` and `local-floor` are added as optional features unless the options below say otherwise, and a VR session asks for the default features `xr.js` lists.                                                                                                                           |
+| `anchor`       | `true`   | Re-anchor the `local` origin to the first trustworthy viewer pose (`anchorToViewer`).                                                                                                                                                                                                                                               |
+| `frameRate`    | `"high"` | Ask the runtime for its fastest rate; `"mid"`, a number in Hz, or `false` to leave the default (`requestFrameRate`).                                                                                                                                                                                                                |
+| `offerSession` | `false`  | Let the browser offer the session from its own chrome, from a state of rest only.                                                                                                                                                                                                                                                   |
+| `autoEnter`    | `false`  | Ask for the session as soon as the button is built, where the platform hands the page an activation to spend (an installed PWA on Horizon OS). The button is built and returned either way.                                                                                                                                         |
+| `crashPanel`   | `true`   | A throw out of the frame loop, an uncaught exception or an unhandled rejection ends the session and writes the error, stack and all, onto the page, where it can be read on the headset. The panel's Copy button puts it on the clipboard, or selects it where it may not.                                                          |
+| `handTracking` | `true`   | Ask for the `hand-tracking` feature. See [Hands](./input#hands).                                                                                                                                                                                                                                                                    |
+| `htmlInCanvas` | `false`  | Ask for the `html-in-canvas` feature, which is meant to keep the canvas's own subtree laid out and painted during the session, so that an element drawn into the canvas goes on firing `paint`. On a Quest the canvas was still seen not to paint with it asked for. See [Elements the browser draws](#elements-the-browser-draws). |
 
 **Ending a session from inside it.** The system menu ends a session, and so does `end()` on the
 session itself, which is how a control in the room — a power button on a desk, the × on a menu card
@@ -128,8 +129,11 @@ size changes. Its rows run from the element's bottom, as three's own uploads do,
 `texture.flipY` is `false`. three's own `HTMLTexture` (r185 to r187) uploads with
 `texElementImage2D`, which Chrome 157 no longer has. `paintedElement(event, element)` says whether a
 `paint` event lists that element among those whose picture changed, so that `upload` has something
-new to draw: before the first such paint there is no picture, and an upload throws.
-`htmlTextureMaterial()` is the unlit, see-through material for that texture. `texElementSubImage2D`
-writes RGBA8, which the GPU does not decode from sRGB, so a plain material shows every colour
-lighter than the page drew it; this one decodes it in the shader. The desk's texture mode and the
-showcase's `?panels=texture` both use them.
+new to draw: before the first such paint there is no picture, and an upload throws. In an immersive
+session a headset browser such as the Quest's stops painting the page, so the canvas fires no
+`paint`. `createXRButton(renderer, { htmlInCanvas: true })` asks for the `html-in-canvas` feature,
+which is meant to keep the canvas's subtree painting, but on a Quest the panels were still seen
+frozen with it asked for. `htmlTextureMaterial()` is the unlit, see-through material for that
+texture. `texElementSubImage2D` writes RGBA8, which the GPU does not decode from sRGB, so a plain
+material shows every colour lighter than the page drew it; this one decodes it in the shader. The
+desk's texture mode and the showcase's `?panels=texture` both use them.

@@ -7,7 +7,17 @@ import { component, effects } from "justdom-signal";
 import { $, children, set, style, text } from "justdom-core";
 import { dom } from "justdom-three";
 import { SAMPLE_COUNT, SAMPLE_MS } from "./frameMeter.js";
-import { bar, caption, chart, hudCard, reading, readingRow, unit, UI_SCALE } from "./styles.js";
+import {
+  bar,
+  caption,
+  chart,
+  hudCard,
+  reading,
+  readingRow,
+  unit,
+  work,
+  UI_SCALE,
+} from "./styles.js";
 
 /**
  * @import {Mountable} from 'justdom-core';
@@ -100,6 +110,21 @@ function chartBar(controls, index) {
 }
 
 /**
+ * The line of text readings: how long the slowest run of the last minute
+ * took to draw ahead of its step, and how long the slowest upload took.
+ *
+ * @param {DiagnosticsControls} controls
+ * @returns {string}
+ */
+export function textWorkLine(controls) {
+  const reading = controls.textWork.get();
+  // Two seconds in, before there is a window to report.
+  return reading === null
+    ? "draw -- · upload -- ms"
+    : `draw ${reading.drawMs.toFixed(1)} · upload ${reading.uploadMs.toFixed(1)} ms`;
+}
+
+/**
  * The panel, as a component to be added to whatever should carry it — which is
  * the camera; see `useDiagnostics`.
  *
@@ -160,6 +185,8 @@ export const Panel = component(
               text`${() => `${WINDOW_SECONDS} s · full height ${controls.ceiling.get()} fps`}`,
             ),
           ]),
+          $("div", [set("className", caption), children(text`text ahead, longest piece`)]),
+          $("div", [set("className", work), children(text`${() => textWorkLine(controls)}`)]),
         ),
       ]),
       [

@@ -1,0 +1,11 @@
+{
+  "changes": [
+    {
+      "packageName": "justdom-three",
+      "comment": "`textWork(ctx)` has the longest a single run took to draw ahead of a text step and the longest a single upload took (`longestDrawMs`, `longestUploadMs`), for the one reader that clears them.",
+      "type": "minor"
+    }
+  ],
+  "packageName": "justdom-three",
+  "email": "noreply@anthropic.com"
+}

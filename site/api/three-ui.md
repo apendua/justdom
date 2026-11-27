@@ -232,13 +232,14 @@ called, and the surrounding computation owns the meter and the panel both.
 
 `createDiagnostics(options?)` returns the controls; `{ visible: false }` starts the panel hidden.
 
-| Control    | What it is                                                                                                                               |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `visible`  | A `Signal<boolean>`: whether the panel is drawn. Readings are taken either way, so a panel switched back on has the last minute to show. |
-| `toggle()` | Shows the panel, or hides it. What a button in the app's own panel calls.                                                                |
-| `fps`      | A `Signal<number \| null>`: the reading, twice a second, or null before there is one.                                                    |
-| `history`  | A `Signal<readonly number[]>`: the chart, thirty two-second averages, oldest first.                                                      |
-| `ceiling`  | A `Signal<number>`: what full height on the chart means, in fps.                                                                         |
+| Control    | What it is                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `visible`  | A `Signal<boolean>`: whether the panel is drawn. Readings are taken either way, so a panel switched back on has the last minute to show.          |
+| `toggle()` | Shows the panel, or hides it. What a button in the app's own panel calls.                                                                         |
+| `fps`      | A `Signal<number \| null>`: the reading, twice a second, or null before there is one.                                                             |
+| `history`  | A `Signal<readonly number[]>`: the chart, thirty two-second averages, oldest first.                                                               |
+| `ceiling`  | A `Signal<number>`: what full height on the chart means, in fps.                                                                                  |
+| `textWork` | A `Signal<{ drawMs, uploadMs } \| null>`: the longest one run took to draw ahead of its step in the last minute, and the longest one upload took. |
 
 `diagnosticsButton(controls, className)` is the switch, for an app's own panel to carry: only the
 wording and the wiring are shared, and it wears the class name the app supplies.
@@ -250,6 +251,15 @@ view, where the game is, and inside the arc an eye covers without the neck helpi
 rate, and a minute of history as thirty two-second bars, coloured as fractions of the display's own
 rate, since 72 fps is perfect on one headset and a quarter of the frames dropped on another. The
 panel is faint, so the room can be read through it, and dark enough that the reading is legible.
+
+Under the chart is a line such as `draw 3.1 · upload 0.9 ms`. A panel draws its text again, sharper,
+before the viewer is near enough to need it, a run at a time in what the frame has left
+([text sharpness](/api/three/panels#how-sharp-the-text-comes-out)). That work stops between runs
+when the frame's time is up and cannot stop inside one. The two numbers are the longest a single run
+took to draw in the last minute, and the longest a single upload took to return, as `textWork(ctx)`
+from `justdom-three` keeps them. A run that takes several milliseconds is one that can drop a frame.
+Text drawn in the update that shows it, such as a label whose content changed, is not counted, and
+neither is what the GPU does with an upload after the call returns.
 
 - **It lets rays through.** It is projected through a portal with `{ opaqueToRays: false }`, the
   option this widget is the reason for.

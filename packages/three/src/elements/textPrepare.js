@@ -4,6 +4,7 @@ import { createProperty } from "justdom-signal";
  * @import {PortalPump, PortalScheduler} from './portal/portalScheduler.js';
  * @import {Texture} from 'three';
  * @import {TextBatch} from './paint/textBatch.js';
+ * @import {TextWork} from './textWork.js';
  */
 
 /**
@@ -69,10 +70,13 @@ export const TextPrepareContext = createProperty(
  *   batch: TextBatch,
  *   holds: (step: number) => boolean,
  *   upload: (texture: Texture) => void,
+ *   work?: TextWork | null,
  *   now?: () => number,
  * }} options `holds` is the panel's `TextScale.holds`, asked about the step
  *   a retarget moves away from. `upload` is `renderer.initTexture`, which
  *   sends the arrays up before the step that draws from them is shown.
+ *   `work` is the scene's account of the longest piece of its pumps' work
+ *   (`textWork`), which this one raises.
  * @returns {TextPreparer}
  */
 export function createTextPreparer({
@@ -80,6 +84,7 @@ export function createTextPreparer({
   batch,
   holds,
   upload,
+  work = null,
   now = () => performance.now(),
 }) {
   /** @type {Set<PreparedRun>} */
@@ -108,20 +113,39 @@ export function createTextPreparer({
       if (target === null) {
         return true;
       }
+      // The clock is read once after each piece of work, and that reading
+      // both ends the piece in the account and is checked against the
+      // deadline before the next.
+      let time = now();
       for (const run of queue) {
-        if (now() >= deadline) {
+        if (time >= deadline) {
           return false;
         }
         queue.delete(run);
         const unstaged = run.prepare(target);
+        const drawn = now();
+        if (work && drawn - time > work.longestDrawMs) {
+          work.longestDrawMs = drawn - time;
+        }
+        time = drawn;
         if (unstaged) {
           upload(unstaged);
+          time = now();
+          if (work && time - drawn > work.longestUploadMs) {
+            work.longestUploadMs = time - drawn;
+          }
         }
       }
-      if (now() >= deadline) {
+      if (time >= deadline) {
         return false;
       }
       complete = !batch.commitStaged(UPLOAD_BYTES_PER_FRAME, upload);
+      if (work) {
+        const staged = now() - time;
+        if (staged > work.longestUploadMs) {
+          work.longestUploadMs = staged;
+        }
+      }
       return complete;
     },
   };
